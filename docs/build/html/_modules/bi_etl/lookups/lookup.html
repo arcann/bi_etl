@@ -1,0 +1,364 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.lookups.lookup &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for bi_etl.lookups.lookup</h1><div class="highlight"><pre>
+<span></span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Created on Feb 26, 2015</span>
+
+<span class="sd">@author: woodd</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">psutil</span>
+<span class="kn">import</span> <span class="nn">math</span>
+
+<span class="kn">from</span> <span class="nn">sqlalchemy.sql.expression</span> <span class="kn">import</span> <span class="n">bindparam</span>
+
+<span class="kn">from</span> <span class="nn">bi_etl.exceptions</span> <span class="kn">import</span> <span class="n">NoResultFound</span>
+<span class="kn">from</span> <span class="nn">bi_etl.memory_size</span> <span class="kn">import</span> <span class="n">get_size_gc</span>
+<span class="kn">from</span> <span class="nn">bi_etl.components.row</span> <span class="kn">import</span> <span class="n">Row</span>
+<span class="kn">from</span> <span class="nn">bi_etl.exceptions</span> <span class="kn">import</span> <span class="n">BeforeAllExisting</span>
+<span class="kn">from</span> <span class="nn">bi_etl.exceptions</span> <span class="kn">import</span> <span class="n">AfterExisting</span>
+
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Lookup&#39;</span><span class="p">]</span>
+
+<div class="viewcode-block" id="Lookup"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup">[docs]</a><span class="k">class</span> <span class="nc">Lookup</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookup_name</span><span class="p">,</span> <span class="n">lookup_keys</span><span class="p">,</span> <span class="n">parent_component</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_name</span> <span class="o">=</span> <span class="n">lookup_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookup_keys</span> <span class="o">=</span> <span class="n">lookup_keys</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parent_component</span> <span class="o">=</span> <span class="n">parent_component</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stats</span> <span class="o">=</span> <span class="n">parent_component</span><span class="o">.</span><span class="n">get_unique_stats_entry</span><span class="p">(</span><span class="n">stats_id</span><span class="o">=</span><span class="s1">&#39;{cls} {name}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">cls</span><span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_name</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">__module__</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_remote_lookup_stmt</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_row_size</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">our_process</span> <span class="o">=</span> <span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_first_row_process_size</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_row_count_to_get_estimate_row_size</span> <span class="o">=</span> <span class="mi">1000</span>        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_done_get_estimate_row_size</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cache_enabled</span> <span class="o">=</span> <span class="bp">None</span>
+        
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;{cls}(lookup_name={name}, lookup_keys={keys})&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">cls</span><span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_name</span><span class="p">,</span> <span class="n">keys</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_keys</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">_set_log_level</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log_level</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">log_level</span><span class="p">)</span>
+        
+    <span class="nd">@property</span> 
+    <span class="k">def</span> <span class="nf">cache_enabled</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cache_enabled</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cache_enabled</span>
+        
+    <span class="nd">@cache_enabled.setter</span>      
+    <span class="k">def</span> <span class="nf">cache_enabled</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_value</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">new_value</span><span class="p">,</span><span class="nb">bool</span><span class="p">)</span> 
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cache_enabled</span> <span class="o">=</span> <span class="n">new_value</span>
+        
+<div class="viewcode-block" id="Lookup.get_memory_size"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.get_memory_size">[docs]</a>    <span class="k">def</span> <span class="nf">get_memory_size</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_row_size</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_row_size</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;Row size was 0 on call to get_memory_size with non zero row count ({:,})&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)))</span>
+            <span class="k">return</span> <span class="mi">0</span>
+</div>
+<div class="viewcode-block" id="Lookup.get_disk_size"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.get_disk_size">[docs]</a>    <span class="k">def</span> <span class="nf">get_disk_size</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">0</span>
+    </div>
+<div class="viewcode-block" id="Lookup.add_size_to_stats"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.add_size_to_stats">[docs]</a>    <span class="k">def</span> <span class="nf">add_size_to_stats</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s1">&#39;Final Row Count&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s1">&#39;Memory Size&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_memory_size</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s1">&#39;Disk Size&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_disk_size</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="Lookup.get_list_of_lookup_column_values"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.get_list_of_lookup_column_values">[docs]</a>    <span class="k">def</span> <span class="nf">get_list_of_lookup_column_values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+        <span class="n">lookup_values</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_keys</span><span class="p">:</span>
+            <span class="c1">## We shouldn&#39;t need this check since Row does it for us</span>
+            <span class="c1">#if isinstance(k, Column):</span>
+            <span class="c1">#    lookup_values.append(row[k.name])</span>
+            <span class="c1">#else:</span>
+            <span class="n">lookup_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">lookup_values</span>
+</div>
+<div class="viewcode-block" id="Lookup.get_hashable_combined_key"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.get_hashable_combined_key">[docs]</a>    <span class="k">def</span> <span class="nf">get_hashable_combined_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_list_of_lookup_column_values</span><span class="p">(</span><span class="n">row</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="Lookup.clear_cache"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.clear_cache">[docs]</a>    <span class="k">def</span> <span class="nf">clear_cache</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Removes cache and resets to un-cached state</span>
+<span class="sd">        &#39;&#39;&#39;</span>        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">!=</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="bp">None</span>
+    </div>
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">0</span>
+
+<div class="viewcode-block" id="Lookup.init_cache"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.init_cache">[docs]</a>    <span class="k">def</span> <span class="nf">init_cache</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Initializes the cache as empty.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache_enabled</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache_enabled</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache_enabled</span><span class="p">:</span>         
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        
+        </div>
+    <span class="k">def</span> <span class="nf">_get_first_row_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_row_size</span> <span class="o">=</span> <span class="n">get_size_gc</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="c1">## Slow but shouldn&#39;t be too bad twice (once here and once below in _get_estimate_row_size)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;First row memory size {:,} bytes (includes overhead)&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_row_size</span> <span class="p">))</span>        
+        
+    <span class="k">def</span> <span class="nf">_get_estimate_row_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">force_now</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">force_now</span> <span class="ow">or</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_done_get_estimate_row_size</span><span class="p">:</span>
+            <span class="n">row_cnt</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>        
+            <span class="k">if</span> <span class="n">force_now</span> <span class="ow">or</span> <span class="n">row_cnt</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_row_count_to_get_estimate_row_size</span><span class="p">:</span>
+                <span class="c1">## Tag the estimate as done so we don&#39;t keep doing it</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_done_get_estimate_row_size</span> <span class="o">=</span> <span class="bp">True</span>
+               
+                <span class="n">total_cache_size</span> <span class="o">=</span> <span class="n">get_size_gc</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">)</span> <span class="c1">## Slow but shouldn&#39;t be too bad twice (once here and once above in _get_first_row_size)</span>
+                <span class="n">new_row_size</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">total_cache_size</span> <span class="o">/</span> <span class="n">row_cnt</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;Row memory size now estimated at {:,} bytes per row using cache of {:,} rows&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">new_row_size</span><span class="p">,</span> <span class="n">row_cnt</span><span class="p">))</span>
+                
+                <span class="bp">self</span><span class="o">.</span><span class="n">_row_size</span> <span class="o">=</span> <span class="n">new_row_size</span>     
+
+<div class="viewcode-block" id="Lookup.cache_row"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.cache_row">[docs]</a>    <span class="k">def</span> <span class="nf">cache_row</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">allow_update</span> <span class="o">=</span> <span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Adds the given row to the cache for this lookup.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        row: bi_etl.components.row.row_case_insensitive</span>
+<span class="sd">            The row to cache</span>
+<span class="sd">            </span>
+<span class="sd">        allow_update: boolean</span>
+<span class="sd">            Allow this method to update an existing row in the cache.</span>
+<span class="sd">            </span>
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If allow_update is False and an already existing row (lookup key) is passed in.</span>
+<span class="sd">        </span>
+<span class="sd">        &#39;&#39;&#39;</span>        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache_enabled</span><span class="p">:</span>
+            <span class="n">lk_tuple</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_hashable_combined_key</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">init_cache</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">allow_update</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">lk_tuple</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Key value {} already in cache and allow_update was False. Possible error with the keys defined for this lookup {}.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">lk_tuple</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_keys</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">[</span><span class="n">lk_tuple</span><span class="p">]</span> <span class="o">=</span> <span class="n">row</span>
+            
+            <span class="c1">## Capture memory usage snapshots</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_row_size</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>   
+                <span class="bp">self</span><span class="o">.</span><span class="n">_get_first_row_size</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_get_estimate_row_size</span><span class="p">()</span>
+        </div>
+<div class="viewcode-block" id="Lookup.commit"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.commit">[docs]</a>    <span class="k">def</span> <span class="nf">commit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Placeholder for other implementations that might need it&#39;&#39;&#39;</span>
+        <span class="k">pass</span>
+        </div>
+<div class="viewcode-block" id="Lookup.uncache_row"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.uncache_row">[docs]</a>    <span class="k">def</span> <span class="nf">uncache_row</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">lk_tuple</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_hashable_combined_key</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">[</span><span class="n">lk_tuple</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                <span class="c1">## This lookup uses columns not in the row provided. That means it&#39;s dirty beyond repair. Wipe it out.</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;uncache_row called on {lookup} with insufficient values {row}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">lookup</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> 
+                                                                                                     <span class="n">row</span><span class="o">=</span><span class="n">row</span>
+                                                                                                     <span class="p">)</span>
+                              <span class="p">)</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="bp">None</span>
+            
+</div>
+<div class="viewcode-block" id="Lookup.__iter__"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.__iter__">[docs]</a>    <span class="k">def</span> <span class="nf">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Iterates over rows in the lookup cache</span>
+<span class="sd">        The rows will come out in any order.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+                <span class="k">yield</span> <span class="n">row</span>
+</div>
+<div class="viewcode-block" id="Lookup.find_where"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.find_where">[docs]</a>    <span class="k">def</span> <span class="nf">find_where</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key_names</span><span class="p">,</span> <span class="n">key_values_dict</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span> <span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Scan all cached rows (expensive) to find list of rows that match criteria.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">:</span>
+            <span class="n">matches</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">key_names</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">row</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">!=</span> <span class="n">key_values_dict</span><span class="p">[</span><span class="n">key</span><span class="p">]:</span>
+                    <span class="n">matches</span> <span class="o">=</span> <span class="bp">False</span>
+                    <span class="k">break</span>
+            <span class="k">if</span> <span class="n">matches</span><span class="p">:</span>
+                <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">limit</span><span class="p">:</span>
+                    <span class="k">break</span>
+        <span class="k">return</span> <span class="n">results</span>
+            </div>
+<div class="viewcode-block" id="Lookup.uncache_where"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.uncache_where">[docs]</a>    <span class="k">def</span> <span class="nf">uncache_where</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key_names</span><span class="p">,</span> <span class="n">key_values_dict</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Scan all cached rows (expensive) to find rows to remove.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">deletes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_where</span><span class="p">(</span><span class="n">key_names</span><span class="p">,</span> <span class="n">key_values_dict</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">deletes</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">uncache_row</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Lookup.find_in_cache"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.find_in_cache">[docs]</a>    <span class="k">def</span> <span class="nf">find_in_cache</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Find a matching row in the lookup based on the lookup index (keys)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Lookup {} not cached&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookup_name</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">lk_tuple</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_hashable_combined_key</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">[</span><span class="n">lk_tuple</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">NoResultFound</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+            </div>
+<div class="viewcode-block" id="Lookup.has_row"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.has_row">[docs]</a>    <span class="k">def</span> <span class="nf">has_row</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">find_in_cache</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="n">NoResultFound</span><span class="p">,</span> <span class="n">BeforeAllExisting</span><span class="p">,</span> <span class="n">AfterExisting</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="k">return</span> <span class="bp">True</span>
+            </div>
+    <span class="k">def</span> <span class="nf">_add_remote_stmt_where_clause</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stmt</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Only works if parent_component is based on bi_etl.components.readonlytable</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">col_num</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">key_col</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookup_keys</span><span class="p">:</span>            
+            <span class="n">stmt</span> <span class="o">=</span> <span class="n">stmt</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parent_component</span><span class="o">.</span><span class="n">get_column</span><span class="p">(</span><span class="n">key_col</span><span class="p">)</span> <span class="o">==</span> <span class="n">bindparam</span><span class="p">(</span><span class="s1">&#39;k{}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">col_num</span><span class="p">)))</span>
+            <span class="n">col_num</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">stmt</span>
+        
+    <span class="k">def</span> <span class="nf">_get_remote_stmt_where_values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+        <span class="n">values_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="n">col_num</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">key_val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_list_of_lookup_column_values</span><span class="p">(</span><span class="n">row</span><span class="p">):</span>            
+            <span class="n">values_dict</span><span class="p">[</span><span class="s1">&#39;k{}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">col_num</span><span class="p">)]</span> <span class="o">=</span> <span class="n">key_val</span>
+            <span class="n">col_num</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">values_dict</span>
+    
+<div class="viewcode-block" id="Lookup.find_in_remote_table"><a class="viewcode-back" href="../../../bi_etl.lookups.lookup.html#bi_etl.lookups.autodisk_lookup.Lookup.find_in_remote_table">[docs]</a>    <span class="k">def</span> <span class="nf">find_in_remote_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Find a matching row in the lookup based on the lookup index (keys)</span>
+<span class="sd">        </span>
+<span class="sd">        Only works if parent_component is based on bi_etl.components.readonlytable</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">timer</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_remote_lookup_stmt</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">stmt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent_component</span><span class="o">.</span><span class="n">select</span><span class="p">()</span>           
+            <span class="n">stmt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_add_remote_stmt_where_clause</span><span class="p">(</span><span class="n">stmt</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_remote_lookup_stmt</span> <span class="o">=</span> <span class="n">stmt</span><span class="o">.</span><span class="n">compile</span><span class="p">()</span>      
+        <span class="n">values_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_remote_stmt_where_values</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>     
+        <span class="n">rows</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parent_component</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_remote_lookup_stmt</span><span class="p">,</span> <span class="n">values_dict</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">timer</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NoResultFound</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Row</span><span class="p">(</span><span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;find_in_remote_table {} matched multiple records {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="n">rows</span><span class="p">))</span>
+</pre></div></div></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

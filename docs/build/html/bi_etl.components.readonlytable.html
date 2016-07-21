@@ -1,0 +1,646 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.components.readonlytable module &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="index.html" />
+    <link rel="up" title="bi_etl.components package" href="bi_etl.components.html" />
+    <link rel="next" title="bi_etl.components.sqlquery module" href="bi_etl.components.sqlquery.html" />
+    <link rel="prev" title="bi_etl.components.hst_table module" href="bi_etl.components.hst_table.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.sqlquery.html" title="bi_etl.components.sqlquery module"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.hst_table.html" title="bi_etl.components.hst_table module"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.components.html" accesskey="U">bi_etl.components package</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-bi_etl.components.readonlytable">
+<span id="bi-etl-components-readonlytable-module"></span><h1>bi_etl.components.readonlytable module<a class="headerlink" href="#module-bi_etl.components.readonlytable" title="Permalink to this headline">¶</a></h1>
+<p>Created on Sep 17, 2014</p>
+<p>&#64;author: woodd</p>
+<dl class="class">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable">
+<em class="property">class </em><code class="descclassname">bi_etl.components.readonlytable.</code><code class="descname">ReadOnlyTable</code><span class="sig-paren">(</span><em>task</em>, <em>database</em>, <em>table_name</em>, <em>table_name_case_sensitive=False</em>, <em>exclude_columns=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="bi_etl.components.etlcomponent.html#bi_etl.components.etlcomponent.ETLComponent" title="bi_etl.components.etlcomponent.ETLComponent"><code class="xref py py-class docutils literal"><span class="pre">bi_etl.components.etlcomponent.ETLComponent</span></code></a></p>
+<p>Reads all columns from a database table or view.
+Rows can be filtered using the <a class="reference internal" href="#bi_etl.components.readonlytable.ReadOnlyTable.where" title="bi_etl.components.readonlytable.ReadOnlyTable.where"><code class="xref py py-meth docutils literal"><span class="pre">where()</span></code></a> method.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>task</strong> (<a class="reference internal" href="bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask" title="bi_etl.scheduler.task.ETLTask"><em>ETLTask</em></a>) &#8211; The  instance to register in (if not None)</li>
+<li><strong>database</strong> (<em>bi_etl.scheduler.task.Database</em>) &#8211; The database to find the table/view in.</li>
+<li><strong>table_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; The name of the table/view.</li>
+<li><strong>exclude_columns</strong> (<em>list, optional</em>) &#8211; Optional. A list of columns to exclude when reading the table/view.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.delete_flag">
+<code class="descname">delete_flag</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.delete_flag" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str, optional</em></p>
+<p>The name of the delete_flag column, if any.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.delete_flag_yes">
+<code class="descname">delete_flag_yes</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.delete_flag_yes" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str, optional</em></p>
+<p>The value of delete_flag for deleted rows.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.delete_flag_no">
+<code class="descname">delete_flag_no</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.delete_flag_no" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str, optional</em></p>
+<p>The value of delete_flag for <em>not</em> deleted rows.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.special_values_descriptive_columns">
+<code class="descname">special_values_descriptive_columns</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.special_values_descriptive_columns" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>list, optional</em></p>
+<p>A list of columns that should get longer descriptive text (e.g. &#8216;Missing&#8217; instead of &#8216;?&#8217;) in
+<a class="reference internal" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_missing_row" title="bi_etl.components.readonlytable.ReadOnlyTable.get_missing_row"><code class="xref py py-meth docutils literal"><span class="pre">get_missing_row()</span></code></a>,
+<a class="reference internal" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_invalid_row" title="bi_etl.components.readonlytable.ReadOnlyTable.get_invalid_row"><code class="xref py py-meth docutils literal"><span class="pre">get_invalid_row()</span></code></a>,
+<a class="reference internal" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_not_applicable_row" title="bi_etl.components.readonlytable.ReadOnlyTable.get_not_applicable_row"><code class="xref py py-meth docutils literal"><span class="pre">get_not_applicable_row()</span></code></a>,
+<a class="reference internal" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_various_row" title="bi_etl.components.readonlytable.ReadOnlyTable.get_various_row"><code class="xref py py-meth docutils literal"><span class="pre">get_various_row()</span></code></a></p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.log_first_row">
+<code class="descname">log_first_row</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.log_first_row" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>boolean</em></p>
+<p>Should we log progress on the the first row read. <em>Only applies if Table is used as a source.</em>
+(inherited from ETLComponent)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.max_rows">
+<code class="descname">max_rows</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.max_rows" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>int, optional</em></p>
+<p>The maximum number of rows to read. <em>Only applies if Table is used as a source.</em>
+(inherited from ETLComponent)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.maintain_cache_during_load">
+<code class="descname">maintain_cache_during_load</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.maintain_cache_during_load" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>boolean</em></p>
+<p>Default = True. Should we maintain the lookup caches as we load records.
+Can safely be set to False for sources that will never use a key combination twice
+during a single load. Setting it to False should improve performance.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.primary_key">
+<code class="descname">primary_key</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.primary_key" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>list</em></p>
+<p>The name of the primary key column(s). Only impacts trace messages.  Default=None.
+If not passed in, will use the database value, if any.
+(inherited from ETLComponent)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.progress_frequency">
+<code class="descname">progress_frequency</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.progress_frequency" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>int</em></p>
+<p>How often (in seconds) to output progress messages. None for no progress messages.
+(inherited from ETLComponent)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.progress_message">
+<code class="descname">progress_message</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.progress_message" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str</em></p>
+<p>The progress message to print. Default is <code class="docutils literal"><span class="pre">&quot;{logical_name}</span> <span class="pre">row</span> <span class="pre">#</span> <span class="pre">{row_number}&quot;</span></code>.
+Note <code class="docutils literal"><span class="pre">logical_name</span></code> and <code class="docutils literal"><span class="pre">row_number</span></code> subs.
+(inherited from ETLComponent)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.PK_LOOKUP">
+<code class="descname">PK_LOOKUP</code><em class="property"> = 'PK'</em><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.PK_LOOKUP" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.cache_commit">
+<code class="descname">cache_commit</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.cache_commit"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.cache_commit" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.cache_row">
+<code class="descname">cache_row</code><span class="sig-paren">(</span><em>row</em>, <em>allow_update=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.cache_row"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.cache_row" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.clear_cache">
+<code class="descname">clear_cache</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.clear_cache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.clear_cache" title="Permalink to this definition">¶</a></dt>
+<dd><p>Clear all lookup caches. Sets to un-cached state (unknown state v.s. empty state which is what init_cache gives)</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.close">
+<code class="descname">close</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.close"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.close" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.columns">
+<code class="descname">columns</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.columns" title="Permalink to this definition">¶</a></dt>
+<dd><p>A named-based collection of <code class="xref py py-class docutils literal"><span class="pre">sqlalchemy.sql.expression.ColumnElement</span></code> objects in this table/view.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.connection">
+<code class="descname">connection</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.connection"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.connection" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.define_lookup">
+<code class="descname">define_lookup</code><span class="sig-paren">(</span><em>lookup_name</em>, <em>lookup_keys</em>, <em>lookup_class=None</em>, <em>lookup_class_kwargs=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.define_lookup"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.define_lookup" title="Permalink to this definition">¶</a></dt>
+<dd><p>Define a new lookup.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>lookup_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; Name for the lookup. Used to refer to it later.</li>
+<li><strong>lookup_keys</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; list of lookup key columns</li>
+<li><strong>lookup_class</strong> (<em>Class</em>) &#8211; Optional python class to use for the lookup. Defaults to Lookup.</li>
+<li><strong>lookup_class_kwargs</strong> (<a class="reference external" href="https://docs.python.org/library/stdtypes.html#dict" title="(in Python v2.7)"><em>dict</em></a>) &#8211; Optional dict of additional parameters to pass to lookup constructor. Defaults to empty dict.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="attribute">
+<dt>
+<code class="descname">delete_flag</code></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.exclude_columns">
+<code class="descname">exclude_columns</code><span class="sig-paren">(</span><em>columns_to_exclude</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.exclude_columns"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.exclude_columns" title="Permalink to this definition">¶</a></dt>
+<dd><p>Exclude columns from the table. Removes them from all SQL statements.</p>
+<dl class="docutils">
+<dt>columns_to_exclude <span class="classifier-delimiter">:</span> <span class="classifier">list</span></dt>
+<dd>A list of columns to exclude when reading the table/view.</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.execute">
+<code class="descname">execute</code><span class="sig-paren">(</span><em>statement</em>, <em>*multiparams</em>, <em>**params</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.execute"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.execute" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.fill_cache">
+<code class="descname">fill_cache</code><span class="sig-paren">(</span><em>progress_frequency=10</em>, <em>progress_message='{table} fill_cache current row # {row_number:</em>, <em>}'</em>, <em>criteria=None</em>, <em>exclude_cols=None</em>, <em>order_by=None</em>, <em>assume_lookup_complete=None</em>, <em>row_limit=None</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.fill_cache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.fill_cache" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fill all lookup caches from the table.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>progress_frequency</strong> (<em>int, optional</em>) &#8211; How often (in seconds) to output progress messages. Default 10. None for no progress messages.</li>
+<li><strong>progress_message</strong> (<em>str, optional</em>) &#8211; The progress message to print.
+Default is <code class="docutils literal"><span class="pre">&quot;{table}</span> <span class="pre">fill_cache</span> <span class="pre">current</span> <span class="pre">row</span> <span class="pre">#</span> <span class="pre">{row_number:,}&quot;</span></code>. Note <code class="docutils literal"><span class="pre">logical_name</span></code> and <code class="docutils literal"><span class="pre">row_number</span></code>
+substitutions applied via <a class="reference external" href="https://docs.python.org/library/functions.html#format" title="(in Python v2.7)"><code class="xref py py-func docutils literal"><span class="pre">format()</span></code></a>.</li>
+<li><strong>criteria</strong> (<em>string or list of strings</em>) &#8211; Each string value will be passed to <code class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.sql.expression.Select.where()</span></code>.
+<a class="reference external" href="http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where">http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where</a></li>
+<li><strong>assume_lookup_complete</strong> (<em>boolean</em>) &#8211; Should later lookup calls assume the cache is complete (and thus raise an Exception if a key combination is not found)?
+Default to False if filtering criteria was used, otherwise defaults to True.</li>
+<li><strong>row_limit</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#int" title="(in Python v2.7)"><em>int</em></a>) &#8211; limit on number of rows to cache.</li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_by_key">
+<code class="descname">get_by_key</code><span class="sig-paren">(</span><em>source_row</em>, <em>stats_id='get_by_key'</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_by_key"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_by_key" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get by the primary key.
+Returns a <code class="xref py py-class docutils literal"><span class="pre">Row</span></code></p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_by_lookup">
+<code class="descname">get_by_lookup</code><span class="sig-paren">(</span><em>lookup_name</em>, <em>source_row</em>, <em>stats_id='get_by_lookup'</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_by_lookup"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_by_lookup" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get by an alternate key.
+Returns a <code class="xref py py-class docutils literal"><span class="pre">Row</span></code></p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_column">
+<code class="descname">get_column</code><span class="sig-paren">(</span><em>column</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_column"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the <code class="xref py py-class docutils literal"><span class="pre">sqlalchemy.sql.expression.ColumnElement</span></code> object for a given column name.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_column_name">
+<code class="descname">get_column_name</code><span class="sig-paren">(</span><em>column</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_column_name"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_column_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the column name given a possible <code class="xref py py-class docutils literal"><span class="pre">sqlalchemy.sql.expression.ColumnElement</span></code> object.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_invalid_row">
+<code class="descname">get_invalid_row</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_invalid_row"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_invalid_row" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a <code class="xref py py-class docutils literal"><span class="pre">Row</span></code> with the Invalid special values filled in for all columns.</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="55%" />
+<col width="45%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Type</th>
+<th class="head">Value</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td>Integer</td>
+<td>-8888</td>
+</tr>
+<tr class="row-odd"><td>Short Text</td>
+<td>&#8216;!&#8217;</td>
+</tr>
+<tr class="row-even"><td>Long Text</td>
+<td>&#8216;Invalid&#8217;</td>
+</tr>
+<tr class="row-odd"><td>Date</td>
+<td>9999-8-1</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_lookup">
+<code class="descname">get_lookup</code><span class="sig-paren">(</span><em>lookup_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_lookup"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_lookup" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_lookup_keys">
+<code class="descname">get_lookup_keys</code><span class="sig-paren">(</span><em>lookup_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_lookup_keys"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_lookup_keys" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_lookup_tuple">
+<code class="descname">get_lookup_tuple</code><span class="sig-paren">(</span><em>lookup_name</em>, <em>row</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_lookup_tuple"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_lookup_tuple" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_missing_row">
+<code class="descname">get_missing_row</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_missing_row"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_missing_row" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a <code class="xref py py-class docutils literal"><span class="pre">Row</span></code> with the Missing special values filled in for all columns.</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="55%" />
+<col width="45%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Type</th>
+<th class="head">Value</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td>Integer</td>
+<td>-9999</td>
+</tr>
+<tr class="row-odd"><td>Short Text</td>
+<td>&#8216;?&#8217;</td>
+</tr>
+<tr class="row-even"><td>Long Text</td>
+<td>&#8216;Missing&#8217;</td>
+</tr>
+<tr class="row-odd"><td>Date</td>
+<td>9999-9-1</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_not_applicable_row">
+<code class="descname">get_not_applicable_row</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_not_applicable_row"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_not_applicable_row" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a <code class="xref py py-class docutils literal"><span class="pre">Row</span></code> with the Not Applicable special values filled in for all columns.</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="41%" />
+<col width="59%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Type</th>
+<th class="head">Value</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td>Integer</td>
+<td>-7777</td>
+</tr>
+<tr class="row-odd"><td>Short Text</td>
+<td>&#8216;~&#8217;</td>
+</tr>
+<tr class="row-even"><td>Long Text</td>
+<td>&#8216;Not Applicable&#8217;</td>
+</tr>
+<tr class="row-odd"><td>Date</td>
+<td>9999-7-1</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_one">
+<code class="descname">get_one</code><span class="sig-paren">(</span><em>statement</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_one"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_one" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets one row from the statement.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>row</strong> &#8211;
+The row returned</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Return type:</th><td class="field-body"><p class="first"><code class="xref py py-class docutils literal"><span class="pre">Row</span></code></p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Raises:</th><td class="field-body"><ul class="first last simple">
+<li><code class="xref py py-exc docutils literal"><span class="pre">NoResultFound</span></code> &#8211;
+No rows returned.</li>
+<li><code class="xref py py-exc docutils literal"><span class="pre">MultipleResultsFound</span></code> &#8211;
+More than one row was returned.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_pk_lookup">
+<code class="descname">get_pk_lookup</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_pk_lookup"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_pk_lookup" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_primarykey_list">
+<code class="descname">get_primarykey_list</code><span class="sig-paren">(</span><em>row</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_primarykey_list"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_primarykey_list" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_primarykey_tuple">
+<code class="descname">get_primarykey_tuple</code><span class="sig-paren">(</span><em>row</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_primarykey_tuple"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_primarykey_tuple" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_special_row">
+<code class="descname">get_special_row</code><span class="sig-paren">(</span><em>short_char</em>, <em>long_char</em>, <em>int_value</em>, <em>date_value</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_special_row"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_special_row" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.get_various_row">
+<code class="descname">get_various_row</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.get_various_row"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.get_various_row" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a <code class="xref py py-class docutils literal"><span class="pre">Row</span></code> with the Various special values filled in for all columns.</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="55%" />
+<col width="45%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Type</th>
+<th class="head">Value</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td>Integer</td>
+<td>-6666</td>
+</tr>
+<tr class="row-odd"><td>Short Text</td>
+<td>&#8216;*&#8217;</td>
+</tr>
+<tr class="row-even"><td>Long Text</td>
+<td>&#8216;Various&#8217;</td>
+</tr>
+<tr class="row-odd"><td>Date</td>
+<td>9999-6-1</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.init_cache">
+<code class="descname">init_cache</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.init_cache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.init_cache" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initialize all lookup caches as empty.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.lookups">
+<code class="descname">lookups</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.lookups" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.max">
+<code class="descname">max</code><span class="sig-paren">(</span><em>column</em>, <em>where=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.max"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.max" title="Permalink to this definition">¶</a></dt>
+<dd><p>Query the table/view to get the maximum value of a given column.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>column</strong> (str or <code class="xref py py-class docutils literal"><span class="pre">sqlalchemy.sql.expression.ColumnElement</span></code>.) &#8211; The column to get the max value of</li>
+<li><strong>where</strong> (<em>string or list of strings</em>) &#8211; Each string value will be passed to <code class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.sql.expression.Select.where()</span></code>
+<a class="reference external" href="http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where">http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where</a></li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>max</strong></p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">depends on column datatype</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.order_by">
+<code class="descname">order_by</code><span class="sig-paren">(</span><em>order_by</em>, <em>stats_id=None</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.order_by"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.order_by" title="Permalink to this definition">¶</a></dt>
+<dd><p>Iterate over rows matching <code class="docutils literal"><span class="pre">criteria</span></code></p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>order_by</strong> (<em>string or list of strings</em>) &#8211; Each value should represent a column to order by.</li>
+<li><strong>stats_id</strong> (<a class="reference external" href="https://docs.python.org/library/string.html#module-string" title="(in Python v2.7)"><em>string</em></a>) &#8211; Name of this step for the ETLTask statistics.</li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Yields:</th><td class="field-body"><p class="first last"><strong>row</strong> (<code class="xref py py-class docutils literal"><span class="pre">Row</span></code>) &#8211;
+<code class="xref py py-class docutils literal"><span class="pre">Row</span></code> object with contents of a table/view row</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.row_name">
+<code class="descname">row_name</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.row_name" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.select">
+<code class="descname">select</code><span class="sig-paren">(</span><em>column_list=None</em>, <em>exclude_cols=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.select"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.select" title="Permalink to this definition">¶</a></dt>
+<dd><p>Builds a select statement for this table.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"></td>
+</tr>
+<tr class="field-even field"><th class="field-name">Return type:</th><td class="field-body">statement</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.table">
+<code class="descname">table</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.table" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.table_name">
+<code class="descname">table_name</code><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.table_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>The table name</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.uncache_row">
+<code class="descname">uncache_row</code><span class="sig-paren">(</span><em>row</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.uncache_row"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.uncache_row" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.uncache_where">
+<code class="descname">uncache_where</code><span class="sig-paren">(</span><em>key_names</em>, <em>key_values_dict</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.uncache_where"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.uncache_where" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.readonlytable.ReadOnlyTable.where">
+<code class="descname">where</code><span class="sig-paren">(</span><em>criteria=None</em>, <em>order_by=None</em>, <em>column_list=None</em>, <em>exclude_cols=None</em>, <em>use_cache_as_source=None</em>, <em>stats_id=None</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/readonlytable.html#ReadOnlyTable.where"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.readonlytable.ReadOnlyTable.where" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="bi_etl.components.hst_table.html"
+                        title="previous chapter">bi_etl.components.hst_table module</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="bi_etl.components.sqlquery.html"
+                        title="next chapter">bi_etl.components.sqlquery module</a></p>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.sqlquery.html" title="bi_etl.components.sqlquery module"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.hst_table.html" title="bi_etl.components.hst_table module"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.components.html" >bi_etl.components package</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

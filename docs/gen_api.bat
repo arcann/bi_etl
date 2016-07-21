@@ -1,0 +1,1 @@
+python e:\python34\Scripts\sphinx-apidoc.py -f -o source -e e:\code\dbscripts\bi_etl  e:\code\dbscripts\bi_etl\tests\ e:\code\dbscripts\bi_etl\setup.py

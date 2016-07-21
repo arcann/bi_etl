@@ -1,0 +1,686 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>BI ETL Python Framework (bi_etl) &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="#" />
+    <link rel="next" title="config.ini" href="config_ini.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="config_ini.html" title="config.ini"
+             accesskey="N">next</a> |</li>
+        <li class="nav-item nav-item-0"><a href="#">bi_etl 0.5 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="bi-etl-python-framework-bi-etl">
+<h1>BI ETL Python Framework (bi_etl)<a class="headerlink" href="#bi-etl-python-framework-bi-etl" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="configuration-files">
+<h2>Configuration Files<a class="headerlink" href="#configuration-files" title="Permalink to this headline">¶</a></h2>
+<div class="toctree-wrapper compound">
+</div>
+<table border="1" class="docutils">
+<colgroup>
+<col width="33%" />
+<col width="67%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">File</th>
+<th class="head">Contents</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td><a class="reference internal" href="config_ini.html"><em>config.ini</em></a></td>
+<td>This is the main configuration file for the
+bi_etl module. By default the module will look
+for the file in your user directory.
+</td>
+</tr>
+</tbody>
+</table>
+<p>To configure the bi_etl system you <strong>must</strong> setup <a class="reference internal" href="config_ini.html"><em>config.ini</em></a></p>
+</div>
+<div class="section" id="sequence-of-an-etl-task">
+<h2>Sequence of an ETL Task<a class="headerlink" href="#sequence-of-an-etl-task" title="Permalink to this headline">¶</a></h2>
+<p>The definition of an ETL Task will be a python class inheriting from <a class="reference internal" href="bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask" title="bi_etl.scheduler.task.ETLTask"><code class="xref py py-class docutils literal"><span class="pre">bi_etl.scheduler.task.ETLTask</span></code></a>.
+This documentation will henceforth refer to that class as simply <code class="docutils literal"><span class="pre">ETLTask</span></code>.</p>
+<p>To run a task you use <a class="reference internal" href="bi_etl.scheduler.task.html#bi_etl.scheduler.task.run_task" title="bi_etl.scheduler.task.run_task"><code class="xref py py-func docutils literal"><span class="pre">bi_etl.scheduler.task.run_task()</span></code></a>.  When <code class="docutils literal"><span class="pre">run_task</span></code> is called it is given a module name. It will:</p>
+<ol class="arabic">
+<li><p class="first">Load the configuration file using <a class="reference internal" href="bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser" title="bi_etl.bi_config_parser.BIConfigParser"><code class="xref py py-class docutils literal"><span class="pre">bi_etl.bi_config_parser.BIConfigParser</span></code></a>.</p>
+</li>
+<li><p class="first">Setup a file based log using task_name via <code class="xref py py-meth docutils literal"><span class="pre">config.set_dated_log_file_name()</span></code> using the module name passed into run_task.</p>
+</li>
+<li><p class="first">Search for that a module named task_name in the <code class="docutils literal"><span class="pre">PYTHONPATH</span></code>.</p>
+<ul>
+<li><p class="first">It looks for the module under the package (folder) <code class="docutils literal"><span class="pre">etl_jobs</span></code>. For example <code class="docutils literal"><span class="pre">run_task('my_table')</span></code> would match <em>any</em> of:</p>
+<blockquote>
+<div><ul class="simple">
+<li><code class="docutils literal"><span class="pre">etl_jobs.my_table</span></code></li>
+<li><code class="docutils literal"><span class="pre">etl_jobs.foo.my_table</span></code></li>
+<li><code class="docutils literal"><span class="pre">etl_jobs.foo.bar.my_table</span></code></li>
+<li><code class="docutils literal"><span class="pre">etl_jobs.not_my_table</span></code> (which might be a problem)</li>
+</ul>
+</div></blockquote>
+</li>
+</ul>
+</li>
+</ol>
+<p>4. After finding the module, look for a class based on <code class="docutils literal"><span class="pre">ETLTask</span></code> in that module.
+<strong>By default it will fail if there is more than one such class.</strong> You can add an optional parameter <code class="docutils literal"><span class="pre">class_name</span></code> to
+the <code class="docutils literal"><span class="pre">run_task</span></code> function to have it use a specific class and thus not fail if there is more than one.</p>
+<ol class="arabic" start="5">
+<li><p class="first">Start the <code class="docutils literal"><span class="pre">run</span></code> method of <code class="docutils literal"><span class="pre">ETLTask</span></code>. This a standard framework method. It will:</p>
+<blockquote>
+<div><ol class="loweralpha simple">
+<li>Initialize the task statistics (start times, etc.)</li>
+<li>Call the <a class="reference internal" href="bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.init" title="bi_etl.scheduler.task.ETLTask.init"><code class="xref py py-meth docutils literal"><span class="pre">init</span></code></a> method that you can override in your class.</li>
+<li>Call the <a class="reference internal" href="bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.load" title="bi_etl.scheduler.task.ETLTask.load"><code class="xref py py-meth docutils literal"><span class="pre">load</span></code></a> method that you must override in your class.</li>
+<li>Call the <a class="reference internal" href="bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.finish" title="bi_etl.scheduler.task.ETLTask.finish"><code class="xref py py-meth docutils literal"><span class="pre">finish</span></code></a> method that you can override in your class.</li>
+<li>Finalize the statistics</li>
+<li>Send an e-mail on failure (see configuration file section <code class="docutils literal"><span class="pre">SMTP</span></code> item <code class="docutils literal"><span class="pre">distro_list</span></code>)</li>
+</ol>
+</div></blockquote>
+</li>
+</ol>
+</div>
+<div class="section" id="source-target-components">
+<h2>Source / Target Components<a class="headerlink" href="#source-target-components" title="Permalink to this headline">¶</a></h2>
+<p>Within a task you will use source / target components to extract and load the data.</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="43%" />
+<col width="6%" />
+<col width="6%" />
+<col width="44%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Component Class</th>
+<th class="head">Usable as
+Source</th>
+<th class="head">Usable as
+Target</th>
+<th class="head">Notes</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td><a class="reference internal" href="bi_etl.components.csvreader.html#bi_etl.components.csvreader.CSVReader" title="bi_etl.components.csvreader.CSVReader"><code class="xref py py-class docutils literal"><span class="pre">CSVReader</span></code></a></td>
+<td>Yes</td>
+<td>No</td>
+<td>Can read <em>any</em> delimited file (see &#8216;&#8217;delimiter&#8217;&#8217; parameter)
+It is based on the Python csv module.
+See <a class="reference external" href="https://docs.python.org/3.5/library/csv.html">https://docs.python.org/3.5/library/csv.html</a></td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="bi_etl.components.xlsx_reader.html#bi_etl.components.xlsx_reader.XLSXReader" title="bi_etl.components.xlsx_reader.XLSXReader"><code class="xref py py-class docutils literal"><span class="pre">XLSXReader</span></code></a></td>
+<td>Yes</td>
+<td>No</td>
+<td>Reads from Excel files; although only those in xlsx format.</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="bi_etl.components.sqlquery.html#bi_etl.components.sqlquery.SQLQuery" title="bi_etl.components.sqlquery.SQLQuery"><code class="xref py py-class docutils literal"><span class="pre">SQLQuery</span></code></a></td>
+<td>Yes</td>
+<td>No</td>
+<td>Reads from the result of a SQL query.</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="bi_etl.components.readonlytable.html#bi_etl.components.readonlytable.ReadOnlyTable" title="bi_etl.components.readonlytable.ReadOnlyTable"><code class="xref py py-class docutils literal"><span class="pre">ReadOnlyTable</span></code></a></td>
+<td>Yes</td>
+<td>No</td>
+<td>Useful when reading all columns from a database table or view.
+Rows can be filtered using the where method.</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="bi_etl.components.table.html#bi_etl.components.table.Table" title="bi_etl.components.table.Table"><code class="xref py py-class docutils literal"><span class="pre">Table</span></code></a></td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Inherits from ReadOnlyTable. Added features:
+* lookups, optional data cache
+* insert, update, delete and upsert
+* delete_not_in_set, and delete_not_processed
+* logically_delete_not_in_set, and not_processed
+* update_not_in_set, update_not_processed</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="bi_etl.components.hst_table.html#bi_etl.components.hst_table.Hst_Table" title="bi_etl.components.hst_table.Hst_Table"><code class="xref py py-class docutils literal"><span class="pre">Hst_Table</span></code></a></td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Inherits from Table. Adds ability to correctly load versioned
+tables. Supports both type 2 dimensions and date versioned
+warehouse tables. Also has cleanup_spurious_versions method
+to remove version rows that are not needed (due to being
+redundant).</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="bi_etl.components.data_analyzer.html#bi_etl.components.data_analyzer.DataAnalyzer" title="bi_etl.components.data_analyzer.DataAnalyzer"><code class="xref py py-class docutils literal"><span class="pre">DataAnalyzer</span></code></a></td>
+<td>No</td>
+<td>Yes</td>
+<td>Produces a summary of the columns in the data rows passed to the
+<a class="reference internal" href="bi_etl.components.data_analyzer.html#bi_etl.components.data_analyzer.DataAnalyzer.analyze_row" title="bi_etl.components.data_analyzer.DataAnalyzer.analyze_row"><code class="xref py py-meth docutils literal"><span class="pre">analyze_row()</span></code></a>
+method.
+The output currently goes to the task log.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>There are not yet components for <em>writing</em> delimited files or Excel files.</p>
+<p>However, csv.DictWriter works well for writing delimited files. The added statistics tracking features of an ETLComponent do not seem critical.</p>
+<p class="last">openpyxl can be used for directly writing Excel files.</p>
+</div>
+<div class="section" id="functionality-common-to-all-sources">
+<h3>Functionality common to all sources<a class="headerlink" href="#functionality-common-to-all-sources" title="Permalink to this headline">¶</a></h3>
+<p>All source components share the following common functionality.</p>
+<p>The source can output progress messages to the task log every X
+seconds. This defaults to every 10 seconds with the message format
+being <code class="docutils literal"><span class="pre">&quot;{logical_name}</span> <span class="pre">current</span> <span class="pre">row</span> <span class="pre">#</span> <span class="pre">{row_number:,}&quot;</span></code>. See parameters
+<code class="docutils literal"><span class="pre">progress_frequency</span></code>, and <code class="docutils literal"><span class="pre">progress_message</span></code>.</p>
+<p>They can limit the number of rows to process. See parameter <code class="docutils literal"><span class="pre">max_rows</span></code>
+(Default None)</p>
+<p>They can print a debug trace of all rows processed. See class property
+<code class="docutils literal"><span class="pre">trace_data</span></code> (default False).</p>
+<p>They can print a debug trace of the first row processed. See parameter
+and class property <code class="docutils literal"><span class="pre">log_first_row</span></code> (default False).</p>
+<p>They track statistics on how long it took to retrieve the first row
+and all rows. The read timer is starts and stops as rows are passed
+onto other code, so it should represent just the read elapsed time.</p>
+</div>
+</div>
+<div class="section" id="transformations">
+<h2>Transformations<a class="headerlink" href="#transformations" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="explicit-in-loop">
+<h3>Explicit in loop<a class="headerlink" href="#explicit-in-loop" title="Permalink to this headline">¶</a></h3>
+<p>Source values can be transformed with an explicit assignment to the row.</p>
+<div class="highlight-python"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">source_table</span><span class="p">:</span>
+   <span class="n">row</span><span class="p">[</span><span class="s1">&#39;my_column&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">str2decimal</span><span class="p">(</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;my_column&#39;</span><span class="p">]</span> <span class="p">)</span>
+   <span class="c1">## Do something with the row</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="explicit-in-load-methods">
+<h3>Explicit in load methods<a class="headerlink" href="#explicit-in-load-methods" title="Permalink to this headline">¶</a></h3>
+<p>Source values can also be transformed in the load method (upsert, insert, or update) using the <code class="docutils literal"><span class="pre">source_transformations</span></code> parameter.</p>
+<p>The cleanest way to build explicit transformations is to use the <code class="docutils literal"><span class="pre">Transformation</span></code> and <code class="docutils literal"><span class="pre">Conversion</span></code> helper classes.
+In this case Transformation is the mapping of a column name to a conversion routine that changes the input value to a new output
+value. <strong>This the is preferred way of specifing transformations.</strong></p>
+<div class="highlight-python"><div class="highlight"><pre><span></span><span class="c1">## Import the helper classes</span>
+<span class="kn">from</span> <span class="nn">bi_etl.conversions</span> <span class="kn">import</span> <span class="n">Transformation</span>
+<span class="kn">from</span> <span class="nn">bi_etl.conversions</span> <span class="kn">import</span> <span class="n">Conversion</span>
+
+<span class="c1">## Using a list to hold the transforms</span>
+<span class="n">transformations</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+<span class="n">transformations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="n">Transformation</span><span class="p">(</span><span class="s1">&#39;date_col&#39;</span><span class="p">,</span>
+                                        <span class="n">Conversion</span><span class="p">(</span><span class="n">str2date</span><span class="p">,</span> <span class="s1">&#39;%Y-%m-</span><span class="si">%d</span><span class="s1">&#39;</span><span class="p">)</span>
+                                       <span class="p">)</span>
+                      <span class="p">)</span>
+
+<span class="c1">## You can also create a single transform and apply it to many columns</span>
+<span class="n">ymd_parse</span> <span class="o">=</span> <span class="n">Conversion</span><span class="p">(</span><span class="n">str2date</span><span class="p">,</span> <span class="s1">&#39;%Y-%m-</span><span class="si">%d</span><span class="s1">&#39;</span><span class="p">)</span>
+
+<span class="c1">## Using the Transformation class</span>
+<span class="n">transformations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="n">Transformation</span><span class="p">(</span><span class="s1">&#39;date2_col&#39;</span><span class="p">,</span> <span class="n">ymd_parse</span><span class="p">)</span> <span class="p">)</span>
+
+<span class="c1">## Or a simple tuple</span>
+<span class="n">transformations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="p">(</span><span class="s1">&#39;date3_col&#39;</span><span class="p">,</span> <span class="n">ymd_parse</span><span class="p">)</span> <span class="p">)</span>
+
+<span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">source_table</span><span class="p">:</span>
+   <span class="n">target_table</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span><span class="n">row</span><span class="p">,</span>  <span class="n">source_transformations</span><span class="o">=</span> <span class="n">transformations</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal"><span class="pre">source_transformations</span></code> can be a list of tuples. However, the parenthesis get hard to manage if you try to build
+the entire thing in a single static assignment.</p>
+<div class="highlight-python"><div class="highlight"><pre><span></span><span class="c1">## Using a list to hold the transforms</span>
+<span class="n">my_source_transformations</span> <span class="o">=</span> <span class="p">[</span>                    <span class="c1">## Tuple format alternatives</span>
+   <span class="p">(</span> <span class="s1">&#39;my_column1&#39;</span><span class="p">,</span> <span class="n">str2decimal</span> <span class="p">),</span>                <span class="c1">## Simple name mapped to function</span>
+   <span class="p">(</span> <span class="s1">&#39;my_column2&#39;</span><span class="p">,</span> <span class="p">(</span> <span class="n">str2decimal</span> <span class="p">)</span> <span class="p">),</span>            <span class="c1">## Name mapped to tuple with just function</span>
+   <span class="p">(</span> <span class="s1">&#39;date_as_str&#39;</span><span class="p">,</span> <span class="p">(</span><span class="n">nullif</span><span class="p">,</span> <span class="p">(</span><span class="s1">&#39;00/00/0000&#39;</span><span class="p">))</span> <span class="p">)</span>   <span class="c1">## Name mapped to tuple with function and arguments (as tuple)</span>
+   <span class="p">(</span> <span class="s1">&#39;date2&#39;</span><span class="p">,</span> <span class="n">Conversion</span><span class="p">(</span><span class="n">nullif</span><span class="p">,</span> <span class="s1">&#39;00/00/0000&#39;</span><span class="p">)</span> <span class="p">)</span> <span class="c1">## Name mapped to Conversion class</span>
+   <span class="p">]</span>
+
+<span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">source_table</span><span class="p">:</span>
+   <span class="n">target_table</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span><span class="n">row</span><span class="p">,</span>  <span class="n">source_transformations</span><span class="o">=</span> <span class="n">my_source_transformations</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Instead you can make it a bit easier to read by building the list an item at a time.
+This code should be run only once before the loop so performance isn&#8217;t really an issue.
+However using the <code class="docutils literal"><span class="pre">Conversion</span></code> class would make this code easier to read.</p>
+<div class="highlight-python"><div class="highlight"><pre><span></span><span class="c1">## Using a list to hold the transforms</span>
+<span class="n">my_source_transformations</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+
+<span class="n">col1_transform</span> <span class="o">=</span> <span class="p">(</span> <span class="s1">&#39;my_column1&#39;</span><span class="p">,</span> <span class="n">str2decimal</span> <span class="p">)</span>   <span class="c1">## Simple name mapped to function</span>
+<span class="n">my_source_transformations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">col1_transform</span><span class="p">)</span>
+
+<span class="n">col2_transform</span> <span class="o">=</span> <span class="p">(</span> <span class="s1">&#39;my_column2&#39;</span><span class="p">,</span> <span class="p">(</span><span class="n">str2decimal</span><span class="p">)</span> <span class="p">)</span> <span class="c1">## Name mapped to tuple with just function (no args)</span>
+<span class="n">my_source_transformations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">col2_transform</span><span class="p">)</span>
+
+<span class="n">nullif_transform</span> <span class="o">=</span> <span class="p">(</span><span class="n">nullif</span><span class="p">,</span> <span class="p">(</span><span class="s1">&#39;00/00/0000&#39;</span><span class="p">))</span>
+<span class="n">col3_transform</span> <span class="o">=</span> <span class="p">(</span> <span class="s1">&#39;date_as_str&#39;</span><span class="p">,</span> <span class="n">nullif_transform</span><span class="p">)</span> <span class="c1">## Name mapped to tuple with function and arguments (as tuple)</span>
+<span class="n">my_source_transformations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">col3_transform</span><span class="p">)</span>
+
+<span class="n">nullif_conv_transform</span> <span class="o">=</span> <span class="n">Conversion</span><span class="p">(</span><span class="n">nullif</span><span class="p">,</span> <span class="s1">&#39;00/00/0000&#39;</span><span class="p">)</span>
+<span class="n">col4_transform</span> <span class="o">=</span> <span class="p">(</span> <span class="s1">&#39;date2&#39;</span><span class="p">,</span> <span class="n">nullif_conv_transform</span><span class="p">)</span> <span class="c1">## Name mapped to Conversion class instance</span>
+<span class="n">my_source_transformations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">col4_transform</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">source_table</span><span class="p">:</span>
+   <span class="n">target_table</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span><span class="n">row</span><span class="p">,</span>  <span class="n">source_transformations</span><span class="o">=</span> <span class="n">my_source_transformations</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal"><span class="pre">source_transformations</span></code> can also be a dict but you loose control of the ordering of transforms.</p>
+<div class="highlight-python"><div class="highlight"><pre><span></span><span class="c1">## Using a dict to hold the transforms</span>
+<span class="n">my_source_transformations</span> <span class="o">=</span> <span class="p">{</span>                <span class="c1">## Dict value alternatives</span>
+   <span class="s1">&#39;my_column1&#39;</span><span class="p">:</span> <span class="n">str2decimal</span><span class="p">,</span>                <span class="c1">## Simple name mapped to function</span>
+   <span class="s1">&#39;my_column2&#39;</span><span class="p">:</span> <span class="p">(</span> <span class="n">str2decimal</span> <span class="p">),</span>            <span class="c1">## Name mapped to tuple with just function</span>
+   <span class="s1">&#39;date_as_str&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">nullif</span><span class="p">,</span> <span class="p">(</span><span class="s1">&#39;00/00/0000&#39;</span><span class="p">))</span>   <span class="c1">## Name mapped to tuple with function and arguments (as tuple)</span>
+   <span class="s1">&#39;date2&#39;</span><span class="p">:</span> <span class="n">Conversion</span><span class="p">(</span><span class="n">nullif</span><span class="p">,</span> <span class="s1">&#39;00/00/0000&#39;</span><span class="p">)</span> <span class="c1">## Name mapped to Conversion class</span>
+   <span class="p">}</span>
+
+<span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">source_table</span><span class="p">:</span>
+   <span class="n">target_table</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span><span class="n">row</span><span class="p">,</span>  <span class="n">source_transformations</span><span class="o">=</span> <span class="n">my_source_transformations</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="implicit">
+<h3>Implicit<a class="headerlink" href="#implicit" title="Permalink to this headline">¶</a></h3>
+<p>If the source and target datatypes are not the same, and no explicit transformation
+is applied, the bi_etl framework will attempt to convert the value for you. It will
+generate Exceptions if it is unable to convert a value.</p>
+<p>Dates require special care. The attribute <a class="reference internal" href="bi_etl.components.table.html#bi_etl.components.table.Table.default_date_format" title="bi_etl.components.table.Table.default_date_format"><code class="xref py py-attr docutils literal"><span class="pre">bi_etl.components.table.Table.default_date_format</span></code></a>
+has a reasonable default value (for US based dates) and can be used to do this implicit conversion. However,
+dates like 11/03/2015 and 03/11/2015 are ambiguous and will load successfully despite being potentially
+wrong.</p>
+</div>
+</div>
+<div class="section" id="coding-standards-used">
+<h2>Coding Standards Used<a class="headerlink" href="#coding-standards-used" title="Permalink to this headline">¶</a></h2>
+<p>Please see <a class="reference internal" href="coding_standards.html"><em>Coding Standards</em></a></p>
+</div>
+<div class="section" id="examples">
+<h2>Examples<a class="headerlink" href="#examples" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="example-task-definition-simple-table-truncate-and-load">
+<h3>Example task definition - Simple Table Truncate and Load<a class="headerlink" href="#example-task-definition-simple-table-truncate-and-load" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-python"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">bi_etl.scheduler.task</span> <span class="kn">import</span> <span class="n">ETLTask</span>
+<span class="kn">from</span> <span class="nn">bi_etl.components.csvreader</span> <span class="kn">import</span> <span class="n">CSVReader</span>
+<span class="kn">from</span> <span class="nn">bi_etl.components.table</span> <span class="kn">import</span> <span class="n">Table</span>
+
+
+<span class="k">class</span> <span class="nc">STAGE_TABLE</span><span class="p">(</span><span class="n">ETLTask</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">load</span><span class="p">(</span> <span class="bp">self</span><span class="p">):</span>
+        <span class="c1">## get_database is a method of ETLTask that will get a connected</span>
+        <span class="c1">## database instance. See docs.</span>
+        <span class="n">target_database</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_database</span><span class="p">(</span><span class="s1">&#39;EXAMPLE_DB&#39;</span><span class="p">)</span>
+
+        <span class="c1">## Make an ETL Component to read the source file</span>
+        <span class="k">with</span> <span class="n">CSVReader</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                       <span class="n">filedata</span> <span class="o">=</span> <span class="s2">r&quot;E:\Data\training\ExampleData1-a.csv&quot;</span><span class="p">,</span>
+                       <span class="p">)</span> <span class="k">as</span> <span class="n">source_file</span><span class="p">:</span>
+
+            <span class="c1">## Make an ETL Component to write the target dimension data.</span>
+            <span class="k">with</span> <span class="n">Table</span><span class="p">(</span><span class="n">task</span><span class="o">=</span> <span class="bp">self</span><span class="p">,</span>
+                       <span class="n">database</span><span class="o">=</span> <span class="n">target_database</span><span class="p">,</span>
+                       <span class="n">table_name</span><span class="o">=</span> <span class="s1">&#39;example_1&#39;</span><span class="p">,</span>
+                       <span class="p">)</span> <span class="k">as</span> <span class="n">target_table</span><span class="p">:</span>
+
+                <span class="c1">## Truncate the table before load</span>
+                <span class="n">target_table</span><span class="o">.</span><span class="n">truncate</span><span class="p">()</span>
+
+                <span class="c1">## Start looping through source data</span>
+                <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">source_file</span><span class="p">:</span>
+                    <span class="n">target_table</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+
+                <span class="c1">## Issue a commit at the end.</span>
+                <span class="c1">## If your database needs more frequent commits, that can be done as well.</span>
+                <span class="n">target_table</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+
+<span class="c1">### Code to run the load when run directly</span>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="c1">## Should only be invoked directly when testing code.</span>
+    <span class="c1">## So don&#39;t send error e-mails.</span>
+    <span class="n">STAGE_TABLE</span><span class="p">()</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">no_mail</span> <span class="o">=</span> <span class="bp">True</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>If you do need to commit in smaller batches you can add these lines inside the <code class="docutils literal"><span class="pre">for</span> <span class="pre">row</span> <span class="pre">in</span> <span class="pre">source</span></code> file loop</p>
+<div class="highlight-python"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="n">source_file</span><span class="o">.</span><span class="n">rows_read</span> <span class="o">%</span> <span class="mi">10000</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+   <span class="n">source_file</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="example-task-definition-simple-table-load-with-update-insert">
+<h3>Example task definition - Simple Table Load with Update/Insert<a class="headerlink" href="#example-task-definition-simple-table-load-with-update-insert" title="Permalink to this headline">¶</a></h3>
+<p>This example will start and end the same as the Truncate and Load example.
+So the code block below is only the contents of the two <code class="docutils literal"><span class="pre">with</span></code> blocks.</p>
+<div class="highlight-python"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">Table</span><span class="o">...</span>
+      <span class="c1">## &lt;-- Removed truncate from here</span>
+
+      <span class="c1">## Start looping through source data</span>
+      <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">source_file</span><span class="p">:</span>
+          <span class="n">target_tbl</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>  <span class="c1">### &lt;-- changed to upsert instead of insert</span>
+
+      <span class="c1">## Issue a commit at the end</span>
+      <span class="n">target_table</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+
+      <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>In summary:
+1) We removed the call to the <code class="docutils literal"><span class="pre">truncate</span></code> command
+2) We changed the  <code class="docutils literal"><span class="pre">insert</span></code> call to an <a class="reference internal" href="bi_etl.components.table.html#bi_etl.components.table.Table.upsert" title="bi_etl.components.table.Table.upsert"><code class="xref py py-meth docutils literal"><span class="pre">upsert()</span></code></a> call.</p>
+<p>The <a class="reference internal" href="bi_etl.components.table.html#bi_etl.components.table.Table.upsert" title="bi_etl.components.table.Table.upsert"><code class="xref py py-meth docutils literal"><span class="pre">upsert()</span></code></a> command will look for an existing row in the target table
+(using the primary key lookup if no alternate lookup name is provided). If no existing row is found, an insert
+will be generated. If an existing row is found, it will be compared to the row passed in. If changes are found,
+an update will be generated.</p>
+</div>
+<div class="section" id="example-task-definition-simple-dimension-load">
+<h3>Example task definition - Simple Dimension Load<a class="headerlink" href="#example-task-definition-simple-dimension-load" title="Permalink to this headline">¶</a></h3>
+<p>In this example we add in features to
+1) Generate a surrogate key
+2) Lookup using the natural key (not the primar key)
+3) Logically delete rows that were not in the source</p>
+<div class="highlight-python"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">bi_etl.scheduler.task</span> <span class="kn">import</span> <span class="n">ETLTask</span>
+<span class="kn">from</span> <span class="nn">bi_etl.components.readonlytable</span> <span class="kn">import</span> <span class="n">ReadOnlyTable</span>
+<span class="kn">from</span> <span class="nn">bi_etl.components.table</span> <span class="kn">import</span> <span class="n">Table</span>
+
+<span class="k">class</span> <span class="nc">D_WBS</span><span class="p">(</span><span class="n">ETLTask</span><span class="p">):</span>
+   <span class="k">def</span> <span class="nf">load</span><span class="p">(</span> <span class="bp">self</span><span class="p">):</span>
+      <span class="c1">## get_database is a method of ETLTask that will get a connected</span>
+      <span class="c1">## database instance. See docs.</span>
+      <span class="n">source_database</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_database</span><span class="p">(</span><span class="s1">&#39;WAREHOUSE&#39;</span><span class="p">)</span>
+      <span class="n">target_database</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_database</span><span class="p">(</span><span class="s1">&#39;DATAMART&#39;</span><span class="p">)</span>
+
+      <span class="c1">## Make an ETL Component to read the source view.</span>
+      <span class="k">with</span> <span class="n">ReadOnlyTable</span><span class="p">(</span><span class="n">task</span><span class="o">=</span> <span class="bp">self</span><span class="p">,</span>
+                         <span class="n">database</span><span class="o">=</span> <span class="n">source_database</span><span class="p">,</span>
+                         <span class="n">table_name</span><span class="o">=</span> <span class="s1">&#39;d_wbs_src_vw&#39;</span><span class="p">,</span>
+                         <span class="p">)</span> <span class="k">as</span> <span class="n">source_data</span><span class="p">:</span>
+
+         <span class="c1">## Make an ETL Component to write</span>
+         <span class="c1">## the target dimension data.</span>
+         <span class="k">with</span> <span class="n">Table</span><span class="p">(</span><span class="n">task</span><span class="o">=</span> <span class="bp">self</span><span class="p">,</span>
+                    <span class="n">database</span><span class="o">=</span> <span class="n">target_database</span><span class="p">,</span>
+                    <span class="n">table_name</span><span class="o">=</span> <span class="s1">&#39;d_wbs&#39;</span><span class="p">,</span>
+                    <span class="p">)</span> <span class="k">as</span> <span class="n">target_table</span><span class="p">:</span>
+
+            <span class="c1">## Enable option to generate a surrogate key value for</span>
+            <span class="c1">## the primary key</span>
+            <span class="n">target_table</span><span class="o">.</span><span class="n">auto_generate_key</span><span class="o">=</span> <span class="bp">True</span>
+
+            <span class="c1">## Specify the column to get the last update</span>
+            <span class="c1">## date value (from system date)</span>
+            <span class="n">target_table</span><span class="o">.</span><span class="n">last_update_date</span><span class="o">=</span> <span class="s1">&#39;last_update_date&#39;</span>
+
+            <span class="c1">## Specify the column to get Y/N delete flag values.</span>
+            <span class="n">target_table</span><span class="o">.</span><span class="n">delete_flag</span> <span class="o">=</span> <span class="s1">&#39;delete_flag&#39;</span>
+
+            <span class="c1">## Track rows processed for logically_delete_not_processed</span>
+            <span class="n">target_table</span><span class="o">.</span><span class="n">track_source_rows</span><span class="o">=</span><span class="bp">True</span>
+
+            <span class="c1">## Define an alternate key lookup using the</span>
+            <span class="c1">## natural key column. If we don&#39;t, the</span>
+            <span class="c1">## upsert process would try and use the primary key</span>
+            <span class="c1">## which is the surrogate key.</span>
+            <span class="n">target_table</span><span class="o">.</span><span class="n">define_lookup</span><span class="p">(</span><span class="s1">&#39;AK&#39;</span><span class="p">,[</span><span class="s1">&#39;wbs_natural_key&#39;</span><span class="p">])</span>
+
+            <span class="c1">## Fill the cache to improve performance</span>
+            <span class="n">target_table</span><span class="o">.</span><span class="n">fill_cache</span><span class="p">()</span>
+
+            <span class="c1">## Log entry</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Processing rows from {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">source_data</span><span class="p">))</span>
+
+            <span class="c1">## Start looping through source data</span>
+            <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">source_data</span><span class="p">:</span>
+               <span class="c1">## Upsert (Update else Insert) each source row</span>
+               <span class="n">target_table</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span><span class="n">row</span><span class="p">,</span>
+                                   <span class="c1">## Use the alternate key define above</span>
+                                   <span class="c1">## to perform lookup for existing row</span>
+                                   <span class="n">lookup_name</span> <span class="o">=</span> <span class="s1">&#39;AK&#39;</span>
+                                   <span class="p">)</span>
+            <span class="n">target_table</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Processing deletes from {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">target_table</span><span class="p">))</span>
+            <span class="n">target_table</span><span class="o">.</span><span class="n">logically_delete_not_processed</span><span class="p">()</span>
+            <span class="n">target_table</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+
+<span class="c1">### Code to run the load when run directly</span>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+   <span class="c1">## Should only be invoked directly when testing code.</span>
+   <span class="c1">## So don&#39;t send error e-mails.</span>
+   <span class="n">D_WBS</span><span class="p">()</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">no_mail</span> <span class="o">=</span> <span class="bp">True</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="section" id="modules-apis">
+<h2>Modules APIs<a class="headerlink" href="#modules-apis" title="Permalink to this headline">¶</a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="source_transformations.html">Transformations</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="source_transformations.html#explicit-in-loop">Explicit in loop</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source_transformations.html#explicit-in-load-methods">Explicit in load methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source_transformations.html#implicit">Implicit</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="bi_etl.html">bi_etl package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="bi_etl.html#subpackages">Subpackages</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.components.html">bi_etl.components package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.components.html#subpackages">Subpackages</a><ul>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.components.row.html">bi_etl.components.row package</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.components.html#submodules">Submodules</a><ul>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.components.csvreader.html">bi_etl.components.csvreader module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.components.data_analyzer.html">bi_etl.components.data_analyzer module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.components.etlcomponent.html">bi_etl.components.etlcomponent module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.components.hst_table.html">bi_etl.components.hst_table module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.components.readonlytable.html">bi_etl.components.readonlytable module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.components.sqlquery.html">bi_etl.components.sqlquery module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.components.table.html">bi_etl.components.table module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.components.xlsx_reader.html">bi_etl.components.xlsx_reader module</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.components.html#module-bi_etl.components">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.database.html">bi_etl.database package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.database.html#submodules">Submodules</a><ul>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.database.connect.html">bi_etl.database.connect module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.database.database_metadata.html">bi_etl.database.database_metadata module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.database.mock_connect.html">bi_etl.database.mock_connect module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.database.mock_database_metadata.html">bi_etl.database.mock_database_metadata module</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.database.html#module-bi_etl.database">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.exceptions.html">bi_etl.exceptions package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.exceptions.html#module-bi_etl.exceptions">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.informatica.html">bi_etl.informatica package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.informatica.html#submodules">Submodules</a><ul>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.informatica.exceptions.html">bi_etl.informatica.exceptions module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.informatica.pmcmd.html">bi_etl.informatica.pmcmd module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.informatica.pmcmd_task.html">bi_etl.informatica.pmcmd_task module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.informatica.pmrep.html">bi_etl.informatica.pmrep module</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.informatica.html#module-bi_etl.informatica">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.lookups.html">bi_etl.lookups package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.lookups.html#submodules">Submodules</a><ul>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.lookups.autodisk_lookup.html">bi_etl.lookups.autodisk_lookup module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.lookups.autodisk_range_lookup.html">bi_etl.lookups.autodisk_range_lookup module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.lookups.disk_lookup.html">bi_etl.lookups.disk_lookup module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.lookups.disk_range_lookup.html">bi_etl.lookups.disk_range_lookup module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.lookups.lookup.html">bi_etl.lookups.lookup module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.lookups.range_lookup.html">bi_etl.lookups.range_lookup module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.lookups.sqlite_lookup.html">bi_etl.lookups.sqlite_lookup module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.lookups.sqlite_range_lookup.html">bi_etl.lookups.sqlite_range_lookup module</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.lookups.html#module-bi_etl.lookups">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.parameters.html">bi_etl.parameters package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.parameters.html#submodules">Submodules</a><ul>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.parameters.file_parameter.html">bi_etl.parameters.file_parameter module</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.parameters.html#module-bi_etl.parameters">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.scheduler.html">bi_etl.scheduler package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.scheduler.html#submodules">Submodules</a><ul>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.dependent_reasons.html">bi_etl.scheduler.dependent_reasons module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.etl_task_status_cd.html">bi_etl.scheduler.etl_task_status_cd module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.exceptions.html">bi_etl.scheduler.exceptions module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.messages.html">bi_etl.scheduler.messages module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.models.html">bi_etl.scheduler.models module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.queue_io.html">bi_etl.scheduler.queue_io module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.scheduler.html">bi_etl.scheduler.scheduler module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.scheduler_interface.html">bi_etl.scheduler.scheduler_interface module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.sdtout_queue.html">bi_etl.scheduler.sdtout_queue module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.special_tasks.html">bi_etl.scheduler.special_tasks module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.status.html">bi_etl.scheduler.status module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="bi_etl.scheduler.task.html">bi_etl.scheduler.task module</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="bi_etl.scheduler.html#module-bi_etl.scheduler">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="bi_etl.html#submodules">Submodules</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.bi_config_parser.html">bi_etl.bi_config_parser module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.conversions.html">bi_etl.conversions module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.memory_size.html">bi_etl.memory_size module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.sorted_collection.html">bi_etl.sorted_collection module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.statement_queue.html">bi_etl.statement_queue module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.statistics.html">bi_etl.statistics module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.timer.html">bi_etl.timer module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="bi_etl.utility.html">bi_etl.utility module</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="bi_etl.html#module-bi_etl">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="indices-and-tables">
+<h2>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><a class="reference internal" href="genindex.html"><span>Index</span></a></li>
+<li><a class="reference internal" href="py-modindex.html"><span>Module Index</span></a></li>
+<li><a class="reference internal" href="search.html"><span>Search Page</span></a></li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="#">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">BI ETL Python Framework (bi_etl)</a><ul>
+<li><a class="reference internal" href="#configuration-files">Configuration Files</a></li>
+<li><a class="reference internal" href="#sequence-of-an-etl-task">Sequence of an ETL Task</a></li>
+<li><a class="reference internal" href="#source-target-components">Source / Target Components</a><ul>
+<li><a class="reference internal" href="#functionality-common-to-all-sources">Functionality common to all sources</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformations">Transformations</a><ul>
+<li><a class="reference internal" href="#explicit-in-loop">Explicit in loop</a></li>
+<li><a class="reference internal" href="#explicit-in-load-methods">Explicit in load methods</a></li>
+<li><a class="reference internal" href="#implicit">Implicit</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#coding-standards-used">Coding Standards Used</a></li>
+<li><a class="reference internal" href="#examples">Examples</a><ul>
+<li><a class="reference internal" href="#example-task-definition-simple-table-truncate-and-load">Example task definition - Simple Table Truncate and Load</a></li>
+<li><a class="reference internal" href="#example-task-definition-simple-table-load-with-update-insert">Example task definition - Simple Table Load with Update/Insert</a></li>
+<li><a class="reference internal" href="#example-task-definition-simple-dimension-load">Example task definition - Simple Dimension Load</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#modules-apis">Modules APIs</a></li>
+<li><a class="reference internal" href="#indices-and-tables">Indices and tables</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Next topic</h4>
+  <p class="topless"><a href="config_ini.html"
+                        title="next chapter">config.ini</a></p>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="config_ini.html" title="config.ini"
+             >next</a> |</li>
+        <li class="nav-item nav-item-0"><a href="#">bi_etl 0.5 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

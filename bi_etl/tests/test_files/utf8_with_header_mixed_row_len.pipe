@@ -1,0 +1,6 @@
+str|col2|col3
+Bob
+Jane|100
+Amanda|100000|abc
+big row|1234567891234567890|abcdefhijlmnopqrstuvwxyzABCDEFHIJLMNOPQRSTUVWXYZ|extraColVal
+really big row|2|3|extraColVal1|extraColVal2

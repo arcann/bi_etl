@@ -1,0 +1,127 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.database.mock_connect &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for bi_etl.database.mock_connect</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Created on Jan 22, 2016</span>
+
+<span class="sd">@author: woodd</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">from</span> <span class="nn">mock.mock</span> <span class="kn">import</span> <span class="n">Mock</span>
+
+<span class="kn">from</span> <span class="nn">bi_etl.database.connect</span> <span class="kn">import</span> <span class="n">Connect</span>
+
+<div class="viewcode-block" id="MockConnect"><a class="viewcode-back" href="../../../bi_etl.database.mock_connect.html#bi_etl.database.mock_connect.MockConnect">[docs]</a><span class="k">class</span> <span class="nc">MockConnect</span><span class="p">(</span><span class="n">Connect</span><span class="p">):</span>    
+    <span class="n">engines_created</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="n">session_created</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="n">database_metadata_created</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_return_or_make</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">database_name</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">database_name</span> <span class="ow">in</span> <span class="n">collection</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">collection</span><span class="p">[</span><span class="n">database_name</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">engine</span> <span class="o">=</span> <span class="n">Mock</span><span class="p">()</span>
+            <span class="n">collection</span><span class="p">[</span><span class="n">database_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">engine</span>
+            <span class="k">return</span> <span class="n">engine</span>
+    
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="MockConnect.get_sqlachemy_engine"><a class="viewcode-back" href="../../../bi_etl.database.mock_connect.html#bi_etl.database.mock_connect.MockConnect.get_sqlachemy_engine">[docs]</a>    <span class="k">def</span> <span class="nf">get_sqlachemy_engine</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">database_name</span><span class="p">,</span> <span class="n">usersection</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">MockConnect</span><span class="o">.</span><span class="n">_return_or_make</span><span class="p">(</span><span class="n">MockConnect</span><span class="o">.</span><span class="n">engines_created</span><span class="p">,</span> <span class="n">database_name</span><span class="p">)</span></div>
+    
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="MockConnect.get_sqlachemy_session"><a class="viewcode-back" href="../../../bi_etl.database.mock_connect.html#bi_etl.database.mock_connect.MockConnect.get_sqlachemy_session">[docs]</a>    <span class="k">def</span> <span class="nf">get_sqlachemy_session</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">database_name</span><span class="p">,</span> <span class="n">usersection</span> <span class="o">=</span> <span class="bp">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">MockConnect</span><span class="o">.</span><span class="n">_return_or_make</span><span class="p">(</span><span class="n">MockConnect</span><span class="o">.</span><span class="n">session_created</span><span class="p">,</span> <span class="n">database_name</span><span class="p">)</span>     </div>
+    
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="MockConnect.get_database_metadata"><a class="viewcode-back" href="../../../bi_etl.database.mock_connect.html#bi_etl.database.mock_connect.MockConnect.get_database_metadata">[docs]</a>    <span class="k">def</span> <span class="nf">get_database_metadata</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">database_name</span><span class="p">,</span> <span class="n">user</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">schema</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">MockConnect</span><span class="o">.</span><span class="n">_return_or_make</span><span class="p">(</span><span class="n">MockConnect</span><span class="o">.</span><span class="n">database_metadata_created</span><span class="p">,</span> <span class="n">database_name</span><span class="p">)</span>        </div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

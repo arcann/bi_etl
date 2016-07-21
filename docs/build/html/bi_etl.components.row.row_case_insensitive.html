@@ -1,0 +1,360 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.components.row.row_case_insensitive module &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="index.html" />
+    <link rel="up" title="bi_etl.components.row package" href="bi_etl.components.row.html" />
+    <link rel="next" title="bi_etl.components.row.row_parent module" href="bi_etl.components.row.row_parent.html" />
+    <link rel="prev" title="bi_etl.components.row.column_difference module" href="bi_etl.components.row.column_difference.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.row.row_parent.html" title="bi_etl.components.row.row_parent module"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.row.column_difference.html" title="bi_etl.components.row.column_difference module"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.components.html" >bi_etl.components package</a> &raquo;</li>
+          <li class="nav-item nav-item-3"><a href="bi_etl.components.row.html" accesskey="U">bi_etl.components.row package</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-bi_etl.components.row.row_case_insensitive">
+<span id="bi-etl-components-row-row-case-insensitive-module"></span><h1>bi_etl.components.row.row_case_insensitive module<a class="headerlink" href="#module-bi_etl.components.row.row_case_insensitive" title="Permalink to this headline">¶</a></h1>
+<p>Created on Sep 17, 2014</p>
+<p>&#64;author: woodd</p>
+<dl class="class">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive">
+<em class="property">class </em><code class="descclassname">bi_etl.components.row.row_case_insensitive.</code><code class="descname">RowCaseInsensitive</code><span class="sig-paren">(</span><em>data=None</em>, <em>parent=None</em>, <em>name=None</em>, <em>primary_key=None</em>, <em>status=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/library/stdtypes.html#dict" title="(in Python v2.7)"><code class="xref py py-class docutils literal"><span class="pre">dict</span></code></a></p>
+<p>Replacement for core SQL Alchemy, CSV or other dictionary based rows.
+Handles converting column names (keys) between upper and lower case.
+Handles column names (keys) that are SQL Alchemy column objects.
+Keeps order of the columns (see columns_in_order)</p>
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.NUMERIC_TYPES">
+<code class="descname">NUMERIC_TYPES</code><em class="property"> = [&lt;class 'int'&gt;, &lt;class 'float'&gt;, &lt;class 'decimal.Decimal'&gt;]</em><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.NUMERIC_TYPES" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.clone">
+<code class="descname">clone</code><span class="sig-paren">(</span><em>new_parent=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.clone"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.clone" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a clone of this row.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>new_parent</strong> (<a class="reference internal" href="bi_etl.components.etlcomponent.html#bi_etl.components.etlcomponent.ETLComponent" title="bi_etl.components.etlcomponent.ETLComponent"><em>ETLComponent</em></a>) &#8211; (Optional) Change the parent of the clone to the passed value.</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.column_count">
+<code class="descname">column_count</code><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.column_count" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.column_position">
+<code class="descname">column_position</code><span class="sig-paren">(</span><em>column_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.column_position"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.column_position" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the column position given a column name.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>column_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; The column name to find the position of</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.column_set">
+<code class="descname">column_set</code><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.column_set" title="Permalink to this definition">¶</a></dt>
+<dd><p>An ImmutableSet of the the columns of this row.
+Used to store different row configurations in a dictionary or set.
+We don&#8217;t get this from the parent since that might have more columns than we do.</p>
+<p>WARNING: The resulting set is not ordered. Do not use if the column order affects the operation.
+See positioned_column_set instead.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.columns">
+<code class="descname">columns</code><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.columns" title="Permalink to this definition">¶</a></dt>
+<dd><p>A list of the columns of this row (order not guaranteed in child instances).</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.columns_in_order">
+<code class="descname">columns_in_order</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.columns_in_order"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.columns_in_order" title="Permalink to this definition">¶</a></dt>
+<dd><p>A list of the columns of this row in the order they were defined.</p>
+<p>Note: If the Row was created using a dict or dict like source, there was no order for the Row to work with.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.compare_to">
+<code class="descname">compare_to</code><span class="sig-paren">(</span><em>other_row</em>, <em>exclude=None</em>, <em>compare_only=None</em>, <em>coerce_types=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.compare_to"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.compare_to" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compare one RowCaseInsensitive to another. Returns a list of differences.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.get_by_position">
+<code class="descname">get_by_position</code><span class="sig-paren">(</span><em>position</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.get_by_position"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.get_by_position" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the column value by position.
+Note: The first column position is 1 (not 0 like a python list).</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.get_column_name">
+<code class="descname">get_column_name</code><span class="sig-paren">(</span><em>key</em>, <em>raise_on_not_exist=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.get_column_name"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.get_column_name" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.get_name_by_position">
+<code class="descname">get_name_by_position</code><span class="sig-paren">(</span><em>position</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.get_name_by_position"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.get_name_by_position" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the column name in a given position.
+Note: The first column position is 1 (not 0 like a python list).</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.name">
+<code class="descname">name</code><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.name" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.positioned_column_set">
+<code class="descname">positioned_column_set</code><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.positioned_column_set" title="Permalink to this definition">¶</a></dt>
+<dd><p>An ImmutableSet of the the tuples (column, position) for this row. Used to store different row configurations in a dictionary or set.</p>
+<p>Note: column_set would not always work here because the set is not ordered even though the columns are.</p>
+<p>We don&#8217;t get this from the parent since that might have more columns than we do.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.primary_key">
+<code class="descname">primary_key</code><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.primary_key" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.remove_columns">
+<code class="descname">remove_columns</code><span class="sig-paren">(</span><em>remove_list</em>, <em>new_parent=None</em>, <em>ignore_missing=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.remove_columns"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.remove_columns" title="Permalink to this definition">¶</a></dt>
+<dd><p>Remove columns from this row instance.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>remove_list</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; A list of column names to remvoe</li>
+<li><strong>new_parent</strong> (<a class="reference internal" href="bi_etl.components.etlcomponent.html#bi_etl.components.etlcomponent.ETLComponent" title="bi_etl.components.etlcomponent.ETLComponent"><em>ETLComponent</em></a>) &#8211; (Optional) Change the parent to the passed value.</li>
+<li><strong>ignore_missing</strong> (<em>boolean</em>) &#8211; Ignore (don&#8217;t raise error) if we don&#8217;t have a column with a given name
+Defaults to False</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.rename_column">
+<code class="descname">rename_column</code><span class="sig-paren">(</span><em>old_name</em>, <em>new_name</em>, <em>ignore_missing=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.rename_column"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.rename_column" title="Permalink to this definition">¶</a></dt>
+<dd><p>Rename a column</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>old_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; The name of the column to find and rename.</li>
+<li><strong>new_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; The new name to give the column.</li>
+<li><strong>ignore_missing</strong> (<em>boolean</em>) &#8211; Ignore (don&#8217;t raise error) if we don&#8217;t have a column with the name in old_name.
+Defaults to False</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.rename_columns">
+<code class="descname">rename_columns</code><span class="sig-paren">(</span><em>rename_map</em>, <em>new_parent=None</em>, <em>ignore_missing=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.rename_columns"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.rename_columns" title="Permalink to this definition">¶</a></dt>
+<dd><p>Rename many columns at once.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>rename_map</strong> (<em>dict, or list of tuples</em>) &#8211; A dict or list of tuples to use to rename columns.
+Note: a list of tuples is better to use if the renames need to happen in a certain order.</li>
+<li><strong>new_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; The new name to give the column.</li>
+<li><strong>new_parent</strong> (<a class="reference internal" href="bi_etl.components.etlcomponent.html#bi_etl.components.etlcomponent.ETLComponent" title="bi_etl.components.etlcomponent.ETLComponent"><em>ETLComponent</em></a>) &#8211; (Optional) Change the parent to the passed value.</li>
+<li><strong>ignore_missing</strong> (<em>boolean</em>) &#8211; Ignore (don&#8217;t raise error) if we don&#8217;t have a column with the name in old_name.
+Defaults to False</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.set_by_position">
+<code class="descname">set_by_position</code><span class="sig-paren">(</span><em>position</em>, <em>value</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.set_by_position"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.set_by_position" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set the column value by position.
+Note: The first column position is 1 (not 0 like a python list).</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.subset">
+<code class="descname">subset</code><span class="sig-paren">(</span><em>exclude=None</em>, <em>rename_map=None</em>, <em>keep_only=None</em>, <em>new_parent=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.subset"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.subset" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a new row instance with a subset of the columns. Original row is not modified
+Excludes are done first, then renames and finally keep_only.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>exclude</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; A list of column names (before renmaes) to exclude from the subset.
+Optional. Defaults to no excludes.</li>
+<li><strong>rename_map</strong> (<a class="reference external" href="https://docs.python.org/library/stdtypes.html#dict" title="(in Python v2.7)"><em>dict</em></a>) &#8211; A dict to use to rename columns.
+Optional. Defaults to no renames.</li>
+<li><strong>keep_only</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; A list of column names (after renames) of columns to keep.
+Optional. Defaults to keep all.</li>
+<li><strong>new_parent</strong> (<a class="reference internal" href="bi_etl.components.etlcomponent.html#bi_etl.components.etlcomponent.ETLComponent" title="bi_etl.components.etlcomponent.ETLComponent"><em>ETLComponent</em></a>) &#8211; (Optional) Change the parent of the subset row to the passed value.</li>
+<li><strong>raise_on_not_exist</strong> (<em>boolean</em>) &#8211; Raise error if we don&#8217;t have a column with a given name.
+Default to Trye</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.transform">
+<code class="descname">transform</code><span class="sig-paren">(</span><em>col_name</em>, <em>transform_function</em>, <em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.transform"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.transform" title="Permalink to this definition">¶</a></dt>
+<dd><p>Apply a transformation to a column.
+The transformation function must take the value to be transformed as it&#8217;s first argument.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>col_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; The column name in the row to be transformed</li>
+<li><strong>transform_function</strong> (<em>func</em>) &#8211; The transformation function to use. It must take the value to be transformed as it&#8217;s first argument.</li>
+<li><strong>args</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; Positional arguments to pass to transform_function</li>
+<li><strong>kwargs</strong> (<a class="reference external" href="https://docs.python.org/library/stdtypes.html#dict" title="(in Python v2.7)"><em>dict</em></a>) &#8211; Keyword arguments to pass to transform_function</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.update">
+<code class="descname">update</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwds</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.update"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.update" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.values_in_order">
+<code class="descname">values_in_order</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/row/row_case_insensitive.html#RowCaseInsensitive.values_in_order"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_case_insensitive.RowCaseInsensitive.values_in_order" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="bi_etl.components.row.column_difference.html"
+                        title="previous chapter">bi_etl.components.row.column_difference module</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="bi_etl.components.row.row_parent.html"
+                        title="next chapter">bi_etl.components.row.row_parent module</a></p>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.row.row_parent.html" title="bi_etl.components.row.row_parent module"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.row.column_difference.html" title="bi_etl.components.row.column_difference module"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.components.html" >bi_etl.components package</a> &raquo;</li>
+          <li class="nav-item nav-item-3"><a href="bi_etl.components.row.html" >bi_etl.components.row package</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

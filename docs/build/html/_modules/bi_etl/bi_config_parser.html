@@ -1,0 +1,624 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.bi_config_parser &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for bi_etl.bi_config_parser</h1><div class="highlight"><pre>
+<span></span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Created on Apr 8, 2014</span>
+
+<span class="sd">@author: woodd</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">import</span> <span class="nn">inspect</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">os.path</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">configparser</span> <span class="kn">import</span> <span class="n">NoSectionError</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">logging.handlers</span> <span class="kn">import</span> <span class="n">RotatingFileHandler</span>
+
+<span class="kn">from</span> <span class="nn">CaseInsensitiveDict</span> <span class="kn">import</span> <span class="n">CaseInsensitiveDict</span>
+
+<span class="kn">from</span> <span class="nn">bi_etl.conversions</span> <span class="kn">import</span> <span class="n">str2bytes_size</span>
+
+<span class="c1">## Python 2 &amp; 3 compatibility. If Python 3 FileNotFoundError exists, we&#39;ll use it</span>
+<span class="c1">## if not we&#39;ll make it.</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">FileNotFoundError</span>
+<span class="k">except</span> <span class="ne">NameError</span><span class="p">:</span>
+    <span class="c1"># pylint: disable=redefined-builtin, missing-docstring</span>
+    <span class="k">class</span> <span class="nc">FileNotFoundError</span><span class="p">(</span><span class="ne">IOError</span><span class="p">):</span>  <span class="c1"># @ReservedAssignment</span>
+        <span class="k">pass</span>
+
+<span class="c1">## The SafeConfigParser class has been renamed to ConfigParser in Python 3.2.</span>
+<span class="c1">## This alias will be removed in future versions. Use ConfigParser directly instead.</span>
+<span class="c1"># pylint: disable=ungrouped-imports, ungrouped-imports</span>
+<span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">hexversion</span> <span class="o">&gt;=</span> <span class="mh">0x03020000</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">configparser</span>
+
+    <span class="n">ConfigParser</span> <span class="o">=</span> <span class="n">configparser</span><span class="o">.</span><span class="n">ConfigParser</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">ConfigParser</span>  <span class="c1"># @UnresolvedImport</span>
+
+    <span class="n">ConfigParser</span> <span class="o">=</span> <span class="n">ConfigParser</span><span class="o">.</span><span class="n">SafeConfigParser</span>
+
+<span class="c1"># pylint: disable=too-many-ancestors</span>
+<div class="viewcode-block" id="BIConfigParser"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser">[docs]</a><span class="k">class</span> <span class="nc">BIConfigParser</span><span class="p">(</span><span class="n">ConfigParser</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    The basic configuration object. When defaults is given, it is initialized into the dictionary</span>
+<span class="sd">    of intrinsic defaults. When dict_type is given, it will be used to create the dictionary</span>
+<span class="sd">    objects for the list of sections, for the options within a section, and for the default values.</span>
+<span class="sd">    When allow_no_value is true (default: False), options without values are accepted; the value</span>
+<span class="sd">    presented for these is None.</span>
+
+<span class="sd">    Adds a read_config_ini function to read bi_etl_config\config.ini from C:\, E:\ or Home directory</span>
+<span class="sd">    Adds a read_relative_config function to search from pwd up to file the config file</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">allow_no_value</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                         <span class="n">interpolation</span><span class="o">=</span><span class="n">configparser</span><span class="o">.</span><span class="n">ExtendedInterpolation</span><span class="p">(),</span>
+                         <span class="o">*</span><span class="n">args</span><span class="p">,</span>
+                         <span class="o">**</span><span class="n">kwargs</span>
+                         <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">__name__</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">config_file_read</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rootLogger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">configured_loggers</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">datefmt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;date_format&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trace_logging_setup</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">getboolean_or_default</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span>
+                                                              <span class="s1">&#39;trace_setup&#39;</span><span class="p">,</span>
+                                                              <span class="bp">False</span>
+                                                              <span class="p">)</span>
+
+<div class="viewcode-block" id="BIConfigParser.read_config_ini"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.read_config_ini">[docs]</a>    <span class="k">def</span> <span class="nf">read_config_ini</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># pylint: disable=invalid-name</span>
+        <span class="sd">r&quot;&quot;&quot;</span>
+<span class="sd">        Read the config file from any of the following locations</span>
+<span class="sd">        * C:\bi_etl_config\config.ini</span>
+<span class="sd">        * E:\bi_etl_config\config.ini</span>
+<span class="sd">        * ~/bi_etl_config\config.ini</span>
+<span class="sd">        * ~/.BI_utils.ini</span>
+<span class="sd">        * ~/BI_utils.ini  </span>
+<span class="sd">        </span>
+<span class="sd">        Where ~ is the users home directory.</span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">userDir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s1">&#39;~&#39;</span><span class="p">)</span>
+        <span class="n">expected_config_files</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="c1"># These first two paths are for</span>
+            <span class="c1"># running as a windows service</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s2">r&quot;C:\bi_etl_config\config.ini&quot;</span><span class="p">),</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s2">r&quot;E:\bi_etl_config\config.ini&quot;</span><span class="p">),</span>
+            <span class="c1"># If those don&#39;t work then look in the user</span>
+            <span class="c1"># directory</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">userDir</span><span class="p">,</span> <span class="s1">&#39;bi_etl_config&#39;</span><span class="p">,</span> <span class="s1">&#39;config.ini&#39;</span><span class="p">),</span>
+            <span class="c1"># Legacy names</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">userDir</span><span class="p">,</span> <span class="s1">&#39;.BI_utils.ini&#39;</span><span class="p">),</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">userDir</span><span class="p">,</span> <span class="s1">&#39;BI_utils.ini&#39;</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="n">read_ok</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">expected_config_files</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">read_ok</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">read_ok</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">FileNotFoundError</span><span class="p">(</span><span class="s1">&#39;None of the expected config files where found: {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">expected_config_files</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">config_file_read</span> <span class="o">=</span> <span class="n">read_ok</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Read config file {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config_file_read</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">read_ok</span>
+</div>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="BIConfigParser.get_package_root"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.get_package_root">[docs]</a>    <span class="k">def</span> <span class="nf">get_package_root</span><span class="p">(</span><span class="n">obj</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get the root path of a package given an object (default is this module).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        obj: Object to inspect for package</span>
+<span class="sd">            Defaults to this module</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        root_path: str</span>
+<span class="sd">            The root path of the package</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">obj</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">obj</span> <span class="o">=</span> <span class="n">BIConfigParser</span>
+        <span class="n">module_path</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">getfile</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+        <span class="p">(</span><span class="n">parent_path</span><span class="p">,</span> <span class="n">_</span><span class="p">)</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">module_path</span><span class="p">)</span>
+        <span class="p">(</span><span class="n">root_path</span><span class="p">,</span> <span class="n">_</span><span class="p">)</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">parent_path</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">root_path</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.read_relative_config"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.read_relative_config">[docs]</a>    <span class="k">def</span> <span class="nf">read_relative_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config_file_name</span><span class="p">,</span> <span class="n">start_path</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getcwd</span><span class="p">()):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Search from start_path (default current directory) up to file the configuration file</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        config_file_name: str</span>
+<span class="sd">            The name of the config file to look for and read</span>
+
+<span class="sd">        start_path: str</span>
+<span class="sd">            Optional. The path to start looking in. Defaults to current directory.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        files_read: list</span>
+<span class="sd">            list of successfully read files.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Recurse up directories looking for our config file</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">start_path</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">config_file_name</span><span class="p">)):</span>
+            <span class="n">old_path</span> <span class="o">=</span> <span class="n">path</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">path</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">path</span> <span class="o">==</span> <span class="n">old_path</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">FileNotFoundError</span><span class="p">(</span><span class="s1">&#39;File not found: &#39;</span> <span class="o">+</span> <span class="n">config_file_name</span><span class="p">)</span>
+        <span class="n">filepath</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">config_file_name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Read config file (relative) {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">filepath</span><span class="p">))</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.get_method_or_default"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.get_method_or_default">[docs]</a>    <span class="k">def</span> <span class="nf">get_method_or_default</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">section</span><span class="p">,</span> <span class="n">option</span><span class="p">,</span> <span class="n">default</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get a configuration option using the supplied method (e.g. getint) or returns a default if that doesn&#39;t exist.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        method: method</span>
+<span class="sd">            A method of his config class to use (e.g. getint).</span>
+<span class="sd">        section: str</span>
+<span class="sd">            The section to use.</span>
+<span class="sd">        option: str</span>
+<span class="sd">            The option value to get.</span>
+<span class="sd">        default: any</span>
+<span class="sd">            The default to return if the option or section is not found.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">option_value</span> <span class="o">=</span> <span class="n">default</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_section</span><span class="p">(</span><span class="n">section</span><span class="p">)</span> <span class="ow">and</span> <span class="n">option</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_option</span><span class="p">(</span><span class="n">section</span><span class="p">,</span> <span class="n">option</span><span class="p">):</span>
+                <span class="n">option_value</span> <span class="o">=</span> <span class="n">method</span><span class="p">(</span><span class="n">section</span><span class="p">,</span> <span class="n">option</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">option_value</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.get_or_default"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.get_or_default">[docs]</a>    <span class="k">def</span> <span class="nf">get_or_default</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">section</span><span class="p">,</span> <span class="n">option</span><span class="p">,</span> <span class="n">default</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get a configuration option or returns a default if that doesn&#39;t exist.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        section: str</span>
+<span class="sd">            The section to use.</span>
+<span class="sd">        option: str</span>
+<span class="sd">            The option value to get.</span>
+<span class="sd">        default: any</span>
+<span class="sd">            The default to return if the option or section is not found.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_method_or_default</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">,</span>
+                                          <span class="n">section</span><span class="o">=</span><span class="n">section</span><span class="p">,</span>
+                                          <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">,</span>
+                                          <span class="n">default</span><span class="o">=</span><span class="n">default</span>
+                                          <span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.getboolean_or_default"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.getboolean_or_default">[docs]</a>    <span class="k">def</span> <span class="nf">getboolean_or_default</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">section</span><span class="p">,</span> <span class="n">option</span><span class="p">,</span> <span class="n">default</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get a configuration option as a boolean or returns a default if that doesn&#39;t exist.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        section: str</span>
+<span class="sd">            The section to use.</span>
+<span class="sd">        option: str</span>
+<span class="sd">            The option value to get.</span>
+<span class="sd">        default: boolean</span>
+<span class="sd">            The default to return if the option or section is not found.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_method_or_default</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">getboolean</span><span class="p">,</span>
+                                          <span class="n">section</span><span class="o">=</span><span class="n">section</span><span class="p">,</span>
+                                          <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">,</span>
+                                          <span class="n">default</span><span class="o">=</span><span class="n">default</span>
+                                          <span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.getint_or_default"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.getint_or_default">[docs]</a>    <span class="k">def</span> <span class="nf">getint_or_default</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">section</span><span class="p">,</span> <span class="n">option</span><span class="p">,</span> <span class="n">default</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get a configuration option as an int or returns a default if that doesn&#39;t exist.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        section: str</span>
+<span class="sd">            The section to use.</span>
+<span class="sd">        option: str</span>
+<span class="sd">            The option value to get.</span>
+<span class="sd">        default: int</span>
+<span class="sd">            The default to return if the option or section is not found.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_method_or_default</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">getint</span><span class="p">,</span>
+                                          <span class="n">section</span><span class="o">=</span><span class="n">section</span><span class="p">,</span>
+                                          <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">,</span>
+                                          <span class="n">default</span><span class="o">=</span><span class="n">default</span>
+                                          <span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.getfloat_or_default"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.getfloat_or_default">[docs]</a>    <span class="k">def</span> <span class="nf">getfloat_or_default</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">section</span><span class="p">,</span> <span class="n">option</span><span class="p">,</span> <span class="n">default</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get a configuration option as a float or returns a default if that doesn&#39;t exist.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        section: str</span>
+<span class="sd">            The section to use.</span>
+<span class="sd">        option: str</span>
+<span class="sd">            The option value to get.</span>
+<span class="sd">        default: float</span>
+<span class="sd">            The default to return if the option or section is not found.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_method_or_default</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">getfloat</span><span class="p">,</span>
+                                          <span class="n">section</span><span class="o">=</span><span class="n">section</span><span class="p">,</span>
+                                          <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">,</span>
+                                          <span class="n">default</span><span class="o">=</span><span class="n">default</span>
+                                          <span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.getByteSize_or_default"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.getByteSize_or_default">[docs]</a>    <span class="k">def</span> <span class="nf">getByteSize_or_default</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">section</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">option</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get a configuration option as a byte size or returns a default if that doesn&#39;t exist.</span>
+<span class="sd">        Both the option value and default will be parsed using :func:`~bi_etl.conversions.str2bytes_size`</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        section: str</span>
+<span class="sd">            The section to use.</span>
+<span class="sd">        option: str</span>
+<span class="sd">            The option value to get.</span>
+<span class="sd">        default: str</span>
+<span class="sd">            The default to return if the option or section is not found.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">str_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_method_or_default</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">,</span>
+                                              <span class="n">section</span><span class="o">=</span><span class="n">section</span><span class="p">,</span>
+                                              <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">,</span>
+                                              <span class="n">default</span><span class="o">=</span><span class="n">default</span>
+                                              <span class="p">)</span>
+        <span class="k">return</span> <span class="n">str2bytes_size</span><span class="p">(</span><span class="n">str_size</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.get_or_None"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.get_or_None">[docs]</a>    <span class="k">def</span> <span class="nf">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">section</span><span class="p">,</span> <span class="n">option</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get a configuration option as or returns None if that doesn&#39;t exist.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        section: str</span>
+<span class="sd">            The section to use.</span>
+<span class="sd">        option: str</span>
+<span class="sd">            The option value to get.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_or_default</span><span class="p">(</span><span class="n">section</span><span class="p">,</span> <span class="n">option</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.get_database_connection_tuple"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.get_database_connection_tuple">[docs]</a>    <span class="k">def</span> <span class="nf">get_database_connection_tuple</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">database_name</span><span class="p">,</span> <span class="n">usersection</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Gets a tuple (userid, password) of connection information for a given database name.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        database_name: str</span>
+<span class="sd">            The name of the database to look for in the configuration.</span>
+<span class="sd">        usersection: str</span>
+<span class="sd">            The name of the section to use for the user ID and password.</span>
+<span class="sd">            Optional. If not provided, the method will look for a default_user_id value in the </span>
+<span class="sd">            section named using the database_name parameter.        </span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;Getting connection info for {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">database_name</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_section</span><span class="p">(</span><span class="n">database_name</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Config file does not have section {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">database_name</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">usersection</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_option</span><span class="p">(</span><span class="n">database_name</span><span class="p">,</span> <span class="s1">&#39;default_user_id&#39;</span><span class="p">):</span>
+                    <span class="n">usersection</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">database_name</span><span class="p">,</span> <span class="s1">&#39;default_user_id&#39;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;usersection not provided, and no default exists for {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">database_name</span><span class="p">)</span>
+                    <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="n">userid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_or_default</span><span class="p">(</span><span class="n">usersection</span><span class="p">,</span> <span class="s1">&#39;userid&#39;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">usersection</span><span class="p">)</span>
+            <span class="n">password</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">usersection</span><span class="p">,</span> <span class="s1">&#39;password&#39;</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">userid</span><span class="p">,</span> <span class="n">password</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.get_log_file_name"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.get_log_file_name">[docs]</a>    <span class="k">def</span> <span class="nf">get_log_file_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Gets the log file name defined in the config file.</span>
+<span class="sd">        Uses ``log_file_name`` and ``log_folder`` from the ``logging`` section ::</span>
+
+<span class="sd">            [logging]</span>
+<span class="sd">            log_file_name=my_file_name</span>
+<span class="sd">            log_folder=/my/log/path</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">log_file_name</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_option</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;log_file_name&#39;</span><span class="p">):</span>
+            <span class="n">log_file_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;log_file_name&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_option</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;log_folder&#39;</span><span class="p">):</span>
+                <span class="n">folder</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;log_folder&#39;</span><span class="p">)</span>
+                <span class="n">folder</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="n">folder</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">folder</span><span class="p">):</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">folder</span><span class="p">)</span>
+                <span class="n">log_file_name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">folder</span><span class="p">,</span> <span class="n">log_file_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">log_file_name</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.set_log_file_name"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.set_log_file_name">[docs]</a>    <span class="k">def</span> <span class="nf">set_log_file_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log_file_name</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Sets the log file name in the config (memory copy only)</span>
+<span class="sd">        Specifically that is ``log_file_name`` in the ``logging`` section</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;log_file_name&#39;</span><span class="p">,</span> <span class="n">log_file_name</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.set_dated_log_file_name"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.set_dated_log_file_name">[docs]</a>    <span class="k">def</span> <span class="nf">set_dated_log_file_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">suffix</span><span class="p">,</span> <span class="n">date_time_format</span><span class="o">=</span><span class="s1">&#39;_%Y_%m_</span><span class="si">%d</span><span class="s1">_at_%H_%M_%S&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Sets the log file name in the config (memory copy only) using the current date and time.</span>
+<span class="sd">        Specifically that is ``log_file_name`` in the ``logging`` section.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        prefix: str</span>
+<span class="sd">            The part of the log file name before the date</span>
+<span class="sd">        suffix: str</span>
+<span class="sd">            The part of the log file name after the date</span>
+<span class="sd">        date_time_format: str</span>
+<span class="sd">            Optional. The date time format to use. Defaults to &#39;_%Y_%m_%d_at_%H_%M_%S&#39;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">log_file_name</span> <span class="o">=</span> <span class="n">prefix</span> <span class="o">+</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="n">date_time_format</span><span class="p">)</span> <span class="o">+</span> <span class="n">suffix</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_log_file_name</span><span class="p">(</span><span class="n">log_file_name</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.setup_log_file"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.setup_log_file">[docs]</a>    <span class="k">def</span> <span class="nf">setup_log_file</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_log_file_name</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">filename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c1"># Setup file logging</span>
+            <span class="n">max_bytes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">getByteSize_or_default</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;log_file_max_size&#39;</span><span class="p">,</span> <span class="s1">&#39;10M&#39;</span><span class="p">)</span>
+
+            <span class="n">backup_count</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_or_default</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;log_files_to_keep&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+            <span class="n">file_handler</span> <span class="o">=</span> <span class="n">RotatingFileHandler</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="n">filename</span><span class="p">,</span>
+                                               <span class="n">maxBytes</span><span class="o">=</span><span class="n">max_bytes</span><span class="p">,</span>
+                                               <span class="n">backupCount</span><span class="o">=</span><span class="n">backup_count</span><span class="p">,</span>
+                                               <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf8&#39;</span><span class="p">,</span>
+                                               <span class="p">)</span>
+
+            <span class="n">default_entry_format</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">%(asctime)s</span><span class="s1"> - </span><span class="si">%(levelname)-8s</span><span class="s1"> - </span><span class="si">%(name)s</span><span class="s1">: </span><span class="si">%(message)s</span><span class="s1">&#39;</span>
+            <span class="n">log_file_entry_format</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_or_default</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span>
+                                                        <span class="s1">&#39;log_file_entry_format&#39;</span><span class="p">,</span>
+                                                        <span class="n">default_entry_format</span><span class="p">)</span>
+            <span class="n">log_file_entry_formater</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="n">log_file_entry_format</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">datefmt</span><span class="p">)</span>
+            <span class="n">file_handler</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">log_file_entry_formater</span><span class="p">)</span>
+            <span class="n">file_handler_level</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_or_default</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;file_log_level&#39;</span><span class="p">,</span> <span class="s1">&#39;DEBUG&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+            <span class="n">file_handler</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">file_handler_level</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">rootLogger</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">file_handler</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.setup_log_levels"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.setup_log_levels">[docs]</a>    <span class="k">def</span> <span class="nf">setup_log_levels</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">no_loggers_found</span> <span class="o">=</span> <span class="bp">False</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">logger_class</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="p">(</span><span class="s1">&#39;loggers&#39;</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">logger_class</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;root&#39;</span><span class="p">:</span>
+                    <span class="n">logger</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rootLogger</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">logger_class</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">configured_loggers</span><span class="p">[</span><span class="n">logger_class</span><span class="p">]</span> <span class="o">=</span> <span class="n">logger</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">propagate</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="n">desired_level_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="s1">&#39;loggers&#39;</span><span class="p">,</span> <span class="n">logger_class</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">desired_level_name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="n">desired_level_name</span> <span class="o">=</span> <span class="s1">&#39;INFO&#39;</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">desired_level_name</span> <span class="o">=</span> <span class="n">desired_level_name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trace_logging_setup</span><span class="p">:</span>
+                    <span class="k">print</span><span class="p">(</span><span class="s1">&#39;Setting logger {} to {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">logger</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">desired_level_name</span><span class="p">))</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">desired_level_name</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">NoSectionError</span><span class="p">:</span>
+            <span class="n">no_loggers_found</span> <span class="o">=</span> <span class="bp">True</span>
+
+        <span class="k">if</span> <span class="n">no_loggers_found</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;The config file had no [loggers] section&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Will not include root logger</span>
+            <span class="k">for</span> <span class="n">logger_class</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">Logger</span><span class="o">.</span><span class="n">manager</span><span class="o">.</span><span class="n">loggerDict</span><span class="p">):</span>  <span class="c1"># @UndefinedVariable</span>
+                <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">logger_class</span><span class="p">)</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trace_logging_setup</span><span class="p">:</span>
+                    <span class="k">print</span><span class="p">(</span><span class="s1">&#39;Logger {} handlers {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">logger_class</span><span class="p">,</span> <span class="n">logger</span><span class="o">.</span><span class="n">handlers</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">logger_class</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">configured_loggers</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trace_logging_setup</span><span class="p">:</span>
+                        <span class="k">print</span><span class="p">(</span><span class="s1">&#39;Checking existing logger {} level {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">logger_class</span><span class="p">,</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLevelName</span><span class="p">(</span>
+                            <span class="n">logger</span><span class="o">.</span><span class="n">getEffectiveLevel</span><span class="p">())))</span>
+                    <span class="k">for</span> <span class="n">compare_logger</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">configured_loggers</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="n">logger_class</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">compare_logger</span><span class="p">):</span>
+                            <span class="n">parent_logger</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">configured_loggers</span><span class="p">[</span><span class="n">compare_logger</span><span class="p">]</span>
+                            <span class="n">level</span> <span class="o">=</span> <span class="n">parent_logger</span><span class="o">.</span><span class="n">getEffectiveLevel</span><span class="p">()</span>
+                            <span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+                            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trace_logging_setup</span><span class="p">:</span>
+                                <span class="k">print</span><span class="p">(</span><span class="s1">&#39;Existing logger {} re-setup with {} settings {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">logger_class</span><span class="p">,</span>
+                                                                                               <span class="n">parent_logger</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                                                                                               <span class="n">logging</span><span class="o">.</span><span class="n">getLevelName</span><span class="p">(</span>
+                                                                                                   <span class="n">level</span><span class="p">)))</span>
+                            <span class="n">logger</span><span class="o">.</span><span class="n">propagate</span> <span class="o">=</span> <span class="bp">True</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trace_logging_setup</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s1">&#39;Root logging level is {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">getLevelName</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rootLogger</span><span class="o">.</span><span class="n">getEffectiveLevel</span><span class="p">())))</span>
+            <span class="k">print</span><span class="p">(</span><span class="s1">&#39;Root logging handlers are {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rootLogger</span><span class="o">.</span><span class="n">handlers</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="BIConfigParser.setup_logging"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.BIConfigParser.setup_logging">[docs]</a>    <span class="k">def</span> <span class="nf">setup_logging</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">console_output</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">use_log_file_setting</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Setup logging configuration.</span>
+
+<span class="sd">        Based on the [logging] and [loggers] sections of the configuration file.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Reset the handlers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rootLogger</span><span class="o">.</span><span class="n">handlers</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+
+        <span class="c1"># Monkey-patch getLogger&#39;s dict to be case-insensitive by lower casing all names</span>
+        <span class="c1"># We really need this because the config options from [loggers] will be returned</span>
+        <span class="c1"># in lower case</span>
+
+        <span class="n">logger_dict</span> <span class="o">=</span> <span class="n">CaseInsensitiveDict</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">Logger</span><span class="o">.</span><span class="n">manager</span><span class="o">.</span><span class="n">loggerDict</span><span class="p">)</span>  <span class="c1"># @UndefinedVariable</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">Logger</span><span class="o">.</span><span class="n">manager</span><span class="o">.</span><span class="n">loggerDict</span> <span class="o">=</span> <span class="n">logger_dict</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trace_logging_setup</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s1">&#39;[logging].trace_setup is True}&#39;</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="s1">&#39;Starting root logger handlers {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rootLogger</span><span class="o">.</span><span class="n">handlers</span><span class="p">))</span>
+
+        <span class="c1"># Modify the root logger level to at least INFO for now</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rootLogger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_or_default</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;root_level&#39;</span><span class="p">,</span> <span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">console_output</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">debug_output</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">debug_output</span> <span class="o">=</span> <span class="n">console_output</span>
+        <span class="n">console_log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">StreamHandler</span><span class="p">(</span><span class="n">debug_output</span><span class="p">)</span>
+        <span class="n">console_log</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_or_default</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;console_log_level&#39;</span><span class="p">,</span> <span class="s1">&#39;DEBUG&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">upper</span><span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rootLogger</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">console_log</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">console_output</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">error_output</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">error_output</span> <span class="o">=</span> <span class="n">console_output</span>
+        <span class="n">console_error_log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">StreamHandler</span><span class="p">(</span><span class="n">error_output</span><span class="p">)</span>
+        <span class="n">console_error_log</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">ERROR</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rootLogger</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">console_error_log</span><span class="p">)</span>
+
+        <span class="n">console_entry_format</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="s1">&#39;logging&#39;</span><span class="p">,</span> <span class="s1">&#39;console_entry_format&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">console_entry_format</span><span class="p">:</span>
+            <span class="n">console_entry_formater</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="n">console_entry_format</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">datefmt</span><span class="p">)</span>
+            <span class="n">console_log</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">console_entry_formater</span><span class="p">)</span>
+            <span class="n">console_error_log</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">console_entry_formater</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">use_log_file_setting</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">setup_log_file</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">setup_log_levels</span><span class="p">()</span>
+
+        <span class="c1"># Switch to this modules logger</span>
+        <span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">__name__</span><span class="p">)</span>
+
+        <span class="n">logging</span><span class="o">.</span><span class="n">captureWarnings</span><span class="p">(</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="n">log_level_name</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLevelName</span><span class="p">(</span><span class="n">log</span><span class="o">.</span><span class="n">getEffectiveLevel</span><span class="p">())</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trace_logging_setup</span><span class="p">:</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;This modules logging level is {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">log_level_name</span><span class="p">))</span>
+        <span class="c1"># Record the config file that is in use.</span>
+        <span class="c1"># The log statement in read_config_ini will not have been logged to the file</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Config file in use = {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config_file_read</span><span class="p">))</span>
+
+</div></div>
+<div class="viewcode-block" id="build_example"><a class="viewcode-back" href="../../bi_etl.bi_config_parser.html#bi_etl.bi_config_parser.build_example">[docs]</a><span class="k">def</span> <span class="nf">build_example</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Builds an example config file from the currently active one in the users folder</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">bi_etl.utility.ask</span> <span class="kn">import</span> <span class="n">yes_no</span>
+
+    <span class="n">my_config</span> <span class="o">=</span> <span class="n">BIConfigParser</span><span class="p">()</span>
+    <span class="n">ini_path</span> <span class="o">=</span> <span class="n">my_config</span><span class="o">.</span><span class="n">read_config_ini</span><span class="p">()</span>
+    <span class="n">my_config</span><span class="o">.</span><span class="n">setup_logging</span><span class="p">()</span>
+    <span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">__name__</span><span class="p">)</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Logging level is {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">getLevelName</span><span class="p">(</span><span class="n">log</span><span class="o">.</span><span class="n">getEffectiveLevel</span><span class="p">())))</span>
+
+    <span class="n">root_path</span> <span class="o">=</span> <span class="n">BIConfigParser</span><span class="o">.</span><span class="n">get_package_root</span><span class="p">()</span>
+
+    <span class="n">example_ini_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">root_path</span><span class="p">,</span> <span class="s1">&#39;example_config_files&#39;</span><span class="p">,</span> <span class="s1">&#39;config.ini&#39;</span><span class="p">)</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Starting&quot;</span><span class="p">)</span>
+
+    <span class="n">response</span> <span class="o">=</span> <span class="n">yes_no</span><span class="p">(</span><span class="s2">&quot;Proceed with rebuilding example in {}?&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">example_ini_file</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">response</span><span class="p">:</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Building example_ini_file = {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">example_ini_file</span><span class="p">))</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">ini_path</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">source</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">example_ini_file</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">target</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">source</span><span class="p">:</span>
+                    <span class="n">password_match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s1">r&#39;(.*password.*)=&#39;</span><span class="p">,</span> <span class="n">line</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">password_match</span><span class="p">:</span>
+                        <span class="n">password_line</span> <span class="o">=</span> <span class="s2">&quot;{password_attr}=*******************</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                            <span class="n">password_attr</span><span class="o">=</span><span class="n">password_match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+                        <span class="n">target</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">password_line</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">target</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Cancelled&quot;</span><span class="p">)</span>
+
+
+<span class="c1"># =============================================</span></div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">build_example</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

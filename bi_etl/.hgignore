@@ -1,0 +1,17 @@
+syntax: glob
+.project
+.pydevproject
+*.pyc
+*.egg-info
+*.egg
+*.EGG
+*.EGG-INFO
+*.orig
+.coverage
+*/cover/*
+cover/*
+.noseids
+*/application.log
+build/lib/*
+.ipynb_checkpoints/*
+dist/*

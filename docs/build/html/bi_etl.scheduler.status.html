@@ -1,0 +1,250 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.scheduler.status module &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="index.html" />
+    <link rel="up" title="bi_etl.scheduler package" href="bi_etl.scheduler.html" />
+    <link rel="next" title="bi_etl.scheduler.task module" href="bi_etl.scheduler.task.html" />
+    <link rel="prev" title="bi_etl.scheduler.special_tasks module" href="bi_etl.scheduler.special_tasks.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.scheduler.task.html" title="bi_etl.scheduler.task module"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.scheduler.special_tasks.html" title="bi_etl.scheduler.special_tasks module"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.scheduler.html" accesskey="U">bi_etl.scheduler package</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-bi_etl.scheduler.status">
+<span id="bi-etl-scheduler-status-module"></span><h1>bi_etl.scheduler.status module<a class="headerlink" href="#module-bi_etl.scheduler.status" title="Permalink to this headline">¶</a></h1>
+<p>Created on Dec 23, 2015</p>
+<p>&#64;author: woodd</p>
+<dl class="class">
+<dt id="bi_etl.scheduler.status.Status">
+<em class="property">class </em><code class="descclassname">bi_etl.scheduler.status.</code><code class="descname">Status</code><a class="reference internal" href="_modules/bi_etl/scheduler/status.html#Status"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.status.Status" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">enum.IntEnum</span></code></p>
+<p>An enumeration.</p>
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.ancestor_failed">
+<code class="descname">ancestor_failed</code><em class="property"> = &lt;Status.ancestor_failed: -98&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.ancestor_failed" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.ancestors_running">
+<code class="descname">ancestors_running</code><em class="property"> = &lt;Status.ancestors_running: 11&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.ancestors_running" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.cancelled">
+<code class="descname">cancelled</code><em class="property"> = &lt;Status.cancelled: -5&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.cancelled" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.failed">
+<code class="descname">failed</code><em class="property"> = &lt;Status.failed: -99&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.failed" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.status.Status.is_active">
+<code class="descname">is_active</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#bi_etl.scheduler.status.Status.is_active" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.status.Status.is_alive">
+<code class="descname">is_alive</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#bi_etl.scheduler.status.Status.is_alive" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.status.Status.is_finished">
+<code class="descname">is_finished</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#bi_etl.scheduler.status.Status.is_finished" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.status.Status.is_not_active">
+<code class="descname">is_not_active</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#bi_etl.scheduler.status.Status.is_not_active" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.status.Status.is_terminated">
+<code class="descname">is_terminated</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#bi_etl.scheduler.status.Status.is_terminated" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.status.Status.is_termination_pending">
+<code class="descname">is_termination_pending</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#bi_etl.scheduler.status.Status.is_termination_pending" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.status.Status.is_waiting">
+<code class="descname">is_waiting</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#bi_etl.scheduler.status.Status.is_waiting" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.kill_requested">
+<code class="descname">kill_requested</code><em class="property"> = &lt;Status.kill_requested: 31&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.kill_requested" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.kill_signal_sent">
+<code class="descname">kill_signal_sent</code><em class="property"> = &lt;Status.kill_signal_sent: 32&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.kill_signal_sent" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.killed">
+<code class="descname">killed</code><em class="property"> = &lt;Status.killed: -30&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.killed" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.new">
+<code class="descname">new</code><em class="property"> = &lt;Status.new: 0&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.new" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="staticmethod">
+<dt id="bi_etl.scheduler.status.Status.print_status_list">
+<em class="property">static </em><code class="descname">print_status_list</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#bi_etl.scheduler.status.Status.print_status_list" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.running">
+<code class="descname">running</code><em class="property"> = &lt;Status.running: 10&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.running" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.status.Status.status_category">
+<code class="descname">status_category</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#bi_etl.scheduler.status.Status.status_category" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.stop_requested">
+<code class="descname">stop_requested</code><em class="property"> = &lt;Status.stop_requested: 21&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.stop_requested" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.stop_signal_sent">
+<code class="descname">stop_signal_sent</code><em class="property"> = &lt;Status.stop_signal_sent: 22&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.stop_signal_sent" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.stopped">
+<code class="descname">stopped</code><em class="property"> = &lt;Status.stopped: -20&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.stopped" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.succeeded">
+<code class="descname">succeeded</code><em class="property"> = &lt;Status.succeeded: 100&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.succeeded" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.waiting_for_cpu">
+<code class="descname">waiting_for_cpu</code><em class="property"> = &lt;Status.waiting_for_cpu: 1&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.waiting_for_cpu" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.waiting_for_dependencies">
+<code class="descname">waiting_for_dependencies</code><em class="property"> = &lt;Status.waiting_for_dependencies: 2&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.waiting_for_dependencies" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.status.Status.waiting_for_workflow">
+<code class="descname">waiting_for_workflow</code><em class="property"> = &lt;Status.waiting_for_workflow: 3&gt;</em><a class="headerlink" href="#bi_etl.scheduler.status.Status.waiting_for_workflow" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="bi_etl.scheduler.special_tasks.html"
+                        title="previous chapter">bi_etl.scheduler.special_tasks module</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="bi_etl.scheduler.task.html"
+                        title="next chapter">bi_etl.scheduler.task module</a></p>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.scheduler.task.html" title="bi_etl.scheduler.task module"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.scheduler.special_tasks.html" title="bi_etl.scheduler.special_tasks module"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.scheduler.html" >bi_etl.scheduler package</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

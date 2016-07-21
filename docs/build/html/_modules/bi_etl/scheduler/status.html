@@ -1,0 +1,178 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.scheduler.status &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for bi_etl.scheduler.status</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Created on Dec 23, 2015</span>
+
+<span class="sd">@author: woodd</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">from</span> <span class="nn">enum</span> <span class="kn">import</span> <span class="n">IntEnum</span><span class="p">,</span> <span class="n">unique</span>
+
+<span class="nd">@unique</span>
+<div class="viewcode-block" id="Status"><a class="viewcode-back" href="../../../bi_etl.scheduler.status.html#bi_etl.scheduler.status.Status">[docs]</a><span class="k">class</span> <span class="nc">Status</span><span class="p">(</span><span class="n">IntEnum</span><span class="p">):</span></div>
+    <span class="c1">### Note: The scheduler uses the lowest valued status as the summary status for a parent task</span>
+    
+    <span class="n">new</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="c1">## Waiting to run</span>
+    <span class="n">waiting_for_cpu</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">waiting_for_dependencies</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="n">waiting_for_workflow</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="c1">## Running</span>
+    <span class="n">running</span> <span class="o">=</span> <span class="mi">10</span>
+    <span class="n">ancestors_running</span> <span class="o">=</span> <span class="mi">11</span> <span class="c1">## Not actually running in a thread but ancestors haven&#39;t is_finished yet</span>
+    <span class="c1">## Stop steps</span>
+    <span class="n">stop_requested</span> <span class="o">=</span> <span class="mi">21</span>
+    <span class="n">stop_signal_sent</span> <span class="o">=</span> <span class="mi">22</span>    
+    <span class="n">stopped</span> <span class="o">=</span> <span class="o">-</span><span class="mi">20</span>
+    <span class="c1">## Kill steps</span>
+    <span class="n">kill_requested</span> <span class="o">=</span> <span class="mi">31</span>
+    <span class="n">kill_signal_sent</span> <span class="o">=</span> <span class="mi">32</span>
+    <span class="n">killed</span>  <span class="o">=</span> <span class="o">-</span><span class="mi">30</span>
+    <span class="c1">## Completed statuses</span>
+    <span class="n">succeeded</span> <span class="o">=</span> <span class="mi">100</span>
+    <span class="n">failed</span> <span class="o">=</span> <span class="o">-</span><span class="mi">99</span>
+    <span class="n">ancestor_failed</span> <span class="o">=</span> <span class="o">-</span><span class="mi">98</span>
+    <span class="n">cancelled</span> <span class="o">=</span> <span class="o">-</span><span class="mi">5</span>
+    
+    <span class="k">def</span> <span class="nf">status_category</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_finished</span><span class="p">():</span>
+            <span class="k">return</span> <span class="s1">&#39;Finished&#39;</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_alive</span><span class="p">():</span>
+            <span class="k">return</span> <span class="s1">&#39;Running&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s1">&#39;Waiting&#39;</span>
+    
+    <span class="k">def</span> <span class="nf">is_finished</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">value</span> <span class="o">==</span> <span class="n">Status</span><span class="o">.</span><span class="n">succeeded</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">is_active</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_finished</span><span class="p">():</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span> <span class="o">==</span> <span class="n">Status</span><span class="o">.</span><span class="n">ancestors_running</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        
+    <span class="k">def</span> <span class="nf">is_not_active</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_active</span><span class="p">()</span>            
+    
+    <span class="k">def</span> <span class="nf">is_waiting</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">value</span> <span class="ow">in</span> <span class="p">[</span><span class="n">Status</span><span class="o">.</span><span class="n">new</span><span class="p">,</span> <span class="n">Status</span><span class="o">.</span><span class="n">waiting_for_dependencies</span><span class="p">,</span> <span class="n">Status</span><span class="o">.</span><span class="n">waiting_for_cpu</span><span class="p">,</span> <span class="n">Status</span><span class="o">.</span><span class="n">waiting_for_workflow</span><span class="p">]</span>
+    
+    <span class="k">def</span> <span class="nf">is_alive</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">value</span> <span class="o">&gt;=</span> <span class="n">Status</span><span class="o">.</span><span class="n">running</span><span class="o">.</span><span class="n">value</span> <span class="ow">and</span> <span class="bp">self</span> <span class="o">!=</span> <span class="n">Status</span><span class="o">.</span><span class="n">succeeded</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">is_terminated</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span> <span class="ow">in</span> <span class="p">[</span><span class="n">Status</span><span class="o">.</span><span class="n">killed</span><span class="p">,</span> <span class="n">Status</span><span class="o">.</span><span class="n">stopped</span><span class="p">]</span>
+    
+    <span class="k">def</span> <span class="nf">is_termination_pending</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span> <span class="ow">in</span> <span class="p">[</span><span class="n">Status</span><span class="o">.</span><span class="n">stop_requested</span><span class="p">,</span> 
+                         <span class="n">Status</span><span class="o">.</span><span class="n">stop_signal_sent</span><span class="p">,</span> 
+                         <span class="n">Status</span><span class="o">.</span><span class="n">kill_requested</span><span class="p">,</span> 
+                         <span class="n">Status</span><span class="o">.</span><span class="n">kill_signal_sent</span>
+                         <span class="p">]</span>
+                <span class="p">)</span>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">print_status_list</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">Status</span><span class="p">):</span>
+            <span class="n">fmt</span> <span class="o">=</span> <span class="s2">&quot;{s.name:25} {s.value:3} category={status_category:8s} waiting={is_waiting:2} alive={alive:2} active={active:2} Finished={finished:2} Terminated={terminated:2} Termination_pending={termination_pending:2}&quot;</span>
+            <span class="k">print</span><span class="p">(</span><span class="n">fmt</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">s</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> 
+                             <span class="n">status_category</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">status_category</span><span class="p">(),</span>
+                             <span class="n">is_waiting</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">is_waiting</span><span class="p">(),</span>
+                             <span class="n">alive</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">is_alive</span><span class="p">(),</span> 
+                             <span class="n">active</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">is_active</span><span class="p">(),</span>
+                             <span class="n">finished</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">is_finished</span><span class="p">(),</span> 
+                             <span class="n">terminated</span><span class="o">=</span><span class="n">s</span><span class="o">.</span><span class="n">is_terminated</span><span class="p">(),</span> 
+                             <span class="n">termination_pending</span><span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">is_termination_pending</span><span class="p">(),</span>
+                            <span class="p">)</span>
+                 <span class="p">)</span>         
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

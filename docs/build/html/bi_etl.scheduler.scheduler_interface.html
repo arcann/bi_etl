@@ -1,0 +1,358 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.scheduler.scheduler_interface module &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="index.html" />
+    <link rel="up" title="bi_etl.scheduler package" href="bi_etl.scheduler.html" />
+    <link rel="next" title="bi_etl.scheduler.sdtout_queue module" href="bi_etl.scheduler.sdtout_queue.html" />
+    <link rel="prev" title="bi_etl.scheduler.scheduler module" href="bi_etl.scheduler.scheduler.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.scheduler.sdtout_queue.html" title="bi_etl.scheduler.sdtout_queue module"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.scheduler.scheduler.html" title="bi_etl.scheduler.scheduler module"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.scheduler.html" accesskey="U">bi_etl.scheduler package</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-bi_etl.scheduler.scheduler_interface">
+<span id="bi-etl-scheduler-scheduler-interface-module"></span><h1>bi_etl.scheduler.scheduler_interface module<a class="headerlink" href="#module-bi_etl.scheduler.scheduler_interface" title="Permalink to this headline">¶</a></h1>
+<p>Created on May 20, 2015</p>
+<p>&#64;author: woodd</p>
+<dl class="class">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface">
+<em class="property">class </em><code class="descclassname">bi_etl.scheduler.scheduler_interface.</code><code class="descname">SchedulerInterface</code><span class="sig-paren">(</span><em>session=None</em>, <em>config=None</em>, <em>log=None</em>, <em>log_name=None</em>, <em>scheduler_id=None</em>, <em>allow_create=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/library/functions.html#object" title="(in Python v2.7)"><code class="xref py py-class docutils literal"><span class="pre">object</span></code></a></p>
+<p>Light scheduler interface that only interacts with the database.</p>
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.CLASS_VERSION">
+<code class="descname">CLASS_VERSION</code><em class="property"> = 1.0</em><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.CLASS_VERSION" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.CONFIG_SECTION">
+<code class="descname">CONFIG_SECTION</code><em class="property"> = 'Scheduler'</em><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.CONFIG_SECTION" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.ETL_Task_Log">
+<code class="descname">ETL_Task_Log</code><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.ETL_Task_Log" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.ETL_Task_Params">
+<code class="descname">ETL_Task_Params</code><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.ETL_Task_Params" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.ETL_Task_Stats">
+<code class="descname">ETL_Task_Stats</code><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.ETL_Task_Stats" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.ETL_Task_Status_CD">
+<code class="descname">ETL_Task_Status_CD</code><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.ETL_Task_Status_CD" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.ETL_Tasks">
+<code class="descname">ETL_Tasks</code><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.ETL_Tasks" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.SCHEDULER_ETL_JOBS_PACKAGE">
+<code class="descname">SCHEDULER_ETL_JOBS_PACKAGE</code><em class="property"> = 'bi_etl.scheduler.scheduler_etl_jobs'</em><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.SCHEDULER_ETL_JOBS_PACKAGE" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.SHARED_etl_task_classes">
+<code class="descname">SHARED_etl_task_classes</code><em class="property"> = {}</em><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.SHARED_etl_task_classes" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_by_class">
+<code class="descname">add_task_by_class</code><span class="sig-paren">(</span><em>etl_task_class_type</em>, <em>display_name=None</em>, <em>parent_task_id=None</em>, <em>root_task_id=None</em>, <em>scheduler_id=None</em>, <em>parameters=None</em>, <em>submit_by_user_id=None</em>, <em>commit=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.add_task_by_class"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_by_class" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add a task to the scheduler using an instance of the task class type.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"><strong>task_id</strong></td>
+</tr>
+<tr class="field-even field"><th class="field-name">Return type:</th><td class="field-body"><a class="reference external" href="https://docs.python.org/library/functions.html#int" title="(in Python v2.7)">int</a></td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_by_exact_name">
+<code class="descname">add_task_by_exact_name</code><span class="sig-paren">(</span><em>module_name</em>, <em>class_name=None</em>, <em>display_name=None</em>, <em>parent_task_id=None</em>, <em>root_task_id=None</em>, <em>scheduler_id=None</em>, <em>parameters=None</em>, <em>submit_by_user_id=None</em>, <em>commit=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.add_task_by_exact_name"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_by_exact_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add a task to the scheduler using a module name</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_by_partial_name">
+<code class="descname">add_task_by_partial_name</code><span class="sig-paren">(</span><em>partial_module_name</em>, <em>display_name=None</em>, <em>parent_task_id=None</em>, <em>root_task_id=None</em>, <em>scheduler_id=None</em>, <em>parameters=None</em>, <em>submit_by_user_id=None</em>, <em>commit=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.add_task_by_partial_name"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_by_partial_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add a task to the scheduler using the module_name (partial) and optionally class_name</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"><strong>task_id</strong></td>
+</tr>
+<tr class="field-even field"><th class="field-name">Return type:</th><td class="field-body"><a class="reference external" href="https://docs.python.org/library/functions.html#int" title="(in Python v2.7)">int</a></td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_paramter">
+<code class="descname">add_task_paramter</code><span class="sig-paren">(</span><em>task</em>, <em>parameter_name</em>, <em>parameter_value</em>, <em>commit=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.add_task_paramter"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_paramter" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_paramters">
+<code class="descname">add_task_paramters</code><span class="sig-paren">(</span><em>task</em>, <em>parameters</em>, <em>commit=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.add_task_paramters"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_paramters" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_class_instance">
+<code class="descname">find_etl_class_instance</code><span class="sig-paren">(</span><em>partial_module_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.find_etl_class_instance"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_class_instance" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_class_name">
+<code class="descname">find_etl_class_name</code><span class="sig-paren">(</span><em>partial_module_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.find_etl_class_name"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_class_name" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_class_type">
+<code class="descname">find_etl_class_type</code><span class="sig-paren">(</span><em>partial_module_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.find_etl_class_type"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_class_type" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_classes">
+<code class="descname">find_etl_classes</code><span class="sig-paren">(</span><em>partial_module_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.find_etl_classes"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_classes" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_etl_class_instance">
+<code class="descname">get_etl_class_instance</code><span class="sig-paren">(</span><em>qualified_name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_etl_class_instance"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_etl_class_instance" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_heartbeat_age_timedelta">
+<code class="descname">get_heartbeat_age_timedelta</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_heartbeat_age_timedelta"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_heartbeat_age_timedelta" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_heartbeat_time">
+<code class="descname">get_heartbeat_time</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_heartbeat_time"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_heartbeat_time" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_jobs_by_root_id">
+<code class="descname">get_jobs_by_root_id</code><span class="sig-paren">(</span><em>root_task_id</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_jobs_by_root_id"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_jobs_by_root_id" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_next_task_id">
+<code class="descname">get_next_task_id</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_next_task_id"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_next_task_id" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_scheduler_id_for_host">
+<code class="descname">get_scheduler_id_for_host</code><span class="sig-paren">(</span><em>qualified_host_name=None</em>, <em>allow_create=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_scheduler_id_for_host"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_scheduler_id_for_host" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_scheduler_row_for_id">
+<code class="descname">get_scheduler_row_for_id</code><span class="sig-paren">(</span><em>scheduler_id</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_scheduler_row_for_id"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_scheduler_row_for_id" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_status_code_list">
+<code class="descname">get_status_code_list</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_status_code_list"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_status_code_list" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_task_parameter_dict">
+<code class="descname">get_task_parameter_dict</code><span class="sig-paren">(</span><em>task</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_task_parameter_dict"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_task_parameter_dict" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_task_record">
+<code class="descname">get_task_record</code><span class="sig-paren">(</span><em>task_id</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_task_record"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_task_record" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_task_status">
+<code class="descname">get_task_status</code><span class="sig-paren">(</span><em>task_id</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.get_task_status"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_task_status" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets the Status of a task</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"><strong>status_of_task</strong></td>
+</tr>
+<tr class="field-even field"><th class="field-name">Return type:</th><td class="field-body"><a class="reference internal" href="bi_etl.scheduler.status.html#bi_etl.scheduler.status.Status" title="bi_etl.scheduler.status.Status">bi_etl.scheduler.status.Status</a></td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.heatbeat_now">
+<code class="descname">heatbeat_now</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.heatbeat_now"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.heatbeat_now" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.load_parameters">
+<code class="descname">load_parameters</code><span class="sig-paren">(</span><em>etl_task</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.load_parameters"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.load_parameters" title="Permalink to this definition">¶</a></dt>
+<dd><p>This is done in the etl_task thread/process (called by run method)
+so that the parameters don&#8217;t have to be loaded into the scheduler thread or passed between threads/processes.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.qualified_host_name">
+<code class="descname">qualified_host_name</code><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.qualified_host_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets the qualified host name of the scheduler server.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.scan_etl_classes">
+<code class="descname">scan_etl_classes</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.scan_etl_classes"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.scan_etl_classes" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.scan_etl_classes_performed">
+<code class="descname">scan_etl_classes_performed</code><em class="property"> = False</em><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.scan_etl_classes_performed" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.scheduler.scheduler_interface.SchedulerInterface.wait_for_task">
+<code class="descname">wait_for_task</code><span class="sig-paren">(</span><em>task_id</em>, <em>check_interval=1</em>, <em>max_wait=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/scheduler/scheduler_interface.html#SchedulerInterface.wait_for_task"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.scheduler.scheduler_interface.SchedulerInterface.wait_for_task" title="Permalink to this definition">¶</a></dt>
+<dd><p>Waits for a task to finish.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>task_id</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#int" title="(in Python v2.7)"><em>int</em></a>) &#8211; The task_id to wait for</li>
+<li><strong>check_interval</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#float" title="(in Python v2.7)"><em>float</em></a>) &#8211; How many seconds to wait between checks.
+The argument may be a floating point number for subsecond precision.</li>
+<li><strong>max_wait</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#float" title="(in Python v2.7)"><em>float</em></a>) &#8211; The maximum seconds to wait for the job to finish.  If None or 0, will wait indefinitely.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>status_of_task</strong></p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last"><a class="reference internal" href="bi_etl.scheduler.status.html#bi_etl.scheduler.status.Status" title="bi_etl.scheduler.status.Status">bi_etl.scheduler.status.Status</a></p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="bi_etl.scheduler.scheduler.html"
+                        title="previous chapter">bi_etl.scheduler.scheduler module</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="bi_etl.scheduler.sdtout_queue.html"
+                        title="next chapter">bi_etl.scheduler.sdtout_queue module</a></p>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.scheduler.sdtout_queue.html" title="bi_etl.scheduler.sdtout_queue module"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.scheduler.scheduler.html" title="bi_etl.scheduler.scheduler module"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.scheduler.html" >bi_etl.scheduler package</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

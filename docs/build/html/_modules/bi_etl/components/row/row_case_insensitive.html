@@ -1,0 +1,683 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.components.row.row_case_insensitive &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="../../../../index.html" />
+    <link rel="up" title="Module code" href="../../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for bi_etl.components.row.row_case_insensitive</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Created on Sep 17, 2014</span>
+
+<span class="sd">@author: woodd</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">from</span> <span class="nn">decimal</span> <span class="kn">import</span> <span class="n">Decimal</span>
+<span class="kn">from</span> <span class="nn">operator</span> <span class="kn">import</span> <span class="n">attrgetter</span>
+
+<span class="kn">from</span> <span class="nn">sqlalchemy.sql.schema</span> <span class="kn">import</span> <span class="n">Column</span>
+
+
+<span class="kn">from</span> <span class="nn">bi_etl.utility</span> <span class="kn">import</span> <span class="n">dict_to_str</span>
+<span class="kn">from</span> <span class="nn">bi_etl.components.row.column_difference</span> <span class="kn">import</span> <span class="n">ColumnDifference</span>
+<span class="kn">from</span> <span class="nn">bi_etl.components.row.row_status</span> <span class="kn">import</span> <span class="n">RowStatus</span>
+<span class="kn">from</span> <span class="nn">bi_etl.components.row.cached_frozenset</span> <span class="kn">import</span> <span class="n">get_cached_frozen_set</span>
+
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;RowCaseInsensitive&#39;</span><span class="p">]</span>
+
+<span class="c1">#### For performance with the Column and str to lowercase str conversion we keep a cache of converted values</span>
+<span class="c1">## The dict lookup tests as twice as fast as just the lower function</span>
+        
+<span class="n">__name_map_db</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">_get_name</span><span class="p">(</span><span class="n">input_name</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">input_name</span> <span class="ow">in</span> <span class="n">__name_map_db</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">__name_map_db</span><span class="p">[</span><span class="n">input_name</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1">## If the input_name is an SA Column use it&#39;s name. In Python 2.7 to 3.4, isinstance is a lot faster than try-except or hasattr (which does a try)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_name</span><span class="p">,</span><span class="nb">str</span><span class="p">):</span>
+            <span class="n">outname</span> <span class="o">=</span> <span class="n">input_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_name</span><span class="p">,</span> <span class="n">Column</span><span class="p">):</span>
+            <span class="n">outname</span> <span class="o">=</span> <span class="n">input_name</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>            
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Row column name must be str, unicode, or Column. Got {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">input_name</span><span class="p">)))</span>            
+        <span class="n">__name_map_db</span><span class="p">[</span><span class="n">input_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">outname</span>
+        <span class="k">return</span> <span class="n">outname</span>
+    
+<span class="k">def</span> <span class="nf">_get_name_Column_opt</span><span class="p">(</span><span class="n">input_name</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">input_name</span> <span class="ow">in</span> <span class="n">__name_map_db</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">__name_map_db</span><span class="p">[</span><span class="n">input_name</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1">## If the input_name is an SA Column use it&#39;s name. In Python 2.7 to 3.4, isinstance is a lot faster than try-except or hasattr (which does a try)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_name</span><span class="p">,</span> <span class="n">Column</span><span class="p">):</span>
+            <span class="n">outname</span> <span class="o">=</span> <span class="n">input_name</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>            
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_name</span><span class="p">,</span><span class="nb">str</span><span class="p">):</span>
+            <span class="n">outname</span> <span class="o">=</span> <span class="n">input_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>            
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Row column name must be str, unicode, or Column. Got {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">input_name</span><span class="p">)))</span>            
+        <span class="n">__name_map_db</span><span class="p">[</span><span class="n">input_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">outname</span>
+        <span class="k">return</span> <span class="n">outname</span>
+
+<div class="viewcode-block" id="RowCaseInsensitive"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive">[docs]</a><span class="k">class</span> <span class="nc">RowCaseInsensitive</span><span class="p">(</span><span class="nb">dict</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Replacement for core SQL Alchemy, CSV or other dictionary based rows.</span>
+<span class="sd">    Handles converting column names (keys) between upper and lower case.</span>
+<span class="sd">    Handles column names (keys) that are SQL Alchemy column objects.</span>
+<span class="sd">    Keeps order of the columns (see columns_in_order) </span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">NUMERIC_TYPES</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="n">Decimal</span><span class="p">]</span>
+    
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">parent</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">primary_key</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span> <span class="bp">None</span><span class="p">):</span>
+        <span class="c1">## We don&#39;t want to store the parent. It messed with the garbage collection when we did</span>
+        <span class="c1">## However, we need some attributes from it.</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__init__</span><span class="p">()</span>                
+        <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">status</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span> <span class="o">=</span> <span class="n">primary_key</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_get_info_from_parent</span><span class="p">(</span><span class="n">parent</span><span class="p">)</span>
+        
+        <span class="c1">## Initialize as empty</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cached_column_set</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cached_positioned_column_set</span> <span class="o">=</span> <span class="bp">None</span>
+        
+        <span class="c1">## Populate our data                </span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        
+    <span class="k">def</span> <span class="nf">_get_info_from_parent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parent</span><span class="p">):</span>
+        <span class="c1">## Try to get primary_key from our parent if we have one there</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span> <span class="o">=</span> <span class="n">parent</span><span class="o">.</span><span class="n">primary_key</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">parent</span><span class="o">.</span><span class="n">logical_name</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                <span class="k">pass</span>    
+    <span class="k">def</span> <span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">status_value</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">status_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">value</span>         
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">,</span>
+                <span class="c1">#A tuple of arguments for the callable object.</span>
+                <span class="p">(),</span>  
+                <span class="c1">## State to be passed to setstate</span>
+                <span class="p">{</span><span class="s1">&#39;n&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">,</span> 
+                 <span class="s1">&#39;s&#39;</span><span class="p">:</span> <span class="n">status_value</span><span class="p">,</span> 
+                 <span class="s1">&#39;p&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span><span class="p">,</span>
+                 <span class="s1">&#39;c&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="p">,</span>
+                 <span class="s1">&#39;i&#39;</span><span class="p">:</span><span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">items</span><span class="p">()),</span>                                
+                <span class="p">},</span> 
+                
+               <span class="p">)</span>  
+
+    <span class="c1">#pylint: disable=attribute-defined-outside-init</span>
+    <span class="k">def</span> <span class="nf">__setstate__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idict</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span> <span class="o">=</span> <span class="n">idict</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">idict</span><span class="p">[</span><span class="s1">&#39;n&#39;</span><span class="p">]</span> 
+        <span class="k">if</span> <span class="n">idict</span><span class="p">[</span><span class="s1">&#39;s&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">RowStatus</span><span class="p">(</span><span class="n">idict</span><span class="p">[</span><span class="s1">&#39;s&#39;</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span> <span class="o">=</span> <span class="n">idict</span><span class="p">[</span><span class="s1">&#39;p&#39;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span> <span class="o">=</span> <span class="n">idict</span><span class="p">[</span><span class="s1">&#39;c&#39;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cached_column_set</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cached_positioned_column_set</span> <span class="o">=</span> <span class="bp">None</span>
+        
+        <span class="c1">## Restore column values</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="ow">in</span> <span class="n">idict</span><span class="p">[</span><span class="s1">&#39;i&#39;</span><span class="p">]:</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__setitem__</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+                   
+    
+<div class="viewcode-block" id="RowCaseInsensitive.update"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.update">[docs]</a>    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">source_data</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">source_data</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1">## Check for dict like row</span>
+                <span class="c1">##sqlalchemy.engine.RowProxy doesn&#39;t have iter, but does have iterkeys</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">iterator</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">source_data</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+                <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                    <span class="n">iterator</span> <span class="o">=</span> <span class="n">source_data</span>
+                
+                <span class="n">first_col</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">iterator</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">first_col</span><span class="p">:</span>
+                        <span class="n">needs_column_check</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">Column</span><span class="p">)</span>                        
+                        <span class="n">is_tuple</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span>
+                        <span class="n">first_col</span> <span class="o">=</span> <span class="bp">False</span>
+                        
+                    <span class="c1">#print &quot;{} needs_column_check={}&quot;.format(self.name, needs_column_check)</span>
+                    <span class="c1">#print &quot;{} is Column={}&quot;.format(self.name, isinstance(k, Column))</span>
+                    <span class="k">if</span> <span class="n">is_tuple</span><span class="p">:</span>
+                        <span class="n">key_name</span> <span class="o">=</span> <span class="n">_get_name</span><span class="p">(</span><span class="n">k</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>                        
+                        <span class="bp">self</span><span class="p">[</span><span class="n">key_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">k</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="k">else</span><span class="p">:</span>                           
+                        <span class="k">if</span> <span class="n">needs_column_check</span><span class="p">:</span>
+                            <span class="n">key_name</span> <span class="o">=</span> <span class="n">_get_name_Column_opt</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">key_name</span> <span class="o">=</span> <span class="n">_get_name</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+                                
+                        <span class="bp">self</span><span class="p">[</span><span class="n">key_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">source_data</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+                    
+            <span class="k">except</span> <span class="ne">AttributeError</span> <span class="k">as</span> <span class="n">e1</span><span class="p">:</span>
+                <span class="c1">#traceback.print_exc()</span>
+                <span class="c1">## Check for SQLAlchemy ORM row object</span>
+                <span class="c1">#pylint: disable=protected-access </span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">attrs</span> <span class="o">=</span> <span class="n">source_data</span><span class="o">.</span><span class="n">_sa_instance_state</span><span class="o">.</span><span class="n">attrs</span>  <span class="c1">## sqlalchemy.util._collections.ImmutableProperties</span>
+                    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">attrs</span><span class="p">:</span> <span class="c1">##instance of sqlalchemy.orm.state.AttributeState</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_raw_setitem</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">key</span><span class="p">,</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">source_data</span><span class="p">,</span> <span class="n">a</span><span class="o">.</span><span class="n">key</span><span class="p">))</span>
+                <span class="k">except</span> <span class="ne">AttributeError</span> <span class="k">as</span> <span class="n">e2</span><span class="p">:</span>  <span class="c1">## Not iterable                    </span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Row couldn&#39;t get set with {args}. First Error {e1}.  Error when assuming SQLAlchemy ORM row object {e2})&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">e1</span><span class="o">=</span><span class="n">e1</span><span class="p">,</span> <span class="n">e2</span><span class="o">=</span><span class="n">e2</span><span class="p">,</span><span class="n">args</span><span class="o">=</span><span class="n">args</span><span class="p">)</span>  <span class="p">)</span>
+        <span class="k">for</span> <span class="n">key_name</span><span class="p">,</span> <span class="n">key_value</span> <span class="ow">in</span> <span class="n">kwds</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">key_name</span> <span class="o">=</span> <span class="n">_get_name</span><span class="p">(</span><span class="n">key_name</span><span class="p">)</span>
+            <span class="bp">self</span><span class="p">[</span><span class="n">key_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">key_value</span>
+    </div>
+    <span class="k">def</span> <span class="nf">_get_name_value_pair</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">raise_on_not_exist</span><span class="o">=</span> <span class="bp">True</span><span class="p">):</span>
+        <span class="n">keyName</span> <span class="o">=</span> <span class="n">_get_name</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">keyName</span><span class="p">,</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__getitem__</span><span class="p">(</span><span class="n">keyName</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="c1">## If we get here, everything failed</span>
+            <span class="k">if</span> <span class="n">raise_on_not_exist</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s2">&quot;Row {} has no item {} it does have {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">columns_in_order</span><span class="p">()))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+    
+<div class="viewcode-block" id="RowCaseInsensitive.get_column_name"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.get_column_name">[docs]</a>    <span class="k">def</span> <span class="nf">get_column_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">raise_on_not_exist</span><span class="o">=</span> <span class="bp">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_name_value_pair</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">raise_on_not_exist</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    </div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">primary_key</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c1">## Check if primary_key is list of Column objects and needs to be turned into a list of str name values</span>
+                <span class="c1">## We do this here and not on setter since program might never call getter</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">Column</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">attrgetter</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span><span class="p">))</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">None</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="nd">@primary_key.setter</span>
+    <span class="k">def</span> <span class="nf">primary_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="o">!=</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="p">[</span><span class="n">value</span><span class="p">]</span>
+            <span class="k">assert</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s1">&#39;__iter__&#39;</span><span class="p">),</span> <span class="s2">&quot;Row primary_key must be iterable or string&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_primary_key</span> <span class="o">=</span> <span class="bp">None</span>
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">dict_to_str</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s1">&#39;Row(name={},status={},primary_key={},</span><span class="se">\n</span><span class="s1">{}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span><span class="p">,</span> <span class="n">dict_to_str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+    
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>             
+                    <span class="n">key_values</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">subset</span><span class="p">(</span><span class="n">keep_only</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+                <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">key_values</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>   
+                <span class="k">return</span> <span class="s2">&quot;{name} key_values={keys} status={s}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> 
+                                                                    <span class="n">keys</span><span class="o">=</span><span class="n">key_values</span><span class="p">,</span>
+                                                                    <span class="n">s</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">status</span>                                                     
+                                                                    <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">cv</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+                <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">columns_in_order</span><span class="p">()[:</span><span class="mi">5</span><span class="p">]:</span>
+                    <span class="n">cv</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+                <span class="k">return</span> <span class="s2">&quot;{name} cols[:5]={cv} status={s}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> 
+                                                                <span class="n">cv</span><span class="o">=</span><span class="n">cv</span><span class="p">,</span>
+                                                                <span class="n">s</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">status</span>                                                     
+                                                                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">dict_to_str</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">__raw_contains</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__contains__</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">__contains__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="n">keyName</span> <span class="o">=</span> <span class="n">_get_name</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>                
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__contains__</span><span class="p">(</span><span class="n">keyName</span><span class="p">)</span>
+        
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_name_value_pair</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">raise_on_not_exist</span><span class="o">=</span> <span class="bp">True</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>       
+
+    <span class="k">def</span> <span class="nf">_raw_setitem</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">__raw_contains</span><span class="p">(</span><span class="n">key</span><span class="p">):</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__setitem__</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cached_column_set</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cached_positioned_column_set</span> <span class="o">=</span> <span class="bp">None</span>        
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__setitem__</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>        
+            <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> 
+    
+    <span class="k">def</span> <span class="nf">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">keyName</span> <span class="o">=</span> <span class="n">_get_name</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_raw_setitem</span><span class="p">(</span><span class="n">keyName</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+            
+<div class="viewcode-block" id="RowCaseInsensitive.get_name_by_position"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.get_name_by_position">[docs]</a>    <span class="k">def</span> <span class="nf">get_name_by_position</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">position</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Get the column name in a given position.</span>
+<span class="sd">        Note: The first column position is 1 (not 0 like a python list).</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">assert</span> <span class="n">position</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="p">[</span><span class="n">position</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="c1">## -1 because positions are 1 based not 0 based</span>
+            </div>
+<div class="viewcode-block" id="RowCaseInsensitive.get_by_position"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.get_by_position">[docs]</a>    <span class="k">def</span> <span class="nf">get_by_position</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">position</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Get the column value by position. </span>
+<span class="sd">        Note: The first column position is 1 (not 0 like a python list).</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">assert</span> <span class="n">position</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="p">[</span><span class="n">position</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="c1">## -1 because positions are 1 based not 0 based</span>
+    </div>
+<div class="viewcode-block" id="RowCaseInsensitive.set_by_position"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.set_by_position">[docs]</a>    <span class="k">def</span> <span class="nf">set_by_position</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">position</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Set the column value by position. </span>
+<span class="sd">        Note: The first column position is 1 (not 0 like a python list).</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">assert</span> <span class="n">position</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="p">[</span><span class="n">position</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">value</span> <span class="c1">## -1 because positions are 1 based not 0 based</span>
+    </div>
+<div class="viewcode-block" id="RowCaseInsensitive.rename_column"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.rename_column">[docs]</a>    <span class="k">def</span> <span class="nf">rename_column</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">old_name</span><span class="p">,</span> <span class="n">new_name</span><span class="p">,</span> <span class="n">ignore_missing</span> <span class="o">=</span> <span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Rename a column</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        old_name: str</span>
+<span class="sd">            The name of the column to find and rename.</span>
+<span class="sd">        </span>
+<span class="sd">        new_name: str</span>
+<span class="sd">            The new name to give the column.</span>
+<span class="sd">            </span>
+<span class="sd">        ignore_missing: boolean</span>
+<span class="sd">            Ignore (don&#39;t raise error) if we don&#39;t have a column with the name in old_name.</span>
+<span class="sd">            Defaults to False         </span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">new_name</span> <span class="o">=</span> <span class="n">_get_name</span><span class="p">(</span><span class="n">new_name</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">new_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Target column name {} already exists&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">new_name</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">normalized_key</span><span class="p">,</span> <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_name_value_pair</span><span class="p">(</span><span class="n">old_name</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cached_column_set</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cached_positioned_column_set</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="c1">## Update name in _columns_in_order</span>
+            <span class="n">position</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">normalized_key</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="p">[</span><span class="n">position</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_name</span>
+            
+            <span class="c1">## Update the name in the parent dict</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__delitem__</span><span class="p">(</span><span class="n">normalized_key</span><span class="p">)</span>
+            <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__setitem__</span><span class="p">(</span><span class="n">new_name</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>            
+            
+        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">ignore_missing</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">e</span>
+    </div>
+<div class="viewcode-block" id="RowCaseInsensitive.rename_columns"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.rename_columns">[docs]</a>    <span class="k">def</span> <span class="nf">rename_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rename_map</span><span class="p">,</span> <span class="n">new_parent</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">ignore_missing</span> <span class="o">=</span> <span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Rename many columns at once.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        rename_map: dict, or list of tuples</span>
+<span class="sd">            A dict or list of tuples to use to rename columns.</span>
+<span class="sd">            Note: a list of tuples is better to use if the renames need to happen in a certain order.</span>
+<span class="sd">        </span>
+<span class="sd">        new_name: str</span>
+<span class="sd">            The new name to give the column.</span>
+<span class="sd">            </span>
+<span class="sd">        new_parent: ETLComponent</span>
+<span class="sd">            (Optional) Change the parent to the passed value. </span>
+<span class="sd">            </span>
+<span class="sd">        ignore_missing: boolean</span>
+<span class="sd">            Ignore (don&#39;t raise error) if we don&#39;t have a column with the name in old_name.</span>
+<span class="sd">            Defaults to False        </span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1">## Note: subset with rename_map is currently slightly faster</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rename_map</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">rename_map</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">rename_column</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">rename_map</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">ignore_missing</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span> <span class="c1"># assume it&#39;s a list of tuples</span>
+            <span class="k">for</span> <span class="p">(</span><span class="n">old</span><span class="p">,</span> <span class="n">new</span><span class="p">)</span> <span class="ow">in</span> <span class="n">rename_map</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">rename_column</span><span class="p">(</span><span class="n">old</span><span class="p">,</span> <span class="n">new</span><span class="p">,</span> <span class="n">ignore_missing</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">new_parent</span><span class="p">:</span>            
+            <span class="bp">self</span><span class="o">.</span><span class="n">_get_info_from_parent</span><span class="p">(</span><span class="n">new_parent</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="RowCaseInsensitive.remove_columns"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.remove_columns">[docs]</a>    <span class="k">def</span> <span class="nf">remove_columns</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remove_list</span><span class="p">,</span> <span class="n">new_parent</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">ignore_missing</span> <span class="o">=</span> <span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Remove columns from this row instance.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        remove_list: list</span>
+<span class="sd">            A list of column names to remvoe</span>
+<span class="sd">        </span>
+<span class="sd">        new_parent: ETLComponent</span>
+<span class="sd">            (Optional) Change the parent to the passed value. </span>
+<span class="sd">            </span>
+<span class="sd">        ignore_missing: boolean</span>
+<span class="sd">            Ignore (don&#39;t raise error) if we don&#39;t have a column with a given name</span>
+<span class="sd">            Defaults to False      </span>
+<span class="sd">        &quot;&quot;&quot;</span>        
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">remove_list</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="p">[</span><span class="n">c</span><span class="p">]</span>                                
+            <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">ignore_missing</span><span class="p">:</span>
+                    <span class="k">pass</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">e</span>     
+        <span class="k">if</span> <span class="n">new_parent</span><span class="p">:</span>            
+            <span class="bp">self</span><span class="o">.</span><span class="n">_get_info_from_parent</span><span class="p">(</span><span class="n">new_parent</span><span class="p">)</span>            
+    </div>
+<div class="viewcode-block" id="RowCaseInsensitive.subset"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.subset">[docs]</a>    <span class="k">def</span> <span class="nf">subset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exclude</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">rename_map</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">keep_only</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">new_parent</span> <span class="o">=</span> <span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a new row instance with a subset of the columns. Original row is not modified</span>
+<span class="sd">        Excludes are done first, then renames and finally keep_only.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        exclude: list</span>
+<span class="sd">            A list of column names (before renmaes) to exclude from the subset.</span>
+<span class="sd">            Optional. Defaults to no excludes.</span>
+<span class="sd">            </span>
+<span class="sd">        rename_map: dict</span>
+<span class="sd">            A dict to use to rename columns.</span>
+<span class="sd">            Optional. Defaults to no renames.</span>
+<span class="sd">            </span>
+<span class="sd">        keep_only: list</span>
+<span class="sd">            A list of column names (after renames) of columns to keep.</span>
+<span class="sd">            Optional. Defaults to keep all.</span>
+<span class="sd">        </span>
+<span class="sd">        new_parent: ETLComponent</span>
+<span class="sd">            (Optional) Change the parent of the subset row to the passed value. </span>
+<span class="sd">            </span>
+<span class="sd">        raise_on_not_exist: boolean</span>
+<span class="sd">            Raise error if we don&#39;t have a column with a given name.</span>
+<span class="sd">            Default to Trye</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">keep_only</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">keep_only</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="n">_get_name</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">keep_only</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">exclude</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>  
+            <span class="n">exclude</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">exclude</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="n">_get_name</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">exclude</span><span class="p">])</span>
+        <span class="n">subRow</span> <span class="o">=</span> <span class="n">RowCaseInsensitive</span><span class="p">(</span><span class="n">name</span><span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span> <span class="n">new_parent</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">exclude</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">rename_map</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">rename_map</span><span class="p">:</span>
+                    <span class="n">outCol</span> <span class="o">=</span> <span class="n">rename_map</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">outCol</span> <span class="o">=</span> <span class="n">k</span>
+                <span class="c1">#pylint: disable=protected-access</span>
+                <span class="k">if</span> <span class="n">keep_only</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">outCol</span> <span class="ow">in</span> <span class="n">keep_only</span><span class="p">:</span>                    
+                    <span class="nb">super</span><span class="p">(</span><span class="n">RowCaseInsensitive</span><span class="p">,</span> <span class="n">subRow</span><span class="p">)</span><span class="o">.</span><span class="n">__setitem__</span><span class="p">(</span><span class="n">outCol</span><span class="p">,</span> <span class="bp">self</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+                    <span class="n">subRow</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">outCol</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">subRow</span><span class="o">.</span><span class="n">primary_key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">primary_key</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                <span class="k">pass</span>
+        
+        <span class="c1">## TODO: Apply rename_map to primary key</span>
+        <span class="c1">## Remove primary_key if any columns in it are excluded or not in keep_only        </span>
+        
+        <span class="k">return</span> <span class="n">subRow</span>
+    </div>
+<div class="viewcode-block" id="RowCaseInsensitive.clone"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.clone">[docs]</a>    <span class="k">def</span> <span class="nf">clone</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_parent</span> <span class="o">=</span> <span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Create a clone of this row.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        new_parent: ETLComponent</span>
+<span class="sd">            (Optional) Change the parent of the clone to the passed value. </span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1">#pylint: disable=protected-access</span>
+        <span class="n">new_row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">subset</span><span class="p">(</span><span class="n">new_parent</span><span class="o">=</span> <span class="n">new_parent</span><span class="p">)</span>
+        <span class="n">new_row</span><span class="o">.</span><span class="n">_cached_column_set</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cached_column_set</span>
+        <span class="n">new_row</span><span class="o">.</span><span class="n">_cached_positioned_column_set</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cached_positioned_column_set</span>
+        <span class="k">return</span> <span class="n">new_row</span>
+</div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">columns</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A list of the columns of this row (order not guaranteed in child instances).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span>                
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">column_set</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        An ImmutableSet of the the columns of this row. </span>
+<span class="sd">        Used to store different row configurations in a dictionary or set. </span>
+<span class="sd">        We don&#39;t get this from the parent since that might have more columns than we do.</span>
+<span class="sd">        </span>
+<span class="sd">        WARNING: The resulting set is not ordered. Do not use if the column order affects the operation.</span>
+<span class="sd">        See positioned_column_set instead.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cached_column_set</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cached_column_set</span> <span class="o">=</span> <span class="n">get_cached_frozen_set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cached_column_set</span>
+    
+    <span class="nd">@property</span> 
+    <span class="k">def</span> <span class="nf">column_count</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+    
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">positioned_column_set</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        An ImmutableSet of the the tuples (column, position) for this row. Used to store different row configurations in a dictionary or set.</span>
+<span class="sd">        </span>
+<span class="sd">        Note: column_set would not always work here because the set is not ordered even though the columns are.</span>
+<span class="sd">         </span>
+<span class="sd">        We don&#39;t get this from the parent since that might have more columns than we do.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cached_positioned_column_set</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">tpl_lst</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">position</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">columns_in_order</span><span class="p">()):</span>
+                <span class="n">tpl</span> <span class="o">=</span> <span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">position</span><span class="p">)</span>
+                <span class="n">tpl_lst</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tpl</span><span class="p">)</span>    
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cached_positioned_column_set</span> <span class="o">=</span> <span class="n">get_cached_frozen_set</span><span class="p">(</span><span class="n">tpl_lst</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cached_positioned_column_set</span>
+    
+<div class="viewcode-block" id="RowCaseInsensitive.column_position"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.column_position">[docs]</a>    <span class="k">def</span> <span class="nf">column_position</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">column_name</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Get the column position given a column name.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        column_name: str</span>
+<span class="sd">            The column name to find the position of        </span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">normalized_name</span> <span class="o">=</span> <span class="n">_get_name</span><span class="p">(</span><span class="n">column_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">normalized_name</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span> <span class="c1">## index is 0 based, positions are 1 based</span>
+    </div>
+<div class="viewcode-block" id="RowCaseInsensitive.columns_in_order"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.columns_in_order">[docs]</a>    <span class="k">def</span> <span class="nf">columns_in_order</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A list of the columns of this row in the order they were defined.</span>
+<span class="sd">        </span>
+<span class="sd">        Note: If the Row was created using a dict or dict like source, there was no order for the Row to work with. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span>
+    </div>
+<div class="viewcode-block" id="RowCaseInsensitive.values_in_order"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.values_in_order">[docs]</a>    <span class="k">def</span> <span class="nf">values_in_order</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">columns_in_order</span><span class="p">()]</span>        
+    </div>
+    <span class="k">def</span> <span class="nf">__delitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">col_name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cached_column_set</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cached_positioned_column_set</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">normalized_col_name</span> <span class="o">=</span> <span class="n">_get_name</span><span class="p">(</span><span class="n">col_name</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__delitem__</span><span class="p">(</span><span class="n">normalized_col_name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_columns_in_order</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">normalized_col_name</span><span class="p">)</span>
+        
+    <span class="k">def</span> <span class="nf">_values_equal_coerce</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">val1</span><span class="p">,</span> <span class="n">val2</span><span class="p">,</span> <span class="n">col_name</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">val1</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">val2</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">True</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">False</span>
+        <span class="k">elif</span> <span class="n">val2</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="k">elif</span> <span class="nb">type</span><span class="p">(</span><span class="n">val1</span><span class="p">)</span> <span class="o">==</span> <span class="nb">type</span><span class="p">(</span><span class="n">val2</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">val1</span> <span class="o">==</span> <span class="n">val2</span>
+        <span class="k">elif</span> <span class="nb">type</span><span class="p">(</span><span class="n">val1</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">NUMERIC_TYPES</span> <span class="ow">and</span> <span class="nb">type</span><span class="p">(</span><span class="n">val2</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">NUMERIC_TYPES</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Decimal</span><span class="p">(</span><span class="n">val1</span><span class="p">)</span> <span class="o">==</span> <span class="n">Decimal</span><span class="p">(</span><span class="n">val2</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;{row} data type mismatch on compare of {col_name} {type1} vs {type2}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">row</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                                                                                                <span class="n">col_name</span><span class="o">=</span><span class="n">col_name</span><span class="p">,</span>
+                                                                                                <span class="n">type1</span><span class="o">=</span><span class="nb">type</span><span class="p">(</span><span class="n">val1</span><span class="p">),</span>
+                                                                                                <span class="n">type2</span><span class="o">=</span><span class="nb">type</span><span class="p">(</span><span class="n">val2</span><span class="p">),</span>
+                                                                                                <span class="p">)</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">val1</span><span class="p">)</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">val2</span><span class="p">)</span>
+    
+<div class="viewcode-block" id="RowCaseInsensitive.compare_to"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.compare_to">[docs]</a>    <span class="k">def</span> <span class="nf">compare_to</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other_row</span><span class="p">,</span> <span class="n">exclude</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">compare_only</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">coerce_types</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Compare one RowCaseInsensitive to another. Returns a list of differences.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">compare_only</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">compare_only</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="n">other_row</span><span class="o">.</span><span class="n">get_column_name</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">raise_on_not_exist</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">compare_only</span><span class="p">])</span>
+        
+        <span class="k">if</span> <span class="n">exclude</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>  
+            <span class="n">exclude</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">exclude</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="n">other_row</span><span class="o">.</span><span class="n">get_column_name</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">raise_on_not_exist</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">exclude</span><span class="p">])</span>
+            
+        <span class="n">differences_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">other_col_name</span><span class="p">,</span> <span class="n">other_col_value</span> <span class="ow">in</span> <span class="n">other_row</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">other_col_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">exclude</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">compare_only</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">other_col_name</span> <span class="ow">in</span> <span class="n">compare_only</span><span class="p">:</span>
+                    <span class="n">existing_column_value</span> <span class="o">=</span> <span class="bp">self</span><span class="p">[</span><span class="n">other_col_name</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="n">coerce_types</span><span class="p">:</span>
+                        <span class="n">values_equal</span><span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_equal_coerce</span><span class="p">(</span><span class="n">existing_column_value</span><span class="p">,</span> <span class="n">other_col_value</span><span class="p">,</span> <span class="n">other_col_name</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">values_equal</span><span class="o">=</span>  <span class="n">existing_column_value</span> <span class="o">==</span> <span class="n">other_col_value</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">values_equal</span><span class="p">:</span>                    
+                        <span class="n">differences_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ColumnDifference</span><span class="p">(</span><span class="n">column_name</span><span class="o">=</span> <span class="n">other_col_name</span><span class="p">,</span> 
+                                                                 <span class="n">old_value</span><span class="o">=</span> <span class="n">existing_column_value</span><span class="p">,</span> 
+                                                                 <span class="n">new_value</span><span class="o">=</span> <span class="n">other_col_value</span><span class="p">,</span>
+                                                                 <span class="p">)</span>
+                                            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">differences_list</span>
+</div>
+<div class="viewcode-block" id="RowCaseInsensitive.transform"><a class="viewcode-back" href="../../../../bi_etl.components.row.row_case_insensitive.html#bi_etl.components.etlcomponent.RowCaseInsensitive.transform">[docs]</a>    <span class="k">def</span> <span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">col_name</span><span class="p">,</span> <span class="n">transform_function</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Apply a transformation to a column.  </span>
+<span class="sd">        The transformation function must take the value to be transformed as it&#39;s first argument.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        col_name: str</span>
+<span class="sd">            The column name in the row to be transformed        </span>
+<span class="sd">        transform_function: func</span>
+<span class="sd">            The transformation function to use. It must take the value to be transformed as it&#39;s first argument.            </span>
+<span class="sd">        args: list</span>
+<span class="sd">            Positional arguments to pass to transform_function</span>
+<span class="sd">        kwargs: dict</span>
+<span class="sd">            Keyword arguments to pass to transform_function</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">normalized_col_name</span><span class="p">,</span> <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_name_value_pair</span><span class="p">(</span><span class="n">col_name</span><span class="p">,</span> <span class="n">raise_on_not_exist</span><span class="o">=</span> <span class="bp">True</span><span class="p">)</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">transform_function</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">__setitem__</span><span class="p">(</span><span class="n">normalized_col_name</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

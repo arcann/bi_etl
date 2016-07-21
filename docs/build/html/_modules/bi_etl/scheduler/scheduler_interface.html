@@ -1,0 +1,791 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.scheduler.scheduler_interface &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for bi_etl.scheduler.scheduler_interface</h1><div class="highlight"><pre>
+<span></span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Created on May 20, 2015</span>
+
+<span class="sd">@author: woodd</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">import</span> <span class="nn">getpass</span>
+<span class="kn">import</span> <span class="nn">importlib</span>
+<span class="kn">import</span> <span class="nn">inspect</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">pkgutil</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">textwrap</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">traceback</span>
+<span class="kn">import</span> <span class="nn">types</span>
+<span class="kn">import</span> <span class="nn">pickle</span> <span class="kn">as</span> <span class="nn">pickle</span>
+
+<span class="kn">from</span> <span class="nn">sqlalchemy.orm.exc</span> <span class="kn">import</span> <span class="n">NoResultFound</span>
+<span class="kn">from</span> <span class="nn">sqlalchemy.sql.functions</span> <span class="kn">import</span> <span class="n">func</span>
+
+<span class="kn">from</span> <span class="nn">bi_etl.bi_config_parser</span> <span class="kn">import</span> <span class="n">BIConfigParser</span>
+<span class="kn">from</span> <span class="nn">bi_etl.database.connect</span> <span class="kn">import</span> <span class="n">Connect</span>
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler.models</span> <span class="kn">import</span> <span class="p">(</span><span class="n">ETL_Tasks</span><span class="p">,</span>
+                                     <span class="n">ETL_Task_Params</span><span class="p">,</span>
+                                     <span class="n">ETL_Task_Status_CD</span><span class="p">,</span>
+                                     <span class="n">ETL_Task_Log</span><span class="p">,</span>
+                                     <span class="n">ETL_Task_Stats</span><span class="p">,</span>
+                                     <span class="n">ETL_Scheduler</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler.task</span> <span class="kn">import</span> <span class="n">ETLTask</span><span class="p">,</span> <span class="n">Status</span>
+<span class="kn">from</span> <span class="nn">bi_etl.timer</span> <span class="kn">import</span> <span class="n">Timer</span>
+<span class="kn">from</span> <span class="nn">bi_etl.utility</span> <span class="kn">import</span> <span class="n">log_logging_level</span><span class="p">,</span> <span class="n">dict_to_str</span>
+<span class="kn">import</span> <span class="nn">fnmatch</span>
+
+
+<span class="c1">##################################</span>
+<span class="c1">## Register a way of pickling and unpickling class methods</span>
+<span class="k">def</span> <span class="nf">_pickle_method</span><span class="p">(</span><span class="n">method</span><span class="p">):</span>
+    <span class="n">func_name</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">__func__</span><span class="o">.</span><span class="n">__name__</span>
+    <span class="n">obj</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">__self__</span>
+    <span class="n">cls</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">__self__</span><span class="o">.</span><span class="n">__class__</span>
+    <span class="k">return</span> <span class="n">_unpickle_method</span><span class="p">,</span> <span class="p">(</span><span class="n">func_name</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">cls</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_unpickle_method</span><span class="p">(</span><span class="n">func_name</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">cls</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">cls</span> <span class="ow">in</span> <span class="n">cls</span><span class="o">.</span><span class="n">mro</span><span class="p">():</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">funct</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">__dict__</span><span class="p">[</span><span class="n">func_name</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">break</span>
+    <span class="k">return</span> <span class="n">funct</span><span class="o">.</span><span class="n">__get__</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">cls</span><span class="p">)</span>
+
+<span class="c1">#pylint: disable=wrong-import-position, import-error</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">copyreg</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">copy_reg</span> <span class="kn">as</span> <span class="nn">copyreg</span>
+<span class="n">copyreg</span><span class="o">.</span><span class="n">pickle</span><span class="p">(</span><span class="n">types</span><span class="o">.</span><span class="n">MethodType</span><span class="p">,</span> <span class="n">_pickle_method</span><span class="p">,</span> <span class="n">_unpickle_method</span><span class="p">)</span>
+<span class="c1">##################################</span>
+
+<span class="c1">#pylint: disable=too-many-instance-attributes, too-many-public-methods</span>
+<span class="c1">#pylint: disable=too-many-statements, too-many-branches, too-many-arguments, too-many-locals</span>
+<span class="c1">#pylint: disable=invalid-name</span>
+
+<div class="viewcode-block" id="SchedulerInterface"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface">[docs]</a><span class="k">class</span> <span class="nc">SchedulerInterface</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Light scheduler interface that only interacts with the database.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">CLASS_VERSION</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">CONFIG_SECTION</span> <span class="o">=</span> <span class="s1">&#39;Scheduler&#39;</span>
+    <span class="n">scan_etl_classes_performed</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="n">SHARED_etl_task_classes</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="n">SCHEDULER_ETL_JOBS_PACKAGE</span><span class="o">=</span><span class="s1">&#39;bi_etl.scheduler.scheduler_etl_jobs&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">session</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                 <span class="n">config</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                 <span class="n">log</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                 <span class="n">log_name</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                 <span class="n">scheduler_id</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                 <span class="n">allow_create</span><span class="o">=</span> <span class="bp">False</span>
+                 <span class="p">):</span>
+
+        <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">BIConfigParser</span><span class="p">()</span>
+            <span class="n">config_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">read_config_ini</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">log</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">log_name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="n">log_name</span> <span class="o">=</span> <span class="s1">&#39;SchedulerInterface&#39;</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">set_dated_log_file_name</span><span class="p">(</span><span class="n">log_name</span><span class="p">,</span> <span class="s1">&#39;.log&#39;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">setup_logging</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;Scheduler&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">log</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Config file used = {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">config_file</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span>
+            <span class="k">if</span> <span class="n">log</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;Scheduler&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">log</span>
+        <span class="n">log_logging_level</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">)</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">etl_task_classes</span> <span class="o">=</span> <span class="n">SchedulerInterface</span><span class="o">.</span><span class="n">SHARED_etl_task_classes</span>
+        <span class="n">base_module_str</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_SECTION</span><span class="p">,</span><span class="s1">&#39;base_module&#39;</span><span class="p">)</span>        
+        <span class="k">if</span> <span class="n">base_module_str</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">base_modules</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s1">&#39;,&#39;</span> <span class="ow">in</span> <span class="n">base_module_str</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">base_modules</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">base_module_str</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">base_modules</span> <span class="o">=</span> <span class="p">[</span><span class="n">base_module_str</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">SchedulerInterface</span><span class="o">.</span><span class="n">SCHEDULER_ETL_JOBS_PACKAGE</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_modules</span><span class="p">:</span> 
+            <span class="bp">self</span><span class="o">.</span><span class="n">base_modules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">SchedulerInterface</span><span class="o">.</span><span class="n">SCHEDULER_ETL_JOBS_PACKAGE</span><span class="p">)</span>
+
+        <span class="c1">###########################</span>
+        <span class="c1">## Change the schema of the ETL task definition tables</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="n">ETL_Tasks</span><span class="o">.</span><span class="n">__base__</span><span class="o">.</span><span class="n">metadata</span>  <span class="c1"># @UndefinedVariable pylint: disable=no-member</span>
+
+        <span class="c1">## Pickup schema name from config</span>
+        <span class="n">schema</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_SECTION</span><span class="p">,</span> <span class="s1">&#39;schema&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">schema</span> <span class="o">=</span> <span class="n">schema</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Using etl_tasks tables in schema {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">schema</span><span class="p">))</span>
+
+            <span class="c1">## We don&#39;t seem to need to change this.  In fact if we added a table dynamically we&#39;d</span>
+            <span class="c1">## probably want it to initially link in to the other public. tables</span>
+            <span class="c1">#metadata.schema = &#39;onr_dw2&#39;</span>
+    
+            <span class="k">for</span> <span class="n">tbl_index</span> <span class="ow">in</span> <span class="n">metadata</span><span class="o">.</span><span class="n">tables</span><span class="p">:</span>
+                <span class="n">tbl</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="n">tbl_index</span><span class="p">]</span>
+                <span class="n">tbl</span><span class="o">.</span><span class="n">schema</span> <span class="o">=</span> <span class="n">schema</span>
+                <span class="n">tbl</span><span class="o">.</span><span class="n">fullname</span> <span class="o">=</span> <span class="n">tbl</span><span class="o">.</span><span class="n">fullname</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;public&#39;</span><span class="p">,</span><span class="n">schema</span><span class="p">)</span>
+
+            <span class="c1">## Change schema on Sequences</span>
+            <span class="c1">#pylint: disable=protected-access</span>
+            <span class="k">for</span> <span class="n">seq_index</span> <span class="ow">in</span> <span class="n">metadata</span><span class="o">.</span><span class="n">_sequences</span><span class="p">:</span>
+                <span class="n">seq</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">_sequences</span><span class="p">[</span><span class="n">seq_index</span><span class="p">]</span>
+                <span class="n">seq</span><span class="o">.</span><span class="n">schema</span> <span class="o">=</span> <span class="n">schema</span>
+            <span class="c1">##</span>
+            <span class="c1">## End  Change the schema</span>
+            <span class="c1">###########################</span>
+
+        <span class="k">if</span> <span class="n">session</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">has_option</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_SECTION</span><span class="p">,</span><span class="s1">&#39;database&#39;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Making new session&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">session</span> <span class="o">=</span> <span class="n">Connect</span><span class="o">.</span><span class="n">get_sqlachemy_session</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span>
+                                                             <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_SECTION</span><span class="p">,</span><span class="s1">&#39;database&#39;</span><span class="p">),</span>
+                                                             <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_SECTION</span><span class="p">,</span><span class="s1">&#39;user&#39;</span><span class="p">)</span> 
+                                                        <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Missing database option in INI file. No session creation possible&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">session</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Using provided session {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">session</span><span class="p">)))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session</span> <span class="o">=</span> <span class="n">session</span>
+        <span class="k">del</span> <span class="n">session</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_row</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;scheduler_row not retried&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">scheduler_id</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">scheduler_host_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_SECTION</span><span class="p">,</span><span class="s1">&#39;host&#39;</span><span class="p">)</span>
+                <span class="c1">##Pass null scheduler_host_name to get_scheduler_id_for_host,</span>
+                <span class="c1">##it looks up in the config or defaults to local host</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_scheduler_row_for_host</span><span class="p">(</span><span class="n">qualified_host_name</span><span class="o">=</span><span class="n">scheduler_host_name</span><span class="p">,</span> 
+                                                                      <span class="n">allow_create</span><span class="o">=</span> <span class="n">allow_create</span>
+                                                                      <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Using assigned scheduler ID {}.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">scheduler_id</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_scheduler_row_for_id</span><span class="p">(</span><span class="n">scheduler_id</span><span class="p">)</span>
+    
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_row</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;&#39;&#39;</span>
+<span class="s1">                      Scheduler not found by name (ini Scheduler section : host setting).&#39;</span>
+<span class="s1">                      Defaulting to scheduler ID 1, if that exists.</span>
+<span class="s1">                      &#39;&#39;&#39;</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span> <span class="n">textwrap</span><span class="o">.</span><span class="n">dedent</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_scheduler_row_for_id</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    
+            <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_row</span><span class="o">.</span><span class="n">scheduler_id</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;scheduler_id = {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scheduler_id</span><span class="p">))</span>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">ETL_Tasks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">ETL_Tasks</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">ETL_Task_Status_CD</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">ETL_Task_Status_CD</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">ETL_Task_Params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">ETL_Task_Params</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">ETL_Task_Log</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">ETL_Task_Log</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">ETL_Task_Stats</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">ETL_Task_Stats</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">qualified_host_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Gets the qualified host name of the scheduler server.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_row</span><span class="o">.</span><span class="n">qualified_host_name</span>
+
+    <span class="k">def</span> <span class="nf">_get_local_qualified_host_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Gets the qualified host name of the current server (not the scheduler server)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1">#=======================================================================</span>
+        <span class="c1"># socket.getfqdn can return different values for each call if the host has multiple aliases.</span>
+        <span class="c1"># In our case it alternated between values, however it seems like it could be more random than that.</span>
+        <span class="c1"># So we&#39;ll get it ten times and pick the lowest value (as a way of trying to be consistent).</span>
+        <span class="c1">#</span>
+        <span class="c1"># If you have this situation, it would be even better to use the configuration file to specify the value</span>
+        <span class="c1">#</span>
+        <span class="c1"># .. code-block:: ini</span>
+        <span class="c1">#</span>
+        <span class="c1">#     [Scheduler]</span>
+        <span class="c1">#      qualified_host_name=my_host_name</span>
+        <span class="c1">#=======================================================================</span>
+        <span class="n">lowest_qualified_host_name</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">tries</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_default</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_SECTION</span><span class="p">,</span><span class="s1">&#39;qualified_host_name_tries&#39;</span><span class="p">,</span><span class="mi">10</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">tries</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">tries</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;qualified_host_name_tries not an integer, defaulting to 10&quot;</span><span class="p">)</span>
+            <span class="n">tries</span> <span class="o">=</span> <span class="mi">10</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">tries</span><span class="p">):</span>
+            <span class="n">qualified_host_name</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">getfqdn</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">lowest_qualified_host_name</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">qualified_host_name</span> <span class="o">&lt;</span> <span class="n">lowest_qualified_host_name</span><span class="p">:</span>
+                <span class="n">lowest_qualified_host_name</span> <span class="o">=</span> <span class="n">qualified_host_name</span>
+        <span class="k">return</span> <span class="n">lowest_qualified_host_name</span>
+
+<div class="viewcode-block" id="SchedulerInterface.get_scheduler_row_for_id"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_scheduler_row_for_id">[docs]</a>    <span class="k">def</span> <span class="nf">get_scheduler_row_for_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scheduler_id</span><span class="p">):</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">ETL_Scheduler</span><span class="p">)</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ETL_Scheduler</span><span class="o">.</span><span class="n">scheduler_id</span> <span class="o">==</span> <span class="n">scheduler_id</span><span class="p">)</span>
+        <span class="n">scheduler_row</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">one</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">scheduler_row</span>
+</div>
+    <span class="k">def</span> <span class="nf">_get_scheduler_row_for_host</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">qualified_host_name</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">allow_create</span> <span class="o">=</span> <span class="bp">False</span><span class="p">):</span>
+        <span class="n">qualified_host_name</span> <span class="o">=</span> <span class="p">(</span><span class="n">qualified_host_name</span>
+                               <span class="ow">or</span>
+                               <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_SECTION</span><span class="p">,</span><span class="s1">&#39;qualified_host_name&#39;</span><span class="p">)</span>
+                               <span class="ow">or</span>
+                               <span class="bp">self</span><span class="o">.</span><span class="n">_get_local_qualified_host_name</span><span class="p">()</span>
+                               <span class="p">)</span>
+        <span class="n">host_name</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">gethostname</span><span class="p">()</span> <span class="ow">or</span> <span class="n">qualified_host_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;get_scheduler_id_for_host: host name is {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">host_name</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">ETL_Scheduler</span><span class="p">)</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ETL_Scheduler</span><span class="o">.</span><span class="n">qualified_host_name</span> <span class="o">==</span> <span class="n">qualified_host_name</span><span class="p">)</span>
+            <span class="n">scheduler_row</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">one</span><span class="p">()</span>
+            <span class="k">return</span> <span class="n">scheduler_row</span>
+        <span class="k">except</span> <span class="n">NoResultFound</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">allow_create</span><span class="p">:</span>
+                <span class="n">scheduler_row</span> <span class="o">=</span> <span class="n">ETL_Scheduler</span><span class="p">()</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="c1">## We make the assumption here that two schedulers won&#39;t be initializing for the first</span>
+                    <span class="c1">## time at the same instant. If they do, they&#39;d get the same ID and one would fail </span>
+                    <span class="c1">## on the commit below (PK error)</span>
+                    <span class="n">max_row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">func</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ETL_Scheduler</span><span class="o">.</span><span class="n">scheduler_id</span><span class="p">)</span><span class="o">.</span><span class="n">label</span><span class="p">(</span><span class="s2">&quot;max_id&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">one</span><span class="p">()</span>
+                    <span class="n">max_id</span> <span class="o">=</span> <span class="n">max_row</span><span class="o">.</span><span class="n">max_id</span>
+                <span class="k">except</span> <span class="n">NoResultFound</span><span class="p">:</span>
+                    <span class="n">max_id</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="n">scheduler_row</span><span class="o">.</span><span class="n">scheduler_id</span> <span class="o">=</span> <span class="p">(</span><span class="n">max_id</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+                <span class="n">scheduler_row</span><span class="o">.</span><span class="n">qualified_host_name</span> <span class="o">=</span> <span class="n">qualified_host_name</span>
+                <span class="n">scheduler_row</span><span class="o">.</span><span class="n">host_name</span> <span class="o">=</span> <span class="n">host_name</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">scheduler_row</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+                <span class="k">return</span> <span class="n">scheduler_row</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">None</span>
+
+<div class="viewcode-block" id="SchedulerInterface.get_scheduler_id_for_host"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_scheduler_id_for_host">[docs]</a>    <span class="k">def</span> <span class="nf">get_scheduler_id_for_host</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">qualified_host_name</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">allow_create</span> <span class="o">=</span> <span class="bp">False</span><span class="p">):</span>
+        <span class="n">scheduler_row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_scheduler_row_for_host</span><span class="p">(</span><span class="n">qualified_host_name</span><span class="o">=</span><span class="n">qualified_host_name</span><span class="p">,</span> 
+                                                         <span class="n">allow_create</span><span class="o">=</span><span class="n">allow_create</span>
+                                                         <span class="p">)</span>
+        <span class="k">if</span> <span class="n">scheduler_row</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">scheduler_row</span><span class="o">.</span><span class="n">scheduler_id</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.get_next_task_id"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_next_task_id">[docs]</a>    <span class="k">def</span> <span class="nf">get_next_task_id</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1">## We have to query the sequence each time because this code might be running</span>
+        <span class="c1">## on a different server or thread from others</span>
+        <span class="n">next_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">ETL_Tasks</span><span class="o">.</span><span class="n">task_id</span><span class="o">.</span><span class="n">default</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">next_id</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.add_task_by_exact_name"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_by_exact_name">[docs]</a>    <span class="k">def</span> <span class="nf">add_task_by_exact_name</span><span class="p">(</span>
+                               <span class="bp">self</span><span class="p">,</span>
+                               <span class="n">module_name</span><span class="p">,</span>
+                               <span class="n">class_name</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                               <span class="n">display_name</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                               <span class="n">parent_task_id</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                               <span class="n">root_task_id</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                               <span class="n">scheduler_id</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                               <span class="n">parameters</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                               <span class="n">submit_by_user_id</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                               <span class="n">commit</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                               <span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Add a task to the scheduler using a module name</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">msg</span><span class="o">=</span><span class="s2">&quot;add_task_by_exact_name module_name={module_name}, class_name={class_name} parent_task_id={parent_task_id} root_task_id={root_task_id}&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">module_name</span><span class="o">=</span> <span class="n">module_name</span><span class="p">,</span>
+                                  <span class="n">class_name</span><span class="o">=</span> <span class="n">class_name</span><span class="p">,</span>
+                                  <span class="n">parent_task_id</span><span class="o">=</span> <span class="n">parent_task_id</span><span class="p">,</span>
+                                  <span class="n">root_task_id</span><span class="o">=</span> <span class="n">root_task_id</span><span class="p">,</span>
+                                  <span class="p">)</span>
+                       <span class="p">)</span>
+        <span class="n">task_rec</span> <span class="o">=</span> <span class="n">ETL_Tasks</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">scheduler_id</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">scheduler_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_id</span>
+        <span class="n">task_rec</span><span class="o">.</span><span class="n">scheduler_id</span> <span class="o">=</span> <span class="n">scheduler_id</span>
+        <span class="n">task_rec</span><span class="o">.</span><span class="n">modulename</span> <span class="o">=</span> <span class="n">module_name</span>
+        <span class="n">task_rec</span><span class="o">.</span><span class="n">classname</span> <span class="o">=</span> <span class="n">class_name</span>
+        <span class="n">task_rec</span><span class="o">.</span><span class="n">display_name</span> <span class="o">=</span> <span class="n">display_name</span> <span class="ow">or</span> <span class="n">module_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;--- Getting next task_id&quot;</span><span class="p">)</span>
+        <span class="n">task_rec</span><span class="o">.</span><span class="n">task_id</span> <span class="o">=</span> <span class="n">task_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_next_task_id</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;--- New task_id={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">task_id</span><span class="p">))</span>
+        <span class="c1">## We don&#39;t want self reference parent or root</span>
+        <span class="k">if</span> <span class="n">parent_task_id</span> <span class="o">==</span> <span class="n">task_id</span><span class="p">:</span>
+            <span class="n">parent_task_id</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="n">root_task_id</span> <span class="o">==</span> <span class="n">task_id</span><span class="p">:</span>
+            <span class="n">root_task_id</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">task_rec</span><span class="o">.</span><span class="n">parent_task_id</span> <span class="o">=</span> <span class="n">parent_task_id</span>
+
+        <span class="n">parent_task</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="c1">## Check if we need to fill in the root_task_id by looking up the parent</span>
+        <span class="k">if</span> <span class="n">parent_task_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">root_task_id</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">parent_task</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_task_record</span><span class="p">(</span><span class="n">parent_task_id</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">parent_task</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;--- parent_task_id {} is invalid&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">parent_task_id</span><span class="p">))</span>
+            <span class="k">elif</span> <span class="n">parent_task</span><span class="o">.</span><span class="n">root_task_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">root_task_id</span> <span class="o">=</span> <span class="n">parent_task</span><span class="o">.</span><span class="n">root_task_id</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">root_task_id</span> <span class="o">=</span> <span class="n">parent_task_id</span>
+        <span class="n">task_rec</span><span class="o">.</span><span class="n">root_task_id</span> <span class="o">=</span> <span class="n">root_task_id</span>
+
+        <span class="k">if</span> <span class="n">submit_by_user_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">task_rec</span><span class="o">.</span><span class="n">submit_by_user_id</span> <span class="o">=</span> <span class="n">submit_by_user_id</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">parent_task_id</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">task_rec</span><span class="o">.</span><span class="n">submit_by_user_id</span> <span class="o">=</span> <span class="n">getpass</span><span class="o">.</span><span class="n">getuser</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">parent_task</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="n">parent_task</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_task_record</span><span class="p">(</span><span class="n">parent_task_id</span><span class="p">)</span>
+                <span class="n">task_rec</span><span class="o">.</span><span class="n">submit_by_user_id</span> <span class="o">=</span> <span class="n">parent_task</span><span class="o">.</span><span class="n">submit_by_user_id</span>
+
+        <span class="n">task_rec</span><span class="o">.</span><span class="n">Status</span> <span class="o">=</span> <span class="n">Status</span><span class="o">.</span><span class="n">new</span>
+        <span class="k">if</span> <span class="n">parameters</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">add_task_paramters</span><span class="p">(</span><span class="n">task_rec</span><span class="p">,</span> <span class="n">parameters</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;--- Adding task to db {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">dict_to_str</span><span class="p">(</span><span class="n">task_rec</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">task_rec</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">commit</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">task_id</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.add_task_by_class"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_by_class">[docs]</a>    <span class="k">def</span> <span class="nf">add_task_by_class</span><span class="p">(</span>
+                          <span class="bp">self</span><span class="p">,</span>
+                          <span class="n">etl_task_class_type</span><span class="p">,</span>
+                          <span class="n">display_name</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                          <span class="n">parent_task_id</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                          <span class="n">root_task_id</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                          <span class="n">scheduler_id</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                          <span class="n">parameters</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                          <span class="n">submit_by_user_id</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                          <span class="n">commit</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                          <span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Add a task to the scheduler using an instance of the task class type.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        task_id: int</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1">## Test that we got a class type</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">etl_task_class_type</span><span class="p">,</span> <span class="nb">type</span><span class="p">):</span>
+            <span class="c1">## Turn name into a class type</span>
+            <span class="n">etl_task_class_type</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_etl_class_type</span><span class="p">(</span><span class="n">etl_task_class_type</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_task_by_exact_name</span><span class="p">(</span>
+                                           <span class="n">module_name</span><span class="o">=</span> <span class="n">etl_task_class_type</span><span class="o">.</span><span class="n">__module__</span><span class="p">,</span>
+                                           <span class="n">class_name</span><span class="o">=</span> <span class="n">etl_task_class_type</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span>
+                                           <span class="n">display_name</span> <span class="o">=</span> <span class="n">display_name</span><span class="p">,</span>
+                                           <span class="n">parent_task_id</span><span class="o">=</span>  <span class="n">parent_task_id</span><span class="p">,</span>
+                                           <span class="n">root_task_id</span><span class="o">=</span> <span class="n">root_task_id</span><span class="p">,</span>
+                                           <span class="n">scheduler_id</span><span class="o">=</span> <span class="n">scheduler_id</span><span class="p">,</span>
+                                           <span class="n">parameters</span><span class="o">=</span> <span class="n">parameters</span><span class="p">,</span>
+                                           <span class="n">submit_by_user_id</span><span class="o">=</span> <span class="n">submit_by_user_id</span><span class="p">,</span>
+                                           <span class="n">commit</span><span class="o">=</span> <span class="n">commit</span><span class="p">,</span>
+                                           <span class="p">)</span>
+
+    
+    </div>
+<div class="viewcode-block" id="SchedulerInterface.scan_etl_classes"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.scan_etl_classes">[docs]</a>    <span class="k">def</span> <span class="nf">scan_etl_classes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">SchedulerInterface</span><span class="o">.</span><span class="n">scan_etl_classes_performed</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">etl_task_classes</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;scan_etl_classes: base_modules={}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_modules</span><span class="p">))</span>
+        
+        <span class="k">for</span> <span class="n">base_module</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_modules</span><span class="p">:</span>
+            <span class="n">base_module_spec</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">find_spec</span><span class="p">(</span><span class="n">base_module</span><span class="p">)</span>            
+            <span class="bp">self</span><span class="o">.</span><span class="n">_scan_etl_classes_in_base</span><span class="p">(</span> <span class="n">base_module_spec</span> <span class="p">)</span>
+    </div>
+    <span class="k">def</span> <span class="nf">_scan_etl_classes_in_base</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base_module_spec</span><span class="p">):</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">base_module_spec</span><span class="o">.</span><span class="n">submodule_search_locations</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="n">base_module_spec</span><span class="o">.</span><span class="n">name</span> <span class="o">+</span> <span class="s1">&#39;.&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;_scan_etl_classes_in_base: scanning path={}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">path</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;_scan_etl_classes_in_base: using prefix={}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">prefix</span><span class="p">))</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">module_finder</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ispkg</span><span class="p">)</span> <span class="ow">in</span> <span class="n">pkgutil</span><span class="o">.</span><span class="n">walk_packages</span><span class="p">(</span><span class="n">path</span><span class="o">=</span> <span class="n">path</span><span class="p">,</span>
+                                                                  <span class="n">prefix</span><span class="o">=</span> <span class="n">prefix</span><span class="p">,</span>
+                                                                  <span class="n">onerror</span><span class="o">=</span> <span class="k">lambda</span> <span class="n">pkg</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;Error importing package {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">pkg</span><span class="p">))</span>
+                                                                  <span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">ispkg</span><span class="p">:</span>
+                <span class="n">module</span> <span class="o">=</span> <span class="bp">None</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;_scan_etl_classes_in_base: Loading module {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+                    <span class="n">module_loader</span> <span class="o">=</span> <span class="n">module_finder</span><span class="o">.</span><span class="n">find_spec</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">loader</span>
+                    <span class="n">module</span> <span class="o">=</span> <span class="n">module_loader</span><span class="o">.</span><span class="n">load_module</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+                <span class="k">except</span> <span class="p">(</span><span class="ne">Exception</span><span class="p">,</span><span class="ne">SystemExit</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span> <span class="c1">#pylint: disable=broad-except</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;_scan_etl_classes_in_base: Skipping {} due to {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">module</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;_scan_etl_classes_in_base: Checking for matching class(es) in {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+                        <span class="n">task_class_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_etl_classes_in_module</span><span class="p">(</span><span class="n">module</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">task_class_dict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">etl_task_classes</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">task_class_dict</span><span class="p">)</span>                                
+                    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;_scan_etl_classes_in_base: Skipping {} due to {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
+    
+    <span class="k">def</span> <span class="nf">_find_etl_classes_in_module</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">module</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns a dictionary of the ETLTask instances defined in a given module</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">class_matches_by_type</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        
+        <span class="c1">## Look for ETLTask inherited classes</span>
+        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">classObj</span> <span class="ow">in</span> <span class="n">inspect</span><span class="o">.</span><span class="n">getmembers</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">inspect</span><span class="o">.</span><span class="n">isclass</span><span class="p">):</span>
+            <span class="c1">## Check that the class is defined in our module and not imported</span>
+            <span class="k">if</span> <span class="n">classObj</span><span class="o">.</span><span class="n">__module__</span> <span class="o">==</span> <span class="n">module</span><span class="o">.</span><span class="n">__name__</span><span class="p">:</span>
+                <span class="n">baseclasses</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">getmro</span><span class="p">(</span><span class="n">classObj</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">ETLTask</span> <span class="ow">in</span> <span class="n">baseclasses</span> <span class="ow">and</span> <span class="nb">str</span><span class="p">(</span><span class="n">classObj</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">str</span><span class="p">(</span><span class="n">ETLTask</span><span class="p">):</span>
+                    <span class="n">inst</span> <span class="o">=</span> <span class="n">classObj</span><span class="p">()</span>
+                    <span class="n">qualified_name</span> <span class="o">=</span> <span class="n">inst</span><span class="o">.</span><span class="n">name</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;_find_etl_classes_in_module found {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">qualified_name</span><span class="p">))</span>                        
+                    <span class="n">class_matches_by_type</span><span class="p">[</span><span class="n">qualified_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">classObj</span>
+        
+        <span class="k">return</span> <span class="n">class_matches_by_type</span>    
+    
+    <span class="k">def</span> <span class="nf">_find_etl_class_in_module</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">module</span><span class="p">,</span> <span class="n">class_name</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">class_matches_by_type</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_etl_classes_in_module</span><span class="p">(</span><span class="n">module</span><span class="p">)</span>
+        <span class="n">task_class</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">class_matches_by_type</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">name</span><span class="p">,</span> <span class="n">task_class</span> <span class="o">=</span> <span class="n">class_matches_by_type</span><span class="o">.</span><span class="n">popitem</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;_find_etl_class_in_module found 1 ETLTask matching class {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">class_name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">class_name</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">__name__</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;_find_etl_class_in_module found ETLTask classes {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">class_matches_by_type</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">class_matches_by_type</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="n">class_name</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+                    <span class="n">task_class</span> <span class="o">=</span> <span class="n">class_matches_by_type</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;_find_etl_class_in_module found class by name {}={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">task_class</span><span class="p">,</span> <span class="n">class_name</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">task_class</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Module {} doesn&#39;t contain a single ETLTask class, could not choose class from {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">class_matches_by_type</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">task_class</span>
+    
+    <span class="k">def</span> <span class="nf">_get_class_from_qualified_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">qualified_name</span><span class="p">):</span>
+        <span class="n">parts</span> <span class="o">=</span> <span class="n">qualified_name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)</span>
+        <span class="n">module_part</span> <span class="o">=</span> <span class="s1">&#39;.&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">class_part</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">module</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">import_module</span><span class="p">(</span><span class="n">module_part</span><span class="p">)</span>
+        <span class="n">etl_class</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_etl_class_in_module</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">class_part</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">etl_class</span>
+
+<div class="viewcode-block" id="SchedulerInterface.find_etl_classes"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_classes">[docs]</a>    <span class="k">def</span> <span class="nf">find_etl_classes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partial_module_name</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">SchedulerInterface</span><span class="o">.</span><span class="n">scan_etl_classes_performed</span><span class="p">:</span>            
+            <span class="c1">## Since we don&#39;t have a class database, try and quickly import the module assuming it&#39;s fully qualified</span>
+            <span class="c1">## TODO: Once classes and dependency hierarchy is stored in the database, scan that instead.</span>
+            <span class="k">try</span><span class="p">:</span> 
+                <span class="c1">## We try to get the class simply to verify it exists</span>
+                <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_class_from_qualified_name</span><span class="p">(</span><span class="n">partial_module_name</span><span class="p">)</span>
+                <span class="k">return</span> <span class="p">[</span><span class="n">partial_module_name</span><span class="p">]</span> <span class="c1">## Caller wants the qualified name not the instance</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">ImportError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+                <span class="k">pass</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scan_etl_classes</span><span class="p">()</span>
+        
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">partial_module_name</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">partial_module_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">partial_module_name</span><span class="p">)</span>
+        
+        <span class="n">matches</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">etl_class</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">etl_task_classes</span><span class="p">:</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">fnmatch</span><span class="o">.</span><span class="n">fnmatch</span><span class="p">(</span><span class="n">etl_class</span><span class="p">,</span> <span class="n">partial_module_name</span><span class="p">)</span>
+                <span class="ow">or</span> <span class="n">fnmatch</span><span class="o">.</span><span class="n">fnmatch</span><span class="p">(</span><span class="n">etl_class</span><span class="p">,</span> <span class="s1">&#39;*.&#39;</span> <span class="o">+</span> <span class="n">partial_module_name</span> <span class="o">+</span> <span class="s1">&#39;.*&#39;</span><span class="p">)</span>
+                <span class="ow">or</span> <span class="n">fnmatch</span><span class="o">.</span><span class="n">fnmatch</span><span class="p">(</span><span class="n">etl_class</span><span class="p">,</span> <span class="s1">&#39;*.&#39;</span> <span class="o">+</span> <span class="n">partial_module_name</span><span class="p">)</span>
+                <span class="ow">or</span> <span class="n">fnmatch</span><span class="o">.</span><span class="n">fnmatch</span><span class="p">(</span><span class="n">etl_class</span><span class="p">,</span> <span class="n">partial_module_name</span> <span class="o">+</span> <span class="s1">&#39;.*&#39;</span><span class="p">)</span>
+                <span class="p">):</span>
+                <span class="n">matches</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">etl_class</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">matches</span>    
+</div>
+<div class="viewcode-block" id="SchedulerInterface.find_etl_class_name"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_class_name">[docs]</a>    <span class="k">def</span> <span class="nf">find_etl_class_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partial_module_name</span><span class="p">):</span>
+        <span class="n">matches</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_etl_classes</span><span class="p">(</span><span class="n">partial_module_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">matches</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">matches</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;partial_module_name {} matched {} and not a single record&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">partial_module_name</span><span class="p">,</span> <span class="n">matches</span><span class="p">))</span>
+        </div>
+<div class="viewcode-block" id="SchedulerInterface.get_etl_class_instance"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_etl_class_instance">[docs]</a>    <span class="k">def</span> <span class="nf">get_etl_class_instance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">qualified_name</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">SchedulerInterface</span><span class="o">.</span><span class="n">scan_etl_classes_performed</span><span class="p">:</span>
+            <span class="c1">## Since we don&#39;t have a class database, try and quickly import the module assuming it&#39;s fully qualified</span>
+            <span class="n">etl_class</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_class_from_qualified_name</span><span class="p">(</span><span class="n">qualified_name</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">etl_class</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">etl_task_classes</span><span class="p">[</span><span class="n">qualified_name</span><span class="p">]</span>
+    </div>
+<div class="viewcode-block" id="SchedulerInterface.find_etl_class_instance"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_class_instance">[docs]</a>    <span class="k">def</span> <span class="nf">find_etl_class_instance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partial_module_name</span><span class="p">):</span>
+        <span class="n">class_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_etl_class_name</span><span class="p">(</span><span class="n">partial_module_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_etl_class_instance</span><span class="p">(</span><span class="n">class_name</span><span class="p">)</span>        
+    </div>
+<div class="viewcode-block" id="SchedulerInterface.find_etl_class_type"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.find_etl_class_type">[docs]</a>    <span class="k">def</span> <span class="nf">find_etl_class_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partial_module_name</span><span class="p">):</span>
+        <span class="n">class_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_etl_class_name</span><span class="p">(</span><span class="n">partial_module_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_etl_class_instance</span><span class="p">(</span><span class="n">class_name</span><span class="p">)</span><span class="o">.</span><span class="n">__class__</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.add_task_by_partial_name"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_by_partial_name">[docs]</a>    <span class="k">def</span> <span class="nf">add_task_by_partial_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                         <span class="n">partial_module_name</span><span class="p">,</span>
+                         <span class="n">display_name</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                         <span class="n">parent_task_id</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                         <span class="n">root_task_id</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                         <span class="n">scheduler_id</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                         <span class="n">parameters</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                         <span class="n">submit_by_user_id</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                         <span class="n">commit</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                         <span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Add a task to the scheduler using the module_name (partial) and optionally class_name</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        task_id: int</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">etl_task_class_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">find_etl_class_name</span><span class="p">(</span><span class="n">partial_module_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_task_by_exact_name</span><span class="p">(</span><span class="n">etl_task_class_name</span><span class="p">,</span>
+                                           <span class="n">display_name</span><span class="o">=</span> <span class="n">display_name</span><span class="p">,</span>
+                                           <span class="n">parent_task_id</span><span class="o">=</span><span class="n">parent_task_id</span><span class="p">,</span>
+                                           <span class="n">root_task_id</span><span class="o">=</span><span class="n">root_task_id</span><span class="p">,</span>
+                                           <span class="n">scheduler_id</span><span class="o">=</span><span class="n">scheduler_id</span><span class="p">,</span>
+                                           <span class="n">parameters</span><span class="o">=</span><span class="n">parameters</span><span class="p">,</span>
+                                           <span class="n">submit_by_user_id</span><span class="o">=</span> <span class="n">submit_by_user_id</span><span class="p">,</span>
+                                           <span class="n">commit</span><span class="o">=</span><span class="n">commit</span><span class="p">,</span>
+                                           <span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.get_task_record"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_task_record">[docs]</a>    <span class="k">def</span> <span class="nf">get_task_record</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task_id</span><span class="p">):</span>
+        <span class="c1">## Make sure task_id is an integer</span>
+        <span class="n">task_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">ETL_Tasks</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.get_task_status"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_task_status">[docs]</a>    <span class="k">def</span> <span class="nf">get_task_status</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task_id</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Gets the Status of a task</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        status_of_task: bi_etl.scheduler.status.Status</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_task_record</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span><span class="o">.</span><span class="n">Status</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.wait_for_task"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.wait_for_task">[docs]</a>    <span class="k">def</span> <span class="nf">wait_for_task</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task_id</span><span class="p">,</span> <span class="n">check_interval</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">max_wait</span> <span class="o">=</span> <span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Waits for a task to finish.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        task_id: int</span>
+<span class="sd">            The task_id to wait for</span>
+
+<span class="sd">        check_interval: float</span>
+<span class="sd">            How many seconds to wait between checks.</span>
+<span class="sd">            The argument may be a floating point number for subsecond precision.</span>
+<span class="sd">            </span>
+<span class="sd">        max_wait: float</span>
+<span class="sd">            The maximum seconds to wait for the job to finish.  If None or 0, will wait indefinitely.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        status_of_task: bi_etl.scheduler.status.Status</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">timer</span> <span class="o">=</span> <span class="n">Timer</span><span class="p">()</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_task_status</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span><span class="o">.</span><span class="n">is_finished</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">max_wait</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">timer</span><span class="o">.</span><span class="n">seconds_elapsed</span> <span class="o">&gt;</span> <span class="n">max_wait</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">TimeoutError</span><span class="p">(</span><span class="s1">&#39;wait_for_task wait time {} exceeded max_wait {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">timer</span><span class="o">.</span><span class="n">seconds_elapsed</span><span class="p">,</span> <span class="n">max_wait</span><span class="p">))</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">check_interval</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_task_status</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.add_task_paramter"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_paramter">[docs]</a>    <span class="k">def</span> <span class="nf">add_task_paramter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">,</span> <span class="n">parameter_name</span><span class="p">,</span> <span class="n">parameter_value</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="n">task_rec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_task_record</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">ETL_Tasks</span><span class="p">):</span>
+            <span class="n">task_rec</span> <span class="o">=</span> <span class="n">task</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;add_task_paramter task parameter must be int or ETL_Tasks&quot;</span><span class="p">)</span>
+        <span class="n">task_rec</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">append</span><span class="p">(</span> <span class="n">ETL_Task_Params</span><span class="p">(</span><span class="n">parameter_name</span><span class="p">,</span> <span class="n">pickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">parameter_value</span><span class="p">)</span> <span class="p">)</span> <span class="p">)</span>
+        <span class="k">if</span> <span class="n">commit</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.add_task_paramters"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.add_task_paramters">[docs]</a>    <span class="k">def</span> <span class="nf">add_task_paramters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">,</span> <span class="n">parameters</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="n">task_rec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_task_record</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">ETL_Tasks</span><span class="p">):</span>
+            <span class="n">task_rec</span> <span class="o">=</span> <span class="n">task</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;add_task_paramters task parameter must be int or ETL_Tasks&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">parameters</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">parameter_name</span><span class="p">,</span> <span class="n">parameter_value</span> <span class="ow">in</span> <span class="n">parameters</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">add_task_paramter</span><span class="p">(</span><span class="n">task_rec</span><span class="p">,</span> <span class="n">parameter_name</span><span class="p">,</span> <span class="n">parameter_value</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="n">commit</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span> <span class="c1">## assume it&#39;s a dict</span>
+            <span class="k">for</span> <span class="n">parameter_name</span> <span class="ow">in</span> <span class="n">parameters</span><span class="p">:</span>
+                <span class="n">parameter_value</span> <span class="o">=</span> <span class="n">parameters</span><span class="p">[</span><span class="n">parameter_name</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">add_task_paramter</span><span class="p">(</span><span class="n">task_rec</span><span class="p">,</span> <span class="n">parameter_name</span><span class="p">,</span> <span class="n">parameter_value</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="n">commit</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">commit</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.get_task_parameter_dict"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_task_parameter_dict">[docs]</a>    <span class="k">def</span> <span class="nf">get_task_parameter_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="n">task_id</span> <span class="o">=</span> <span class="n">task</span>
+            <span class="n">task_rec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_task_record</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">ETL_Tasks</span><span class="p">):</span>
+            <span class="n">task_rec</span> <span class="o">=</span> <span class="n">task</span>
+            <span class="n">task_id</span> <span class="o">=</span> <span class="n">task_rec</span><span class="o">.</span><span class="n">task_id</span>
+            <span class="k">assert</span> <span class="n">task_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">,</span> <span class="s2">&quot;get_task_parameter_dict called for task with no task_id {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">task_rec</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Getting parameters for task id {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span> <span class="p">)</span>
+        <span class="n">params_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">param_rec</span> <span class="ow">in</span> <span class="n">task_rec</span><span class="o">.</span><span class="n">parameters</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">param_value</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">param_rec</span><span class="o">.</span><span class="n">param_value</span><span class="p">)</span>
+                <span class="n">params_dict</span><span class="p">[</span><span class="n">param_rec</span><span class="o">.</span><span class="n">param_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">param_value</span>
+            <span class="k">except</span> <span class="n">pickle</span><span class="o">.</span><span class="n">UnpicklingError</span><span class="p">:</span>
+                <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">()</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">param_rec</span><span class="o">.</span><span class="n">param_value</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">200</span><span class="p">:</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;ETL Task {} unable to unpickle {} value (too long to print. len={})&quot;</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">task_id</span><span class="p">),</span>
+                                     <span class="n">param_rec</span><span class="o">.</span><span class="n">param_name</span><span class="p">,</span>
+                                     <span class="nb">len</span><span class="p">(</span><span class="n">param_rec</span><span class="o">.</span><span class="n">param_value</span><span class="p">)</span>
+                                     <span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;ETL Task {} unable to unpickle {} value &#39;{}&#39;&quot;</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">task_id</span><span class="p">),</span>
+                                     <span class="n">param_rec</span><span class="o">.</span><span class="n">param_name</span><span class="p">,</span>
+                                     <span class="n">param_rec</span><span class="o">.</span><span class="n">param_value</span>
+                                     <span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                <span class="k">raise</span>
+        <span class="k">return</span> <span class="n">params_dict</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.load_parameters"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.load_parameters">[docs]</a>    <span class="k">def</span> <span class="nf">load_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">etl_task</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        This is done in the etl_task thread/process (called by run method)</span>
+<span class="sd">        so that the parameters don&#39;t have to be loaded into the scheduler thread or passed between threads/processes.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">params_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_task_parameter_dict</span><span class="p">(</span><span class="n">etl_task</span><span class="o">.</span><span class="n">task_id</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">param_name</span> <span class="ow">in</span> <span class="n">params_dict</span><span class="p">:</span>
+            <span class="n">etl_task</span><span class="o">.</span><span class="n">add_parameter</span><span class="p">(</span><span class="n">param_name</span><span class="p">,</span> <span class="n">params_dict</span><span class="p">[</span><span class="n">param_name</span><span class="p">],</span> <span class="n">local_only</span><span class="o">=</span> <span class="bp">True</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.get_jobs_by_root_id"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_jobs_by_root_id">[docs]</a>    <span class="k">def</span> <span class="nf">get_jobs_by_root_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root_task_id</span><span class="p">):</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">ETL_Tasks</span><span class="p">)</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ETL_Tasks</span><span class="o">.</span><span class="n">root_task_id</span> <span class="o">==</span> <span class="n">root_task_id</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">query</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.get_status_code_list"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_status_code_list">[docs]</a>    <span class="k">def</span> <span class="nf">get_status_code_list</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">ETL_Task_Status_CD</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.get_heartbeat_time"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_heartbeat_time">[docs]</a>    <span class="k">def</span> <span class="nf">get_heartbeat_time</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_row</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_row</span><span class="o">.</span><span class="n">last_heartbeat</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.get_heartbeat_age_timedelta"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.get_heartbeat_age_timedelta">[docs]</a>    <span class="k">def</span> <span class="nf">get_heartbeat_age_timedelta</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">last_heartbeat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_heartbeat_time</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">last_heartbeat</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span> 
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="n">last_heartbeat</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SchedulerInterface.heatbeat_now"><a class="viewcode-back" href="../../../bi_etl.scheduler.scheduler_interface.html#bi_etl.scheduler.scheduler_interface.SchedulerInterface.heatbeat_now">[docs]</a>    <span class="k">def</span> <span class="nf">heatbeat_now</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_row</span><span class="o">.</span><span class="n">last_heartbeat</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">SchedulerInterface</span><span class="p">,</span> <span class="p">()</span> <span class="p">)</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

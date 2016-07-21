@@ -1,0 +1,1142 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.scheduler.task &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for bi_etl.scheduler.task</h1><div class="highlight"><pre>
+<span></span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Created on Sep 15, 2014</span>
+
+<span class="sd">@author: woodd</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">import</span> <span class="nn">errno</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">traceback</span>
+<span class="kn">from</span> <span class="nn">queue</span> <span class="kn">import</span> <span class="n">Empty</span>
+
+<span class="kn">from</span> <span class="nn">CaseInsensitiveDict</span> <span class="kn">import</span> <span class="n">CaseInsensitiveDict</span>
+
+<span class="kn">from</span> <span class="nn">bi_etl</span> <span class="kn">import</span> <span class="n">utility</span>
+<span class="kn">from</span> <span class="nn">bi_etl.bi_config_parser</span> <span class="kn">import</span> <span class="n">BIConfigParser</span>
+<span class="kn">from</span> <span class="nn">bi_etl.database.connect</span> <span class="kn">import</span> <span class="n">Connect</span>
+<span class="kn">from</span> <span class="nn">bi_etl.notifiers.email</span> <span class="kn">import</span> <span class="n">Email</span>
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler</span> <span class="kn">import</span> <span class="n">models</span>
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler</span> <span class="kn">import</span> <span class="n">queue_io</span>
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler.exceptions</span> <span class="kn">import</span> <span class="n">ParameterError</span><span class="p">,</span> <span class="n">TaskStopRequested</span>
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler.messages</span> <span class="kn">import</span> <span class="n">ChildRunOK</span>
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler.messages</span> <span class="kn">import</span> <span class="n">ChildRunRequested</span>
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler.messages</span> <span class="kn">import</span> <span class="n">ChildSetDisplayName</span>
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler.messages</span> <span class="kn">import</span> <span class="n">ChildStatusUpdate</span>
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler.status</span> <span class="kn">import</span> <span class="n">Status</span>
+<span class="kn">from</span> <span class="nn">bi_etl.statistics</span> <span class="kn">import</span> <span class="n">Statistics</span>
+<span class="kn">from</span> <span class="nn">bi_etl.timer</span> <span class="kn">import</span> <span class="n">Timer</span>
+
+
+<span class="c1"># For memory testing:</span>
+<span class="c1"># import gc</span>
+<span class="c1"># from pympler import tracker</span>
+
+<span class="c1"># pylint: disable=too-many-instance-attributes, too-many-public-methods</span>
+<span class="c1"># pylint: disable=too-many-statements, too-many-branches, too-many-arguments</span>
+
+<div class="viewcode-block" id="ETLTask"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask">[docs]</a><span class="k">class</span> <span class="nc">ETLTask</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    ETL Task runnable base class.</span>
+
+<span class="sd">    load() **must** be overridden.</span>
+
+<span class="sd">    depends_on() should be overridden.</span>
+
+<span class="sd">    start_following_tasks() can be overridden.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">DEFAULT_NO_MAIL</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="n">CLASS_VERSION</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">task_id</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">parent_task_id</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">root_task_id</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">scheduler</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">task_rec</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">config</span><span class="o">=</span><span class="bp">None</span>
+                 <span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Constructor. This code will run on the scheduler thread and the execution thread.</span>
+<span class="sd">        It should do as little as possible.</span>
+
+<span class="sd">         Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        task_id: int</span>
+<span class="sd">            The task_id of the job (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).</span>
+<span class="sd">        parent_task_id: int</span>
+<span class="sd">            The task_id of the parent of this job (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).</span>
+<span class="sd">        root_task_id: int</span>
+<span class="sd">            The task_id of the root ancestor of this job</span>
+<span class="sd">            (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).</span>
+<span class="sd">        scheduler: bi_etl.scheduler.scheduler.Scheduler</span>
+<span class="sd">            The :class:`bi_etl.scheduler.scheduler.Scheduler` this job should be run under.</span>
+<span class="sd">            Defaults to not running via a scheduler.</span>
+<span class="sd">        config: bi_etl.bi_config_parser.BIConfigParser</span>
+<span class="sd">            The configuration :class:`bi_etl.bi_config_parser.BIConfigParser` to use</span>
+<span class="sd">            (See :doc:`config_ini`). If passed it should be an instance</span>
+<span class="sd">            of :class:`bi_etl.bi_config_parser.BIConfigParser`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_log</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_task_rec</span> <span class="o">=</span> <span class="bp">None</span>
+
+        <span class="c1"># If we got both task_id and task_rec</span>
+        <span class="k">if</span> <span class="n">task_id</span> <span class="ow">and</span> <span class="n">task_rec</span><span class="p">:</span>
+            <span class="c1"># Make sure they match</span>
+            <span class="k">assert</span> <span class="n">task_id</span> <span class="o">==</span> <span class="n">task_rec</span><span class="o">.</span><span class="n">task_id</span><span class="p">,</span> <span class="s1">&#39;Conflicting task_id values given {} and {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">task_id</span><span class="p">,</span>
+                                                                                                    <span class="n">task_rec</span><span class="o">.</span><span class="n">task_id</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span> <span class="o">=</span> <span class="n">task_rec</span>
+        <span class="c1"># Otherwise if we got only task_id</span>
+        <span class="k">elif</span> <span class="n">task_id</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">task_id</span><span class="p">,</span> <span class="nb">int</span><span class="p">),</span> <span class="s2">&quot;task_id is not an integer or None!&quot;</span>
+            <span class="k">if</span> <span class="n">scheduler</span><span class="p">:</span>
+                <span class="c1"># If we got a scheduler, use it to get the task_record</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span> <span class="o">=</span> <span class="n">scheduler</span><span class="o">.</span><span class="n">get_task_record</span><span class="p">(</span><span class="n">task_id</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Otherwise make one (it will never get stored though</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">ETL_Tasks</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">task_id</span> <span class="o">=</span> <span class="n">task_id</span>
+        <span class="c1"># Otherwise if we got only task_rec</span>
+        <span class="k">elif</span> <span class="n">task_rec</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span> <span class="o">=</span> <span class="n">task_rec</span>
+        <span class="c1"># Otherwise we didn&#39;t get either (local run)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Make a task_rec (it will never get stored though)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">ETL_Tasks</span><span class="p">()</span>
+        <span class="c1"># Make sure we don&#39;t refer to task_rec anymore only self.task_rec</span>
+        <span class="k">del</span> <span class="n">task_rec</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent_task_id</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">parent_task_id</span> <span class="o">=</span> <span class="n">parent_task_id</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">parent_task_id</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">parent_task_id</span><span class="p">,</span> <span class="s1">&#39;Conflicting parent_task_id values given {} and {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">task_id</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">parent_task_id</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">root_task_id</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">root_task_id</span> <span class="o">=</span> <span class="n">root_task_id</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">root_task_id</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">root_task_id</span><span class="p">,</span> <span class="s1">&#39;Conflicting parent_task_id values given {} and {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">root_task_id</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">root_task_id</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_externally_provided_scheduler</span> <span class="o">=</span> <span class="p">(</span><span class="n">scheduler</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_scheduler</span> <span class="o">=</span> <span class="n">scheduler</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_config</span> <span class="o">=</span> <span class="n">config</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">Status</span><span class="o">.</span><span class="n">new</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parameters_loaded</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parameter_dict</span> <span class="o">=</span> <span class="n">CaseInsensitiveDict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parent_to_child</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">object_registry</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">thread_running</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">summary_message_from_client</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_log_msg_time</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pending_log_msgs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_log_msg</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="c1"># set initial default value for waiting_for_workflow</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">waiting_for_workflow</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="c1"># Try and get waiting_for_workflow from the parent</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent_task_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">waiting_for_workflow</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent_task</span><span class="o">.</span><span class="n">needs_to_ok_child_runs</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">parent_task</span><span class="o">.</span><span class="n">register_child</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+                <span class="k">pass</span>  <span class="c1"># We&#39;re not running on a full Scheduler</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_children</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="c1"># Used by the scheduler to tell if this task has written it&#39;s dependencies to the log</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_logged_dependencies</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_normalized_dependents_set</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mutually_exclusive_with_set</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_database_pool</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">init_timer</span> <span class="o">=</span> <span class="n">Timer</span><span class="p">(</span><span class="n">start_running</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">load_timer</span> <span class="o">=</span> <span class="n">Timer</span><span class="p">(</span><span class="n">start_running</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">finish_timer</span> <span class="o">=</span> <span class="n">Timer</span><span class="p">(</span><span class="n">start_running</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__getstate__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">odict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="n">odict</span><span class="p">[</span><span class="s1">&#39;version&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">CLASS_VERSION</span>
+        <span class="n">odict</span><span class="p">[</span><span class="s1">&#39;task_id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_id</span>
+        <span class="n">odict</span><span class="p">[</span><span class="s1">&#39;root_task_id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">root_task_id</span>
+        <span class="n">odict</span><span class="p">[</span><span class="s1">&#39;parent_task_id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent_task_id</span>
+        <span class="n">odict</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">status</span>
+        <span class="c1"># We don&#39;t pass scheduler or config from the Scheduler to the running instance</span>
+        <span class="c1"># odict[&#39;scheduler&#39;] = self._scheduler</span>
+        <span class="c1"># print(&quot;__getstate__ {}&quot;.format(utility.dict_to_str(odict)))</span>
+        <span class="k">return</span> <span class="n">odict</span>
+
+    <span class="k">def</span> <span class="nf">__setstate__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">odict</span><span class="p">):</span>
+        <span class="c1"># print(&quot;__setstate__ {}&quot;.format(utility.dict_to_str(odict)))</span>
+        <span class="k">if</span> <span class="s1">&#39;version&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">odict</span><span class="p">:</span>
+            <span class="n">odict</span><span class="p">[</span><span class="s1">&#39;version&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">if</span> <span class="n">odict</span><span class="p">[</span><span class="s1">&#39;version&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">CLASS_VERSION</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;ETLTask versions incompatible between scheduler and target server&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">task_id</span><span class="o">=</span><span class="n">odict</span><span class="p">[</span><span class="s1">&#39;task_id&#39;</span><span class="p">],</span>
+                      <span class="n">parent_task_id</span><span class="o">=</span><span class="n">odict</span><span class="p">[</span><span class="s1">&#39;parent_task_id&#39;</span><span class="p">],</span>
+                      <span class="n">root_task_id</span><span class="o">=</span><span class="n">odict</span><span class="p">[</span><span class="s1">&#39;root_task_id&#39;</span><span class="p">],</span>
+                      <span class="c1"># We don&#39;t pass scheduler or config from the Scheduler to the running instance</span>
+                      <span class="c1"># scheduler= odict[&#39;scheduler&#39;]</span>
+                      <span class="p">)</span>
+
+<div class="viewcode-block" id="ETLTask.log_logging_level"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.log_logging_level">[docs]</a>    <span class="k">def</span> <span class="nf">log_logging_level</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Calling bi_etl.utility version</span>
+        <span class="n">utility</span><span class="o">.</span><span class="n">log_logging_level</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;{cls}(task_id={task_id}, parent_task_id={parent_task_id}, root_task_id={root_task_id})&quot;</span>
+        <span class="k">return</span> <span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">cls</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="n">task_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">task_id</span><span class="p">,</span>
+            <span class="n">parent_task_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">parent_task_id</span><span class="p">,</span>
+            <span class="n">root_task_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">root_task_id</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Note: Return value needs to be compatible with find_etl_class</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">module</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__module__</span>
+
+        <span class="k">return</span> <span class="n">module</span> <span class="o">+</span> <span class="s1">&#39;.&#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">task_rec</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_task_rec</span>
+
+    <span class="nd">@task_rec.setter</span>
+    <span class="k">def</span> <span class="nf">task_rec</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_value</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">new_value</span><span class="p">,</span> <span class="n">models</span><span class="o">.</span><span class="n">ETL_Tasks</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_task_rec</span> <span class="o">=</span> <span class="n">new_value</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">status</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">Status</span>
+
+    <span class="nd">@status.setter</span>
+    <span class="k">def</span> <span class="nf">status</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">Status</span> <span class="o">=</span> <span class="n">new_value</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">task_id</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">task_id</span>
+
+    <span class="nd">@task_id.setter</span>
+    <span class="k">def</span> <span class="nf">task_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">new_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">new_value</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">new_value</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">task_id</span> <span class="o">=</span> <span class="n">new_value</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">display_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">display_name</span>
+
+    <span class="nd">@display_name.setter</span>
+    <span class="k">def</span> <span class="nf">display_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">ChildSetDisplayName</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">task_id</span><span class="p">,</span> <span class="n">new_value</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">display_name</span> <span class="o">=</span> <span class="n">new_value</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;Setting display_name in task_rec= {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">new_value</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">display_name</span> <span class="o">=</span> <span class="n">new_value</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">parent_task_id</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">parent_task_id</span>
+
+    <span class="nd">@parent_task_id.setter</span>
+    <span class="k">def</span> <span class="nf">parent_task_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">new_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">new_value</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">new_value</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">parent_task_id</span> <span class="o">=</span> <span class="n">new_value</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">parent_task</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent_task_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_scheduler</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_scheduler</span><span class="p">,</span> <span class="s1">&#39;get_task_by_id&#39;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_scheduler</span><span class="o">.</span><span class="n">get_task_by_id</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parent_task_id</span><span class="p">)</span>  <span class="c1"># pylint: disable=no-member</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s1">&#39;Scheduler required to get ETLTask.parent_task&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">root_task_id</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">root_task_id</span>
+
+    <span class="nd">@root_task_id.setter</span>
+    <span class="k">def</span> <span class="nf">root_task_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">new_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">new_value</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">new_value</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">task_rec</span><span class="o">.</span><span class="n">root_task_id</span> <span class="o">=</span> <span class="n">new_value</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">root_task</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">root_task_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="p">)</span><span class="o">.</span><span class="n">__name__</span> <span class="o">==</span> <span class="s1">&#39;Scheduler&#39;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">get_task_by_id</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">root_task_id</span><span class="p">)</span>  <span class="c1"># pylint: disable=no-member</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s1">&#39;Scheduler required to get ETLTask.root_task&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">children</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_children</span>
+
+<div class="viewcode-block" id="ETLTask.register_child"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.register_child">[docs]</a>    <span class="k">def</span> <span class="nf">register_child</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">child_task_object</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_children</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">child_task_object</span><span class="p">)</span>
+</div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">log</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Get a logger using the task name.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_log</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_log</span>
+
+    <span class="c1"># pylint: disable=no-self-use</span>
+<div class="viewcode-block" id="ETLTask.depends_on"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.depends_on">[docs]</a>    <span class="k">def</span> <span class="nf">depends_on</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Override to provide a static list of tasks that this task will wait on if they are running.</span>
+
+<span class="sd">        Each dependent task entry should consist of either</span>
+<span class="sd">        1) The module name (str)</span>
+<span class="sd">        2) A tuple of the module name (str) and class name (str)</span>
+
+<span class="sd">        This task will run if the dependent jobs are not active at all in the scheduler.</span>
+<span class="sd">        This does mean you need to be careful with the order that jobs are added to the scheduler since</span>
+<span class="sd">        if jobs are supposed to run A-&gt;B-&gt;C, but you add (and commit) job C first, it will see that B is</span>
+<span class="sd">        not running and start.  The scheduler would then allow A to run, and block B until both A and C</span>
+<span class="sd">        are is_finished (since it checks forward and backwards for dependencies.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">()</span>
+</div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">normalized_dependents_set</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Build a set of modules this task depends on.</span>
+<span class="sd">        See depends_on.</span>
+<span class="sd">        Each will be &quot;normalized&quot; to be a fully qualified name.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalized_dependents_set</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">normalized_dependents_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_normalized_dependents_set</span> <span class="o">=</span> <span class="n">normalized_dependents_set</span>
+            <span class="n">depends_on</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">depends_on</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">depends_on</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">depends_on</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                    <span class="n">depends_on</span> <span class="o">=</span> <span class="p">[</span><span class="n">depends_on</span><span class="p">]</span>
+
+                <span class="k">for</span> <span class="n">dep_name</span> <span class="ow">in</span> <span class="n">depends_on</span><span class="p">:</span>
+                    <span class="n">qualified_classes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">find_etl_classes</span><span class="p">(</span><span class="n">dep_name</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">qualified_classes</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="k">for</span> <span class="n">dep_task_name</span> <span class="ow">in</span> <span class="n">qualified_classes</span><span class="p">:</span>
+                            <span class="n">normalized_dependents_set</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">dep_task_name</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;dependent entry {} did not match any classes&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">dep_name</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalized_dependents_set</span>
+
+    <span class="k">def</span> <span class="nf">_mutually_exclusive_execution</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        See mutually_exclusive_execution.</span>
+<span class="sd">        This method has the default functionality so it&#39;s easier to call on that logic when</span>
+<span class="sd">        overriding mutually_exclusive_execution.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">allow_concurrent_runs</span><span class="p">():</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">]</span>
+
+<div class="viewcode-block" id="ETLTask.mutually_exclusive_execution"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.mutually_exclusive_execution">[docs]</a>    <span class="k">def</span> <span class="nf">mutually_exclusive_execution</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Override to provide a list of task names (or partial names that match modules) </span>
+<span class="sd">        that this task can not run at the same time as.</span>
+
+<span class="sd">        If allow_concurrent_runs is false, defaults to a list with just self.name</span>
+<span class="sd">        If allow_concurrent_runs is true, defaults to an empty list</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mutually_exclusive_execution</span><span class="p">()</span>
+</div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">mutually_exclusive_with_set</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Build a set of modules this task is mutually exclusive with.</span>
+<span class="sd">        The list is obtained using `mutually_exclusive_execution`.</span>
+<span class="sd">        Each list member will be &quot;normalized&quot; to be a fully qualified name.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mutually_exclusive_with_set</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">mutually_exclusive_with_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_mutually_exclusive_with_set</span> <span class="o">=</span> <span class="n">mutually_exclusive_with_set</span>
+            <span class="n">mutually_exclusive_with_list</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mutually_exclusive_execution</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">mutually_exclusive_with_list</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">mutually_exclusive_with</span> <span class="ow">in</span> <span class="n">mutually_exclusive_with_list</span><span class="p">:</span>
+                    <span class="n">mutually_exclusive_with</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">find_etl_classes</span><span class="p">(</span><span class="n">mutually_exclusive_with</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mutually_exclusive_with</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="k">for</span> <span class="n">mutually_exclusive_with_name</span> <span class="ow">in</span> <span class="n">mutually_exclusive_with</span><span class="p">:</span>
+                            <span class="n">mutually_exclusive_with_set</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">mutually_exclusive_with_name</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                            <span class="s1">&#39;mutually_exclusive value {} did not match any classes&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">mutually_exclusive_with</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mutually_exclusive_with_set</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">config</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Get the task configuration object. If it was not passed in, it will be read from the users</span>
+<span class="sd">        folder.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_config</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_config</span> <span class="o">=</span> <span class="n">BIConfigParser</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_config</span><span class="o">.</span><span class="n">read_config_ini</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_config</span><span class="o">.</span><span class="n">set_dated_log_file_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="s1">&#39;.log&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_config</span><span class="o">.</span><span class="n">setup_logging</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_config</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">scheduler</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Get the existing :class`bi_etl.scheduler.scheduler.Scheduler` that this task is running under.</span>
+<span class="sd">        or</span>
+<span class="sd">        Get an instance of :class`bi_etl.scheduler.scheduler_interface.SchedulerInterface` that can be</span>
+<span class="sd">        used to interact with the main Scheduler.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_scheduler</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c1"># Import is done here to prevent circular module level imports</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Building scheduler&quot;</span><span class="p">)</span>
+            <span class="kn">from</span> <span class="nn">bi_etl.scheduler.scheduler_interface</span> <span class="kn">import</span> <span class="n">SchedulerInterface</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_scheduler</span> <span class="o">=</span> <span class="n">SchedulerInterface</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span>
+                                                 <span class="n">log_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">+</span> <span class="s1">&#39;_SchedulerInterface&#39;</span>
+                                                 <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_scheduler</span>
+
+<div class="viewcode-block" id="ETLTask.add_child_task_to_scheduler"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.add_child_task_to_scheduler">[docs]</a>    <span class="k">def</span> <span class="nf">add_child_task_to_scheduler</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                                    <span class="n">etl_task_class_type</span><span class="p">,</span>
+                                    <span class="n">parameters</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                                    <span class="n">display_name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                                    <span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Start a new task on the :class`bi_etl.scheduler.scheduler.Scheduler`</span>
+<span class="sd">        that will be a child of this task.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">new_task_id</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">new_task_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">add_task_by_class</span><span class="p">(</span><span class="n">etl_task_class_type</span><span class="p">,</span>
+                                                           <span class="n">parent_task_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">task_id</span><span class="p">,</span>
+                                                           <span class="n">root_task_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">root_task_id</span><span class="p">,</span>
+                                                           <span class="n">parameters</span><span class="o">=</span><span class="n">parameters</span><span class="p">,</span>
+                                                           <span class="n">display_name</span><span class="o">=</span><span class="n">display_name</span><span class="p">,</span>
+                                                           <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;Not running in a scheduler. Child task {} not actually scheduled.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">etl_task_class_type</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">new_task_id</span>
+</div>
+<div class="viewcode-block" id="ETLTask.add_child_task_by_partial_name_to_scheduler"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.add_child_task_by_partial_name_to_scheduler">[docs]</a>    <span class="k">def</span> <span class="nf">add_child_task_by_partial_name_to_scheduler</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                                                    <span class="n">partial_module_name</span><span class="p">,</span>
+                                                    <span class="n">parameters</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                                                    <span class="n">display_name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                                                    <span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Start a new task on the :class`bi_etl.scheduler.scheduler.Scheduler`</span>
+<span class="sd">        that will be a child of this task.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">new_task_id</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">new_task_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">add_task_by_partial_name</span><span class="p">(</span><span class="n">partial_module_name</span><span class="p">,</span>
+                                                                  <span class="n">parent_task_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">task_id</span><span class="p">,</span>
+                                                                  <span class="n">root_task_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">root_task_id</span><span class="p">,</span>
+                                                                  <span class="n">parameters</span><span class="o">=</span><span class="n">parameters</span><span class="p">,</span>
+                                                                  <span class="n">display_name</span><span class="o">=</span><span class="n">display_name</span><span class="p">,</span>
+                                                                  <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;Not running in a scheduler. Child task {} not actually scheduled.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">partial_module_name</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">new_task_id</span>
+</div>
+<div class="viewcode-block" id="ETLTask.start_following_tasks"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.start_following_tasks">[docs]</a>    <span class="k">def</span> <span class="nf">start_following_tasks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Override to add tasks that should follow after this tasks to the scheduler.</span>
+<span class="sd">        This is called at the end of ETLTask.run</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span>
+</div>
+<div class="viewcode-block" id="ETLTask.load_parameters"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.load_parameters">[docs]</a>    <span class="k">def</span> <span class="nf">load_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Load parameters for this task from the scheduler.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1"># set to loaded no matter what</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parameters_loaded</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">load_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ETLTask.add_parameter"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.add_parameter">[docs]</a>    <span class="k">def</span> <span class="nf">add_parameter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">param_name</span><span class="p">,</span> <span class="n">param_value</span><span class="p">,</span> <span class="n">local_only</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Add a single parameter to this task.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        param_name: str</span>
+<span class="sd">            The name of the parameter to add</span>
+<span class="sd">        param_value: str </span>
+<span class="sd">            The value of the parameter</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parameters_loaded</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">load_parameters</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parameter_dict</span><span class="p">[</span><span class="n">param_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">param_value</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">local_only</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;add_parameter to scheduler {} = {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">param_name</span><span class="p">,</span> <span class="n">param_value</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">add_task_paramter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">task_id</span><span class="p">,</span> <span class="n">param_name</span><span class="p">,</span> <span class="n">param_value</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="n">commit</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;Parameter not stored in scheduler because we have no task_id&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s2">&quot;add_parameter local {}={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">param_name</span><span class="p">,</span> <span class="n">param_value</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="ETLTask.add_parameters"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.add_parameters">[docs]</a>    <span class="k">def</span> <span class="nf">add_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">local_only</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Add multiple parameters to this task.</span>
+<span class="sd">        Parameters can be passed in as any combination of:</span>
+<span class="sd">        * dict instance. Example ``add_parameters( {&#39;param1&#39;:&#39;example&#39;, &#39;param2&#39;:100} )``</span>
+<span class="sd">        * list of lists. Example: ``add_parameters( [ [&#39;param1&#39;,&#39;example&#39;], [&#39;param2&#39;,100] ] )``</span>
+<span class="sd">        * list of tuples. Example: ``add_parameters( [ (&#39;param1&#39;,&#39;example&#39;), (&#39;param2&#39;,100) ] )``</span>
+<span class="sd">        * keyword arguments. Example: ``add_parameters(foo=1, bar=&#39;apple&#39;)``</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        local_only: boolean</span>
+<span class="sd">            Optional. Default= False. Add parameters to local task only. Do not record in the scheduler.</span>
+<span class="sd">        commit: boolean </span>
+<span class="sd">            Optional. Default= True. Commit changes to the task database.</span>
+<span class="sd">        args: list</span>
+<span class="sd">            list of lists. or list of tuples. See above.</span>
+<span class="sd">        kwargs: dict</span>
+<span class="sd">            keyword arguments send to parameters. See above.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1"># Support add_parameters(param1=&#39;example&#39;, param2=100)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parameter_dict</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">param_name</span><span class="p">,</span> <span class="n">param_value</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">add_parameter</span><span class="p">(</span><span class="n">param_name</span><span class="p">,</span> <span class="n">param_value</span><span class="p">,</span> <span class="n">local_only</span><span class="o">=</span><span class="n">local_only</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="n">commit</span><span class="p">)</span>
+        <span class="c1"># Also accept a list of dicts, tuples, or lists</span>
+        <span class="c1"># eg. add_parameters( [ (&#39;param1&#39;,&#39;example&#39;), (&#39;param2&#39;,100) ] )</span>
+        <span class="c1">#  or add_parameters( [ [&#39;param1&#39;,&#39;example&#39;], [&#39;param2&#39;,100] ] )</span>
+        <span class="c1">#  or add_parameters( [ (&#39;param1&#39;,&#39;example&#39;), [&#39;param2&#39;,100] ] )</span>
+        <span class="c1">#  or parms = {&#39;param1&#39;:&#39;example&#39;, &#39;param2&#39;:100}</span>
+        <span class="c1">#     add_parameters(parms)</span>
+        <span class="c1">#### which is equivalent to</span>
+        <span class="c1">#     add_parameters(**parms)</span>
+        <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">param_name</span><span class="p">,</span> <span class="n">param_value</span> <span class="ow">in</span> <span class="n">arg</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">add_parameter</span><span class="p">(</span><span class="n">param_name</span><span class="p">,</span> <span class="n">param_value</span><span class="p">,</span> <span class="n">local_only</span><span class="o">=</span><span class="n">local_only</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="n">commit</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="s1">&#39;__getitem__&#39;</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">add_parameter</span><span class="p">(</span><span class="n">arg</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">arg</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">local_only</span><span class="o">=</span><span class="n">local_only</span><span class="p">,</span> <span class="n">commit</span><span class="o">=</span><span class="n">commit</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;add_parameters sequence {} had unexpected length {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">arg</span><span class="p">)))</span>
+</div>
+<div class="viewcode-block" id="ETLTask.parameters"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.parameters">[docs]</a>    <span class="k">def</span> <span class="nf">parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns a generator yielding tuples of parameter (name,value)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parameters_loaded</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">load_parameters</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">param_name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parameter_dict</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">param_name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parameter_dict</span><span class="p">[</span><span class="n">param_name</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="ETLTask.parameter_names"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.parameter_names">[docs]</a>    <span class="k">def</span> <span class="nf">parameter_names</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns a list of parameter names</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parameters_loaded</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">load_parameters</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_parameter_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+</div>
+<div class="viewcode-block" id="ETLTask.get_parameter"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.get_parameter">[docs]</a>    <span class="k">def</span> <span class="nf">get_parameter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">param_name</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Returns the value of the parameter with the name provided, or default if that is not None.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        param_name: str</span>
+<span class="sd">            The parameter to retrieve        </span>
+<span class="sd">        default: any </span>
+<span class="sd">            The default value. *Default* default = None</span>
+<span class="sd">            </span>
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ParameterError: </span>
+<span class="sd">            If named parameter does not exist and no default is provided.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parameters_loaded</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">load_parameters</span><span class="p">()</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parameter_dict</span><span class="p">[</span><span class="n">param_name</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">default</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ParameterError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="kn">from</span> <span class="nn">e</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">default</span>
+</div>
+<div class="viewcode-block" id="ETLTask.add_database"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.add_database">[docs]</a>    <span class="k">def</span> <span class="nf">add_database</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">database_object</span><span class="p">):</span>
+        <span class="c1"># _database_pool is used to close connections when the task finishes</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_database_pool</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">database_object</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ETLTask.get_database"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.get_database">[docs]</a>    <span class="k">def</span> <span class="nf">get_database</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">database_name</span><span class="p">,</span> <span class="n">user</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Get a new database connection.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        database_name: str</span>
+<span class="sd">            The name of the database section in :doc:`config_ini`</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="k">return</span> <span class="n">Connect</span><span class="o">.</span><span class="n">get_database_metadata</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span>
+                                             <span class="n">database_name</span><span class="o">=</span><span class="n">database_name</span><span class="p">,</span>
+                                             <span class="n">user</span><span class="o">=</span><span class="n">user</span><span class="p">,</span>
+                                             <span class="n">schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span>
+                                             <span class="o">**</span><span class="n">kwargs</span>
+                                             <span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ETLTask.get_setting"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.get_setting">[docs]</a>    <span class="k">def</span> <span class="nf">get_setting</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">setting_name</span><span class="p">,</span> <span class="n">assignments</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">section</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">setting_name</span><span class="p">,</span> <span class="nb">vars</span><span class="o">=</span><span class="n">assignments</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ETLTask.get_setting_or_default"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.get_setting_or_default">[docs]</a>    <span class="k">def</span> <span class="nf">get_setting_or_default</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">setting_name</span><span class="p">,</span> <span class="n">default</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_default</span><span class="p">(</span><span class="n">section</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">setting_name</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">default</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ETLTask.register_object"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.register_object">[docs]</a>    <span class="k">def</span> <span class="nf">register_object</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Register an ETLComponent object with the task.</span>
+<span class="sd">        This allows the task to </span>
+<span class="sd">        1) Get statistics from the component</span>
+<span class="sd">        2) Close the component when done</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        obj: bi_etl.components.etlcomponent.ETLComponent</span>
+<span class="sd">            A sub-class of :class`~bi_etl.components.etlcomponent.ETLComponent`</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">object_registry</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">obj</span>
+
+    <span class="c1"># pylint: disable=singleton-comparison</span></div>
+<div class="viewcode-block" id="ETLTask.debug_sql"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.debug_sql">[docs]</a>    <span class="k">def</span> <span class="nf">debug_sql</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Setting sqlalchemy.engine to DEBUG&#39;</span><span class="p">)</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;sqlalchemy.engine&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;sqlalchemy.engine.base.Engine&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="bp">False</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Setting sqlalchemy.engine to ERROR&#39;</span><span class="p">)</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;sqlalchemy.engine&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">ERROR</span><span class="p">)</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;sqlalchemy.engine.base.Engine&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">ERROR</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Setting sqlalchemy.engine to {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">mode</span><span class="p">))</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;sqlalchemy.engine&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">mode</span><span class="p">)</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;sqlalchemy.engine.base.Engine&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">mode</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__thread_init</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Base class pre-load initialization.  Runs on the execution server. Override init instead of this.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">queue_io</span><span class="o">.</span><span class="n">redirect_output_to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span><span class="p">)</span>
+
+        <span class="c1"># Make sure config is loaded (side effect setups logging)</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span>  <span class="c1"># @UnusedVariable pylint: disable=unused-variable</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_logging_level</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;externally_provided_scheduler = {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_externally_provided_scheduler</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_database_pool</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+
+<div class="viewcode-block" id="ETLTask.init"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.init">[docs]</a>    <span class="k">def</span> <span class="nf">init</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        pre-load initialization.  Runs on the execution server. Override to add setup tasks.</span>
+<span class="sd">        </span>
+<span class="sd">        Note: init method is useful in cases were you wish to define a common base class</span>
+<span class="sd">        with a single load method. Each inheriting class can then do it&#39;s own stuff in init</span>
+<span class="sd">        With init you can have the flow of execution be:</span>
+<span class="sd">        </span>
+<span class="sd">        1) spec_class.init (if any code before super call)</span>
+<span class="sd">        2) base_class.init</span>
+<span class="sd">        3) spec_class.init (after super call, where your code should really go)</span>
+<span class="sd">        4) base_class.load</span>
+<span class="sd">        </span>
+<span class="sd">        Note 2: Sometimes the functionality above can be achieved with `__init__`.  However, when</span>
+<span class="sd">        the scheduler thread creates an ETLTask, it creates an instance and thus runs __init__. </span>
+<span class="sd">        Therefore, you will want `__init__` to be as simple as possible.  On the other hand, `init`</span>
+<span class="sd">        is run only by the task execution thread. So it can safely do more time consuming work. </span>
+<span class="sd">        Again though this method is for when class inheritance is used, and that logic can not go </span>
+<span class="sd">        into the `load` method.         </span>
+<span class="sd">        </span>
+<span class="sd">        Why does the scheduler create an instance?</span>
+<span class="sd">        It does that in case a task needs a full instance and possibly parameter values in order </span>
+<span class="sd">        to answer some of the methods like `depends_on` or `mutually_exclusive_execution`.        </span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">pass</span>
+</div>
+<div class="viewcode-block" id="ETLTask.load"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.load">[docs]</a>    <span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Placeholder for load. This is where the main body of the ETLTask&#39;s work should be performed.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="s2">&quot;{} load not implemented&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="ETLTask.finish"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.finish">[docs]</a>    <span class="k">def</span> <span class="nf">finish</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Placeholder for post-load cleanup. This might be useful for cleaning up what was done in ``init``.</span>
+<span class="sd">        It could also allow an inheriting class to begin waiting for children (see ``process_messages``)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">pass</span>
+</div>
+<div class="viewcode-block" id="ETLTask.send_mesage"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.send_mesage">[docs]</a>    <span class="k">def</span> <span class="nf">send_mesage</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ETLTask.allow_concurrent_runs"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.allow_concurrent_runs">[docs]</a>    <span class="k">def</span> <span class="nf">allow_concurrent_runs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">False</span>
+</div>
+<div class="viewcode-block" id="ETLTask.needs_to_ok_child_runs"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.needs_to_ok_child_runs">[docs]</a>    <span class="k">def</span> <span class="nf">needs_to_ok_child_runs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Override and return True if you need to give OK before children are allowed to run.</span>
+<span class="sd">        See process_child_run_requested</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">False</span>
+</div>
+<div class="viewcode-block" id="ETLTask.process_child_run_requested"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.process_child_run_requested">[docs]</a>    <span class="k">def</span> <span class="nf">process_child_run_requested</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">childRunRequested</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Override to examine child task before giving OK.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">send_mesage</span><span class="p">(</span><span class="n">ChildRunOK</span><span class="p">(</span><span class="n">childRunRequested</span><span class="o">.</span><span class="n">child_task_id</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="ETLTask.needs_to_get_child_statuses"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.needs_to_get_child_statuses">[docs]</a>    <span class="k">def</span> <span class="nf">needs_to_get_child_statuses</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Override and return True if you want to get status updates on children.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">False</span>
+</div>
+<div class="viewcode-block" id="ETLTask.needs_to_get_ancestor_statuses"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.needs_to_get_ancestor_statuses">[docs]</a>    <span class="k">def</span> <span class="nf">needs_to_get_ancestor_statuses</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Override and return True if you want to get status updates on any ancestor.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">False</span>
+</div>
+<div class="viewcode-block" id="ETLTask.process_child_status_update"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.process_child_status_update">[docs]</a>    <span class="k">def</span> <span class="nf">process_child_status_update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">childStatusUpdate</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Override to examine child task status (ChildRunFinished instances)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">pass</span>
+</div>
+<div class="viewcode-block" id="ETLTask.process_messages"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.process_messages">[docs]</a>    <span class="k">def</span> <span class="nf">process_messages</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">block</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Processes messages for this task.  Should be called somewhere in any row looping.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        block: boolean </span>
+<span class="sd">            Block while waiting. Defaults to False.</span>
+<span class="sd">            If block is True, this will run until a terminating message is received or an exception is thrown by the process_X calls.</span>
+<span class="sd">            If block if False, you probably want to call inside a loop.</span>
+
+
+<span class="sd">        **Example Code:**</span>
+<span class="sd">                </span>
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from bi_etl.scheduler.exceptions import WorkflowFinished</span>
+
+<span class="sd">            def process_child_status_update(self, childStatusUpdate):</span>
+<span class="sd">                # Placeholder for real check if done</span>
+<span class="sd">                example_all_done = self.foo()</span>
+
+<span class="sd">                if example_all_done:</span>
+<span class="sd">                    raise WorkflowFinished()</span>
+
+<span class="sd">            def load(self):</span>
+<span class="sd">                # Placeholder for real load code</span>
+<span class="sd">                self.load_foo()</span>
+
+<span class="sd">                #Begin waiting for children</span>
+<span class="sd">                try:</span>
+<span class="sd">                   self.process_messages(block=True)</span>
+<span class="sd">                except WorkflowFinished:</span>
+<span class="sd">                    pass</span>
+<span class="sd">                    </span>
+<span class="sd">        </span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent_to_child</span>
+        <span class="k">if</span> <span class="n">q</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">msg</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">block</span><span class="o">=</span><span class="n">block</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;process_messages got {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">msg</span><span class="p">))</span>
+                        <span class="k">if</span> <span class="n">msg</span> <span class="o">==</span> <span class="s1">&#39;stats&#39;</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">statistics</span><span class="p">)</span>
+                        <span class="k">elif</span> <span class="n">msg</span> <span class="o">==</span> <span class="s1">&#39;stop&#39;</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Stop signal received&quot;</span><span class="p">)</span>
+                            <span class="k">raise</span> <span class="n">TaskStopRequested</span><span class="p">()</span>
+                        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">ChildRunRequested</span><span class="p">):</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">process_child_run_requested</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">ChildStatusUpdate</span><span class="p">):</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">process_child_status_update</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Got unexpected message from parent: {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">msg</span><span class="p">)))</span>
+                    <span class="k">except</span> <span class="ne">IOError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">errno</span> <span class="o">==</span> <span class="n">errno</span><span class="o">.</span><span class="n">EINTR</span><span class="p">:</span>
+                            <span class="k">continue</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="k">raise</span>
+            <span class="k">except</span> <span class="n">Empty</span><span class="p">:</span>
+                <span class="k">pass</span>
+</div>
+<div class="viewcode-block" id="ETLTask.run"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.run">[docs]</a>    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+            <span class="n">no_mail</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+            <span class="n">parent_to_child</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+            <span class="n">child_to_parent</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+            <span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Should not generally be overridden.</span>
+<span class="sd">        This is called smtp_to run the task&#39;s code in the init, load, and finish methods.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span> <span class="o">=</span> <span class="n">child_to_parent</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parent_to_child</span> <span class="o">=</span> <span class="n">parent_to_child</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__thread_init</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">no_mail</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c1"># If run directly, assume it a testing run and don&#39;t send e-mails</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__module__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Direct module execution detected. Failure e-mails will not be sent&quot;</span><span class="p">)</span>
+                <span class="n">no_mail</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">no_mail</span> <span class="o">=</span> <span class="n">ETLTask</span><span class="o">.</span><span class="n">DEFAULT_NO_MAIL</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">Status</span><span class="o">.</span><span class="n">running</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Note: init method is useful in cases were you wish to define a common base class</span>
+            <span class="c1"># with a single load method. Each inheriting class can then do it&#39;s own stuff in init</span>
+            <span class="c1"># With init you can have the flow of execution be:</span>
+            <span class="c1">#  1) spec_class.init (if any code before super call)</span>
+            <span class="c1">#  2) base_class.init</span>
+            <span class="c1">#  3) spec_class.init (after super call, where your code should really go)</span>
+            <span class="c1">#  3) base_class.load</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">init_timer</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">init_timer</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">process_messages</span><span class="p">()</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">load_timer</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">load</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">load_timer</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">process_messages</span><span class="p">()</span>
+
+            <span class="c1"># finish would be the place to cleanup anything done in the init method </span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">finish_timer</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">finish</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">finish_timer</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;{} done.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">Status</span><span class="o">.</span><span class="n">succeeded</span>
+            <span class="n">stats</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">statistics</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">stats</span><span class="p">)</span>
+            <span class="n">statsF</span> <span class="o">=</span> <span class="n">Statistics</span><span class="o">.</span><span class="n">format_statistics</span><span class="p">(</span><span class="n">stats</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;{} statistics=</span><span class="se">\n</span><span class="s2">{stats}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stats</span><span class="o">=</span><span class="n">statsF</span><span class="p">))</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_following_tasks</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># pylint: disable=broad-except</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">Status</span><span class="o">.</span><span class="n">failed</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">utility</span><span class="o">.</span><span class="n">dict_to_str</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">__dict__</span><span class="p">))</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">no_mail</span><span class="p">:</span>
+                <span class="n">smtp_to</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="s1">&#39;SMTP&#39;</span><span class="p">,</span> <span class="s1">&#39;distro_list&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">smtp_to</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;SMTP distro_list option not found. No mail sent.&quot;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">envt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_default</span><span class="p">(</span><span class="s1">&#39;DATABASE&#39;</span><span class="p">,</span> <span class="s1">&#39;ENVT&#39;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s1">&#39;Unknown_ENVT&#39;</span><span class="p">)</span>
+                    <span class="n">message_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+                    <span class="n">message_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+                    <span class="n">message_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;Task ID = {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">task_id</span><span class="p">))</span>
+                    <span class="n">ui_url</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="s1">&#39;Scheduler&#39;</span><span class="p">,</span> <span class="s1">&#39;base_ui_url&#39;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">ui_url</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_id</span><span class="p">:</span>
+                        <span class="n">message_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;Run details are here: {}{}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ui_url</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_id</span><span class="p">))</span>
+                    <span class="n">message_content</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">message_list</span><span class="p">)</span>
+                    <span class="n">subject</span> <span class="o">=</span> <span class="s2">&quot;{envt} {etl} load failed&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">envt</span><span class="o">=</span><span class="n">envt</span><span class="p">,</span> <span class="n">etl</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+
+                    <span class="n">notifiers_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">Email</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">smtp_to</span><span class="p">)]</span>
+
+                    <span class="k">for</span> <span class="n">notifier</span> <span class="ow">in</span> <span class="n">notifiers_list</span><span class="p">:</span>
+                        <span class="n">notifiers_list</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">subject</span><span class="p">,</span> <span class="n">message_content</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;{} FAILED.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Status = {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="p">)))</span>
+
+        <span class="c1"># Send out status</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">child_to_parent</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="n">Status</span><span class="o">.</span><span class="n">succeeded</span>
+</div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">statistics</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Return the execution statistics from the task and all of it&#39;s registered components.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">stats</span> <span class="o">=</span> <span class="n">Statistics</span><span class="p">()</span>
+        <span class="c1"># Only report init stats if something significant was done there</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">init_timer</span><span class="o">.</span><span class="n">seconds_elapsed</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">stats</span><span class="p">[</span><span class="s1">&#39;Task Init&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">init_timer</span><span class="o">.</span><span class="n">statistics</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_registry</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+                <span class="c1"># Ensure we capture all distinct object stats by giving each a distinct name</span>
+                <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="k">while</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">stats</span><span class="p">:</span>
+                    <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;{}_{}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                <span class="n">stats</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">statistics</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;&#39;{}&#39; does not report statistics. Msg={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># pylint: disable=broad-except</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+
+        <span class="n">stats</span><span class="p">[</span><span class="s1">&#39;Task Load&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">load_timer</span><span class="o">.</span><span class="n">statistics</span><span class="p">)</span>
+
+        <span class="c1"># Only report finish stats if something significant was done there</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">finish_timer</span><span class="o">.</span><span class="n">seconds_elapsed</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">stats</span><span class="p">[</span><span class="s1">&#39;Task Finish&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">finish_timer</span><span class="o">.</span><span class="n">statistics</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">stats</span>
+
+<div class="viewcode-block" id="ETLTask.close"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask.close">[docs]</a>    <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Cleanup the task. Close any registered objects, close any database connections.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;close&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_registry</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="s1">&#39;close&#39;</span><span class="p">):</span>
+                    <span class="n">obj</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="k">del</span> <span class="n">obj</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">object_registry</span>
+            <span class="k">for</span> <span class="n">database</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_database_pool</span><span class="p">:</span>
+                <span class="n">database</span><span class="o">.</span><span class="n">bind</span><span class="o">.</span><span class="n">dispose</span><span class="p">()</span>
+                <span class="n">database</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_database_pool</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># pylint: disable=broad-except</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+</div>
+    <span class="k">def</span> <span class="nf">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span> <span class="nf">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exit_type</span><span class="p">,</span> <span class="n">exit_value</span><span class="p">,</span> <span class="n">exit_traceback</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+</div>
+<div class="viewcode-block" id="run_task"><a class="viewcode-back" href="../../../bi_etl.scheduler.task.html#bi_etl.scheduler.task.run_task">[docs]</a><span class="k">def</span> <span class="nf">run_task</span><span class="p">(</span><span class="n">task_name</span><span class="p">,</span>
+             <span class="n">parameters</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+             <span class="n">config</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+             <span class="n">no_mail</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+             <span class="c1"># Scheduler specific</span>
+             <span class="n">scheduler</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+             <span class="n">task_id</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+             <span class="n">parent_task_id</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+             <span class="n">root_task_id</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+             <span class="n">parent_to_child</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+             <span class="n">child_to_parent</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+             <span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Used to find an ETL task module and start it.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    task_name: str</span>
+<span class="sd">        The task name to run. Must match the name or at least *ending* of the name of a module under **etl_jobs**.</span>
+<span class="sd">    class_name: str</span>
+<span class="sd">        The class name within the module. Defaults to None which means it expects to find one ETLTask based class there.</span>
+<span class="sd">    arameters: list or dict</span>
+<span class="sd">        Parameters for the task. Passed to method :meth:`bi_etl.scheduler.task.ETLTask.add_parameters`.</span>
+<span class="sd">    config: bi_etl.bi_config_parser.BIConfigParser </span>
+<span class="sd">        The configuration to use (defaults to reading it from :doc:`config_ini`).</span>
+<span class="sd">        If passed it should be an instance of :class:`bi_etl.bi_config_parser.BIConfigParser`.</span>
+<span class="sd">    no_mail: boolean</span>
+<span class="sd">        Skip sending email on failure? See no_mail in :meth:`bi_etl.scheduler.task.ETLTask.run`.</span>
+<span class="sd">    scheduler: bi_etl.scheduler.scheduler.Scheduler</span>
+<span class="sd">        The :class:`bi_etl.scheduler.scheduler.Scheduler` this job should be run under. </span>
+<span class="sd">        Optional. Defaults to not running via a scheduler.</span>
+<span class="sd">    task_id: int</span>
+<span class="sd">        The task_id of the job (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).</span>
+<span class="sd">    parent_task_id: int</span>
+<span class="sd">        The task_id of the parent of this job (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).</span>
+<span class="sd">    root_task_id: int</span>
+<span class="sd">        The task_id of the root ancestor of this job (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).</span>
+<span class="sd">    parent_to_child: Queue</span>
+<span class="sd">        A queue to use for parent to child communication (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).</span>
+<span class="sd">    child_to_parent: Queue </span>
+<span class="sd">        A queue to use for child to parent communication (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c1"># For memory testing</span>
+    <span class="c1">#tr = tracker.SummaryTracker()</span>
+    <span class="c1">#tr.diff()</span>
+    <span class="n">ran_ok</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+        <span class="n">queue_out_stream</span> <span class="o">=</span> <span class="n">queue_io</span><span class="o">.</span><span class="n">redirect_output_to</span><span class="p">(</span><span class="n">child_to_parent</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="s2">&quot;run_task...&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s2">&quot;Reading config&quot;</span><span class="p">)</span>
+            <span class="n">config</span> <span class="o">=</span> <span class="n">BIConfigParser</span><span class="p">()</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">read_config_ini</span><span class="p">()</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">set_dated_log_file_name</span><span class="p">(</span><span class="n">task_name</span><span class="p">,</span> <span class="s1">&#39;.log&#39;</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="s2">&quot;setup_logging&quot;</span><span class="p">)</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">setup_logging</span><span class="p">(</span><span class="n">queue_out_stream</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">configFile</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">((</span><span class="s2">&quot;Using config file(s) {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">configFile</span><span class="p">)))</span>
+            <span class="n">config</span> <span class="o">=</span> <span class="n">BIConfigParser</span><span class="p">()</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">configFile</span><span class="p">)</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">set_dated_log_file_name</span><span class="p">(</span><span class="n">task_name</span><span class="p">,</span> <span class="s1">&#39;.log&#39;</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="s2">&quot;setup_logging&quot;</span><span class="p">)</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">setup_logging</span><span class="p">(</span><span class="n">queue_out_stream</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s2">&quot;Using passed config&quot;</span><span class="p">)</span>
+
+        <span class="k">print</span><span class="p">((</span><span class="s1">&#39;Scanning for task matching {}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">task_name</span><span class="p">)))</span>
+        <span class="c1"># Import is done here to prevent circular module depencency</span>
+        <span class="kn">from</span> <span class="nn">bi_etl.scheduler.scheduler_interface</span> <span class="kn">import</span> <span class="n">SchedulerInterface</span>
+        <span class="k">if</span> <span class="n">scheduler</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">scheduler</span> <span class="o">=</span> <span class="n">SchedulerInterface</span><span class="p">()</span>
+        <span class="n">etl_class</span> <span class="o">=</span> <span class="n">scheduler</span><span class="o">.</span><span class="n">find_etl_class_instance</span><span class="p">(</span><span class="n">task_name</span><span class="p">)</span>
+        <span class="n">etl_task</span> <span class="o">=</span> <span class="n">etl_class</span><span class="p">(</span><span class="n">task_id</span><span class="o">=</span><span class="n">task_id</span><span class="p">,</span>
+                             <span class="n">parent_task_id</span><span class="o">=</span><span class="n">parent_task_id</span><span class="p">,</span>
+                             <span class="n">root_task_id</span><span class="o">=</span><span class="n">root_task_id</span><span class="p">,</span>
+                             <span class="n">scheduler</span><span class="o">=</span><span class="n">scheduler</span><span class="p">,</span>
+                             <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+                             <span class="p">)</span>
+        <span class="k">if</span> <span class="n">parameters</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">parameters</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">etl_task</span><span class="o">.</span><span class="n">add_parameters</span><span class="p">(</span><span class="n">parameters</span><span class="p">)</span>
+        <span class="n">ran_ok</span> <span class="o">=</span> <span class="n">etl_task</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">no_mail</span><span class="o">=</span><span class="n">no_mail</span><span class="p">,</span>
+                              <span class="n">parent_to_child</span><span class="o">=</span><span class="n">parent_to_child</span><span class="p">,</span>
+                              <span class="n">child_to_parent</span><span class="o">=</span><span class="n">child_to_parent</span><span class="p">,</span>
+                              <span class="p">)</span>
+        <span class="c1"># print(&#39;ran_ok = {}&#39;.format(ran_ok))</span>
+        <span class="n">etl_task</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">print</span><span class="p">(</span><span class="s2">&quot;run_task is done&quot;</span><span class="p">)</span>
+
+        <span class="c1"># For memory testing</span>
+        <span class="c1">#gc.collect()</span>
+        <span class="c1">#tr.print_diff()</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">()</span>
+        <span class="k">print</span><span class="p">((</span><span class="nb">repr</span><span class="p">(</span><span class="n">e</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="n">child_to_parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">child_to_parent</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">e</span>
+
+    <span class="n">queue_io</span><span class="o">.</span><span class="n">restore_standard_output</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">ran_ok</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

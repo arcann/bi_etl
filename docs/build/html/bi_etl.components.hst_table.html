@@ -1,0 +1,739 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.components.hst_table module &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="index.html" />
+    <link rel="up" title="bi_etl.components package" href="bi_etl.components.html" />
+    <link rel="next" title="bi_etl.components.readonlytable module" href="bi_etl.components.readonlytable.html" />
+    <link rel="prev" title="bi_etl.components.etlcomponent module" href="bi_etl.components.etlcomponent.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.readonlytable.html" title="bi_etl.components.readonlytable module"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.etlcomponent.html" title="bi_etl.components.etlcomponent module"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.components.html" accesskey="U">bi_etl.components package</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-bi_etl.components.hst_table">
+<span id="bi-etl-components-hst-table-module"></span><h1>bi_etl.components.hst_table module<a class="headerlink" href="#module-bi_etl.components.hst_table" title="Permalink to this headline">¶</a></h1>
+<p>Created on Nov 4, 2014</p>
+<p>&#64;author: woodd</p>
+<dl class="class">
+<dt id="bi_etl.components.hst_table.Hst_Table">
+<em class="property">class </em><code class="descclassname">bi_etl.components.hst_table.</code><code class="descname">Hst_Table</code><span class="sig-paren">(</span><em>task</em>, <em>database</em>, <em>table_name</em>, <em>table_name_case_sensitive=False</em>, <em>exclude_columns=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="bi_etl.components.table.html#bi_etl.components.table.Table" title="bi_etl.components.table.Table"><code class="xref py py-class docutils literal"><span class="pre">bi_etl.components.table.Table</span></code></a></p>
+<p>ETL target component for a table that stores history of updates. Also usable as a source.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>task</strong> (<a class="reference internal" href="bi_etl.scheduler.task.html#bi_etl.scheduler.task.ETLTask" title="bi_etl.scheduler.task.ETLTask"><em>ETLTask</em></a>) &#8211; The  instance to register in (if not None)</li>
+<li><strong>database</strong> (<em>bi_etl.scheduler.task.Database</em>) &#8211; The database to find the table/view in.</li>
+<li><strong>table_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; The name of the table/view.</li>
+<li><strong>exclude_columns</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; Optional. A list of columns to exclude from the table/view. These columns will not be included in SELECT, INSERT, or UPDATE statements.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.auto_generate_key">
+<code class="descname">auto_generate_key</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.auto_generate_key" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>boolean</em></p>
+<p>Should the primary key be automatically generated by the insert/upsert process?
+If True, the process will get the current maximum value and then increment it with each insert.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.autocommit">
+<code class="descname">autocommit</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.autocommit" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>boolean</em></p>
+<p>Automatically commit after delete? Defaults to False.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.begin_date">
+<code class="descname">begin_date</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.begin_date" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str</em></p>
+<p>Name of the begin date field</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.end_date">
+<code class="descname">end_date</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.end_date" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str</em></p>
+<p>Name of the end date field</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.inserts_use_default_begin_date">
+<code class="descname">inserts_use_default_begin_date</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.inserts_use_default_begin_date" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>boolean</em></p>
+<p>Should inserts use the default begin date instead of the effective date passed in?
+This allows records to match up in joins with other history tables where the effective
+date of the &#8216;primary&#8217; might be before the first version effective date.
+Default = True</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.default_begin_date">
+<code class="descname">default_begin_date</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.default_begin_date" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>date</em></p>
+<p>Default begin date to assign for begin_date.
+Used for new records if inserts_use_default_begin_date is True.
+Also used for
+<code class="xref py py-meth docutils literal"><span class="pre">get_missing_row()</span></code>,
+<code class="xref py py-meth docutils literal"><span class="pre">get_invalid_row()</span></code>,
+<code class="xref py py-meth docutils literal"><span class="pre">get_not_applicable_row()</span></code>,
+<code class="xref py py-meth docutils literal"><span class="pre">get_various_row()</span></code>
+Default = 1900-1-1</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.default_end_date">
+<code class="descname">default_end_date</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.default_end_date" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>date</em></p>
+<p>Default begin date to assign for end_date for active rows.
+Also used for
+<code class="xref py py-meth docutils literal"><span class="pre">get_missing_row()</span></code>,
+<code class="xref py py-meth docutils literal"><span class="pre">get_invalid_row()</span></code>,
+<code class="xref py py-meth docutils literal"><span class="pre">get_not_applicable_row()</span></code>,
+<code class="xref py py-meth docutils literal"><span class="pre">get_various_row()</span></code>
+Default = 9999-1-1</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt>
+<code class="descname">auto_generate_key</code></dt>
+<dd><p><em>boolean</em></p>
+<p>Should the primary key be automatically generated by the insert/upsert process?
+If True, the process will get the current maximum value and then increment it with each insert.
+(inherited from Table)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.batch_size">
+<code class="descname">batch_size</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.batch_size" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>int</em></p>
+<p>How many rows should be insert/update/deleted in a single batch.
+(inherited from Table)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.delete_flag">
+<code class="descname">delete_flag</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.delete_flag" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str, optional</em></p>
+<p>The name of the delete_flag column, if any.
+(inherited from ReadOnlyTable)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.delete_flag_yes">
+<code class="descname">delete_flag_yes</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.delete_flag_yes" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str, optional</em></p>
+<p>The value of delete_flag for deleted rows.
+(inherited from ReadOnlyTable)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.delete_flag_no">
+<code class="descname">delete_flag_no</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.delete_flag_no" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str, optional</em></p>
+<p>The value of delete_flag for <em>not</em> deleted rows.
+(inherited from ReadOnlyTable)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.default_date_format">
+<code class="descname">default_date_format</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.default_date_format" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str</em></p>
+<p>The date parsing format to use for str -&gt; date conversions.
+If more than one date format exists in the source, then explicit conversions will be required.</p>
+<p>Default = &#8216;%m/%d/%Y&#8217;
+(inherited from Table)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.force_ascii">
+<code class="descname">force_ascii</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.force_ascii" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>boolean</em></p>
+<p>Should text values be forced into the ascii character set before passing to the database?
+Default = False
+(inherited from Table)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.last_update_date">
+<code class="descname">last_update_date</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.last_update_date" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str</em></p>
+<p>Name of the column which we should update when table updates are made.
+Default = None
+(inherited from Table)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.log_first_row">
+<code class="descname">log_first_row</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.log_first_row" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>boolean</em></p>
+<p>Should we log progress on the the first row read. <em>Only applies if Table is used as a source.</em>
+(inherited from ETLComponent)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.max_rows">
+<code class="descname">max_rows</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.max_rows" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>int, optional</em></p>
+<p>The maximum number of rows to read. <em>Only applies if Table is used as a source.</em>
+(inherited from ETLComponent)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.primary_key">
+<code class="descname">primary_key</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.primary_key" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>list</em></p>
+<p>The name of the primary key column(s). Only impacts trace messages.  Default=None.
+If not passed in, will use the database value, if any.
+(inherited from ETLComponent)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.natural_key">
+<code class="descname">natural_key</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.natural_key" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>list</em></p>
+<p>The list of natural key columns (as Column objects).
+The default is the list of non-begin/end date primary key columns.
+The default is <em>not</em> appropriate for dimension tables with surrogate keys.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.progress_frequency">
+<code class="descname">progress_frequency</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.progress_frequency" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>int, optional</em></p>
+<p>How often (in seconds) to output progress messages.
+(inherited from ETLComponent)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.progress_message">
+<code class="descname">progress_message</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.progress_message" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>str, optional</em></p>
+<p>The progress message to print.
+Default is <code class="docutils literal"><span class="pre">&quot;{logical_name}</span> <span class="pre">row</span> <span class="pre">#</span> <span class="pre">{row_number}&quot;</span></code>. Note <code class="docutils literal"><span class="pre">logical_name</span></code> and <code class="docutils literal"><span class="pre">row_number</span></code>
+substitutions applied via <a class="reference external" href="https://docs.python.org/library/functions.html#format" title="(in Python v2.7)"><code class="xref py py-func docutils literal"><span class="pre">format()</span></code></a>.
+(inherited from ETLComponent)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.special_values_descriptive_columns">
+<code class="descname">special_values_descriptive_columns</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.special_values_descriptive_columns" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>list, optional</em></p>
+<p>A list of columns that get longer descriptive text in
+<code class="xref py py-meth docutils literal"><span class="pre">get_missing_row()</span></code>,
+<code class="xref py py-meth docutils literal"><span class="pre">get_invalid_row()</span></code>,
+<code class="xref py py-meth docutils literal"><span class="pre">get_not_applicable_row()</span></code>,
+<code class="xref py py-meth docutils literal"><span class="pre">get_various_row()</span></code>
+(inherited from ReadOnlyTable)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.track_source_rows">
+<code class="descname">track_source_rows</code><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.track_source_rows" title="Permalink to this definition">¶</a></dt>
+<dd><p><em>boolean</em></p>
+<p>Should the <a class="reference internal" href="#bi_etl.components.hst_table.Hst_Table.upsert" title="bi_etl.components.hst_table.Hst_Table.upsert"><code class="xref py py-meth docutils literal"><span class="pre">upsert()</span></code></a> method keep a set container of source row keys that it has processed?
+That set would then be used by <a class="reference internal" href="#bi_etl.components.hst_table.Hst_Table.update_not_processed" title="bi_etl.components.hst_table.Hst_Table.update_not_processed"><code class="xref py py-meth docutils literal"><span class="pre">update_not_processed()</span></code></a>, <a class="reference internal" href="#bi_etl.components.hst_table.Hst_Table.logically_delete_not_processed" title="bi_etl.components.hst_table.Hst_Table.logically_delete_not_processed"><code class="xref py py-meth docutils literal"><span class="pre">logically_delete_not_processed()</span></code></a>,
+and <a class="reference internal" href="#bi_etl.components.hst_table.Hst_Table.delete_not_processed" title="bi_etl.components.hst_table.Hst_Table.delete_not_processed"><code class="xref py py-meth docutils literal"><span class="pre">delete_not_processed()</span></code></a>.
+(inherited from Table)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.hst_table.Hst_Table.NK_LOOKUP">
+<code class="descname">NK_LOOKUP</code><em class="property"> = 'NK'</em><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.NK_LOOKUP" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.apply_updates">
+<code class="descname">apply_updates</code><span class="sig-paren">(</span><em>row</em>, <em>changes_list</em>, <em>source_effective_date</em>, <em>additional_update_values=None</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.apply_updates"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.apply_updates" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt>
+<code class="descname">begin_date</code></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.build_nk">
+<code class="descname">build_nk</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.build_nk"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.build_nk" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.cleanup_spurious_versions">
+<code class="descname">cleanup_spurious_versions</code><span class="sig-paren">(</span><em>remove_spurious_deletes=False</em>, <em>remove_redundant_versions=None</em>, <em>lookup_name=None</em>, <em>exclude_from_compare=None</em>, <em>filter_criteria=None</em>, <em>use_cache_as_source=True</em>, <em>repeat_until_clean=True</em>, <em>parent_stats=None</em>, <em>progress_message='{table} cleanup_spurious_versions pass {pass_number} current row # {row_number:</em>, <em>}'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.cleanup_spurious_versions"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.cleanup_spurious_versions" title="Permalink to this definition">¶</a></dt>
+<dd><p>This routine will look for and remove versions where no material difference exists between it and the prior version.
+That can happen during loads if rows come in out of order.  The routine can also  optionally look for remove_spurious_deletes (see below).
+It also checks for version dates that are not set correctly.</p>
+<div class="admonition-todo admonition" id="index-0">
+<p class="first admonition-title">Todo</p>
+<p class="last">Rename to cleanup_versions since it does optionally numerous cleanups.</p>
+</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>remove_spurious_deletes</strong> (<em>boolean</em>) &#8211; (defaults to False): Should the routine check for and remove versions that tag a record as being deleted only to be un-deleted later.</li>
+<li><strong>remove_redundant_versions</strong> (<em>boolean</em>) &#8211; (defaults to opposite of auto_generate_key value): Should the routine delete rows that are exactly the same as the previous.</li>
+<li><strong>exclude_from_compare</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; Columns to exclude from comparisons. Defaults to begin date, end date, and last update date. Any values passed in are added to that list.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.define_lookup">
+<code class="descname">define_lookup</code><span class="sig-paren">(</span><em>lookup_name</em>, <em>lookup_keys</em>, <em>lookup_class=None</em>, <em>lookup_class_kwargs=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.define_lookup"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.define_lookup" title="Permalink to this definition">¶</a></dt>
+<dd><p>Define a new lookup.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>lookup_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; Name for the lookup. Used to refer to it later.</li>
+<li><strong>lookup_keys</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; list of lookup key columns</li>
+<li><strong>lookup_class</strong> (<em>Class</em>) &#8211; Optional python class to use for the lookup. Defaults to Lookup.</li>
+<li><strong>lookup_class_kwargs</strong> (<a class="reference external" href="https://docs.python.org/library/stdtypes.html#dict" title="(in Python v2.7)"><em>dict</em></a>) &#8211; Optional dict of additional parameters to pass to lookup constructor. Defaults to empty dict.
+begin_date and end_date are added automatically.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.delete">
+<code class="descname">delete</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.delete"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.delete" title="Permalink to this definition">¶</a></dt>
+<dd><p>Not implemented for history table. Instead use <cite>physically_delete_version</cite>.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.delete_not_in_set">
+<code class="descname">delete_not_in_set</code><span class="sig-paren">(</span><em>list_of_key_tuples</em>, <em>source_effective_date=None</em>, <em>lookup_name=None</em>, <em>criteria=None</em>, <em>stat_name='delete_not_in_set'</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.delete_not_in_set"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.delete_not_in_set" title="Permalink to this definition">¶</a></dt>
+<dd><p>Overriden to call logical delete.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.delete_not_processed">
+<code class="descname">delete_not_processed</code><span class="sig-paren">(</span><em>source_effective_date=None</em>, <em>criteria=None</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.delete_not_processed"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.delete_not_processed" title="Permalink to this definition">¶</a></dt>
+<dd><p>Overriden to call logical delete.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt>
+<code class="descname">end_date</code></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.fill_cache">
+<code class="descname">fill_cache</code><span class="sig-paren">(</span><em>progress_frequency=10</em>, <em>progress_message='{table} fill_cache current row # {row_number:</em>, <em>}'</em>, <em>criteria=None</em>, <em>exclude_cols=None</em>, <em>order_by=None</em>, <em>assume_lookup_complete=None</em>, <em>row_limit=None</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.fill_cache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.fill_cache" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fill all lookup caches from the table.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>progress_frequency</strong> (<em>int, optional</em>) &#8211; How often (in seconds) to output progress messages. Default 10. None for no progress messages.</li>
+<li><strong>progress_message</strong> (<em>str, optional</em>) &#8211; The progress message to print.
+Default is <code class="docutils literal"><span class="pre">&quot;{table}</span> <span class="pre">fill_cache</span> <span class="pre">current</span> <span class="pre">row</span> <span class="pre">#</span> <span class="pre">{row_number:,}&quot;</span></code>. Note <code class="docutils literal"><span class="pre">logical_name</span></code> and <code class="docutils literal"><span class="pre">row_number</span></code>
+substitutions applied via <a class="reference external" href="https://docs.python.org/library/functions.html#format" title="(in Python v2.7)"><code class="xref py py-func docutils literal"><span class="pre">format()</span></code></a>.</li>
+<li><strong>criteria</strong> (<em>string or list of strings</em>) &#8211; Each string value will be passed to <code class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.sql.expression.Select.where()</span></code>.
+<a class="reference external" href="http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where">http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where</a></li>
+<li><strong>assume_lookup_complete</strong> (<em>boolean</em>) &#8211; Should later lookup calls assume the cache is complete (and thus raise an Exception if a key combination is not found)?
+Default to False if filtering criteria was used, otherwise defaults to True.</li>
+<li><strong>row_limit</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#int" title="(in Python v2.7)"><em>int</em></a>) &#8211; limit on number of rows to cache.</li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.get_by_lookup">
+<code class="descname">get_by_lookup</code><span class="sig-paren">(</span><em>lookup_name</em>, <em>source_row</em>, <em>stats_id='get_by_lookup'</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.get_by_lookup"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.get_by_lookup" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get by an alternate key. Returns a row.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>lookup_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; Name passed into <a class="reference internal" href="#bi_etl.components.hst_table.Hst_Table.define_lookup" title="bi_etl.components.hst_table.Hst_Table.define_lookup"><code class="xref py py-meth docutils literal"><span class="pre">define_lookup()</span></code></a></li>
+<li><strong>source_row</strong> (<code class="xref py py-class docutils literal"><span class="pre">Row</span></code>) &#8211; Row to get lookup keys from (including effective date)</li>
+<li><strong>stats_id</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; Statistics name to use</li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Raises:</th><td class="field-body"><ul class="first last simple">
+<li><code class="xref py py-exc docutils literal"><span class="pre">NoResultFound</span></code> &#8211;
+If key doesn&#8217;t exist.</li>
+<li><code class="xref py py-exc docutils literal"><span class="pre">BeforeAllExisting</span></code> &#8211;
+If the effective date provided is before all existing records.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.get_by_lookup_and_effective_date">
+<code class="descname">get_by_lookup_and_effective_date</code><span class="sig-paren">(</span><em>lookup_name</em>, <em>source_row</em>, <em>effective_date</em>, <em>stats_id='get_by_lookup_and_effective_date'</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.get_by_lookup_and_effective_date"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.get_by_lookup_and_effective_date" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get by an alternate key. Returns a row.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>lookup_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; Name passed into <a class="reference internal" href="#bi_etl.components.hst_table.Hst_Table.define_lookup" title="bi_etl.components.hst_table.Hst_Table.define_lookup"><code class="xref py py-meth docutils literal"><span class="pre">define_lookup()</span></code></a></li>
+<li><strong>source_row</strong> (<code class="xref py py-class docutils literal"><span class="pre">Row</span></code>) &#8211; <code class="xref py py-class docutils literal"><span class="pre">Row</span></code> to get lookup keys from</li>
+<li><strong>effective_date</strong> (<em>date</em>) &#8211; Effective date to use for lookup</li>
+<li><strong>stats_id</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; Statistics name to use</li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Raises:</th><td class="field-body"><ul class="first last simple">
+<li><code class="xref py py-exc docutils literal"><span class="pre">NoResultFound</span></code> &#8211;
+If key doesn&#8217;t exist.</li>
+<li><code class="xref py py-exc docutils literal"><span class="pre">BeforeAllExisting</span></code> &#8211;
+If the effective date provided is before all existing records.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.get_natural_key_name_list">
+<code class="descname">get_natural_key_name_list</code><span class="sig-paren">(</span><em>row</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.get_natural_key_name_list"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.get_natural_key_name_list" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.get_natural_key_tuple">
+<code class="descname">get_natural_key_tuple</code><span class="sig-paren">(</span><em>row</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.get_natural_key_tuple"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.get_natural_key_tuple" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.get_nk_lookup">
+<code class="descname">get_nk_lookup</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.get_nk_lookup"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.get_nk_lookup" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.get_nk_lookup_name">
+<code class="descname">get_nk_lookup_name</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.get_nk_lookup_name"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.get_nk_lookup_name" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.insert_row">
+<code class="descname">insert_row</code><span class="sig-paren">(</span><em>source_row</em>, <em>additional_insert_values=None</em>, <em>do_no_build_row=False</em>, <em>source_renames=None</em>, <em>source_excludes=None</em>, <em>target_excludes=None</em>, <em>source_transformations=None</em>, <em>parent_stats=None</em>, <em>source_effective_date=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.insert_row"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.insert_row" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.is_date_key_column">
+<code class="descname">is_date_key_column</code><span class="sig-paren">(</span><em>column</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.is_date_key_column"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.is_date_key_column" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.logically_delete_not_in_set">
+<code class="descname">logically_delete_not_in_set</code><span class="sig-paren">(</span><em>list_of_key_tuples</em>, <em>source_effective_date=None</em>, <em>lookup_name=None</em>, <em>criteria=None</em>, <em>stat_name='logically_delete_not_in_set'</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.logically_delete_not_in_set"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.logically_delete_not_in_set" title="Permalink to this definition">¶</a></dt>
+<dd><p>Logically deletes rows macthing criteria that are not in the list_of_key_tuples pass in.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>list_of_key_tuples</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; List of tuples comprising the primary key values. This list represents the rows that should <em>not</em> be logically deleted.</li>
+<li><strong>source_effective_date</strong> (<em>date</em>) &#8211; Effective date of records to logically delete</li>
+<li><strong>criteria</strong> (<em>string or list of strings</em>) &#8211; Only rows matching criteria will be checked against the <code class="docutils literal"><span class="pre">list_of_key_tuples</span></code> for deletion.
+Each string value will be passed to <code class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.sql.expression.Select.where()</span></code>.
+<a class="reference external" href="http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where">http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where</a></li>
+<li><strong>stat_name</strong> (<a class="reference external" href="https://docs.python.org/library/string.html#module-string" title="(in Python v2.7)"><em>string</em></a>) &#8211; Name of this step for the ETLTask statistics. Default = &#8216;delete_not_in_set&#8217;</li>
+<li><strong>progress_frequency</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#int" title="(in Python v2.7)"><em>int</em></a>) &#8211; How often (in seconds) to output progress messages. Default = 10.  None for no progress messages.</li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.logically_delete_not_processed">
+<code class="descname">logically_delete_not_processed</code><span class="sig-paren">(</span><em>source_effective_date=None</em>, <em>criteria=None</em>, <em>parent_stats=None</em>, <em>stat_name='logically_delete_not_processed'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.logically_delete_not_processed"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.logically_delete_not_processed" title="Permalink to this definition">¶</a></dt>
+<dd><p>Logically deletes rows matching criteria that are not in the Table memory of rows passed to <a class="reference internal" href="#bi_etl.components.hst_table.Hst_Table.upsert" title="bi_etl.components.hst_table.Hst_Table.upsert"><code class="xref py py-meth docutils literal"><span class="pre">upsert()</span></code></a>.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>source_effective_date</strong> (<em>date</em>) &#8211; Effective date of records to logically delete</li>
+<li><strong>criteria</strong> (<em>string or list of strings</em>) &#8211; Only rows matching criteria will be checked against the <code class="docutils literal"><span class="pre">list_of_key_tuples</span></code> for logical deletion.
+Each string value will be passed to <code class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.sql.expression.Select.where()</span></code>.
+<a class="reference external" href="http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where">http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where</a></li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="attribute">
+<dt>
+<code class="descname">natural_key</code></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.physically_delete_version">
+<code class="descname">physically_delete_version</code><span class="sig-paren">(</span><em>row_to_be_deleted</em>, <em>remove_from_cache=True</em>, <em>prior_row=None</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.physically_delete_version"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.physically_delete_version" title="Permalink to this definition">¶</a></dt>
+<dd><p><strong>Physically</strong> delete a given version row. Corrects the preceding end date value.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>row_to_be_deleted</strong> (<code class="xref py py-class docutils literal"><span class="pre">Row</span></code>) &#8211; Expected to be an entire existing row.</li>
+<li><strong>remove_from_cache</strong> (<em>boolean</em>) &#8211; <p>Optional. Remove the row from the cache?</p>
+<p>Default = True</p>
+</li>
+<li><strong>prior_row</strong> (<em>bi_etl.components.row.row_case_insensitive.Row</em>) &#8211; Optional. The prior row, if already available. If None, it will be obtained via <a class="reference internal" href="#bi_etl.components.hst_table.Hst_Table.get_by_lookup_and_effective_date" title="bi_etl.components.hst_table.Hst_Table.get_by_lookup_and_effective_date"><code class="xref py py-meth docutils literal"><span class="pre">get_by_lookup_and_effective_date()</span></code></a></li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional. Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.sanity_check_source_mapping">
+<code class="descname">sanity_check_source_mapping</code><span class="sig-paren">(</span><em>source_definition</em>, <em>source_name=None</em>, <em>source_renames=None</em>, <em>source_excludes=None</em>, <em>target_excludes=None</em>, <em>ignore_source_not_in_target=None</em>, <em>ignore_target_not_in_source=None</em>, <em>raise_on_source_not_in_target=None</em>, <em>raise_on_target_not_in_source=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.sanity_check_source_mapping"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.sanity_check_source_mapping" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.update_not_in_set">
+<code class="descname">update_not_in_set</code><span class="sig-paren">(</span><em>updates_to_make</em>, <em>list_of_key_tuples</em>, <em>source_effective_date=None</em>, <em>lookup_name=None</em>, <em>criteria=None</em>, <em>stat_name='update_not_in_set'</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.update_not_in_set"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.update_not_in_set" title="Permalink to this definition">¶</a></dt>
+<dd><p>Applies update to rows matching criteria that are not in the list_of_key_tuples pass in.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>update_row</strong> (<code class="xref py py-class docutils literal"><span class="pre">Row</span></code>) &#8211; Row or dict of updates to make</li>
+<li><strong>list_of_key_tuples</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; List of tuples comprising the primary key values. This list represents the rows that should <em>not</em> be updated.</li>
+<li><strong>source_effective_date</strong> (<em>date</em>) &#8211; Effective date of records to update</li>
+<li><strong>criteria</strong> (<em>string or list of strings</em>) &#8211; Only rows matching criteria will be checked against the <code class="docutils literal"><span class="pre">list_of_key_tuples</span></code> for deletion.
+Each string value will be passed to <code class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.sql.expression.Select.where()</span></code>.
+<a class="reference external" href="http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where">http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where</a></li>
+<li><strong>stat_name</strong> (<a class="reference external" href="https://docs.python.org/library/string.html#module-string" title="(in Python v2.7)"><em>string</em></a>) &#8211; Name of this step for the ETLTask statistics. Default = &#8216;delete_not_in_set&#8217;</li>
+<li><strong>progress_frequency</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#int" title="(in Python v2.7)"><em>int</em></a>) &#8211; How often (in seconds) to output progress messages. Default = 10.  None for no progress messages.</li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.update_not_processed">
+<code class="descname">update_not_processed</code><span class="sig-paren">(</span><em>update_row</em>, <em>source_effective_date=None</em>, <em>criteria=None</em>, <em>stat_name='update_not_processed'</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.update_not_processed"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.update_not_processed" title="Permalink to this definition">¶</a></dt>
+<dd><p>Applies update to rows matching criteria that are not in the Table memory of rows passed to <a class="reference internal" href="#bi_etl.components.hst_table.Hst_Table.upsert" title="bi_etl.components.hst_table.Hst_Table.upsert"><code class="xref py py-meth docutils literal"><span class="pre">upsert()</span></code></a>.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>update_row</strong> (<code class="xref py py-class docutils literal"><span class="pre">Row</span></code>) &#8211; Row or dict of updates to make</li>
+<li><strong>source_effective_date</strong> (<em>date</em>) &#8211; Effective date of records to update</li>
+<li><strong>criteria</strong> (<em>string or list of strings</em>) &#8211; Only rows matching criteria will be checked against the <code class="docutils literal"><span class="pre">list_of_key_tuples</span></code> for update.
+Each string value will be passed to <code class="xref py py-meth docutils literal"><span class="pre">sqlalchemy.sql.expression.Select.where()</span></code>.
+<a class="reference external" href="http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where">http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where</a></li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.upsert">
+<code class="descname">upsert</code><span class="sig-paren">(</span><em>source_row</em>, <em>source_effective_date=None</em>, <em>lookup_name=None</em>, <em>skip_update_check_on=None</em>, <em>do_not_update=None</em>, <em>additional_update_values=None</em>, <em>additional_insert_values=None</em>, <em>update_callback=None</em>, <em>insert_callback=None</em>, <em>source_renames=None</em>, <em>source_excludes=None</em>, <em>target_excludes=None</em>, <em>source_transformations=None</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.upsert"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.upsert" title="Permalink to this definition">¶</a></dt>
+<dd><p>Update (if changed) or Insert a row in the table.
+Returns the row found/inserted, with the auto-generated key (if that feature is enabled)</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>source_row</strong> (<code class="xref py py-class docutils literal"><span class="pre">Row</span></code> or list thereof) &#8211; Row to upsert</li>
+<li><strong>source_effective_date</strong> (<em>date</em>) &#8211; Effective date of records to upsert</li>
+<li><strong>lookup_name</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#str" title="(in Python v2.7)"><em>str</em></a>) &#8211; The name of the lookup (see <a class="reference internal" href="#bi_etl.components.hst_table.Hst_Table.define_lookup" title="bi_etl.components.hst_table.Hst_Table.define_lookup"><code class="xref py py-meth docutils literal"><span class="pre">define_lookup()</span></code></a>) to use when searching for an existing row.</li>
+<li><strong>skip_update_check_on</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; List of column names to not compare old vs new for updates.</li>
+<li><strong>do_not_update</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; List of columns to never update.</li>
+<li><strong>additional_update_values</strong> (<a class="reference external" href="https://docs.python.org/library/stdtypes.html#dict" title="(in Python v2.7)"><em>dict</em></a>) &#8211; Additional updates to apply when updating</li>
+<li><strong>additional_insert_values</strong> (<a class="reference external" href="https://docs.python.org/library/stdtypes.html#dict" title="(in Python v2.7)"><em>dict</em></a>) &#8211; Additional values to set on each row when inserting.</li>
+<li><strong>update_callback</strong> (<em>func</em>) &#8211; Function to pass updated rows to. Function should not modify row.</li>
+<li><strong>insert_callback</strong> (<em>func</em>) &#8211; Function to pass inserted rows to. Function should not modify row.</li>
+<li><strong>source_renames</strong> (<a class="reference external" href="https://docs.python.org/library/stdtypes.html#dict" title="(in Python v2.7)"><em>dict</em></a>) &#8211; Renames to apply to the columns in row(s).</li>
+<li><strong>source_excludes</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; list of source columns to exclude when mapping to this Table.</li>
+<li><strong>target_excludes</strong> (<a class="reference external" href="https://docs.python.org/library/functions.html#list" title="(in Python v2.7)"><em>list</em></a>) &#8211; list of Table columns to exclude when mapping from the source row</li>
+<li><strong>source_transformations</strong> (<em>dict or iterable container</em>) &#8211; Container with (transform_col, transform) mappings.
+See <a class="reference internal" href="source_transformations.html"><em>Transformations</em></a></li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.upsert_by_pk">
+<code class="descname">upsert_by_pk</code><span class="sig-paren">(</span><em>source_row</em>, <em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.upsert_by_pk"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.upsert_by_pk" title="Permalink to this definition">¶</a></dt>
+<dd><p>Used by upsert_special_values_rows to find and update rows by the full PK. Not expected to be useful outside of that.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>source_row</strong> (<code class="xref py py-class docutils literal"><span class="pre">Row</span></code>) &#8211; Row to upsert</li>
+<li><strong>parent_stats</strong> (<a class="reference internal" href="bi_etl.statistics.html#bi_etl.statistics.Statistics" title="bi_etl.statistics.Statistics"><em>bi_etl.statistics.Statistics</em></a>) &#8211; Optional Statistics object to nest this steps statistics in.
+Default is to place statistics in the ETLTask level statistics.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="bi_etl.components.hst_table.Hst_Table.upsert_special_values_rows">
+<code class="descname">upsert_special_values_rows</code><span class="sig-paren">(</span><em>parent_stats=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/bi_etl/components/hst_table.html#Hst_Table.upsert_special_values_rows"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.hst_table.Hst_Table.upsert_special_values_rows" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="bi_etl.components.etlcomponent.html"
+                        title="previous chapter">bi_etl.components.etlcomponent module</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="bi_etl.components.readonlytable.html"
+                        title="next chapter">bi_etl.components.readonlytable module</a></p>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.readonlytable.html" title="bi_etl.components.readonlytable module"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.etlcomponent.html" title="bi_etl.components.etlcomponent module"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.components.html" >bi_etl.components package</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

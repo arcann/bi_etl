@@ -1,0 +1,157 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.components.row.row_status module &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="index.html" />
+    <link rel="up" title="bi_etl.components.row package" href="bi_etl.components.row.html" />
+    <link rel="next" title="bi_etl.components.csvreader module" href="bi_etl.components.csvreader.html" />
+    <link rel="prev" title="bi_etl.components.row.row_parent module" href="bi_etl.components.row.row_parent.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.csvreader.html" title="bi_etl.components.csvreader module"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.row.row_parent.html" title="bi_etl.components.row.row_parent module"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.components.html" >bi_etl.components package</a> &raquo;</li>
+          <li class="nav-item nav-item-3"><a href="bi_etl.components.row.html" accesskey="U">bi_etl.components.row package</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-bi_etl.components.row.row_status">
+<span id="bi-etl-components-row-row-status-module"></span><h1>bi_etl.components.row.row_status module<a class="headerlink" href="#module-bi_etl.components.row.row_status" title="Permalink to this headline">¶</a></h1>
+<p>Created on Jan 20, 2016</p>
+<p>&#64;author: woodd</p>
+<dl class="class">
+<dt id="bi_etl.components.row.row_status.RowStatus">
+<em class="property">class </em><code class="descclassname">bi_etl.components.row.row_status.</code><code class="descname">RowStatus</code><a class="reference internal" href="_modules/bi_etl/components/row/row_status.html#RowStatus"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#bi_etl.components.row.row_status.RowStatus" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">enum.IntEnum</span></code></p>
+<p>Row status values</p>
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_status.RowStatus.deleted">
+<code class="descname">deleted</code><em class="property"> = &lt;RowStatus.deleted: 5&gt;</em><a class="headerlink" href="#bi_etl.components.row.row_status.RowStatus.deleted" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_status.RowStatus.existing">
+<code class="descname">existing</code><em class="property"> = &lt;RowStatus.existing: 1&gt;</em><a class="headerlink" href="#bi_etl.components.row.row_status.RowStatus.existing" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_status.RowStatus.insert">
+<code class="descname">insert</code><em class="property"> = &lt;RowStatus.insert: 2&gt;</em><a class="headerlink" href="#bi_etl.components.row.row_status.RowStatus.insert" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_status.RowStatus.unknown">
+<code class="descname">unknown</code><em class="property"> = &lt;RowStatus.unknown: 99&gt;</em><a class="headerlink" href="#bi_etl.components.row.row_status.RowStatus.unknown" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_status.RowStatus.update_partial">
+<code class="descname">update_partial</code><em class="property"> = &lt;RowStatus.update_partial: 4&gt;</em><a class="headerlink" href="#bi_etl.components.row.row_status.RowStatus.update_partial" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="bi_etl.components.row.row_status.RowStatus.update_whole">
+<code class="descname">update_whole</code><em class="property"> = &lt;RowStatus.update_whole: 3&gt;</em><a class="headerlink" href="#bi_etl.components.row.row_status.RowStatus.update_whole" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="bi_etl.components.row.row_parent.html"
+                        title="previous chapter">bi_etl.components.row.row_parent module</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="bi_etl.components.csvreader.html"
+                        title="next chapter">bi_etl.components.csvreader module</a></p>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.csvreader.html" title="bi_etl.components.csvreader module"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="bi_etl.components.row.row_parent.html" title="bi_etl.components.row.row_parent module"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="bi_etl.html" >bi_etl package</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="bi_etl.components.html" >bi_etl.components package</a> &raquo;</li>
+          <li class="nav-item nav-item-3"><a href="bi_etl.components.row.html" >bi_etl.components.row package</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

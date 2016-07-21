@@ -1,0 +1,159 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.scheduler.etl_task_status_cd &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for bi_etl.scheduler.etl_task_status_cd</h1><div class="highlight"><pre>
+<span></span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Created on Aug 28, 2014</span>
+
+<span class="sd">@author: woodd</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="kn">from</span> <span class="nn">bi_etl.scheduler.task</span> <span class="kn">import</span> <span class="n">ETLTask</span><span class="p">,</span> <span class="n">Status</span>
+<span class="kn">from</span> <span class="nn">bi_etl.components.table</span> <span class="kn">import</span> <span class="n">Table</span>
+
+<div class="viewcode-block" id="ETL_Task_Status_CD"><a class="viewcode-back" href="../../../bi_etl.scheduler.etl_task_status_cd.html#bi_etl.scheduler.etl_task_status_cd.ETL_Task_Status_CD">[docs]</a><span class="k">class</span> <span class="nc">ETL_Task_Status_CD</span><span class="p">(</span><span class="n">ETLTask</span><span class="p">):</span></div>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">depends_on</span><span class="p">():</span>
+        <span class="k">return</span> <span class="p">[</span> 
+               <span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">log</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log</span>
+        
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;testing unicode logging support: ü µ σ 泽 </span><span class="se">\u2013</span><span class="s1">&#39;</span><span class="p">)</span>
+               
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Connecting to database&quot;</span><span class="p">)</span>
+        <span class="n">database_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;Scheduler&#39;</span><span class="p">,</span><span class="s1">&#39;database&#39;</span><span class="p">)</span>
+        <span class="n">schema</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="s1">&#39;Scheduler&#39;</span><span class="p">,</span><span class="s1">&#39;schema&#39;</span><span class="p">)</span>
+        <span class="n">database</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_database</span><span class="p">(</span><span class="n">database_name</span><span class="p">,</span><span class="n">schema</span><span class="o">=</span><span class="n">schema</span><span class="p">)</span>
+        
+        <span class="k">with</span> <span class="n">Table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                   <span class="n">database</span><span class="p">,</span>
+                   <span class="s1">&#39;etl_task_status_cd&#39;</span><span class="p">,</span>
+                   <span class="n">delete_flag</span> <span class="o">=</span> <span class="s1">&#39;delete_flag&#39;</span><span class="p">,</span>
+                   <span class="n">track_source_rows</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                   <span class="p">)</span> <span class="k">as</span> <span class="n">etl_task_status_cd</span><span class="p">:</span>
+            <span class="c1">#cdlist.trace = True        </span>
+            <span class="c1">#etl_task_status_cd.trace_data = True</span>
+            <span class="n">etl_task_status_cd</span><span class="o">.</span><span class="n">fill_cache</span><span class="p">()</span>
+            
+            <span class="k">for</span> <span class="n">status</span> <span class="ow">in</span> <span class="n">Status</span><span class="p">:</span>
+                <span class="n">row</span> <span class="o">=</span> <span class="n">etl_task_status_cd</span><span class="o">.</span><span class="n">Row</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;Status&#39;</span><span class="p">)</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;status_id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">status</span><span class="o">.</span><span class="n">value</span>
+                <span class="n">status_name</span> <span class="o">=</span> <span class="n">status</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;_&#39;</span><span class="p">,</span><span class="s1">&#39; &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">title</span><span class="p">()</span>
+                <span class="n">status_name</span> <span class="o">=</span> <span class="n">status_name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;Cpu&#39;</span><span class="p">,</span><span class="s1">&#39;CPU&#39;</span><span class="p">)</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;status_name&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">status_name</span>
+                <span class="c1">## Add delete_flag to source</span>
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;delete_flag&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;N&#39;</span>
+                
+                <span class="c1">##etl_task_status_cd.trace_data = True</span>
+                <span class="c1">##self.debug_sql(True)</span>
+                <span class="n">etl_task_status_cd</span><span class="o">.</span><span class="n">upsert</span><span class="p">(</span>
+                                          <span class="n">row</span><span class="p">,</span> 
+                                         <span class="p">)</span>
+            
+                
+            <span class="n">etl_task_status_cd</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+    
+            <span class="c1">##: Process deletes</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Checking for deletes&quot;</span><span class="p">)</span>
+            <span class="n">logically_deleted</span> <span class="o">=</span> <span class="n">etl_task_status_cd</span><span class="o">.</span><span class="n">Row</span><span class="p">()</span>
+            <span class="n">logically_deleted</span><span class="p">[</span><span class="s1">&#39;delete_flag&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;Y&#39;</span>
+            <span class="n">etl_task_status_cd</span><span class="o">.</span><span class="n">update_not_processed</span><span class="p">(</span><span class="n">logically_deleted</span><span class="p">,)</span>
+    
+            <span class="n">etl_task_status_cd</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done&quot;</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">task</span> <span class="o">=</span> <span class="n">ETL_Task_Status_CD</span><span class="p">()</span>
+    <span class="n">task</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">no_mail</span> <span class="o">=</span> <span class="bp">True</span><span class="p">)</span>    
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

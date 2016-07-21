@@ -1,0 +1,320 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>bi_etl.informatica.pmcmd &mdash; bi_etl 0.5 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.5',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="bi_etl 0.5 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for bi_etl.informatica.pmcmd</h1><div class="highlight"><pre>
+<span></span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Created on May 5, 2015</span>
+
+<span class="sd">@author: woodd</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">subprocess</span>
+
+<span class="kn">import</span> <span class="nn">bi_etl.bi_config_parser</span>
+<span class="kn">import</span> <span class="nn">errno</span>
+
+<div class="viewcode-block" id="PMCMD"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD">[docs]</a><span class="k">class</span> <span class="nc">PMCMD</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    classdocs</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">CONFIG_INFORMATICA_COMMANDS</span> <span class="o">=</span> <span class="s1">&#39;INFORMATICA_COMMANDS&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> 
+                 <span class="n">config</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> 
+                 <span class="n">folder</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> 
+                 <span class="n">parmfile</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                 <span class="n">localparamfile</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+                 <span class="n">osprofile</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span>                 
+                 <span class="p">):</span>
+        <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">bi_etl</span><span class="o">.</span><span class="n">bi_config_parser</span><span class="o">.</span><span class="n">BIConfigParser</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">read_config_ini</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">set_dated_log_file_name</span><span class="p">(</span><span class="s1">&#39;pmcmd&#39;</span><span class="p">,</span><span class="s1">&#39;.log&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">setup_logging</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;Informatica&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">f_dev_null</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">devnull</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">control_file_name</span> <span class="o">=</span> <span class="s2">&quot;Control_import_No_folder_rep_change.xml&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">setup_inf_path</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_folder</span> <span class="o">=</span> <span class="n">folder</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_parmfile</span> <span class="o">=</span> <span class="n">parmfile</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_localparamfile</span> <span class="o">=</span> <span class="n">localparamfile</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_osprofile</span> <span class="o">=</span> <span class="n">osprofile</span>
+        
+<div class="viewcode-block" id="PMCMD.infa_home"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.infa_home">[docs]</a>    <span class="k">def</span> <span class="nf">infa_home</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="s1">&#39;INFA_HOME&#39;</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">:</span> 
+            <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;INFA_HOME&#39;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;INFA_HOME&#39;</span><span class="p">)</span>
+    </div>
+<div class="viewcode-block" id="PMCMD.setup_inf_path"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.setup_inf_path">[docs]</a>    <span class="k">def</span> <span class="nf">setup_inf_path</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">userDir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s1">&#39;~&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span> <span class="o">==</span> <span class="s1">&#39;posix&#39;</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;PATH&#39;</span><span class="p">]</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">userDir</span><span class="p">,</span><span class="s1">&#39;bin&#39;</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;:&#39;</span> <span class="o">+</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">infa_home</span><span class="p">(),</span><span class="s1">&#39;server&#39;</span><span class="p">,</span><span class="s1">&#39;bin&#39;</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;:/usr/bin&#39;</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;LD_LIBRARY_PATH&#39;</span><span class="p">]</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">infa_home</span><span class="p">(),</span><span class="s1">&#39;server&#39;</span><span class="p">,</span><span class="s1">&#39;bin&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">&#39;INFA_DOMAINS_FILE&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;INFA_DOMAINS_FILE&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> 
+            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;INFA_DOMAINS_FILE&#39;</span><span class="p">]</span><span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;INFA_DOMAINS_FILE&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="PMCMD.informatica_bin_dir"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.informatica_bin_dir">[docs]</a>    <span class="k">def</span> <span class="nf">informatica_bin_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">infa_home</span><span class="p">(),</span><span class="s1">&#39;server&#39;</span><span class="p">,</span><span class="s1">&#39;bin&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="PMCMD.informatica_pmcmd"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.informatica_pmcmd">[docs]</a>    <span class="k">def</span> <span class="nf">informatica_pmcmd</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">informatica_bin_dir</span><span class="p">(),</span><span class="s1">&#39;pmcmd&#39;</span><span class="p">)</span>
+    </div>
+<div class="viewcode-block" id="PMCMD.usersecuritydomain"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.usersecuritydomain">[docs]</a>    <span class="k">def</span> <span class="nf">usersecuritydomain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;USER_SECURITY_DOMAIN&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="PMCMD.user_id"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.user_id">[docs]</a>    <span class="k">def</span> <span class="nf">user_id</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;USER_ID&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="PMCMD.password"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.password">[docs]</a>    <span class="k">def</span> <span class="nf">password</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;PASSWORD&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="PMCMD.set_password_in_env"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.set_password_in_env">[docs]</a>    <span class="k">def</span> <span class="nf">set_password_in_env</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;INFA_PM_PASSWORD&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">password</span><span class="p">()</span>
+        </div>
+<div class="viewcode-block" id="PMCMD.repository"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.repository">[docs]</a>    <span class="k">def</span> <span class="nf">repository</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;REPOSITORY&#39;</span><span class="p">)</span>
+    </div>
+<div class="viewcode-block" id="PMCMD.service"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.service">[docs]</a>    <span class="k">def</span> <span class="nf">service</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;SERVICE&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="PMCMD.domain"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.domain">[docs]</a>    <span class="k">def</span> <span class="nf">domain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;DOMAIN&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="PMCMD.folder"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.folder">[docs]</a>    <span class="k">def</span> <span class="nf">folder</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_folder</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_folder</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;DEFAULT_FOLDER&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_folder</span> 
+    </div>
+<div class="viewcode-block" id="PMCMD.parmfile"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.parmfile">[docs]</a>    <span class="k">def</span> <span class="nf">parmfile</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parmfile</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_parmfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;DEFAULT_PARMFILE&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parmfile</span>
+    </div>
+<div class="viewcode-block" id="PMCMD.localparamfile"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.localparamfile">[docs]</a>    <span class="k">def</span> <span class="nf">localparamfile</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_localparamfile</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_localparamfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;DEFAULT_LOCALPARAMFILE&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_localparamfile</span>
+    </div>
+<div class="viewcode-block" id="PMCMD.osprofile"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.osprofile">[docs]</a>    <span class="k">def</span> <span class="nf">osprofile</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_osprofile</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_osprofile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;OSPROFILE&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_osprofile</span>
+    </div>
+<div class="viewcode-block" id="PMCMD.run_via_cmd"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.run_via_cmd">[docs]</a>    <span class="k">def</span> <span class="nf">run_via_cmd</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">cfg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get_or_None</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CONFIG_INFORMATICA_COMMANDS</span><span class="p">,</span><span class="s1">&#39;RUN_VIA_CMD&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cfg</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="k">elif</span> <span class="n">cfg</span><span class="o">.</span><span class="n">upper</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;Y&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        </div>
+<div class="viewcode-block" id="PMCMD.startworkflow"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.startworkflow">[docs]</a>    <span class="k">def</span> <span class="nf">startworkflow</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">workflow</span><span class="p">,</span> <span class="n">runinsname</span><span class="o">=</span> <span class="bp">None</span><span class="p">,):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        runinsname is an optional instance name for this run</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">cmd</span><span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span> <span class="o">==</span> <span class="s1">&#39;win32&#39;</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">run_via_cmd</span><span class="p">():</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;cmd&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;/C&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">informatica_pmcmd</span><span class="p">())</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;startworkflow&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-service&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">service</span><span class="p">())</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-d&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">domain</span><span class="p">())</span>
+        <span class="n">usersecuritydomain</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">usersecuritydomain</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">usersecuritydomain</span><span class="p">:</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-usersecuritydomain&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">usersecuritydomain</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-u&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">user_id</span><span class="p">())</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-passwordvar&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_password_in_env</span><span class="p">()</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;INFA_PM_PASSWORD&#39;</span><span class="p">)</span>  <span class="c1"># Informatica will read environment variable</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-f&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">folder</span><span class="p">())</span>        
+        <span class="n">parmfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parmfile</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">parmfile</span><span class="p">:</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-paramfile&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">parmfile</span><span class="p">)</span>
+        <span class="n">localparamfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">localparamfile</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">localparamfile</span><span class="p">:</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-localparamfile&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">localparamfile</span><span class="p">)</span>
+        <span class="n">osprofile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">osprofile</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">osprofile</span><span class="p">:</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-osprofile&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">osprofile</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">runinsname</span><span class="p">:</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-runinsname&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">runinsname</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-wait&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">workflow</span><span class="p">)</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cmd</span><span class="p">))</span>
+    
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Executing pmcmd startworkflow&quot;</span><span class="p">)</span>
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>            
+                <span class="n">messages</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">STDOUT</span><span class="p">)</span>                
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>
+                <span class="k">break</span> <span class="c1">## exit while True loop</span>
+                
+                <span class="c1">##TODO: Parse the run id from the line below that comes in stdout and return it.</span>
+                <span class="c1">###Workflow wf_TEST_Derek with run instance name [] and run id [113759] started successfully.</span>
+           
+            <span class="c1">## TODO: python 3.3+ catch InterruptedError</span>
+            <span class="c1">## See https://www.python.org/dev/peps/pep-0475/</span>
+            <span class="k">except</span> <span class="ne">IOError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">errno</span> <span class="o">!=</span> <span class="n">errno</span><span class="o">.</span><span class="n">EINTR</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">e</span>
+                <span class="c1">## Else loop</span>
+            <span class="k">except</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span> <span class="s2">&quot;Error code &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">returncode</span> <span class="p">)</span> <span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span> <span class="s2">&quot;From &quot;</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">cmd</span><span class="p">)</span> <span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span> <span class="n">e</span><span class="o">.</span><span class="n">output</span> <span class="p">)</span>
+                <span class="k">raise</span> <span class="n">e</span>
+        </div>
+<div class="viewcode-block" id="PMCMD.getworkflowdetails"><a class="viewcode-back" href="../../../bi_etl.informatica.pmcmd.html#bi_etl.informatica.pmcmd.PMCMD.getworkflowdetails">[docs]</a>    <span class="k">def</span> <span class="nf">getworkflowdetails</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">workflow</span><span class="p">,</span> <span class="n">workflow_run_id</span><span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="n">runinsname</span><span class="o">=</span> <span class="bp">None</span><span class="p">,):</span>
+        <span class="n">cmd</span><span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span> <span class="o">==</span> <span class="s1">&#39;win32&#39;</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">run_via_cmd</span><span class="p">():</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;cmd&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;/C&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">informatica_pmcmd</span><span class="p">())</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;getworkflowdetails&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-service&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">service</span><span class="p">())</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-d&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">domain</span><span class="p">())</span>
+        <span class="n">usersecuritydomain</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">usersecuritydomain</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">usersecuritydomain</span><span class="p">:</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-usersecuritydomain&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">usersecuritydomain</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-u&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">user_id</span><span class="p">())</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-passwordvar&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_password_in_env</span><span class="p">()</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;INFA_PM_PASSWORD&#39;</span><span class="p">)</span>  <span class="c1"># Informatica will read environment variable</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-f&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">folder</span><span class="p">())</span>        
+        <span class="k">if</span> <span class="n">runinsname</span><span class="p">:</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-runinsname&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">runinsname</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">workflow_run_id</span><span class="p">:</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;-wfrunid&#39;</span><span class="p">)</span>
+            <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">workflow_run_id</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">workflow</span><span class="p">)</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cmd</span><span class="p">))</span>
+    
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Executing pmcmd getworkflowdetails&quot;</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>            
+            <span class="n">messages</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">STDOUT</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span> <span class="s2">&quot;Error code &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">returncode</span> <span class="p">)</span> <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span> <span class="s2">&quot;From &quot;</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">cmd</span><span class="p">)</span> <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span> <span class="n">e</span><span class="o">.</span><span class="n">output</span> <span class="p">)</span>
+            <span class="k">raise</span> <span class="n">e</span>
+        </div></div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="n">PMCMD</span><span class="p">(</span><span class="n">folder</span><span class="o">=</span><span class="s1">&#39;MASTER&#39;</span><span class="p">,</span> <span class="p">)</span>
+    <span class="c1">#workflow = &#39;wf_load_sap_dw&#39;</span>
+    <span class="c1">#workflow = &#39;wf_TEST_Derek&#39;</span>
+    <span class="n">workflow</span><span class="o">=</span><span class="s1">&#39;Invalid_Name&#39;</span>
+    <span class="n">cmd</span><span class="o">.</span><span class="n">startworkflow</span><span class="p">(</span><span class="n">workflow</span><span class="p">)</span>
+    <span class="n">cmd</span><span class="o">.</span><span class="n">getworkflowdetails</span><span class="p">(</span><span class="n">workflow</span><span class="p">)</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">bi_etl 0.5 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015, Derek Wood.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>
