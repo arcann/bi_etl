@@ -1,8 +1,8 @@
-'''
+"""
 Created on Apr 8, 2014
 
 @author: woodd
-'''
+"""
 import inspect
 import logging
 import os.path
@@ -16,30 +16,11 @@ from CaseInsensitiveDict import CaseInsensitiveDict
 
 from bi_etl.conversions import str2bytes_size
 
-## Python 2 & 3 compatibility. If Python 3 FileNotFoundError exists, we'll use it
-## if not we'll make it.
-try:
-    FileNotFoundError
-except NameError:
-    # pylint: disable=redefined-builtin, missing-docstring
-    class FileNotFoundError(IOError):  # @ReservedAssignment
-        pass
+from configparser import ConfigParser, ExtendedInterpolation
 
-## The SafeConfigParser class has been renamed to ConfigParser in Python 3.2.
-## This alias will be removed in future versions. Use ConfigParser directly instead.
-# pylint: disable=ungrouped-imports, ungrouped-imports
-if sys.hexversion >= 0x03020000:
-    import configparser
 
-    ConfigParser = configparser.ConfigParser
-else:
-    import ConfigParser  # @UnresolvedImport
-
-    ConfigParser = ConfigParser.SafeConfigParser
-
-# pylint: disable=too-many-ancestors
 class BIConfigParser(ConfigParser):
-    '''
+    """
     The basic configuration object. When defaults is given, it is initialized into the dictionary
     of intrinsic defaults. When dict_type is given, it will be used to create the dictionary
     objects for the list of sections, for the options within a section, and for the default values.
@@ -48,11 +29,11 @@ class BIConfigParser(ConfigParser):
 
     Adds a read_config_ini function to read bi_etl_config\config.ini from C:\, E:\ or Home directory
     Adds a read_relative_config function to search from pwd up to file the config file
-    '''
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(allow_no_value=True,
-                         interpolation=configparser.ExtendedInterpolation(),
+                         interpolation=ExtendedInterpolation(),
                          *args,
                          **kwargs
                          )
@@ -74,19 +55,19 @@ class BIConfigParser(ConfigParser):
         * E:\bi_etl_config\config.ini
         * ~/bi_etl_config\config.ini
         * ~/.BI_utils.ini
-        * ~/BI_utils.ini  
-        
+        * ~/BI_utils.ini
+
         Where ~ is the users home directory.
-        
+
         """
         userDir = os.path.expanduser('~')
         expected_config_files = [
             # These first two paths are for
             # running as a windows service
             os.path.join(r"C:\bi_etl_config\config.ini"),
+            os.path.join(r"D:\bi_etl_config\config.ini"),
             os.path.join(r"E:\bi_etl_config\config.ini"),
-            # If those don't work then look in the user
-            # directory
+            # If those don't work then look in the user directory
             os.path.join(userDir, 'bi_etl_config', 'config.ini'),
             # Legacy names
             os.path.join(userDir, '.BI_utils.ini'),
@@ -281,34 +262,54 @@ class BIConfigParser(ConfigParser):
         """
         return self.get_or_default(section, option, None)
 
-    def get_database_connection_tuple(self, database_name, usersection=None):
-        '''
+    def get_database_connection_tuple(self, database_name, user_section=None):
+        """
         Gets a tuple (userid, password) of connection information for a given database name.
-        
+
         Parameters
         ----------
         database_name: str
             The name of the database to look for in the configuration.
-        usersection: str
+        user_section: str
             The name of the section to use for the user ID and password.
-            Optional. If not provided, the method will look for a default_user_id value in the 
-            section named using the database_name parameter.        
-        '''
+            Optional. If not provided, the method will look for a default_user_id value in the
+            section named using the database_name parameter.
+        """
 
         self.log.debug('Getting connection info for {}'.format(database_name))
-        if not self.has_section(database_name):
-            msg = "Config file does not have section {}".format(database_name)
-            raise KeyError(msg)
+
+        if user_section is None:
+            if not self.has_section(database_name):
+                msg = "Config file does not have section {}".format(database_name)
+                raise KeyError(msg)
+            if self.has_option(database_name, 'default_user_id'):
+                user_section = self.get(database_name, 'default_user_id')
+            else:
+                msg = "user_section not provided, and no default_user_id exists for {}".format(database_name)
+                raise KeyError(msg)
+        userid = self.get_or_default(user_section, 'userid', default=user_section)
+        if self.has_section(user_section) and 'password' in self[user_section]:
+            password = self.get(user_section, 'password', raw=True)
         else:
-            if usersection is None:
-                if self.has_option(database_name, 'default_user_id'):
-                    usersection = self.get(database_name, 'default_user_id')
-                else:
-                    msg = "usersection not provided, and no default exists for {}".format(database_name)
-                    raise KeyError(msg)
-            userid = self.get_or_default(usersection, 'userid', default=usersection)
-            password = self.get(usersection, 'password', raw=True)
-        return (userid, password)
+            try:
+                import keyring
+                key_ring_system = database_name
+                if self.has_section(database_name):
+                    key_ring_system = self.get(database_name, 'key_ring_system', fallback=database_name)
+                key_ring_userid = self.get(user_section, 'key_ring_userid', fallback=userid)
+
+                password = keyring.get_password(key_ring_system, key_ring_userid)
+            except ImportError:
+                keyring = None  # Prevent code warning
+                msg = "Config password not provided, and keyring not installed. "
+                msg += "When trying to get password for {}.{}".format(database_name, userid)
+                raise KeyError(msg)
+
+            if password is None:
+                msg = "Both config.ini and Keyring did not have password for {}.{}".format(database_name, userid)
+                raise KeyError(msg)
+
+        return userid, password
 
     def get_log_file_name(self):
         """

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 Created on Jan 22, 2016
 
 @author: woodd
-'''
+"""
 import logging
 from sqlalchemy import create_engine
 from sqlalchemy import types as sqltypes
@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
 from bi_etl.database.database_metadata import DatabaseMetadata
 
-## Custom sqlalchemy dialect colspec to return Numeric values as is. 
+# Custom sqlalchemy dialect colspec to return Numeric values as is.
 class _FastNumeric(sqltypes.Numeric):
     def bind_processor(self, dialect):
         return None
@@ -19,7 +19,7 @@ class _FastNumeric(sqltypes.Numeric):
     def result_processor(self, dialect, coltype):
         return None
 
-## Why is this a class?    
+# Why is this a class?
 class Connect(object):
     
     @staticmethod
@@ -42,7 +42,7 @@ class Connect(object):
         
         dbname = config.get_or_default(database_name,'dbname', default=None)
         
-        #dialect://user:pass@dsn/dbname
+        # dialect://user:pass@dsn/dbname
         url = '{dialect}://'.format(dialect= dialect)        
         if userid is not None:
             url += userid
