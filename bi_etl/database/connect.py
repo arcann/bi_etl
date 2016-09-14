@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
 from bi_etl.database.database_metadata import DatabaseMetadata
 
+
 # Custom sqlalchemy dialect colspec to return Numeric values as is.
 class _FastNumeric(sqltypes.Numeric):
     def bind_processor(self, dialect):
@@ -19,7 +20,9 @@ class _FastNumeric(sqltypes.Numeric):
     def result_processor(self, dialect, coltype):
         return None
 
-# Why is this a class?
+
+# Q: Why is this a class?
+# A: So that we can override the whole thing at once in MockConnect
 class Connect(object):
     
     @staticmethod

@@ -1,10 +1,11 @@
-'''
+"""
 Created on Mar 27, 2015
 
 @author: woodd
-'''
+"""
 import operator
 import sqlalchemy
+from sqlalchemy.exc import InvalidRequestError
 
 #pylint: disable=protected-access
 
@@ -12,6 +13,7 @@ def rowproxy_reconstructor(cls, state):
     obj = cls.__new__(cls)
     obj.__setstate__(state)
     return obj
+
 
 class BaseRowProxy(object):
     __slots__ = ('_parent', '_row', '_processors', '_keymap')
@@ -74,6 +76,8 @@ class BaseRowProxy(object):
         except KeyError as e:
             raise AttributeError(e.args[0])
 
+
+# noinspection PyProtectedMember
 class RowProxy(BaseRowProxy):
     """Proxy values from a single cursor row.
 
@@ -128,7 +132,6 @@ class RowProxy(BaseRowProxy):
     def __repr__(self):
         return repr(tuple(self))
 
-    
     def has_key(self, key):
         """Return True if this RowProxy contains the given key."""
 
@@ -143,7 +146,8 @@ class RowProxy(BaseRowProxy):
         """Return the list of keys as strings represented by this RowProxy."""
 
         return self._parent.keys
-    
+
+
 def mock_engine():
     buffer = []
     
@@ -154,4 +158,3 @@ def mock_engine():
     assert not hasattr(engine, 'mock')
     engine.mock = buffer
     return engine
-    

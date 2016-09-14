@@ -1,8 +1,8 @@
-'''
+"""
 Created on Sep 17, 2014
 
 @author: woodd
-'''
+"""
 import codecs
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
@@ -10,6 +10,7 @@ from decimal import InvalidOperation
 import traceback
 import warnings
 
+from bi_etl.statistics import Statistics
 from sqlalchemy.sql.expression import bindparam
 
 from bi_etl import Timer
@@ -32,9 +33,8 @@ from bi_etl.conversions import nvl
 from bi_etl.conversions import replace_tilda
 
 
-
 class Table(ReadOnlyTable):
-    '''
+    """
     A class for accessing and updating a table.
     
     Parameters
@@ -136,7 +136,7 @@ class Table(ReadOnlyTable):
         That set would then be used by :meth:`update_not_processed`, :meth:`logically_delete_not_processed`,
         and :meth:`delete_not_processed`.
          
-    '''    
+    """    
     DEFAULT_BATCH_SIZE = 5000
 
     def __init__(self,
@@ -147,15 +147,14 @@ class Table(ReadOnlyTable):
                  exclude_columns = None,
                  **kwargs
                  ):
-        ## Don't pass kwargs up. They should be set here at the end
+        # Don't pass kwargs up. They should be set here at the end
         super(Table, self).__init__(task= task,
                                     database= database, 
                                     table_name= table_name,
                                     table_name_case_sensitive= table_name_case_sensitive,
                                     exclude_columns= exclude_columns,
                                     )
-        #self.log = logging.getLogger("{mod}.{cls}".format(mod = self.__class__.__module__, cls= self.__class__.__name__))
-        
+
         self.track_source_rows = False
         self.auto_generate_key = False
         self.last_update_date = None
@@ -168,16 +167,16 @@ class Table(ReadOnlyTable):
         self.__batch_size = self.DEFAULT_BATCH_SIZE
         self.__transaction = None
         
-        ## Safe type mode is slower, but gives better error messages than the 
-        ### database that will likely give a not-so helpful message or silenty truncate a value.
+        # Safe type mode is slower, but gives better error messages than the database
+        # that will likely give a not-so helpful message or silently truncate a value.
         self.safe_type_mode = True        
 
-        ## Init table "memory"
+        # Init table "memory"
         self.max_keys = dict()
         self.mapped_source_rows = dict()
         self.mapped_source_transformations = dict()
         
-        ## Make a self example source row
+        # Make a self example source row
         self._example_row = self.Row()
         if self.columns is not None:
             for c in self.columns:
@@ -186,15 +185,16 @@ class Table(ReadOnlyTable):
         self.source_keys_processed = set()
         
         self.insert_hint = None
-        ## A list of any pending rows to be inserted
+        # A list of any pending rows to be inserted
         self.pending_insert_stats = None
         self.pending_insert_rows = list()
         
-        ## A StatementQueue of any pending delete statements, the queue has the statement itself (based on the keys), and a list of pending values
+        # A StatementQueue of any pending delete statements, the queue has the
+        # statement itself (based on the keys), and a list of pending values
         self.pending_delete_stats = None
         self.pending_delete_statements = StatementQueue()
         
-        ## A list of any pending rows to apply as updates
+        # A list of any pending rows to apply as updates
         self.pending_update_stats = None
         self.pending_update_rows = list()
         
@@ -204,7 +204,7 @@ class Table(ReadOnlyTable):
         self.raise_on_source_not_in_target = False
         self.raise_on_target_not_in_source = False
         
-        ## Should be the last call of every init            
+        # Should be the last call of every init            
         self.set_kwattrs(**kwargs)
     
     def close(self):                
@@ -212,7 +212,7 @@ class Table(ReadOnlyTable):
         self.clear_cache()
 
     def __iter__(self):
-        ## Note: yield_per will break if the transaction is committed while we are looping
+        # Note: yield_per will break if the transaction is committed while we are looping
         for row in self.where(None):
             yield row
             
@@ -228,22 +228,20 @@ class Table(ReadOnlyTable):
             else:
                 self.__batch_size = 1
 
-
-    
     def autogenerate_sequence(self, row, seq_column, force_override= True):
-        ## Make sure we have a column object
+        # Make sure we have a column object
         seq_column = self.get_column(seq_column)
-        ## If key value is not already set, or we are supposed to force override                    
+        # If key value is not already set, or we are supposed to force override                    
         if row.get(seq_column.name) is None or force_override:
-            ## Get the database max
+            # Get the database max
             current_max = self.max_keys.get(seq_column)
             if current_max is None:
                 current_max = self.max(seq_column)
-                ## In case the database call returns None
+                # In case the database call returns None
                 if current_max is None:
                     current_max = 0
                     self.log.info("Initialize sequence for {} with value {:}".format(seq_column, current_max))
-                ## Make sure max is an integer
+                # Make sure max is an integer
                 current_max = int(current_max)
                 # Check for negative (special values) set max to 0
                 if current_max < 0:
@@ -251,7 +249,7 @@ class Table(ReadOnlyTable):
                     self.log.info("Initialize sequence for {} with value {:} (and not negative value)".format(seq_column, current_max))
             current_max += 1
             row[seq_column] = current_max
-            #self.log.debug("{} Value = {}  =  {}".format(seq_column, row[seq_column], current_max))
+            # self.log.debug("{} Value = {}  =  {}".format(seq_column, row[seq_column], current_max))
             self.max_keys[seq_column] = current_max
             return current_max
     
@@ -259,7 +257,9 @@ class Table(ReadOnlyTable):
         if self.auto_generate_key:
             
             if len(self.primary_key) > 1:
-                raise ValueError("Can't auto generate a compound key with table {} pk={}".format(self, self.primary_key))
+                raise ValueError("Can't auto generate a compound key with table {} pk={}".format(self,
+                                                                                                 self.primary_key)
+                                 )
             key = list(self.primary_key)[0]
             return self.autogenerate_sequence(row, seq_column= key, force_override= force_override)
             
@@ -286,7 +286,7 @@ class Table(ReadOnlyTable):
         if raise_on_target_not_in_source is None: 
             raise_on_target_not_in_source = self.raise_on_target_not_in_source
         
-        ## Get lowercase list of target columns
+        # Get lowercase list of target columns
         target_set = [t.lower() for t in self.column_names]
         target_col_list = list(map(str.lower, self.column_names))
         if target_excludes is not None:
@@ -308,43 +308,52 @@ class Table(ReadOnlyTable):
         elif isinstance(source_definition, list):
             source_col_list = source_definition         
         else:
-            self.log.error("check_column_mapping source_definition needs to be ETLComponent, Row, set, or list. Got {}".format(type(source_definition)))
+            self.log.error(
+                "check_column_mapping source_definition needs to be ETLComponent, Row, set, or list. Got {}".format(
+                    type(source_definition)
+                )
+            )
             return False        
         
         if source_name is None:
             source_name = ''    
         
         source_renamed_set = set()
-        ## Do this loop even if we are ignore_source_not_in_target because it applies the renames
+        # Do this loop even if we are ignore_source_not_in_target because it applies the renames
         pos = 0     
-        for srcCol in source_col_list:
+        for src_col in source_col_list:
             pos += 1
             if source_renames:
-                if srcCol in source_renames:
-                    srcCol = source_renames[srcCol]
-                elif srcCol.lower() in source_renames:
-                    srcCol = source_renames[srcCol.lower()]
-            ## Get lowercase list of source columns
-            srcCol = srcCol.lower()
-            source_renamed_set.add(srcCol)
+                if src_col in source_renames:
+                    src_col = source_renames[src_col]
+                elif src_col.lower() in source_renames:
+                    src_col = source_renames[src_col.lower()]
+            # Get lowercase list of source columns
+            src_col = src_col.lower()
+            source_renamed_set.add(src_col)
             if source_excludes is None:
                 source_excludes = list()
             
-            if not ignore_source_not_in_target and srcCol not in source_excludes:                
-                if srcCol not in target_set:
+            if not ignore_source_not_in_target and src_col not in source_excludes:
+                if src_col not in target_set:
                     if isinstance(source_definition, set):
                         pos = 'N/A'
-                    msg = "Sanity Check: Source {src} contains column {col}({pos}) not in target {tgt}".format(src=source_name, 
-                                                                                                              col=srcCol,
-                                                                                                              pos=pos, 
-                                                                                                              tgt=self)
+                    msg = "Sanity Check: Source {src} contains column {col}({pos}) not in target {tgt}".format(
+                        src=source_name,
+                        col=src_col,
+                        pos=pos,
+                        tgt=self
+                    )
                     if raise_on_source_not_in_target:
                         raise ColumnMappingError(msg)
                     else:
                         self.log.warning(msg)
         
         if self.auto_generate_key:
-            key = self.get_column_name(list(self.primary_key)[0]).lower()
+            if self.primary_key is not None:
+                key = self.get_column_name(list(self.primary_key)[0]).lower()
+            else:
+                raise KeyError('Cannot generate key values without a primary key.')
         else:
             key = None
             
@@ -356,12 +365,13 @@ class Table(ReadOnlyTable):
                     else:
                         if tgtCol not in [self.delete_flag, self.last_update_date]:
                             pos = target_col_list.index(tgtCol)
-                            msg = "Sanity Check: Target {tgt} contains column {col}(col {pos}) not in source {src}".format(
-                                tgt=self, 
-                                col=tgtCol,
-                                pos=pos, 
-                                src=source_name
-                                )
+                            msg = "Sanity Check: Target {tgt} contains column {col}(col {pos}) not in source {src}"
+                            msg = msg.format(
+                                    tgt=self,
+                                    col=tgtCol,
+                                    pos=pos,
+                                    src=source_name
+                                    )
                             if raise_on_target_not_in_source:
                                 raise ColumnMappingError(msg) 
                             else:
@@ -383,26 +393,31 @@ class Table(ReadOnlyTable):
                                          ignore_source_not_in_target= ignore_source_not_in_target,
                                          ignore_target_not_in_source= ignore_target_not_in_source,
                                          )
-        ## TODO: Sanity check primary key data types. Lookups might fail if the types don't match (although build_row in safe_mode should fix it)
+        # TODO: Sanity check primary key data types.
+        # Lookups might fail if the types don't match (although build_row in safe_mode should fix it)
     
     def build_row(self,
-                   source_row, ## Must be a single row
-                   additional_values = None,
-                   source_renames = None,
-                   source_excludes = None,
-                   target_excludes = None,
-                   source_transformations = None,
-                   parent_stats = None,                   
-                   ):
-        '''
+                  source_row,  # Must be a single row
+                  additional_values = None,
+                  source_renames = None,
+                  source_excludes = None,
+                  target_excludes = None,
+                  source_transformations = None,
+                  stat_name = 'build rows',
+                  parent_stats = None,
+                  ):
+        """
         Use a source row to build a row with correct data types for this table.
-        '''
-        build_row_stats = self.get_stats_entry('build rows', parent_stats= parent_stats)
+
+        stat_name: string
+            Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
+        """
+        build_row_stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         build_row_stats.print_start_stop_times = False
         build_row_stats.timer.start()
         build_row_stats['calls'] += 1
 
-        ## Check if we can skip this expensive logic by cloning the row
+        # Check if we can skip this expensive logic by cloning the row
         if (    source_renames is None
             and source_excludes is None
             and target_excludes is None
@@ -414,10 +429,10 @@ class Table(ReadOnlyTable):
             build_row_stats.timer.stop()            
             return source_row.clone()
         else: 
-            #########################################
-            ## Expensive row building is required
-            #########################################
-            ## First make sure we have an instance of Row as a source 
+            #####################
+            # Expensive row building is required
+            #####################
+            # First make sure we have an instance of Row as a source 
             if not isinstance(source_row,Row):
                 source_row = Row(source_row, name=str(type(source_row)))                
             target_set = set(self.column_names)
@@ -425,7 +440,7 @@ class Table(ReadOnlyTable):
                 target_set -= set(target_excludes)
             new_row =  source_row.subset(exclude=source_excludes, rename_map= source_renames, keep_only= target_set)
             
-            ## Do any supplied transformations
+            # Do any supplied transformations
             if source_transformations is not None:
                 if isinstance(source_transformations, dict):
                     transform_items = iter(source_transformations.items())
@@ -456,14 +471,14 @@ class Table(ReadOnlyTable):
                                     #self.log.error(traceback.format_exc())
                                     raise ValueError("{msg} for transform {tx}({parm}) for {col}".format(col=transform_col, tx=convFunction, parm=parameters, msg=e))
 
-            ## Safe type mode is slower, but gives better error messages than the 
-            ### database that will likely give a not-so helpful message or silenty truncate a value.
+            # Safe type mode is slower, but gives better error messages than the 
+            ## database that will likely give a not-so helpful message or silenty truncate a value.
             if self.safe_type_mode:             
                 for target_name, target_column_value in new_row.items():
                     target_column_object = self.get_column(target_name)
                     if target_column_value is not None:
-                        ## Normalize the column names to the target column names (case changes)
-                        ## DW: Removed this for now since Row is not case sensitive
+                        # Normalize the column names to the target column names (case changes)
+                        # DW: Removed this for now since Row is not case sensitive
                         #if target_name != target_column_object.name:
                         #    new_row.rename_column(target_name, target_column_object.name, ignore_missing= False)
                         #    target_name = target_column_object.name
@@ -476,9 +491,9 @@ class Table(ReadOnlyTable):
                             if t_type.python_type == str:
                                 if isinstance(target_column_value, str):
                                     if self.force_ascii:
-                                        ## Passing ascii bytes to cx_Oracle is not working.
-                                        ## We need to pass a str value.
-                                        ## So we'll use encode with 'replace' to force ascii compatibility                                                                        
+                                        # Passing ascii bytes to cx_Oracle is not working.
+                                        # We need to pass a str value.
+                                        # So we'll use encode with 'replace' to force ascii compatibility                                                                        
                                         target_column_value = target_column_value.encode('ascii','replace_tilda').decode('ascii')
                                 elif isinstance(target_column_value, bytes):
                                     target_column_value = target_column_value.decode('ascii')
@@ -505,22 +520,22 @@ class Table(ReadOnlyTable):
                                         err_msg= "{} > {}".format(len(target_column_value), t_type.length)
                             elif t_type.python_type == int:
                                 if isinstance(target_column_value, str):
-                                    ## Note: str2int takes 590 ns vs 220 ns for int() but handles commas and signs.                                
+                                    # Note: str2int takes 590 ns vs 220 ns for int() but handles commas and signs.                                
                                     target_column_value = str2int(target_column_value)                                
                             elif t_type.python_type == float:
                                 if isinstance(target_column_value, str):
-                                    ## Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
-                                    ## The thought is that ETL jobs that need the perfomance and can guarantee no commas 
-                                    ## can explicitly use float
+                                    # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
+                                    # The thought is that ETL jobs that need the perfomance and can guarantee no commas 
+                                    # can explicitly use float
                                     target_column_value = str2float(target_column_value)
                             elif t_type.python_type == Decimal:
                                 if isinstance(target_column_value, str):      
-                                    ## If for performance reasons you don't want this conversion... don't send in a string!                                    
-                                    ## str2decimal takes 765 ns vs 312 ns for Decimal() but handles commas and signs.
-                                    ## The thought is that ETL jobs that need the performance and can guarantee no commas 
-                                    ## can explicitly use float or Decimal
+                                    # If for performance reasons you don't want this conversion... don't send in a string!                                    
+                                    # str2decimal takes 765 ns vs 312 ns for Decimal() but handles commas and signs.
+                                    # The thought is that ETL jobs that need the performance and can guarantee no commas 
+                                    # can explicitly use float or Decimal
                                     target_column_value = str2decimal(target_column_value)                            
-                                ## Testing trace output
+                                # Testing trace output
                                 #===============================================
                                 # try:
                                 #     self.log.debug("{} t_type={}".format(target_name, t_type)) 
@@ -542,18 +557,18 @@ class Table(ReadOnlyTable):
                                                                                          t_type.scale,
                                                                                          )
                             elif t_type.python_type == date:
-                                ## If we already have a datetime, make it a date
+                                # If we already have a datetime, make it a date
                                 if isinstance(target_column_value, datetime):
                                     target_column_value = date(target_column_value.year, 
                                                                target_column_value.month, 
                                                                target_column_value.day) 
-                                ## If we already have a date
+                                # If we already have a date
                                 elif isinstance(target_column_value, date):
                                     pass
                                 else:                            
                                     target_column_value = str2date(target_column_value, dt_format= self.default_date_format)
                             elif t_type.python_type == datetime:
-                                ## If we already have a date or datetime value
+                                # If we already have a date or datetime value
                                 if isinstance(target_column_value, datetime) or isinstance(target_column_value, date):
                                     pass
                                 elif isinstance(target_column_value,str):                            
@@ -561,7 +576,7 @@ class Table(ReadOnlyTable):
                                 else:                            
                                     target_column_value = str2datetime(str(target_column_value), dt_format= self.default_date_time_format)
                             elif t_type.python_type == time:                                
-                                ## If we already have a datetime, make it a time
+                                # If we already have a datetime, make it a time
                                 if isinstance(target_column_value, datetime):
                                     target_column_value = time(target_column_value.hour, 
                                                                target_column_value.minute, 
@@ -569,13 +584,13 @@ class Table(ReadOnlyTable):
                                                                target_column_value.microsecond,
                                                                target_column_value.tzinfo,
                                                                )
-                                ## If we already have a date or time value
+                                # If we already have a date or time value
                                 elif isinstance(target_column_value, time):
                                     pass
                                 else:                            
                                     target_column_value = str2time(target_column_value, dt_format= self.default_time_format)
                             elif t_type.python_type == timedelta:
-                                ## If we already have an interval value
+                                # If we already have an interval value
                                 if isinstance(target_column_value, timedelta):
                                     pass
                                 else:                            
@@ -609,7 +624,7 @@ class Table(ReadOnlyTable):
                                                                                                                                    err_msg = err_msg
                                                                                                                                    )
                                              )
-                    else: ## value is null
+                    else: # value is null
                         if not target_column_object.nullable:
                             raise ValueError("{table}.{column} has is not nullable and this cannot accept value '{val}' on row {row}".format(table = self,
                                                                                                                                              column = target_name,
@@ -623,7 +638,7 @@ class Table(ReadOnlyTable):
                     
                     #End if target_column_value is not None:
                 
-                ## End for target_name, target_column_value in new_row.items():
+                # End for target_name, target_column_value in new_row.items():
                 
             if additional_values:
                 for colName, value in additional_values.items():
@@ -653,10 +668,12 @@ class Table(ReadOnlyTable):
             ins.with_hint(self.insert_hint)
         return ins
    
-    def insert_pending_batch(self, parent_stats= None):
-        ## Need to delete pending first in case we are doing delete & insert pairs
+    def insert_pending_batch(self,
+                             stat_name = 'insert',
+                             parent_stats= None):
+        # Need to delete pending first in case we are doing delete & insert pairs
         self.delete_pending_batch(parent_stats= parent_stats)
-        ## Need to update pending first in case we are doing update & insert pairs
+        # Need to update pending first in case we are doing update & insert pairs
         self.update_pending_batch(parent_stats= parent_stats)
         
         if len(self.pending_insert_rows) == 0:
@@ -664,13 +681,13 @@ class Table(ReadOnlyTable):
         
         if parent_stats is not None:            
             stats = parent_stats
-            ## Keep track of which parent last used pending inserts
+            # Keep track of which parent last used pending inserts
             self.pending_insert_stats = stats
         else:
             stats = self.pending_insert_stats
             if stats is None:
-                stats = self.get_stats_entry('insert', parent_stats= parent_stats)
-        prepare_stats = self.get_stats_entry('prepare inserts', parent_stats= stats)
+                stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
+        prepare_stats = self.get_stats_entry('prepare ' + stat_name, parent_stats= stats)
         prepare_stats.print_start_stop_times = False
         prepare_stats.timer.start()
         pending_insert_statements = StatementQueue()
@@ -682,12 +699,11 @@ class Table(ReadOnlyTable):
                     prepare_stats['statements prepared'] += 1
                     
                     stmt = self._insert_stmt()                    
-                    stmt_values = dict()
                     for c in new_row:
-                        #colNum = new_row.column_position(c)                        
                         col_obj = self.get_column(c)
-                        stmt= stmt.values( { col_obj.name: bindparam(col_obj, type_=col_obj.type) } )
-                    #stmt = stmt.compile()  ## this was causing InterfaceError: (cx_Oracle.InterfaceError) not a query
+                        stmt = stmt.values( { col_obj.name: bindparam(col_obj, type_=col_obj.type) } )
+                    # this was causing InterfaceError: (cx_Oracle.InterfaceError) not a query
+                    # stmt = stmt.compile()
                     pending_insert_statements.add_statement(stmt_key, stmt)
                 prepare_stats['rows prepared'] += 1
                 stmt_values = dict()
@@ -696,11 +712,11 @@ class Table(ReadOnlyTable):
                     stmt_values[col_obj.name] = new_row[c]
                 pending_insert_statements.append_values_by_key(stmt_key, stmt_values)
                 
-                ## Change the row status to existing, now any updates should be via update statements
+                # Change the row status to existing, now any updates should be via update statements
                 new_row.status = self.RowStatus.existing            
         prepare_stats.timer.stop()
         try:
-            db_stats = self.get_stats_entry('database execute', parent_stats= stats)
+            db_stats = self.get_stats_entry(stat_name + ' database execute', parent_stats= stats)
             db_stats.print_start_stop_times = False            
             db_stats.timer.start()
             rows_affected = pending_insert_statements.execute(self.connection())
@@ -713,32 +729,33 @@ class Table(ReadOnlyTable):
             self.log.error("Bulk insert failed. Applying as single inserts to find error row...")
             self.rollback()
             self.begin()
-            ## Retry one at a time                        
+            # Retry one at a time                        
             for (stmt, row) in pending_insert_statements.iter_single_statements():
                 try:                
                     #print(row)
-                    ## TODO: This should share the same code as insert_row's Immediate insert section
+                    # TODO: This should share the same code as insert_row's Immediate insert section
                     self.connection().execute(stmt, row)
                 except Exception as e:
                     self.log.error("Error with stmt {} stmt_values {}".format(stmt, dict_to_str(row, sorted_dicts=True)))
                     raise e
-            ## If that didn't cause the error... re raise the original error
+            # If that didn't cause the error... re raise the original error
             self.log.error("Single inserts did not produce the error. Original error will be issued below.") 
             self.rollback()
             raise e
             
 
     def insert_row(self,
-                   source_row, ## Must be a single row
+                   source_row, # Must be a single row
                    additional_insert_values = None,
                    do_no_build_row= False,
                    source_renames = None,
                    source_excludes = None,
                    target_excludes = None,
                    source_transformations = None,
+                   stat_name = 'insert',
                    parent_stats = None,
                    ):        
-        stats = self.get_stats_entry('insert', parent_stats= parent_stats)
+        stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         stats.timer.start()
         self.begin()
         
@@ -772,7 +789,7 @@ class Table(ReadOnlyTable):
             if len(self.pending_insert_rows) >= self.batch_size:
                 self.insert_pending_batch(parent_stats= stats)
         else:
-            ## Immediate insert
+            # Immediate insert
             new_row.status = self.RowStatus.existing
             try:
                 stmt_values = dict()
@@ -794,7 +811,7 @@ class Table(ReadOnlyTable):
         
 
     def insert(self,
-               source_row, ## Could also be a whole list of rows
+               source_row, # Could also be a whole list of rows
                additional_insert_values = None,
                source_renames= None,
                source_excludes= None,
@@ -850,20 +867,23 @@ class Table(ReadOnlyTable):
                                    )
 
 
-    def delete_pending_batch(self, parent_stats = None):
+    def delete_pending_batch(self,
+                             stat_name = 'delete',
+                             parent_stats = None
+                             ):
         if self.pending_delete_statements.row_count > 0:
             if parent_stats is not None:
                 stats = parent_stats
-                ## Keep track of which parent last used pending delete
+                # Keep track of which parent last used pending delete
                 self.pending_delete_stats = stats            
             else:
                 stats = self.pending_delete_stats
                 if stats is None:
-                    stats = self.get_stats_entry('delete', parent_stats= parent_stats)
+                    stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
             stats['rows batch deleted'] += self.pending_delete_statements.execute(self.connection())
 
     def _delete_stmt(self):
-        #pylint: disable=no-value-for-parameter
+        # pylint: disable=no-value-for-parameter
         return self.table.delete().execution_options(autocommit=self.autocommit)
     
     def delete(self,
@@ -871,6 +891,7 @@ class Table(ReadOnlyTable):
                lookup_name= None,  
                key_names = None,
                maintain_cache= None,
+               stat_name = 'delete',
                parent_stats = None,
                ):
         """
@@ -895,7 +916,7 @@ class Table(ReadOnlyTable):
             Optional Statistics object to nest this steps statistics in.                               
             Default is to place statistics in the ETLTask level statistics.
         """
-        stats = self.get_stats_entry('delete', parent_stats= parent_stats)
+        stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         stats.timer.start()
         self.begin()
         
@@ -903,17 +924,17 @@ class Table(ReadOnlyTable):
             maintain_cache = self.maintain_cache_during_load
         
         key_values_dict = self._generate_key_values_dict(key_names, key_values, lookup_name)
-        ## Don't use key_names or key_values anymore, use key_values_dict
+        # Don't use key_names or key_values anymore, use key_values_dict
         del key_names
         del key_values                     
         
         self.cache_clean = False
-        ## TODO We could try and maintain the cache here
+        # TODO We could try and maintain the cache here
 
         if self.batch_size > 1:
-            ## Bacth-ed deletes
-            ## This mode is difficult to buffer. We might have multiple delete statements used, so we have
-            ## to maintain a dictionary of statements by tuple(key_names) and a buffer for each
+            # Bacth-ed deletes
+            # This mode is difficult to buffer. We might have multiple delete statements used, so we have
+            # to maintain a dictionary of statements by tuple(key_names) and a buffer for each
             delete_stmt_key = frozenset(key_values_dict.keys())            
             stmt = self.pending_delete_statements.get_statement_by_key(delete_stmt_key)
             if stmt is None:
@@ -929,7 +950,7 @@ class Table(ReadOnlyTable):
             if len(self.pending_delete_statements) >= self.batch_size:
                 self.delete_pending_batch(parent_stats=stats)
         else:
-            ## Deletes issued as we get them
+            # Deletes issued as we get them
             stmt = self._delete_stmt()
             
             for key_name, key_value in key_values_dict.items():
@@ -950,7 +971,7 @@ class Table(ReadOnlyTable):
         stats.timer.stop()
         
 
-    ## TODO: Add lookup parameter and change to allow set of be of that instead of keys
+    # TODO: Add lookup parameter and change to allow set of be of that instead of keys
     def delete_not_in_set(self, 
                           list_of_key_tuples, 
                           criteria = None, 
@@ -958,7 +979,7 @@ class Table(ReadOnlyTable):
                           progress_frequency = 10,
                           parent_stats= None, 
                           ):
-        '''
+        """
         WARNING: This does physical deletes !! See :meth:`logically_delete_in_set` for logical deletes.
         Deletes rows macthing criteria that are not in the list_of_key_tuples pass in.
         
@@ -977,7 +998,7 @@ class Table(ReadOnlyTable):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.         
             Default is to place statistics in the ETLTask level statistics.
-        '''
+        """
         stats = self.get_unique_stats_entry(stat_name, parent_stats= parent_stats)
         stats['rows read'] = 0
         stats['rows deleted'] = 0
@@ -998,14 +1019,14 @@ class Table(ReadOnlyTable):
                 
                 deleted_rows.append(row)
                 self.delete(key_values=row,
-                            maintain_cache=False, ## We can't maintain cache here because we might be iterating over the cache
+                            maintain_cache=False, # We can't maintain cache here because we might be iterating over the cache
                             )
         
         for row in deleted_rows:
             self.uncache_row(row)                
 
     def delete_not_processed(self, criteria = None, stat_name='delete_not_processed', parent_stats= None):
-        '''
+        """
         WARNING: This does physical deletes !! See :meth:`logically_delete_not_processed` for logical deletes.
         
         Physically deletes rows matching criteria that are not in the Table memory of rows passed to :meth:`upsert`.  
@@ -1019,11 +1040,11 @@ class Table(ReadOnlyTable):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.        
-        '''
+        """
         assert self.track_source_rows, "delete_not_processed can't be used if we don't track source rows"
         if self.source_keys_processed is None or len(self.source_keys_processed) == 0:
-            ## We don't want to logically delete all the rows
-            ## But that's only an issue if there are target rows
+            # We don't want to logically delete all the rows
+            # But that's only an issue if there are target rows
             if any(True for _ in self.where(criteria=criteria)):
                 raise RuntimeError("{} called before any source rows were processed.".format(stat_name))
         self.delete_not_in_set(list_of_key_tuples= self.source_keys_processed,
@@ -1032,20 +1053,22 @@ class Table(ReadOnlyTable):
                                parent_stats= parent_stats)
         self.source_keys_processed = set()
         
-    def logically_delete_not_in_set(self, 
-                                   list_of_key_tuples, 
-                                   criteria = None, 
-                                   stat_name='logically_delete_not_in_set',
-                                   progress_frequency = 10,
-                                   parent_stats= None, 
-                                   ):
-        '''
+    def logically_delete_not_in_set(self,
+                                    set_of_key_tuples: set,
+                                    lookup_name=None,
+                                    criteria=None,
+                                    stat_name='logically_delete_not_in_set',
+                                    progress_frequency=10,
+                                    parent_stats=None):
+        """
         Logically deletes rows macthing criteria that are not in the list_of_key_tuples pass in.
         
         Parameters
         ----------
-        list_of_key_tuples: list
+        set_of_key_tuples: list
             List of tuples comprising the primary key values. This list represents the rows that should *not* be logically deleted.
+        lookup_name: str
+            Name of the lookup to use
         criteria : string or list of strings 
             Only rows matching criteria will be checked against the ``list_of_key_tuples`` for deletion. 
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
@@ -1057,23 +1080,23 @@ class Table(ReadOnlyTable):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.         
             Default is to place statistics in the ETLTask level statistics.
-        '''
-        logical_delete_update =  Row(name='logically_deleted')
+        """
+        logical_delete_update = Row(name='logically_deleted')
         logical_delete_update[self.delete_flag] = self.delete_flag_yes
         if criteria is None:
-            ## Default to not processing rows that are already deleted
+            # Default to not processing rows that are already deleted
             criteria = {self.delete_flag: self.delete_flag_no}
-        
-        self.update_not_in_set(list_of_key_tuples= list_of_key_tuples,
-                               updates_to_make= logical_delete_update,
-                               criteria= criteria,
-                               stat_name= stat_name,
-                               progress_frequency= progress_frequency,
-                               parent_stats= parent_stats,
-                               )
+
+        self.update_not_in_set(updates_to_make=logical_delete_update,
+                               set_of_key_tuples=set_of_key_tuples,
+                               lookup_name=lookup_name,
+                               criteria=criteria,
+                               progress_frequency=progress_frequency,
+                               stat_name=stat_name,
+                               parent_stats=parent_stats)
         
     def logically_delete_not_processed(self, criteria = None, parent_stats= None):
-        '''
+        """
         Logically deletes rows matching criteria that are not in the Table memory of rows passed to :meth:`upsert`.  
         
         Parameters
@@ -1085,18 +1108,15 @@ class Table(ReadOnlyTable):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
-        '''
+        """
         assert self.track_source_rows, "logically_delete_not_processed can't be used if we don't track source rows"
         assert self.source_keys_processed, "logically_delete_not_processed called before any source rows were processed."
-        self.logically_delete_not_in_set(list_of_key_tuples= self.source_keys_processed, 
-                                         criteria= criteria, 
-                                         stat_name='logically_delete_not_processed', 
-                                         parent_stats= parent_stats
-                                         )
+        self.logically_delete_not_in_set(set_of_key_tuples=self.source_keys_processed, criteria=criteria,
+                                         stat_name='logically_delete_not_processed', parent_stats=parent_stats)
         self.source_keys_processed = set()
         
     def logically_delete_not_in_source(self, source, source_criteria = None, target_criteria = None, parent_stats= None):
-        '''
+        """
         Logically deletes rows matching criteria that are not in the source component passed to this method.
         The primary use case for this method is when the upsert method is only passed new/changed records and so cannot 
         build a complete set of source keys in source_keys_processed.
@@ -1117,7 +1137,7 @@ class Table(ReadOnlyTable):
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         
-        '''
+        """
         self.log.info("Processing deletes")
         self.log.info("...getting source keys")                                
         set_of_source_keys = set()
@@ -1125,20 +1145,34 @@ class Table(ReadOnlyTable):
             set_of_source_keys.add( source.get_primarykey_tuple(row) )
         
         self.log.info("...logically_delete_not_in_set of source keys")
-        self.logically_delete_not_in_set(set_of_source_keys, criteria= target_criteria, parent_stats= parent_stats)
+        self.logically_delete_not_in_set(set_of_source_keys, criteria=target_criteria, parent_stats=parent_stats)
 
-    def update_pending_batch(self, parent_stats= None):
+    def update_pending_batch(self,
+                             stat_name = 'update',
+                             parent_stats= None):
+        """
+
+        Parameters
+        ----------
+        stat_name: str
+            Name of this step for the ETLTask statistics. Default = 'update'
+        parent_stats: Statistics
+
+        Returns
+        -------
+
+        """
         if len(self.pending_update_rows) == 0:
             return
         assert self.primary_key, "add_pending_update called for table with no primary key"
         if parent_stats is not None:
             stats = parent_stats
-            ## Keep track of which parent stats last called us
+            # Keep track of which parent stats last called us
             self.pending_update_stats = stats
         else:
             stats = self.pending_update_stats
             if stats is None:
-                stats = self.get_stats_entry('update', parent_stats= parent_stats)
+                stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         stats.timer.start()
         self.begin()
         pending_update_statements = StatementQueue()
@@ -1154,10 +1188,10 @@ class Table(ReadOnlyTable):
                         key = self.get_column(key_column)                    
                         #bind_name = self.make_bind_name('k',key.name)
                         bind_name = key.name
-                        ## Note SQLAlchemy takes care of converting to positional “qmark” bind parameters as needed
+                        # Note SQLAlchemy takes care of converting to positional “qmark” bind parameters as needed
                         update_stmt= update_stmt.where(key == bindparam(bind_name, type_= key.type))
                     for c in row.columns:
-                        ## Since we know we aren't updating the key, don't send the keys in the values clause
+                        # Since we know we aren't updating the key, don't send the keys in the values clause
                         if c not in self.primary_key:
                             #bind_name = self.make_bind_name('c',c)
                             bind_name = c
@@ -1174,7 +1208,7 @@ class Table(ReadOnlyTable):
                     stmt_values[bind_name] = row[key_column]
                 
                 for c in row.columns:
-                    ## Since we know we aren't updating the key, don't send the keys in the values clause
+                    # Since we know we aren't updating the key, don't send the keys in the values clause
                     if c not in self.primary_key:
                         #bind_name = self.make_bind_name('c',c)
                         bind_name = c
@@ -1190,7 +1224,7 @@ class Table(ReadOnlyTable):
             del self.pending_update_rows
             self.pending_update_rows = list()
         except Exception as e:            
-            ## Retry one at a time
+            # Retry one at a time
             self.log.error("Bulk update failed. Applying as single updates to find error row...")
             for (stmt, row) in pending_update_statements.iter_single_statements():
                 try:                
@@ -1198,13 +1232,12 @@ class Table(ReadOnlyTable):
                 except Exception as e:
                     self.log.error("Error with row {}".format(repr(row)))
                     raise e
-            ## If that didn't cause the error... re-raise the original error
+            # If that didn't cause the error... re-raise the original error
             self.log.error("Single updates did not produce the error. Original error will be issued below.") 
             self.rollback()
             raise e
         stats.timer.stop()
-           
-    
+
     def add_pending_update(self, row, parent_stats= None):
         assert self.primary_key, "add_pending_update called for table with no primary key"
         assert row.status != self.RowStatus.insert, "add_pending_update called with row that's pending insert"
@@ -1213,19 +1246,25 @@ class Table(ReadOnlyTable):
         if len(self.pending_update_rows) >= self.batch_size:
             self.update_pending_batch(parent_stats= parent_stats)
     
-    def apply_updates(self, row, changes_list= None, additional_update_values= None, parent_stats= None):
-        '''
+    def apply_updates(self,
+                      row,
+                      changes_list= None,
+                      additional_update_values= None,
+                      source_effective_date=None,
+                      stat_name='update',
+                      parent_stats= None):
+        """
         This method should only be called with a row that has already been transformed into the correct datatypes and column names.
         
         The update values can either already be in row or be in the changes_list.
-        '''
+        """
         assert self.primary_key, "apply_updates called for table with no primary key"
         assert row.status != self.RowStatus.deleted, "apply_updates called for deleted row {}".format(row)
             
-        stats = self.get_stats_entry('update', parent_stats= parent_stats)
+        stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         stats.timer.start()
         
-        ## Set the last update date
+        # Set the last update date
         if self.last_update_date is not None:
             row[self.get_column_name(self.last_update_date)] = datetime.now()
             
@@ -1241,7 +1280,7 @@ class Table(ReadOnlyTable):
         if self.maintain_cache_during_load:
             self.cache_row(row, allow_update= True)
         
-        ## Check that the row isn't pending an insert
+        # Check that the row isn't pending an insert
         if row.status != self.RowStatus.insert:
             row.status = self.RowStatus.update_whole
             self.add_pending_update(row, parent_stats= stats)
@@ -1263,6 +1302,7 @@ class Table(ReadOnlyTable):
                         source_excludes= None,
                         target_excludes= None,
                         source_transformations= None,
+                        stat_name = 'update_where_pk',
                         parent_stats= None,
                ):
         """
@@ -1286,11 +1326,13 @@ class Table(ReadOnlyTable):
         source_transformations: dict or iterable container
             Optional. Container with (transform_col, transform) mappings.
             See :doc:`source_transformations`                    
+        stat_name: str
+            Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
         parent_stats: bi_etl.statistics.Statistics
             Optional. Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """        
-        stats = self.get_stats_entry('update_where_pk', parent_stats= parent_stats)
+        stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         
         if not self.sanity_check_done:
             self.sanity_check_example_row(updates_to_make, source_renames, source_excludes, target_excludes, ignore_target_not_in_source = True)
@@ -1305,7 +1347,7 @@ class Table(ReadOnlyTable):
 
         key_names = self.primary_key        
         key_values_dict = self._generate_key_values_dict(key_names, key_values, other_values_dict=updates_to_make)
-        ## Don't use key_names or key_values anymore, use key_values_dict
+        # Don't use key_names or key_values anymore, use key_values_dict
         del key_names
         del key_values 
         
@@ -1321,7 +1363,8 @@ class Table(ReadOnlyTable):
                source_renames= None,
                source_excludes= None,
                target_excludes= None,
-               source_transformations= None,               
+               source_transformations= None,
+               stat_name = 'direct update',
                parent_stats= None,
                ):
         """
@@ -1352,14 +1395,16 @@ class Table(ReadOnlyTable):
         source_transformations: dict or iterable container
             Optional. Container with (transform_col, transform) mappings.
             See :doc:`source_transformations`                    
+        stat_name: str
+            Name of this step for the ETLTask statistics. Default = 'direct update'
         parent_stats: bi_etl.statistics.Statistics
             Optional. Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """        
-        stats = self.get_stats_entry('direct update', parent_stats= parent_stats)
+        stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         stats.timer.start()
         
-        ## Check if we can pass this of to update_where_pk
+        # Check if we can pass this of to update_where_pk
         if key_names is None and not update_all_rows:
             self.update_where_pk(updates_to_make= updates_to_make, 
                                  key_values= key_values, 
@@ -1385,7 +1430,7 @@ class Table(ReadOnlyTable):
                                                              key_values,
                                                              lookup_name= lookup_name, 
                                                              other_values_dict= updates_to_make)
-            ## Don't use key_names or key_values anymore, use key_values_dict
+            # Don't use key_names or key_values anymore, use key_values_dict
             del key_names
             del key_values 
 
@@ -1394,20 +1439,20 @@ class Table(ReadOnlyTable):
                 key = self.get_column(key_name)
                 stmt= stmt.where(key == key_value)
             
-            ## We could optionally scan the entire cache and apply updates there
-            ## instead for now, we'll uncache the row and set the lookups to fall back to the database
+            # We could optionally scan the entire cache and apply updates there
+            # instead for now, we'll uncache the row and set the lookups to fall back to the database
             
-            ## TODO: If we have a lookup based on an updated value, the original value would still be 
-            ######## in the lookup. We don't know the original without doing a lookup.
+            # TODO: If we have a lookup based on an updated value, the original value would still be 
+            #### in the lookup. We don't know the original without doing a lookup.
             
             self.cache_clean = False
             if self.maintain_cache_during_load:
                 self.uncache_row(key_values_dict)
         else:
             assert not key_values, "update_all_rows set and yet we got key_values"
-        ## End not update all rows    
+        # End not update all rows    
         
-        ## Add set statements to the update
+        # Add set statements to the update
         for c in source_mapped_as_target_row:                
             v = source_mapped_as_target_row[c]
             stmt= stmt.values({c: v})
@@ -1418,28 +1463,27 @@ class Table(ReadOnlyTable):
         result.close()
 
         stats.timer.stop()
-        
-    
-            
 
-    def update_not_in_set(self, 
-                          updates_to_make, 
-                          list_of_key_tuples, 
-                          lookup_name = None, 
-                          criteria = None,
-                          progress_frequency = None, 
-                          stat_name='update_not_in_set',
-                          parent_stats= None, 
-                          ):
-        '''
+    def update_not_in_set(self,
+                          updates_to_make,
+                          set_of_key_tuples: set,
+                          lookup_name: str = None,
+                          criteria: list = None,
+                          progress_frequency: int = None,
+                          stat_name: str = 'update_not_in_set',
+                          parent_stats: Statistics = None,
+                          **kwargs):
+        """
         Applies update to rows matching criteria that are not in the list_of_key_tuples pass in.
         
         Parameters
         ----------
-        update_row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
+        updates_to_make: :class:`~bi_etl.components.row.row_case_insensitive.Row`
             :class:`~bi_etl.components.row.row_case_insensitive.Row` or dict of updates to make
-        list_of_key_tuples: list
+        set_of_key_tuples: list
             List of tuples comprising the primary key values. This list represents the rows that should *not* be updated.
+        lookup_name: str
+            The name of the lookup to use to find key tuples.
         criteria : string or list of strings 
             Only rows matching criteria will be checked against the ``list_of_key_tuples`` for deletion. 
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
@@ -1451,7 +1495,7 @@ class Table(ReadOnlyTable):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.         
             Default is to place statistics in the ETLTask level statistics.
-        '''
+        """
         stats = self.get_unique_stats_entry(stat_name, parent_stats= parent_stats)
         stats.timer.start()
         update_cnt = 0
@@ -1460,9 +1504,9 @@ class Table(ReadOnlyTable):
         if progress_frequency is None:
             progress_frequency = self.progress_frequency
 
-        progressTimer = Timer()
+        progress_timer = Timer()
         
-        ## Turn off read progress reports
+        # Turn off read progress reports
         saved_progress_frequency = self.progress_frequency
         self.progress_frequency = None
         
@@ -1471,27 +1515,27 @@ class Table(ReadOnlyTable):
         else:                
             lookup = self.get_lookup(lookup_name)
         
-        ## Note, here we select only lookup columns from self
+        # Note, here we select only lookup columns from self
         for row in self.where(column_list= lookup.lookup_keys, criteria=criteria, parent_stats=stats):
             if lookup_name is None:
                 existing_key = self.get_primarykey_tuple(row)
             else:
                 existing_key = self.get_lookup_tuple(lookup_name, row)
             
-            if progress_frequency > 0 and progressTimer.seconds_elapsed >= progress_frequency:
-                progressTimer.reset()
+            if progress_frequency > 0 and progress_timer.seconds_elapsed >= progress_frequency:
+                progress_timer.reset()
                 self.log.info("update_not_in_set current row={} key={} updates done = {}".format(stats['rows read'], existing_key, update_cnt))    
                 
-            if not existing_key in list_of_key_tuples:
-                ## First we need the entire existing row
+            if not existing_key in set_of_key_tuples:
+                # First we need the entire existing row
                 target_row = self.get_by_lookup(lookup_name, row)
-                ## Then we can apply the updates to it
+                # Then we can apply the updates to it
                 self.apply_updates(row= target_row, additional_update_values= updates_to_make, parent_stats= stats)
         stats.timer.stop()
         self.progress_frequency = saved_progress_frequency 
 
     def update_not_processed(self, update_row, lookup_name = None, criteria = None, stat_name='update_not_processed', parent_stats= None):
-        '''
+        """
         Applies update to rows matching criteria that are not in the Table memory of rows passed to :meth:`upsert`.  
         
         Parameters
@@ -1505,19 +1549,16 @@ class Table(ReadOnlyTable):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
-        '''
+        """
         assert self.track_source_rows, "update_not_processed can't be used if we don't track source rows"
         if self.source_keys_processed is None or len(self.source_keys_processed) == 0:
-            ## We don't want to logically delete all the rows
-            ## But that's only an issue if there are target rows
+            # We don't want to logically delete all the rows
+            # But that's only an issue if there are target rows
             if any(True for _ in self.where(criteria=criteria)):
                 raise RuntimeError("{} called before any source rows were processed.".format(stat_name))
-        self.update_not_in_set(updates_to_make= update_row, 
-                               list_of_key_tuples= self.source_keys_processed, 
-                               lookup_name= lookup_name, 
-                               criteria= criteria, 
-                               stat_name= stat_name, 
-                               parent_stats= parent_stats)
+        self.update_not_in_set(updates_to_make=update_row, set_of_key_tuples=self.source_keys_processed,
+                               lookup_name=lookup_name, criteria=criteria, stat_name=stat_name,
+                               parent_stats=parent_stats)
         self.source_keys_processed = set()
 
     def upsert(self,
@@ -1533,6 +1574,7 @@ class Table(ReadOnlyTable):
                source_excludes = None,
                target_excludes = None,
                source_transformations = None,
+               stat_name = 'upsert',
                parent_stats = None,
                ):
         """
@@ -1571,15 +1613,15 @@ class Table(ReadOnlyTable):
         source_transformations: dict or iterable container
             Container with (transform_col, transform) mappings.
             See :doc:`source_transformations`
+        stat_name: str
+            Name of this step for the ETLTask statistics. Default = 'upsert'
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """
-        stats = self.get_stats_entry('upsert', parent_stats= parent_stats)
+        stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         stats.ensure_exists('upsert source row count')
-        #stats.ensure_exists('update called')
-        #stats.ensure_exists('insert new called')
-                    
+
         stats.timer.start()
         self.begin()
         
@@ -1592,7 +1634,7 @@ class Table(ReadOnlyTable):
 
         stats['upsert source row count'] += 1
 
-        ## Check for existing row
+        # Check for existing row
         target_row = None
         source_mapped_as_target_row = self.build_row(source_row= source_row,
                                                      source_renames = source_renames,
@@ -1607,7 +1649,7 @@ class Table(ReadOnlyTable):
                 source_mapped_as_target_row[self.delete_flag] = self.delete_flag_no
         
         try:
-            ## Default to using the primary key provided
+            # Default to using the primary key provided
             if not lookup_name and not self.primary_key:
                 raise ValueError("upsert needs a lookup_key or a table with a primary key")
 
@@ -1648,52 +1690,61 @@ class Table(ReadOnlyTable):
             target_row = new_row
         
         if self.track_source_rows:
-            ## Keep track of source records so we can check if target rows don't exist in source
-            ## Note: We use the target_row here since it has already been translated to match the target table
-            ## It's also important that it have the existing surrogate key (if any)
+            # Keep track of source records so we can check if target rows don't exist in source
+            # Note: We use the target_row here since it has already been translated to match the target table
+            # It's also important that it have the existing surrogate key (if any)
             self.source_keys_processed.add(self.get_primarykey_tuple(target_row))
             
         stats.timer.stop()
         return target_row
         
-    def upsert_special_values_rows(self, parent_stats= None):
-        '''
+    def upsert_special_values_rows(self,
+                                   stat_name = 'upsert_special_values_rows',
+                                   parent_stats= None):
+        """
         Send all special values rows to upsert to ensure they exist and are current.
         Rows come from :meth:`get_missing_row`, :meth:`get_invalid_row`, :meth:`get_not_applicable_row`, :meth:`get_various_row`
         
         Parameters
         ----------
+        stat_name: str
+            Name of this step for the ETLTask statistics. Default = 'upsert_special_values_rows'
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.       
-        '''
+        """
         self.log.info("Checking special values rows for {}".format(self))
-        stats = self.get_stats_entry('upsert_special_values_rows', parent_stats= parent_stats)
+        stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         stats['calls'] += 1
         stats.timer.start()
-        saveAutoGen = self.auto_generate_key
+        save_auto_gen = self.auto_generate_key
         self.auto_generate_key = False
         self.upsert(self.get_missing_row(), parent_stats= stats)
         self.upsert(self.get_invalid_row(), parent_stats= stats)
         self.upsert(self.get_not_applicable_row(), parent_stats= stats)
         self.upsert(self.get_various_row(), parent_stats= stats)
         self.commit(parent_stats= stats)
-        self.auto_generate_key = saveAutoGen
+        self.auto_generate_key = save_auto_gen
         stats.timer.stop()
         
-    def truncate(self, timeout=60, parent_stats= None):
-        '''
+    def truncate(self,
+                 timeout=60,
+                 stat_name= 'truncate',
+                 parent_stats= None):
+        """
         Truncate the table if possible, else delete all.
         
         Parameters
         ----------
         timeout: int
             How long in seconds to wait for the truncate. Oracle only.
+        stat_name: str
+            Name of this step for the ETLTask statistics. Default = 'truncate'
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
-        '''
-        stats = self.get_stats_entry('truncate', parent_stats= parent_stats)
+        """
+        stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         stats['calls'] += 1
         stats.timer.start()
         database_type = type(self.connection().dialect).name
@@ -1710,50 +1761,60 @@ class Table(ReadOnlyTable):
         if self.__transaction is None or not self.__transaction.is_active:
             self.__transaction = self.connection().begin()
 
-    def commit(self, parent_stats= None, print_to_log=True):
-        '''
+    def commit(self,
+               stat_name= 'commit',
+               parent_stats= None,
+               print_to_log= True):
+        """
         Flush any buffered deletes, updates, or inserts
         
         Parameters
         ----------
+        stat_name: str
+            Name of this step for the ETLTask statistics. Default = 'commit'
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
-        '''        
-        ## insert_pending_batch calls other *_pending methods
+        print_to_log: bool
+            Should this add a debug log entry for each commit. Defaults to true.
+        """        
+        # insert_pending_batch calls other *_pending methods
         self.insert_pending_batch()
 
         if print_to_log:
             self.log.debug("Committing")
-        stats = self.get_unique_stats_entry('commit', parent_stats= parent_stats)
-        ## Start & stop appropriate timers for each
+        stats = self.get_unique_stats_entry(stat_name, parent_stats= parent_stats)
+        # Start & stop appropriate timers for each
         stats['commit count'] += 1
         stats.timer.start()
         if self.__transaction is not None:
-            ## Check if a transaction is still active.
+            # Check if a transaction is still active.
             if self.__transaction.is_active:
                 self.__transaction.commit()
                 self.begin()
         stats.timer.stop()
     
-    def rollback(self, parent_stats= None):
-        '''
+    def rollback(self,
+                 stat_name= 'rollback',
+                 parent_stats= None):
+        """
         Rollback any uncommitted deletes, updates, or inserts.
         
         Parameters
         ----------
+        stat_name: str
+            Name of this step for the ETLTask statistics. Default = 'rollback'
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.       
-        '''    
+        """    
         self.log.debug("Rolling back transaction")
-        stats = self.get_unique_stats_entry('rollback', parent_stats= parent_stats)
+        stats = self.get_unique_stats_entry(stat_name, parent_stats= parent_stats)
         stats['calls'] += 1
         stats.timer.start()
         if self.__transaction is not None:
-            ## Check if a transaction is still active.
+            # Check if a transaction is still active.
             if self.__transaction.is_active:
                 self.__transaction.rollback()
                 self.begin()
         stats.timer.stop()
-        

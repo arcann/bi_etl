@@ -53,6 +53,7 @@ def itercount(filename):
 
 
 def opcount(fname):
+    line_number = 0
     with open(fname) as f:
         for line_number, _ in enumerate(f, 1):
             pass

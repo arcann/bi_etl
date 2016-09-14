@@ -6,7 +6,8 @@ from bi_etl.notifiers.notifier import Notifier
 
 class Email(Notifier):
     def __init__(self, config, destination_definition):
-        super().__init__(config=config, destination_definition=destination_definition)
+        super().__init__(config=config,
+                         destination_definition=destination_definition)
 
     def send(self, subject, message):
         # Send e-mail via SMTP
@@ -23,6 +24,7 @@ class Email(Notifier):
                     to_addresses.append(addr)
 
             server = None
+            contents = None
             try:
                 from_address = self.config.get('SMTP', 'from')
                 gateway = self.config.get_or_default('SMTP', 'gateway','')

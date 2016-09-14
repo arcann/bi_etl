@@ -42,6 +42,7 @@ class Test(unittest.TestCase):
     def getUTF8filepath():
         return os.path.join(Test.get_test_files_path(), 'utf8_with_header.csv')
 
+    # noinspection PyTypeChecker
     def testUTF8_CSV_with_header_where(self):
         srcFile = self.getUTF8filepath()
         #print(srcFile)
@@ -217,7 +218,7 @@ class Test(unittest.TestCase):
             self.assertEqual(row['col2'],None)
             self.assertEqual(row['col3'],None)
             with self.assertRaises(KeyError):
-                row[src.restkey]
+                _ = row[src.restkey]
             ## Row 2 after header = Row 3 in file
             restval = '<Blank>'
             src.restval = restval
@@ -226,14 +227,14 @@ class Test(unittest.TestCase):
             self.assertEqual(row['col2'],'100')
             self.assertEqual(row['col3'],restval)
             with self.assertRaises(KeyError):
-                row[src.restkey]
+                _ = row[src.restkey]
             ## Row 3 after header = Row 4 in file
             row = next(src_iter)
             self.assertEqual(row['str'],'Amanda')
             self.assertEqual(row['col2'],'100000')
             self.assertEqual(row['col3'],'abc')
             with self.assertRaises(KeyError):
-                row[src.restkey]
+                _ = row[src.restkey]
             ## Row 4 after header = Row 5 in file
             row = next(src_iter)
             self.assertEqual(row['str'],'big row')
@@ -249,10 +250,10 @@ class Test(unittest.TestCase):
             self.assertEqual(row['col3'],'3')
             extraColList = ['extraColVal1','extraColVal2']
             self.assertEqual(row[src.restkey], extraColList)
-            ## Past end of rows
+            # Past end of rows
             with self.assertRaises(StopIteration):
                 row = next(src_iter)
+            _ = row
             
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()

@@ -1,8 +1,8 @@
-'''
+"""
 Created on Sep 15, 2014
 
 @author: woodd
-'''
+"""
 import errno
 import logging
 import traceback
@@ -194,9 +194,9 @@ class ETLTask(object):
 
     @property
     def name(self):
-        '''
+        """
         Note: Return value needs to be compatible with find_etl_class
-        '''
+        """
         module = self.__class__.__module__
 
         return module + '.' + self.__class__.__name__
@@ -276,7 +276,8 @@ class ETLTask(object):
     def root_task(self):
         if self.root_task_id is not None:
             if type(self.scheduler).__name__ == 'Scheduler':
-                return self.scheduler.get_task_by_id(self.root_task_id)  # pylint: disable=no-member
+                # pylint: disable=no-member
+                return self.scheduler.get_task_by_id(self.root_task_id)
             else:
                 raise TypeError('Scheduler required to get ETLTask.root_task')
         else:
@@ -291,9 +292,9 @@ class ETLTask(object):
 
     @property
     def log(self):
-        '''
+        """
         Get a logger using the task name.
-        '''
+        """
         if self._log is None:
             self._log = logging.getLogger(self.name)
 
@@ -301,7 +302,7 @@ class ETLTask(object):
 
     # pylint: disable=no-self-use
     def depends_on(self):
-        '''
+        """
         Override to provide a static list of tasks that this task will wait on if they are running.
 
         Each dependent task entry should consist of either
@@ -313,16 +314,16 @@ class ETLTask(object):
         if jobs are supposed to run A->B->C, but you add (and commit) job C first, it will see that B is
         not running and start.  The scheduler would then allow A to run, and block B until both A and C
         are is_finished (since it checks forward and backwards for dependencies.
-        '''
+        """
         return list()
 
     @property
     def normalized_dependents_set(self):
-        '''
+        """
         Build a set of modules this task depends on.
         See depends_on.
         Each will be "normalized" to be a fully qualified name.
-        '''
+        """
         if self._normalized_dependents_set is None:
             normalized_dependents_set = set()
             self._normalized_dependents_set = normalized_dependents_set
@@ -342,33 +343,33 @@ class ETLTask(object):
         return self._normalized_dependents_set
 
     def _mutually_exclusive_execution(self):
-        '''
+        """
         See mutually_exclusive_execution.
         This method has the default functionality so it's easier to call on that logic when
         overriding mutually_exclusive_execution.
-        '''
+        """
         if self.allow_concurrent_runs():
             return list()
         else:
             return [self.name]
 
     def mutually_exclusive_execution(self):
-        '''
+        """
         Override to provide a list of task names (or partial names that match modules) 
         that this task can not run at the same time as.
 
         If allow_concurrent_runs is false, defaults to a list with just self.name
         If allow_concurrent_runs is true, defaults to an empty list
-        '''
+        """
         return self._mutually_exclusive_execution()
 
     @property
     def mutually_exclusive_with_set(self):
-        '''
+        """
         Build a set of modules this task is mutually exclusive with.
         The list is obtained using `mutually_exclusive_execution`.
         Each list member will be "normalized" to be a fully qualified name.
-        '''
+        """
         if self._mutually_exclusive_with_set is None:
             mutually_exclusive_with_set = set()
             self._mutually_exclusive_with_set = mutually_exclusive_with_set
@@ -387,10 +388,10 @@ class ETLTask(object):
 
     @property
     def config(self):
-        '''
+        """
         Get the task configuration object. If it was not passed in, it will be read from the users
         folder.
-        '''
+        """
         if self._config is None:
             self._config = BIConfigParser()
             self._config.read_config_ini()
@@ -400,12 +401,12 @@ class ETLTask(object):
 
     @property
     def scheduler(self):
-        '''
+        """
         Get the existing :class`bi_etl.scheduler.scheduler.Scheduler` that this task is running under.
         or
         Get an instance of :class`bi_etl.scheduler.scheduler_interface.SchedulerInterface` that can be
         used to interact with the main Scheduler.
-        '''
+        """
         if self._scheduler is None:
             # Import is done here to prevent circular module level imports
             self.log.debug("Building scheduler")
@@ -420,10 +421,10 @@ class ETLTask(object):
                                     parameters=None,
                                     display_name=None,
                                     ):
-        '''
+        """
         Start a new task on the :class`bi_etl.scheduler.scheduler.Scheduler`
         that will be a child of this task.
-        '''
+        """
         new_task_id = None
         if self.task_id is not None:
             new_task_id = self.scheduler.add_task_by_class(etl_task_class_type,
@@ -442,10 +443,10 @@ class ETLTask(object):
                                                     parameters=None,
                                                     display_name=None,
                                                     ):
-        '''
+        """
         Start a new task on the :class`bi_etl.scheduler.scheduler.Scheduler`
         that will be a child of this task.
-        '''
+        """
         new_task_id = None
         if self.task_id is not None:
             new_task_id = self.scheduler.add_task_by_partial_name(partial_module_name,
@@ -460,32 +461,38 @@ class ETLTask(object):
         return new_task_id
 
     def start_following_tasks(self):
-        '''
+        """
         Override to add tasks that should follow after this tasks to the scheduler.
         This is called at the end of ETLTask.run
-        '''
+        """
         return
 
     def load_parameters(self):
-        '''
+        """
         Load parameters for this task from the scheduler.
-        '''
+        """
         # set to loaded no matter what
         self._parameters_loaded = True
         if self.task_id is not None:
             self.scheduler.load_parameters(self)
 
-    def add_parameter(self, param_name, param_value, local_only=False, commit=True):
-        '''
+    def add_parameter(self,
+                      param_name: str,
+                      param_value: object,
+                      local_only: bool = False,
+                      commit: bool = True):
+        """
         Add a single parameter to this task.
 
         Parameters
         ----------
         param_name: str
             The name of the parameter to add
-        param_value: str 
+        param_value: object
             The value of the parameter
-        '''
+        commit: bool
+        local_only: bool
+        """
         if not self._parameters_loaded:
             self.load_parameters()
         self._parameter_dict[param_name] = param_value
@@ -500,7 +507,7 @@ class ETLTask(object):
             print("add_parameter local {}={}".format(param_name, param_value))
 
     def add_parameters(self, local_only=False, commit=True, *args, **kwargs):
-        '''
+        """
         Add multiple parameters to this task.
         Parameters can be passed in as any combination of:
         * dict instance. Example ``add_parameters( {'param1':'example', 'param2':100} )``
@@ -518,7 +525,7 @@ class ETLTask(object):
             list of lists. or list of tuples. See above.
         kwargs: dict
             keyword arguments send to parameters. See above.
-        '''
+        """
         # Support add_parameters(param1='example', param2=100)
         self._parameter_dict.update(kwargs)
         for param_name, param_value in kwargs.items():
@@ -542,24 +549,24 @@ class ETLTask(object):
                     raise ValueError("add_parameters sequence {} had unexpected length {}".format(arg, len(arg)))
 
     def parameters(self):
-        '''
+        """
         Returns a generator yielding tuples of parameter (name,value)
-        '''
+        """
         if not self._parameters_loaded:
             self.load_parameters()
         for param_name in self._parameter_dict:
             yield param_name, self._parameter_dict[param_name]
 
     def parameter_names(self):
-        '''
+        """
         Returns a list of parameter names
-        '''
+        """
         if not self._parameters_loaded:
             self.load_parameters()
         return list(self._parameter_dict.keys())
 
     def get_parameter(self, param_name, default=None):
-        '''
+        """
         Returns the value of the parameter with the name provided, or default if that is not None.
         
         Parameters
@@ -573,7 +580,7 @@ class ETLTask(object):
         ------
         ParameterError: 
             If named parameter does not exist and no default is provided.
-        '''
+        """
         if not self._parameters_loaded:
             self.load_parameters()
 
@@ -590,14 +597,16 @@ class ETLTask(object):
         self._database_pool.append(database_object)
 
     def get_database(self, database_name, user=None, schema=None, **kwargs):
-        '''
+        """
         Get a new database connection.
         
         Parameters
         ----------
         database_name: str
             The name of the database section in :doc:`config_ini`
-        '''
+        user: str
+        schema: str
+        """
 
         return Connect.get_database_metadata(config=self.config,
                                              database_name=database_name,
@@ -613,7 +622,7 @@ class ETLTask(object):
         return self.config.get_or_default(section=self.name, option=setting_name, default=default)
 
     def register_object(self, obj):
-        '''
+        """
         Register an ETLComponent object with the task.
         This allows the task to 
         1) Get statistics from the component
@@ -623,7 +632,7 @@ class ETLTask(object):
         ----------
         obj: bi_etl.components.etlcomponent.ETLComponent
             A sub-class of :class`~bi_etl.components.etlcomponent.ETLComponent`
-        '''
+        """
         self.object_registry.append(obj)
         return obj
 
@@ -643,9 +652,9 @@ class ETLTask(object):
             logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(mode)
 
     def __thread_init(self):
-        '''
+        """
         Base class pre-load initialization.  Runs on the execution server. Override init instead of this.
-        '''
+        """
         queue_io.redirect_output_to(self.child_to_parent)
 
         # Make sure config is loaded (side effect setups logging)
@@ -656,7 +665,7 @@ class ETLTask(object):
         self._database_pool = list()
 
     def init(self):
-        '''
+        """
         pre-load initialization.  Runs on the execution server. Override to add setup tasks.
         
         Note: init method is useful in cases were you wish to define a common base class
@@ -678,20 +687,20 @@ class ETLTask(object):
         Why does the scheduler create an instance?
         It does that in case a task needs a full instance and possibly parameter values in order 
         to answer some of the methods like `depends_on` or `mutually_exclusive_execution`.        
-        '''
+        """
         pass
 
     def load(self):
-        '''
+        """
         Placeholder for load. This is where the main body of the ETLTask's work should be performed.
-        '''
+        """
         raise AttributeError("{} load not implemented".format(self))
 
     def finish(self):
-        '''
+        """
         Placeholder for post-load cleanup. This might be useful for cleaning up what was done in ``init``.
         It could also allow an inheriting class to begin waiting for children (see ``process_messages``)
-        '''
+        """
         pass
 
     def send_mesage(self, msg):
@@ -702,38 +711,38 @@ class ETLTask(object):
         return False
 
     def needs_to_ok_child_runs(self):
-        '''
+        """
         Override and return True if you need to give OK before children are allowed to run.
         See process_child_run_requested
-        '''
+        """
         return False
 
     def process_child_run_requested(self, childRunRequested):
-        '''
+        """
         Override to examine child task before giving OK.
-        '''
+        """
         self.send_mesage(ChildRunOK(childRunRequested.child_task_id))
 
     def needs_to_get_child_statuses(self):
-        '''
+        """
         Override and return True if you want to get status updates on children.
-        '''
+        """
         return False
 
     def needs_to_get_ancestor_statuses(self):
-        '''
+        """
         Override and return True if you want to get status updates on any ancestor.
-        '''
+        """
         return False
 
     def process_child_status_update(self, childStatusUpdate):
-        '''
+        """
         Override to examine child task status (ChildRunFinished instances)
-        '''
+        """
         pass
 
     def process_messages(self, block=False):
-        '''
+        """
         Processes messages for this task.  Should be called somewhere in any row looping.
         
         Parameters
@@ -768,7 +777,7 @@ class ETLTask(object):
                     pass
                     
         
-        '''
+        """
         q = self.parent_to_child
         if q is not None:
             try:
@@ -800,10 +809,10 @@ class ETLTask(object):
             parent_to_child=None,
             child_to_parent=None,
             ):
-        '''
+        """
         Should not generally be overridden.
         This is called smtp_to run the task's code in the init, load, and finish methods.
-        '''
+        """
         self.child_to_parent = child_to_parent
         self.parent_to_child = parent_to_child
         self.__thread_init()
@@ -875,7 +884,7 @@ class ETLTask(object):
                     notifiers_list = [Email(self.config, smtp_to)]
 
                     for notifier in notifiers_list:
-                        notifiers_list.send(subject, message_content)
+                        notifier.send(subject, message_content)
             self.log.info("{} FAILED.".format(self))
             if self.child_to_parent is not None:
                 self.child_to_parent.put(e)
@@ -890,9 +899,9 @@ class ETLTask(object):
 
     @property
     def statistics(self):
-        '''
+        """
         Return the execution statistics from the task and all of it's registered components.
-        '''
+        """
         stats = Statistics()
         # Only report init stats if something significant was done there
         if self.init_timer.seconds_elapsed > 1:
@@ -921,9 +930,9 @@ class ETLTask(object):
         return stats
 
     def close(self):
-        '''
+        """
         Cleanup the task. Close any registered objects, close any database connections.
-        '''
+        """
         try:
             self.log.debug("close")
             for obj in self.object_registry:
@@ -957,7 +966,7 @@ def run_task(task_name,
              parent_to_child=None,
              child_to_parent=None,
              ):
-    '''
+    """
     Used to find an ETL task module and start it.
 
     Parameters
@@ -986,7 +995,7 @@ def run_task(task_name,
         A queue to use for parent to child communication (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).
     child_to_parent: Queue 
         A queue to use for child to parent communication (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).
-    '''
+    """
     # For memory testing
     #tr = tracker.SummaryTracker()
     #tr.diff()

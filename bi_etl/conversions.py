@@ -1,8 +1,8 @@
-'''
+"""
 Created on Nov 17, 2014
 
 @author: woodd
-'''
+"""
 
 from collections import namedtuple
 from datetime import date
@@ -10,8 +10,8 @@ from datetime import datetime
 from datetime import time
 from decimal import Decimal, InvalidOperation
 
-#import pytz
 Transformation = namedtuple(typename='Transformation', field_names=['column', 'conversion'])
+
 
 class Conversion(object):
     def __init__(self, function, *args, **kwargs):
@@ -19,20 +19,22 @@ class Conversion(object):
         self.args = args
         self.kwargs = kwargs
 
+
 def str2int(s):
-    '''
+    """
     String to integer
-    '''
+    """
     if s == None or s == '':
         return None
     else:
         return int(s.replace(',', ''))
-    
+
+
 def str2float(s):
-    '''
+    """
     String to floating point
-    '''
-    if s == None or s == '':
+    """
+    if s is None or s == '':
         return None
     else:
         try:    
@@ -43,49 +45,52 @@ def str2float(s):
                 return float(s2)
             else:
                 raise e
-            
+
+
 def str2float_end_sign(s):
-    '''
+    """
     String to integer
     This version is almost 4 times faster than str2float 
     in handling signs at the end of the string.
-    '''
-    if s == None or s == '':
+    """
+    if s is None or s == '':
         return None
     else:
         try:    
-            if s[-1] in ['-','+']:
+            if s[-1] in ['-', '+']:
                 s2 = s[-1] + s[:-1].replace(',','')
                 return float(s2)
             else:
                 return float(s.replace(',', ''))
         except ValueError:
             return float(s.replace(',', ''))
-    
+
+
 def str2decimal(s):
-    '''
+    """
     String to decimal (AKA numeric)
-    '''
-    if s == None or s == '':
+    """
+    if s is None or s == '':
         return None
     else:
         try:  
             s = s.replace(',', '')
             return Decimal(s)
         except InvalidOperation as e:
-            if s[-1] in ['-','+']:
-                s2 = s[-1]+ s[:-1].replace(',','')
+            if s[-1] in ['-', '+']:
+                s2 = s[-1]+ s[:-1].replace(',', '')
                 return Decimal(s2)
             else:
                 raise e
-            
+
+
 def str2decimal_end_sign(s):
-    '''
+    """
     String to decimal (AKA numeric).
     This version is almost 4 times faster than tr2decimal 
     in handling signs at the end of the string.
-    '''
-    if s == None or s == '':
+    """
+    if s is None or s == '':
         return None
     else:
         if s[-1] in ['-','+']:
@@ -94,9 +99,10 @@ def str2decimal_end_sign(s):
         else:
             s = s.replace(',', '')
             return Decimal(s)
-        
+
+
 def str2date(s, dt_format='%m/%d/%Y'):
-    '''
+    """
     Parse a date (no time) value stored in a string. 
     
     Parameters
@@ -105,15 +111,16 @@ def str2date(s, dt_format='%m/%d/%Y'):
         String value to convert
     dt_format: str
         For format options please see https://docs.python.org/3.5/library/datetime.html#strftime-strptime-behavior
-    '''
+    """
     dt = str2datetime(s, dt_format)
     if dt is not None:
         return date(dt.year, dt.month, dt.day)
     else:
         return None
 
+
 def str2time(s, dt_format='%H:%M:%S'):
-    '''
+    """
     Parse a time of day value stored in a string. 
     
     Parameters
@@ -122,7 +129,7 @@ def str2time(s, dt_format='%H:%M:%S'):
         String value to convert
     dt_format: str
         For format options please see https://docs.python.org/3.5/library/datetime.html#strftime-strptime-behavior
-    '''
+    """
     tm = str2datetime(s, dt_format)
     if tm is not None:
         return time(tm.hour, 
@@ -133,9 +140,10 @@ def str2time(s, dt_format='%H:%M:%S'):
                     )
     else:
         return None
-    
+
+
 def str2datetime(s, dt_format='%m/%d/%Y %H:%M:%S'):
-    ''' 
+    """ 
     Parse a date + time value stored in a string. 
     
     Parameters
@@ -144,97 +152,105 @@ def str2datetime(s, dt_format='%m/%d/%Y %H:%M:%S'):
         String value to convert
     dt_format: str
         For format options please see https://docs.python.org/3.5/library/datetime.html#strftime-strptime-behavior
-    '''
-    ##TODO: Warn callers of deprecated  00000000 to None conversion. They should use nullif instead
-    if s == None or s == '' or s == '00000000':
+    """
+    # TODO: Warn callers of deprecated  00000000 to None conversion. They should use nullif instead
+    if s is None or s == '' or s == '00000000':
         return None
     else:
         return datetime.strptime(s, dt_format)
 
+
 def change_tz(source_datetime, from_tzone, to_tzone):
-    '''
+    """
     Change time-zones in dates that have no time-zone info, or incorrect time-zone info
     
     Example from_tzone or to_tzone values: ::
-    
+        import pytz
+
         pytz.utc
         pytz.timezone('US/Eastern')
     
-    '''
+    """
     if source_datetime is not None:
-        ## Apply our source time zone
+        # Apply our source time zone
         result_datetime = source_datetime.replace(tzinfo=from_tzone)
-        ## Convert to target time zone
+        # Convert to target time zone
         result_datetime = result_datetime.astimezone(to_tzone)
-        ## Now we strip off the time zone info so it will match what comes out of Oracle
+        # Now we strip off the time zone info so it will match what comes out of Oracle
         result_datetime = result_datetime.replace(tzinfo=None)
         return result_datetime    
-    
-def nvl(v, default):
-    '''
+
+
+def nvl(value, default):
+    """
     Pass value through unchanged unless it is NULL (None).
     If it is NULL (None), then return provided default value.
-    '''
-    if (v is None) or (v == ''):
+    """
+    if (value is None) or (value == ''):
         return default
     else:
-        return v
+        return value
     
+
 def nullif(v, value_to_null):
-    '''
+    """
     Pass value through unchanged unless it is equal to provided `value_to_null` value. 
     If `v` ==`value_to_null` value then return NULL (None)
-    '''
+    """
     if v == value_to_null:
         return None
     else:
         return v
 
 def defaultMissing(v):
-    '''
+    """
     Same as nvl(v, 'Missing')
-    '''
+    """
     return nvl(v, 'Missing')    
 
+
 def defaultInvalid(v):
-    '''
+    """
     Same as nvl(v, 'Invalid')
-    '''
+    """
     return nvl(v, 'Invalid')
 
+
 def defaultQuestionmark(v):
-    '''
+    """
     Same as nvl(v, '?')
-    '''
+    """
     return nvl(v, '?')
 
+
 def defaultNines(v):
-    '''
+    """
     Same as nvl(v, -9999)
-    '''
+    """
     return nvl(v, -9999)
 
+
 def str2bytes_size(str_size):
-    '''
+    """
     Parses a string containing a size in bytes including KB, MB, GB, TB codes
     into an integer with the actual number of bytes (using 1 KB = 1024). 
-    '''    
+    """    
     if isinstance(str_size, str):
         str_size = str_size.upper().strip()
-        ## Trip final B so we can except 10MB or 10M equally
+        # Trip final B so we can except 10MB or 10M equally
         if str_size[-1] == 'B':
             str_size = str_size[:-1]
             
-        ## Check for KB
+        # Check for KB
         if str_size[-1] == 'K':
-            result = int(str_size[:-1]) * pow(2,10)
-        ## Check for MB
+            result = int(str_size[:-1]) * pow(2, 10)
+        # Check for MB
         elif str_size[-1] == 'M':
-            result = int(str_size[:-1]) * pow(2,20)
-        ## Check for GB
+            result = int(str_size[:-1]) * pow(2, 20)
+        # Check for GB
         elif str_size[-1] == 'G':
-            result = int(str_size[:-1]) * pow(2,30)
-        ## Check for TB
+            result = int(str_size[:-1]) * pow(2, 30)
+        # Check for TB
         elif str_size[-1] == 'T':
             result = int(str_size[:-1]) * pow(2,30)
         else:
@@ -242,7 +258,7 @@ def str2bytes_size(str_size):
     elif str_size is None:
         result = None
     else:
-        ## return what we were given, just making sure it was an int
+        # return what we were given, just making sure it was an int
         result = int(str_size)
     return result
 
@@ -265,6 +281,7 @@ SYMBOLS = {
     'iec_ext'       : ('byte', 'kibi', 'mebi', 'gibi', 'tebi', 'pebi', 'exbi',
                        'zebi', 'yobi'),
 }
+
 
 def bytes2human(n, format_str='%(value).1f %(symbol)s', symbols='customary'):
     """
@@ -316,6 +333,7 @@ def bytes2human(n, format_str='%(value).1f %(symbol)s', symbols='customary'):
             return format_str% dict(symbol=symbols[0], value=value)
     return format_str % dict(symbol=symbols[0], value=n)
 
+
 def human2bytes(s):
     """
     Attempts to guess the string format based on default symbols
@@ -361,13 +379,14 @@ def human2bytes(s):
             letter = letter.upper()
         else:
             raise ValueError("can't interpret %r" % init)
-    prefix = {sset[0]:1}
+    prefix = {sset[0]: 1}
     for i, s in enumerate(sset[1:]):
         prefix[s] = 1 << (i+1)*10
     return int(num * prefix[letter])
 
+
 def replace_tilda(e):
-    '''
+    """
     Used for unicode error to replace invalid ascii with ~
-    '''
-    return (u'~',e.start + 1) 
+    """
+    return u'~', e.start + 1

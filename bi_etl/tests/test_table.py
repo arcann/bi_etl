@@ -1,8 +1,8 @@
-'''
+"""
 Created on Jan 22, 2016
 
 @author: woodd
-'''
+"""
 from datetime import date
 from datetime import time
 from datetime import timedelta
@@ -73,8 +73,8 @@ class TestTable(unittest.TestCase):
     def testInit(self):
         tbl_name = 'testInit'
         
-        ## Wanted to test Table (sqlalchemy metadata) parsing of a table it did not create. 
-        self.mock_database.execute('''
+        # Wanted to test Table (sqlalchemy metadata) parsing of a table it did not create. 
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT,
               col2 TEXT,
@@ -82,7 +82,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         with Table(self.task, 
                    self.mock_database,  
@@ -98,8 +98,8 @@ class TestTable(unittest.TestCase):
     def testInitExcludeCol(self):
         tbl_name = 'testInitExcludeCol'
         
-        ## Wanted to test Table (sqlalchemy metadata) parsing of a table it did not create. 
-        self.mock_database.execute('''
+        # Wanted to test Table (sqlalchemy metadata) parsing of a table it did not create. 
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT,
               col2 TEXT,
@@ -107,7 +107,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         with Table(self.task, 
                    self.mock_database,  
@@ -125,8 +125,8 @@ class TestTable(unittest.TestCase):
     def testInitExcludeCol2(self):
         tbl_name = 'testInitExcludeCol2'
         
-        ## Wanted to test Table (sqlalchemy metadata) parsing of a table it did not create. 
-        self.mock_database.execute('''
+        # Wanted to test Table (sqlalchemy metadata) parsing of a table it did not create. 
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT,
               col2 TEXT,
@@ -134,7 +134,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         with Table(self.task, 
                    self.mock_database,  
@@ -181,7 +181,7 @@ class TestTable(unittest.TestCase):
                 tbl.insert(row)
             tbl.commit()
             
-            ## Validate data
+            # Validate data
             rows_dict = dict()        
             for row in tbl:
                 print(row)
@@ -201,7 +201,7 @@ class TestTable(unittest.TestCase):
         
     def testInsertAndIterateWithKey(self):
         tbl_name = 'testInsertAndIterateWithKey'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2 TEXT,
@@ -209,7 +209,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
@@ -228,7 +228,7 @@ class TestTable(unittest.TestCase):
             tbl.insert(row)
         tbl.commit()
         
-        ## Validate data
+        # Validate data
         rows_dict = dict()        
         for row in tbl:
             print(row, row.values())
@@ -239,8 +239,8 @@ class TestTable(unittest.TestCase):
         
         for i in range(rows_to_insert):
             try:
-                row = rows_dict[i+1]  ## Autogenerate starts with 1 not 0
-                self.assertEqual(row['col1'], i+1) ## Autogenerate starts with 1 not 0
+                row = rows_dict[i+1]  # Autogenerate starts with 1 not 0
+                self.assertEqual(row['col1'], i+1) # Autogenerate starts with 1 not 0
                 self.assertEqual(row['col2'], 'this is row {}'.format(i))
                 self.assertEqual(row['col3'], i/1000.0)
                 self.assertEqual(row['col4'], i/100000000.0)
@@ -252,7 +252,7 @@ class TestTable(unittest.TestCase):
 
     def testInsertDuplicate(self):
         tbl_name = 'testInsertDuplicate'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2 TEXT,
@@ -260,7 +260,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
@@ -288,7 +288,7 @@ class TestTable(unittest.TestCase):
                 
     def testInsertDuplicateCanNotReplicate(self):
         tbl_name = 'testInsertDuplicate'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2 TEXT,
@@ -296,15 +296,15 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
                     self.mock_database, 
                     table_name= tbl_name)
         
-        ## By setting the batch size the the same as the repeat interval the rollback will undo all records
-        ## vs the redo will only do the current batch. So the failure won't be replicated. 
+        # By setting the batch size the the same as the repeat interval the rollback will undo all records
+        # vs the redo will only do the current batch. So the failure won't be replicated. 
         tbl.batch_size = int(rows_to_insert / 2)
         
         with self.assertLogs(tbl.log, logging.ERROR) as log:
@@ -326,7 +326,7 @@ class TestTable(unittest.TestCase):
         
     def testInsertAutogenerateContinue(self):
         tbl_name = 'testInsertAutogenerateContinue'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2 TEXT,
@@ -334,7 +334,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
         
         rows_to_insert1 = 10
         rows_to_insert2 = 10
@@ -369,7 +369,7 @@ class TestTable(unittest.TestCase):
                 tbl.insert(row)
             tbl.commit()
             
-            ## Validate data
+            # Validate data
             rows_dict = dict()        
             for row in tbl:
                 print(row, row.values())
@@ -393,7 +393,7 @@ class TestTable(unittest.TestCase):
         
     def testInsertAutogenerateContinueNegative(self):
         tbl_name = 'testInsertAutogenerateContinue'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2 TEXT,
@@ -401,7 +401,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
         
         rows_to_insert1 = 3
         rows_to_insert2 = 10
@@ -436,7 +436,7 @@ class TestTable(unittest.TestCase):
                 tbl.insert(row)
             tbl.commit()
             
-            ## Validate data
+            # Validate data
             rows_dict = dict()        
             for row in tbl:
                 print(row, row.values())
@@ -447,8 +447,8 @@ class TestTable(unittest.TestCase):
             
             for i in range(rows_to_insert2):
                 try:
-                    row = rows_dict[i+1] ## Auto generate starts at 1 not 0
-                    self.assertEqual(row['col1'], i+1) ## Auto generate starts at 1 not 0
+                    row = rows_dict[i+1] # Auto generate starts at 1 not 0
+                    self.assertEqual(row['col1'], i+1) # Auto generate starts at 1 not 0
                     self.assertEqual(row['col2'], 'this is row {}'.format(i))
                     self.assertEqual(row['col3'], i/1000.0)
                     self.assertEqual(row['col4'], i/100000000.0)
@@ -460,7 +460,7 @@ class TestTable(unittest.TestCase):
         
     def testUpdate_partial_by_alt_key(self):
         tbl_name = 'testUpdate_by_alt_key'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               alt_key INT,
@@ -469,7 +469,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
@@ -497,7 +497,7 @@ class TestTable(unittest.TestCase):
             #self.task.debug_sql(False)
         tbl.commit()
         
-        ## Validate data
+        # Validate data
         rows_dict = dict()        
         for row in tbl:
             print(row, row['col1'], row['col2'] )
@@ -517,7 +517,7 @@ class TestTable(unittest.TestCase):
             
     def testUpdate_partial_by_key(self):
         tbl_name = 'testUpdate_partial_by_key'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2 TEXT,
@@ -525,7 +525,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
@@ -552,7 +552,7 @@ class TestTable(unittest.TestCase):
             #self.task.debug_sql(False)
         tbl.commit()
         
-        ## Validate data
+        # Validate data
         rows_dict = dict()        
         for row in tbl:
             print(row, row['col1'], row['col2'] )
@@ -572,7 +572,7 @@ class TestTable(unittest.TestCase):
             
     def testUpdate_whole_by_key(self):
         tbl_name = 'testUpdate_whole_by_key'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2 TEXT,
@@ -580,7 +580,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
@@ -597,7 +597,7 @@ class TestTable(unittest.TestCase):
             tbl.insert(row)
         tbl.commit()
         
-        ## Do the updates
+        # Do the updates
         for i in range(rows_to_insert):
             #self.task.debug_sql()
             tbl.trace_sql = True
@@ -611,7 +611,7 @@ class TestTable(unittest.TestCase):
             #self.task.debug_sql(False)
         tbl.commit()
         
-        ## Validate data
+        # Validate data
         rows_dict = dict()        
         for row in tbl:
             print(row, row['col1'], row['col2'] )
@@ -631,7 +631,7 @@ class TestTable(unittest.TestCase):
             
     def test_update_where_pk(self):
         tbl_name = 'test_update_where_pk'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2 TEXT,
@@ -639,7 +639,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
@@ -656,7 +656,7 @@ class TestTable(unittest.TestCase):
             tbl.insert(row)
         tbl.commit()
         
-        ## Do the updates
+        # Do the updates
         for i in range(rows_to_insert):
             #self.task.debug_sql()
             tbl.trace_sql = True
@@ -670,7 +670,7 @@ class TestTable(unittest.TestCase):
             #self.task.debug_sql(False)
         tbl.commit()
         
-        ## Validate data
+        # Validate data
         rows_dict = dict()        
         for row in tbl:
             print(row, row['col1'], row['col2'] )
@@ -690,7 +690,7 @@ class TestTable(unittest.TestCase):
 
     def test_upsert_int_pk(self):
         tbl_name = 'test_upsert_int_pk'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2 TEXT,
@@ -699,7 +699,7 @@ class TestTable(unittest.TestCase):
               col5 BLOB,
               del_flg TEXT
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
@@ -717,13 +717,13 @@ class TestTable(unittest.TestCase):
             tbl.insert(row)
         tbl.commit()
         
-        ## Do the updates
+        # Do the updates
         tbl.track_source_rows = True
         row_key_values = list(range(rows_to_insert))
-        ## Add one value that will be inserted
+        # Add one value that will be inserted
         row_key_values.append(12)
         for i in row_key_values:
-            ## only upsert even rows
+            # only upsert even rows
             if i % 2 == 0:
                 #self.task.debug_sql()
                 tbl.trace_sql = True
@@ -731,7 +731,7 @@ class TestTable(unittest.TestCase):
                 row['col1'] = i
                 row['col2'] = 'new col2 {}'.format(i)
                 row['col3'] = i/1000.0
-                ## leave out col 4
+                # leave out col 4
                 row['col5'] = 'this is row {} blob'.format(i).encode('ascii')
                 tbl.upsert(row)
                 #self.task.debug_sql(False)
@@ -740,11 +740,11 @@ class TestTable(unittest.TestCase):
         tbl.logically_delete_not_processed()
         tbl.commit()
         
-        ## Validate data
+        # Validate data
         rows_dict = dict()        
         last_int_value = -1
         for row in tbl.order_by('col1'):
-            if row['col1'] <= 9:  ## Sequence only holds up from 0 to 9.
+            if row['col1'] <= 9:  # Sequence only holds up from 0 to 9.
                 self.assertEqual(last_int_value+1, row['col1'], 'Order by did not work')
                 last_int_value = row['col1']
             self.log.debug(row.values_in_order())
@@ -771,7 +771,7 @@ class TestTable(unittest.TestCase):
             
     def test_upsert_int_dual_pk(self):
         tbl_name = 'test_upsert_int_dual_pk'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT,
               col2 TEXT,
@@ -780,7 +780,7 @@ class TestTable(unittest.TestCase):
               col5 BLOB,
               PRIMARY KEY (col1, col2)
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
@@ -797,9 +797,9 @@ class TestTable(unittest.TestCase):
             tbl.insert(row)
         tbl.commit()
         
-        ## Do the updates / inserts
+        # Do the updates / inserts
         for i in range(rows_to_insert):
-            ## only update even rows            
+            # only update even rows            
             #self.task.debug_sql()
             tbl.trace_sql = True
             row=tbl.Row()
@@ -809,13 +809,13 @@ class TestTable(unittest.TestCase):
                 row['col3'] = i * 1/10000.0
             else:
                 row['col3'] = i * 1/1000.0
-            ## leave out col 4
+            # leave out col 4
             row['col5'] = 'this is row {} blob'.format(i).encode('ascii')
             tbl.upsert(row)
             #self.task.debug_sql(False)
         tbl.commit()
         
-        ## Validate data
+        # Validate data
         rows_dict = dict()        
         for row in tbl:
             print(row, row['col1'], row['col2'] )
@@ -838,7 +838,7 @@ class TestTable(unittest.TestCase):
             
     def test_delete_int_pk(self):
         tbl_name = 'test_delete_int_pk'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT,
               col2 TEXT,
@@ -847,7 +847,7 @@ class TestTable(unittest.TestCase):
               col5 BLOB,
               PRIMARY KEY (col1)
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
@@ -864,14 +864,14 @@ class TestTable(unittest.TestCase):
             tbl.insert(row)
         tbl.commit()
         
-        ## Do the deletes
+        # Do the deletes
         tbl.delete(key_values=[2])
         tbl.delete(key_values=[4])
         tbl.delete(key_names=['col3'], key_values=[6 * 1/1000.0])
         tbl.delete(key_names=['col2'], key_values=['this is row {}'.format(8)])
         tbl.commit()
         
-        ## Validate data
+        # Validate data
         rows_dict = dict()        
         for row in tbl:
             print(row, row.values())
@@ -894,7 +894,7 @@ class TestTable(unittest.TestCase):
         
     def test_delete_int_pk_no_batch(self):
         tbl_name = 'test_delete_int_pk_no_batch'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT,
               col2 TEXT,
@@ -903,7 +903,7 @@ class TestTable(unittest.TestCase):
               col5 BLOB,
               PRIMARY KEY (col1)
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         tbl = Table(self.task, 
@@ -921,14 +921,14 @@ class TestTable(unittest.TestCase):
             tbl.insert(row)
         tbl.commit()
         
-        ## Do the deletes
+        # Do the deletes
         tbl.delete(key_values=[2])
         tbl.delete(key_values=[4])
         tbl.delete(key_names=['col3'], key_values=[6 * 1/1000.0])
         tbl.delete(key_names=['col2'], key_values=['this is row {}'.format(8)])
         tbl.commit()
         
-        ## Validate data
+        # Validate data
         rows_dict = dict()        
         for row in tbl:
             print(row, row.values())
@@ -953,24 +953,24 @@ class TestTable(unittest.TestCase):
     def testSanityCheck1(self):        
         src_tbl_name = 'testSanityCheck1s'
         self.log.info(src_tbl_name)
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2a TEXT,
               col3 REAL,
               col5 BLOB
            )
-        '''.format(src_tbl_name))
+        """.format(src_tbl_name))
         
         tgt_tbl_name = 'testSanityCheck1t'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2b TEXT,
               col3 REAL,
               col4 NUMERIC
            )
-        '''.format(tgt_tbl_name))
+        """.format(tgt_tbl_name))
         
         with Table(self.task, 
                    self.mock_database,  
@@ -1020,7 +1020,7 @@ class TestTable(unittest.TestCase):
                     self.assertIn('col4', calls_str)        
                     log.reset_mock()
                    
-                    ## Test using row and not source component
+                    # Test using row and not source component
                     src_row = src_tbl.Row()
                     src_row['col1'] = 0
                     src_row['col2a'] = 0
@@ -1036,7 +1036,7 @@ class TestTable(unittest.TestCase):
                     self.assertFalse(log.warning.called, 'unexpected warning from sanity_check_source_mapping. {}'.format(log.mock_calls))        
                     log.reset_mock()
                     
-                    ## Test using row and not source component
+                    # Test using row and not source component
                     tgt_tbl.sanity_check_source_mapping(src_row,
                                                         #source_renames={'col2a': 'col2b'},
                                                         source_excludes=['col5'],
@@ -1055,7 +1055,7 @@ class TestTable(unittest.TestCase):
     def testBuildRow1(self):        
         src_tbl_name = 'testBuildRow1s'
         self.log.info(src_tbl_name)
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2a TEXT,
@@ -1064,10 +1064,10 @@ class TestTable(unittest.TestCase):
               col5 BLOB,
               ext1 INT
            )
-        '''.format(src_tbl_name))
+        """.format(src_tbl_name))
         
         tgt_tbl_name = 'testBuildRow1t'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2b TEXT,
@@ -1076,7 +1076,7 @@ class TestTable(unittest.TestCase):
               col5 BLOB,
               ext2 INT
            )
-        '''.format(tgt_tbl_name))
+        """.format(tgt_tbl_name))
         
         with Table(self.task, 
                    self.mock_database,  
@@ -1141,15 +1141,15 @@ class TestTable(unittest.TestCase):
                        ) as src_tbl:
             with Table(self.task, 
                    self.mock_database,  
-                   table_name= None,
+                   table_name= 'test',
                    ) as tgt_tbl:
-                ## Just here to help pydev know the datatype
+                # Just here to help pydev know the datatype
                 assert isinstance(tgt_tbl, Table)
                 
                 with mock.patch('bi_etl.components.etlcomponent.logging',autospec=True) as log:
                     tgt_tbl.log = log
                     
-                    ## http://docs.sqlalchemy.org/en/latest/core/type_basics.html
+                    # http://docs.sqlalchemy.org/en/latest/core/type_basics.html
                     tgt_tbl.table = sqlalchemy.schema.Table(tbl_name, 
                                                             self.mock_database,
                                                             Column('bool_col', BOOLEAN), 
@@ -1157,7 +1157,7 @@ class TestTable(unittest.TestCase):
                                                             Column('date_col', Date),
                                                             Column('datetime_col', DateTime),
                                                             Column('time_col', Time),
-                                                            Column('enum_col', Enum(['a','b','c'])), ## We can't create table with this in sqlite
+                                                            Column('enum_col', Enum(['a','b','c'])), # We can't create table with this in sqlite
                                                             Column('float_col', Float),
                                                             Column('interval_col', Interval),
                                                             Column('large_binary_col', LargeBinary),
@@ -1172,7 +1172,7 @@ class TestTable(unittest.TestCase):
                     src_row['bool_col'] = 0
                     src_row['clob_col'] = "It's a Python world."
                     src_row['date_col'] = '01/01/2001'
-                    src_row['datetime_col'] = '01/01/2001 12:51:43'  ## default format '%m/%d/%Y %H:%M:%S'
+                    src_row['datetime_col'] = '01/01/2001 12:51:43'  # default format '%m/%d/%Y %H:%M:%S'
                     src_row['time_col'] = '22:13:55'
                     src_row['enum_col'] = 'a'
                     src_row['float_col'] = '123.45'
@@ -1201,54 +1201,54 @@ class TestTable(unittest.TestCase):
                     self.assertEqual(tgt_row['strin_10_col'], '1234567890')
                     log.reset_mock()
                     
-                    ## Test datetime to datetime
+                    # Test datetime to datetime
                     src_row['datetime_col'] = datetime(2001,1,1,12,51,43)
                     tgt_row = tgt_tbl.build_row(src_row)
                     self.assertEqual(tgt_row['datetime_col'], datetime(2001,1,1,12,51,43))
                     
-                    ## Test datetime to date
+                    # Test datetime to date
                     src_row['date_col'] = datetime(2001,1,1,12,51,43)
                     tgt_row = tgt_tbl.build_row(src_row)
                     self.assertEqual(tgt_row['date_col'], date(2001,1,1))
                     
-                    ## Test date to date
+                    # Test date to date
                     src_row['date_col'] = date(2001,1,1)
                     tgt_row = tgt_tbl.build_row(src_row)
                     self.assertEqual(tgt_row['date_col'], date(2001,1,1))
                     
-                    ## Test datetime to time
+                    # Test datetime to time
                     src_row['time_col'] = datetime(2001,1,1,12,51,43)
                     tgt_row = tgt_tbl.build_row(src_row)
                     self.assertEqual(tgt_row['time_col'], time(12,51,43))
                     
-                    ## Test time to time
+                    # Test time to time
                     src_row['time_col'] = time(12,51,43)
                     tgt_row = tgt_tbl.build_row(src_row)
                     self.assertEqual(tgt_row['time_col'], time(12,51,43))
                     
-                    ## Test timedelta to interval
+                    # Test timedelta to interval
                     src_row['time_col'] = time(12,51,43)
                     tgt_row = tgt_tbl.build_row(src_row)
                     self.assertEqual(tgt_row['time_col'], time(12,51,43))
                     
-                    ## Test force_ascii
+                    # Test force_ascii
                     tgt_tbl.force_ascii = True
                     src_row['strin_10_col'] = 'Ёarth'
                     tgt_row = tgt_tbl.build_row(src_row)
                     self.assertEqual(tgt_row['strin_10_col'], '~arth')
                     tgt_tbl.force_ascii = False
                     
-                    ## Test decode bytes as ascii
+                    # Test decode bytes as ascii
                     src_row['strin_10_col'] = b'Earth'
                     tgt_row = tgt_tbl.build_row(src_row)
                     self.assertEqual(tgt_row['strin_10_col'], 'Earth')
                     
-                    ## Test string too long
+                    # Test string too long
                     src_row['strin_10_col'] = '12345678901'
                     self.assertRaises(ValueError, tgt_tbl.build_row, src_row)
                     src_row['strin_10_col'] = '12345678'
                     
-                    ## Test number too long from int
+                    # Test number too long from int
                     src_row['numeric13_col'] = 12345678901234
                     try:
                         tgt_row = tgt_tbl.build_row(src_row)
@@ -1257,7 +1257,7 @@ class TestTable(unittest.TestCase):
                         pass
                     src_row['numeric13_col'] = '1234567890123'
                     
-                    ## Test number too long from str
+                    # Test number too long from str
                     src_row['numeric13_col'] = '12345678901234'
                     try:
                         tgt_row = tgt_tbl.build_row(src_row)
@@ -1266,7 +1266,7 @@ class TestTable(unittest.TestCase):
                         pass
                     src_row['numeric13_col'] = '1234567890123'
                     
-                    ## Test again with some explicit transformations
+                    # Test again with some explicit transformations
                     src_row = src_tbl.Row()
                     transformations = list()
                     src_row['bool_col'] = 1
@@ -1294,7 +1294,7 @@ class TestTable(unittest.TestCase):
                     src_row['interval_col'] = 50
                     src_row['large_binary_col'] = "It's a Python world."
                     src_row['numeric13_col'] = '1234567890123'
-                    ## Test not using Conversion class but simple tuple
+                    # Test not using Conversion class but simple tuple
                     transformations.append( Transformation(column='numeric13_col', 
                                                            conversion=(str2decimal) 
                                                            )  
@@ -1302,7 +1302,7 @@ class TestTable(unittest.TestCase):
                     src_row['numeric25_col'] = Decimal('1234567890123456789012345')
                     src_row['numeric25_15_col'] = Decimal('1234567890.123456789012345')
                     src_row['strin_10_col'] = 'NULL'
-                    ## Test not using Conversion class but simple tuple
+                    # Test not using Conversion class but simple tuple
                     transformations.append( Transformation(column='strin_10_col', 
                                                            conversion=(nullif,('NULL')) 
                                                            )  
@@ -1325,7 +1325,7 @@ class TestTable(unittest.TestCase):
                     self.assertIsNone(tgt_row['strin_10_col'])
                     log.reset_mock()
                     
-                    ## Test with transforms dict
+                    # Test with transforms dict
                     transformations_dict = dict()
                     for trans in transformations:
                         transformations_dict[trans[0]] = trans[1]
@@ -1346,7 +1346,7 @@ class TestTable(unittest.TestCase):
                     self.assertIsNone(tgt_row['strin_10_col'])
                     log.reset_mock()
                     
-                    ## Test transform failure
+                    # Test transform failure
                     src_row['time_col'] = 'This is not a time'
                     self.assertRaises(ValueError, tgt_tbl.build_row, src_row, source_transformations=transformations)
                     self.assertTrue(log.error.called, 'Expected an error from build_row. {}'.format(log.mock_calls))
@@ -1360,7 +1360,7 @@ class TestTable(unittest.TestCase):
         tbl.upsert_special_values_rows()
         tbl.commit()
         
-        ## Validate data
+        # Validate data
         rows_dict = dict()        
         for row in tbl:
             print(row, row.values())
@@ -1395,7 +1395,7 @@ class TestTable(unittest.TestCase):
     
     def test_upsert_special_values_rows(self):
         tbl_name = 'testInsertAndIterateWithKey'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
               col2 TEXT,
@@ -1403,14 +1403,14 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
         self._test_upsert_special_values_rows_check(tbl_name)
-        ## Run a second time to make sure rows stay the same
+        # Run a second time to make sure rows stay the same
         self._test_upsert_special_values_rows_check(tbl_name)
     
     def testInsertAndTruncate(self):
         tbl_name = 'testInsertAndTruncate'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT,
               col2 TEXT,
@@ -1418,7 +1418,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         with Table(self.task, 
@@ -1437,7 +1437,7 @@ class TestTable(unittest.TestCase):
             
             tbl.truncate()
             
-            ## Validate no data
+            # Validate no data
             rows_dict = dict()        
             for row in tbl:
                 print(row)
@@ -1447,7 +1447,7 @@ class TestTable(unittest.TestCase):
             
     def testInsertAndRollback(self):
         tbl_name = 'testInsertAndRollback'
-        self.mock_database.execute('''
+        self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT,
               col2 TEXT,
@@ -1455,7 +1455,7 @@ class TestTable(unittest.TestCase):
               col4 NUMERIC,
               col5 BLOB
            )
-        '''.format(tbl_name))
+        """.format(tbl_name))
 
         rows_to_insert = 10 
         with Table(self.task, 
@@ -1473,7 +1473,7 @@ class TestTable(unittest.TestCase):
             
             tbl.rollback()
             
-            ## Validate no data
+            # Validate no data
             rows_dict = dict()        
             for row in tbl:
                 print(row)
@@ -1482,7 +1482,7 @@ class TestTable(unittest.TestCase):
             self.assertEqual(len(rows_dict), 0, 'Rollback did not remove rows')        
             
     
-    ## TODO: Test update_not_in_set, delete_not_in_set 
+    # TODO: Test update_not_in_set, delete_not_in_set 
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

@@ -8,6 +8,7 @@ from mock.mock import Mock
 
 from bi_etl.database.connect import Connect
 
+
 class MockConnect(Connect):    
     engines_created = dict()
     session_created = dict()

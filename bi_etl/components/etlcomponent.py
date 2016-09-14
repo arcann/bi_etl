@@ -1,12 +1,13 @@
-'''
+"""
 Created on Sep 25, 2014
 
 @author: woodd
-'''
+"""
 import logging
 import warnings
 from operator import attrgetter
 from _collections_abc import Iterable
+from typing import Generator
 
 from sqlalchemy.sql.schema import Column
 
@@ -20,9 +21,9 @@ from bi_etl.utility import dict_to_str
 
 __all__ = ['ETLComponent']
 
-#pylint: disable=abstract-method
+
 class ETLComponent(Iterable):
-    '''
+    """
     Base class for ETLComponents (readers, writers, etc)
     
     Parameters
@@ -50,8 +51,8 @@ class ETLComponent(Iterable):
     progress_message: str
         The progress message to print. Default is ``"{logical_name} row # {row_number}"``. Note ``logical_name`` and ``row_number`` subs.    
             
-    '''
-    DEFAULT_PROGRESS_FREQUENCY = 10 ## Seconds
+    """
+    DEFAULT_PROGRESS_FREQUENCY = 10  # Seconds
     DEFAULT_PROGRESS_MESSAGE = "{logical_name} current row # {row_number:,}"
     RowStatus = _RowStatus
     RowClass = _Row
@@ -68,9 +69,9 @@ class ETLComponent(Iterable):
         self.__progress_frequency = self.DEFAULT_PROGRESS_FREQUENCY
         self.progress_message = self.DEFAULT_PROGRESS_MESSAGE
         self.max_rows = None        
-        self.log_first_row = False      
+        self.log_first_row = True
         self._column_names = None  
-        ## Note this calls the property setter
+        # Note this calls the property setter
         self.__trace_data = False
         self._stats = Statistics(name=self.logical_name)
         self._rows_read = 0
@@ -79,15 +80,15 @@ class ETLComponent(Iterable):
         self.read_batch_size = 10000
         self._iterator_applied_filters = False
         
-        #self.log = logging.getLogger(__name__)
+        # self.log = logging.getLogger(__name__)
         self.log = logging.getLogger("{mod}.{cls}".format(mod = self.__class__.__module__, cls= self.__class__.__name__))
         bi_etl.utility.log_logging_level(self.log)
         
-        ## Register this component with it's parent task        
+        # Register this component with it's parent task        
         if task is not None:
             task.register_object(self)
 
-        ## Should be the last call of every init            
+        # Should be the last call of every init            
         self.set_kwattrs(**kwargs) 
 
     def set_kwattrs(self, **kwargs):
@@ -142,16 +143,16 @@ class ETLComponent(Iterable):
             self.progress_message = "{logical_name} row # {row_number:,}"
 
     def _obtain_column_names(self):
-        '''
+        """
         Override to provide a way to lookup column names as they are asked for.
-        '''
+        """
         pass
     
     @property
     def column_names(self):
-        '''
+        """
         Column names
-        '''
+        """
         if self._column_names is None:
             self._obtain_column_names()
         return self._column_names
@@ -159,18 +160,18 @@ class ETLComponent(Iterable):
     @column_names.setter
     def column_names(self, value):
         self._column_names = list(value)
-        ## Ensure names are unique
+        # Ensure names are unique
         name_dict = dict()
         duplicates = dict()
         for col_index, name in enumerate(self._column_names):
             if name in name_dict:
-                #Duplicate name found
-                ## Keep a list of the instances
+                # Duplicate name found
+                # Keep a list of the instances
                 if name in duplicates:
                     instance_list = duplicates[name]
                 else:
                     instance_list = list()
-                    ## Put the first instance int to the list
+                    # Put the first instance int to the list
                     instance_list.append(name_dict[name])                    
                 instance_list.append(col_index)
                 duplicates[name] = instance_list 
@@ -210,52 +211,51 @@ class ETLComponent(Iterable):
 
     @property
     def trace_data(self):
-        '''
+        """
         boolean
             Should a debug message be printed with the parsed contents (as columns) of each row.
-        '''
+        """
         return self.__trace_data
 
     @trace_data.setter
     def trace_data(self, value):
         self.__trace_data = value
-        ## If we are tracing data, automatically set logging level to DEBUG
+        # If we are tracing data, automatically set logging level to DEBUG
         if value:
             self.log.setLevel(logging.DEBUG)
     
     @property
-    def progress_frequency(self):
+    def progress_frequency(self) -> int:
         return self.__progress_frequency
     
     @progress_frequency.setter
-    def progress_frequency(self, value):
+    def progress_frequency(self, value: int):
         self.__progress_frequency = value
             
-    
     @property
     def row_name(self):
         return str(self)
     
     def Row(self, data=None, name=None):
-        '''
+        """
         Make a new empty row with this components structure.
-        '''
+        """
         if name is None:
             name = self.row_name
         return self.RowClass(data, name=name, primary_key=self.primary_key, parent= self)        
     
     @property
     def rows_read(self):
-        '''
+        """
         int
             The number of rows read and returned.
-        '''
+        """
         return self._rows_read
     
     def process_messages(self):
-        '''
+        """
         Processes messages for this components task.  Should be called somewhere in any row looping. The standard iterator does this for you.
-        '''
+        """
         if self.task is not None:
             self.task.process_messages()
     
@@ -270,25 +270,35 @@ class ETLComponent(Iterable):
     def _raw_rows(self):
         pass
                 
-    def iter_result(self, resultList, where_dict=None, stats_id=None, parent_stats= None):
-        '''
+    def iter_result(self,
+                    result_list: object,
+                    where_dict: dict = None,
+                    progress_frequency: int = None,
+                    stats_id: str = None,
+                    parent_stats: Statistics = None) -> Generator[Row, None, None]:
+        """
         yields
         ------
         row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
             next row
-        '''
+        """
         if stats_id is None:
             stats_id = self.default_stats_id
             if stats_id is None:
                 stats_id = 'read'
         stats = self.get_stats_entry(stats_id=stats_id, parent_stats=parent_stats)
         stats.timer.start()
-        progressTimer = Timer()
-        if hasattr(resultList,'fetchmany'):
-            result_iter = self._fetch_many_iter(resultList)
+        if progress_frequency is None:
+            progress_frequency = self.__progress_frequency
+        progress_timer = Timer()
+        # Support result_list that is actually query result
+        if hasattr(result_list, 'fetchmany'):
+            # noinspection PyTypeChecker
+            result_iter = self._fetch_many_iter(result_list)
         else:
-            result_iter = resultList
-        
+            result_iter = result_list
+
+        # noinspection PyTypeChecker
         for row in result_iter:
             if not self._iterator_applied_filters:
                 if where_dict is not None:
@@ -300,21 +310,22 @@ class ETLComponent(Iterable):
                     if not passed_filter:
                         continue
                                 
-            ## Add to global read counter
+            # Add to global read counter
             self._rows_read += 1 
-            ## Add to current stat counter
+            # Add to current stat counter
             stats['rows_read'] += 1
             if stats['rows_read'] == 1:
                 self.process_messages()
                 stats['first row seconds'] = stats.timer.seconds_elapsed_formatted
                 if self.log_first_row:
                     self.log_progress(row, stats)
-            elif self.__progress_frequency is not None:
-                if self.__progress_frequency > 0 and progressTimer.seconds_elapsed > self.__progress_frequency:
+            elif progress_frequency is not None:
+                if 0 < progress_frequency < progress_timer.seconds_elapsed:
                     self.process_messages()
                     self.log_progress(row, stats)
-                    progressTimer.reset()
-                elif self.__progress_frequency == 0: ## Log every row
+                    progress_timer.reset()
+                elif progress_frequency == 0:
+                    # Log every row
                     self.process_messages()
                     self.log_progress(row, stats)            
             if self.trace_data:
@@ -330,20 +341,20 @@ class ETLComponent(Iterable):
                 break            
         stats.timer.stop()
         
-    def __iter__(self):
-        '''
+    def __iter__(self)-> Generator[Row, None, None]:
+        """
         Iterate over all rows.
         
         Yields
         ------
         row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
             :class:`~bi_etl.components.row.row_case_insensitive.Row` object with contents of a table/view row.
-        '''
-        ## Note: iter_result has a lot of important statistics keeping features
-        ## So we use that on top of _raw_rows 
+        """
+        # Note: iter_result has a lot of important statistics keeping features
+        # So we use that on top of _raw_rows 
         return self.iter_result(self._raw_rows()) 
         
-    def where(self, criteria= None, order_by = None,  stats_id= None, parent_stats= None):
+    def where(self, criteria= None, order_by = None,  stats_id= None, parent_stats= None) -> Generator[Row, None, None]:
         assert order_by is None, '{} does not support order_by'.format(self)
         return self.iter_result(self._raw_rows(), where_dict=criteria, stats_id=stats_id, parent_stats=parent_stats)
         
@@ -353,7 +364,7 @@ class ETLComponent(Iterable):
             self._stats[self.default_stats_id].timer.stop()
     
     def __del__(self):
-        ## Close the any connections
+        # Close the any connections
         if hasattr(self, '__close_called'):
             if not self.__close_called:
                 warnings.warn("{o} used without calling close.  It's suggested to use 'with' to control lifespan.".format(o=self), stacklevel=2)
@@ -364,20 +375,23 @@ class ETLComponent(Iterable):
         return self   
         
     def __exit__(self, exit_type, exit_value, exit_traceback):  
-        ## Close the any connections
+        # Close the any connections
         self.close()
         
     def _get_stats_parent(self, parent_stats=None):
         if parent_stats is None:
-            ## Set parent stats as etl_components root stats entry
+            # Set parent stats as etl_components root stats entry
             return self.statistics
         else:
             return parent_stats
         
-    def get_stats_entry(self, stats_id, parent_stats=None, print_start_stop_times= None):
+    def get_stats_entry(self,
+                        stats_id: str,
+                        parent_stats: Statistics = None,
+                        print_start_stop_times: bool = None):
         parent_stats = self._get_stats_parent(parent_stats)
         
-        ## Default to showing start stop times if parent_stats is self stats
+        # Default to showing start stop times if parent_stats is self stats
         default_print_start_stop_times = (parent_stats == self._stats)
             
         if print_start_stop_times is None:

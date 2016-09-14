@@ -8,7 +8,7 @@ class Notifier(object):
         self.log = logging.getLogger(__name__)
         self.config = config
         assert(isinstance(config, BIConfigParser))
-        self.destinations = destination_definition
+        self.destination_definition = destination_definition
 
     def send(self, subject, message):
         pass

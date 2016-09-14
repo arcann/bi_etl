@@ -1,8 +1,8 @@
-'''
+"""
 Created on May 15, 2015
 
 @author: woodd
-'''
+"""
 import shelve
 import semidbm
 import math 
@@ -19,21 +19,23 @@ import pickle
         
 __all__ = ['DiskLookup']
 
+
 class DiskLookup(Lookup):
-    DEFAULT_PATH = ''
+    DEFAULT_PATH = None
     
-    def __init__(self, lookup_name, lookup_keys, parent_component, config=None, path= None):
-        '''
+    def __init__(self, lookup_name, lookup_keys, parent_component, config=None, path= None, **kwargs):
+        """
         Optional parameter path where the lookup files should be persisted to disk
-        '''        
+        """        
         super(DiskLookup, self).__init__(lookup_name= lookup_name, 
                                          lookup_keys= lookup_keys, 
                                          parent_component= parent_component, 
-                                         config= config
+                                         config= config,
+                                         **kwargs
                                          )
         self._set_path(path)
         self.dbm = None
-        self.cache_dir_mgr  = None
+        self.cache_dir_mgr = None
         self.cache_file_path = None
         
     def _set_path(self, path):
@@ -41,7 +43,7 @@ class DiskLookup(Lookup):
             self.path = path
         else:
             if self.config is not None:
-                self.path = self.config.get_or_default('Cache','path',DiskLookup.DEFAULT_PATH)
+                self.path = self.config.get_or_default('Cache', 'path', DiskLookup.DEFAULT_PATH)
             else:
                 self.path = DiskLookup.DEFAULT_PATH
             
@@ -63,16 +65,17 @@ class DiskLookup(Lookup):
                                            writeback=False,)
         
     def __len__(self):
-        if self.cache != None:
+        if self.cache is not None:
             return len(self.dbm.keys())
         else:
             return 0
         
     def _get_first_row_size(self, row):
-        if self.dbm:        
-            self._row_size = get_size_gc(self.dbm) ## Slow but shouldn't be too bad twice      
+        if self.dbm:
+            # Slow but shouldn't be too bad twice
+            self._row_size = get_size_gc(self.dbm)
         
-    def _get_estimate_row_size(self, force_now=False):
+    def get_estimate_row_size(self, force_now=False):
         if force_now or not self._done_get_estimate_row_size:
             row_cnt = min(len(self),1000)
             total_row_sizes = 0
@@ -87,20 +90,21 @@ class DiskLookup(Lookup):
             self._done_get_estimate_row_size = True   
         
     def get_disk_size(self):
-        return get_dir_size(self.cache_file_path) 
+        if self.cache_file_path:
+            return get_dir_size(self.cache_file_path)
+        else:
+            return 0
         
     def get_hashable_combined_key(self, row):
-        ## shelve expects str keys        
-        result =  str(self.get_list_of_lookup_column_values(row))
+        # shelve expects str keys
+        result = str(self.get_list_of_lookup_column_values(row))
         return result
-        
-    
+
     def __del__(self):
         self.clear_cache()            
 
     def clear_cache(self):
-        if self.cache != None:
+        if self.cache is not None:
             self.cache.close()
             self.cache_dir_mgr.cleanup()
         self.cache = None
-    

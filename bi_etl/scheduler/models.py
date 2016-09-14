@@ -28,19 +28,29 @@ from bi_etl.scheduler.status import Status
 from bi_etl.database.connect import Connect
 from sqlalchemy.dialects.oracle.base import NCLOB
 
-
-
 log = logging.getLogger(__name__)
 
-#pylint: disable=missing-docstring, too-few-public-methods
+# pylint: disable=missing-docstring, too-few-public-methods
+# pylint: disable=unused-argument
 
-### Test connections before they are used (finds disconnected sessions)
-#pylint: disable=unused-argument
 @event.listens_for(Pool, "checkout")
 def ping_connection(dbapi_connection, connection_record, connection_proxy):
+    """
+    Test connections before they are used (finds disconnected sessions)
+
+    Parameters
+    ----------
+    dbapi_connection
+    connection_record
+    connection_proxy
+
+    Returns
+    -------
+
+    """
     cursor = dbapi_connection.cursor()
     try:
-        ## Only ping connections that support it
+        # Only ping connections that support it
         if hasattr(dbapi_connection,'ping'):
             dbapi_connection.ping()
     except:
@@ -53,15 +63,18 @@ def ping_connection(dbapi_connection, connection_record, connection_proxy):
         raise exc.DisconnectionError()
     cursor.close()
 
-## Only use ZopeTransactionExtension on the web tier, on the scheduler the import will likely fail, but we don't use DBSession there 
+# Only use ZopeTransactionExtension on the web tier,
+# on the scheduler the import will likely fail, but we don't use DBSession there
 try:
     from zope.sqlalchemy import ZopeTransactionExtension  # @UnresolvedImport
     DBSession = scoped_session(sessionmaker(extension=ZopeTransactionExtension()))
 except ImportError:
-    pass
+    ZopeTransactionExtension = None
+    DBSession = None
 
 metadata = MetaData(schema='public')
 Base = declarative_base(metadata=metadata)
+
 
 class ETL_Scheduler(Base):
     __tablename__ = 'etl_scheduler'
@@ -134,7 +147,8 @@ class ETL_Tasks(Base):
     
     @staticmethod
     def get_next_task_id(session):
-        ## We have to query the sequence each time because this code might be running on a different server or thread from others
+        # We have to query the sequence each time
+        # because this code might be running on a different server or thread from others
         next_id = list(session.execute(ETL_Tasks.task_id.default))[0][0]
         return next_id
     
@@ -147,6 +161,7 @@ class ETL_Tasks(Base):
                     if line.startswith('ERROR'):
                         result.append(line)
         return result
+
 
 class ETL_Task_Dependency(Base):
     __tablename__ = 'etl_task_dependency'
@@ -173,12 +188,14 @@ class ETL_Task_Dependency(Base):
         
     def __str__(self):
         return "(id={},reason={},current_blocking_flag={})".format(self.dependent_on_task, self.dependent_reason, self.current_blocking_flag)  
-    
+
+
 class ETL_Task_Status_CD(Base):
     __tablename__ = 'etl_task_status_cd'
     __table_args__ = {'quote': False}
     status_id                     = Column(INTEGER, primary_key = True, )
     status_name                   = Column(VARCHAR(25), nullable=False)
+
 
 class ETL_Task_Params(Base):
     __tablename__ = 'etl_task_params'
@@ -190,14 +207,16 @@ class ETL_Task_Params(Base):
     def __init__(self, param_name, param_value):
         self.param_name = param_name
         self.param_value = param_value    
-        
+
+
 class ETL_Task_Log(Base):
     __tablename__ = 'etl_task_log'
     __table_args__ = {'quote': False}
     task_id                     = Column(INTEGER, ForeignKey('etl_tasks.task_id'), primary_key = True, )
     log_entry_ts                = Column(DateTime, nullable=True, primary_key = True, )
     log_entry                   = Column(NCLOB, nullable=True, )
-    
+
+
 class ETL_Task_Stats(Base):
     __tablename__ = 'etl_task_stats'
     __table_args__ = {'quote': False}
@@ -225,7 +244,8 @@ class ETL_Class(Base):
     etl_class_id                   = Column(INTEGER, Sequence('etl_clas_id_seq'), primary_key = True)
     module_name                     = Column(VARCHAR(400), nullable=False)
     class_name                      = Column(VARCHAR(400), nullable=True)
-    
+
+
 class ETL_Class_Dependency(Base):
     __tablename__ = 'etl_class_dependency'
     __table_args__ = {'quote': False}
@@ -250,10 +270,10 @@ class ETL_Class_Dependency(Base):
 if __name__ == '__main__':
     config = bi_etl.bi_config_parser.BIConfigParser()
     config_file = config.read_config_ini()
-    engine =Connect.get_sqlachemy_engine(config, 
-                                         config.get('DBFileWatcher','database'), 
-                                         config.get_or_None('DBFileWatcher','user')
-                                         )        
+    engine = Connect.get_sqlachemy_engine(config,
+                                          config.get('DBFileWatcher','database'),
+                                          config.get_or_None('DBFileWatcher','user')
+                                          )
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     print("Model tables created")         

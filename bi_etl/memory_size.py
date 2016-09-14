@@ -63,6 +63,7 @@ def get_size_summary(obj, print_summary=True):
         print('size={:,}'.format(sz))    
     return sz
 
+
 def get_dir_size(path):
     total_size = 0
     if os.path.isfile(path):

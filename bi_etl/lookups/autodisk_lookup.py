@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 Created on Jan 5, 2016
 
 @author: woodd
-'''
+"""
 
 from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.lookup import Lookup
@@ -14,8 +14,9 @@ import psutil
 
 __all__ = ['Lookup']
 
+
 class AutoDiskLookup(Lookup):
-    '''
+    """
     Automatic memory / disk lookup cache.
     
     This version divides the cache into N chunks (default is 10). If RAM usage gets beyond limits, it starts moving chunks to disk.
@@ -29,7 +30,7 @@ class AutoDiskLookup(Lookup):
     Also worth considering is that if we bring a segment in from disk, it would best to keep the disk version. At that point any additions 
     to that segment would need to go to both places.
 
-    '''
+    """
     def __init__(self, 
                  lookup_name, 
                  lookup_keys, 
@@ -44,26 +45,27 @@ class AutoDiskLookup(Lookup):
                         lookup_name= lookup_name, 
                         lookup_keys= lookup_keys, 
                         parent_component= parent_component, 
-                        config= config
+                        config= config,
                         )
         self.cache = None
         self.rows_cached = 0
-        ## First try and use passed value
+        # First try and use passed value
         self.max_percent_ram_used = max_percent_ram_used
-        ## If not passed in config
+        # If not passed in config
         if self.max_percent_ram_used is None:
             if self.config is not None:
                 self.max_percent_ram_used = self.config.getfloat_or_default('Limits','disk_swap_at_percent_ram_used',default= None)
-        ## Finally default value
+        # Finally default value
         if self.max_percent_ram_used is None:
-            self.max_percent_ram_used = 70 ## Needs to be less than the default in bi_etl.components.table.Table.fill_cache
+            # Needs to be less than the default in bi_etl.components.table.Table.fill_cache
+            self.max_percent_ram_used = 70
                         
         self.max_process_ram_usage_mb = max_process_ram_usage_mb
-        ## If not passed in config
+        # If not passed in config
         if self.max_process_ram_usage_mb is None:
             if self.config is not None:
                 self.max_process_ram_usage_mb = self.config.getfloat_or_default('Limits','disk_swap_at_process_ram_usage_mb', default= None)
-        ## Finally default value
+        # Finally default value
         if self.max_process_ram_usage_mb is None:
             self.max_process_ram_usage_mb = 2.5 * 1024**3
             
@@ -85,11 +87,12 @@ class AutoDiskLookup(Lookup):
             else:
                 self.path = DiskLookup.DEFAULT_PATH
 
-    #pylint: disable=unused-argument, no-self-use  
+    # pylint: disable=unused-argument, no-self-use
     def get_unique_stats_entry(self, stats_id, parent_stats=None, print_start_stop_times= None):
-        ## Since we aren't capturing any useful stats in the sub caches yet, skip creating stats entries
-        #=======================================================================
-        # total_stats_id = '{cls} {name} {sub}'.format(cls= self.__class__.__name__, 
+        # Since we aren't capturing any useful stats in the sub caches yet, skip creating stats entries
+        #
+        # =======================================================================
+        # total_stats_id = '{cls} {name} {sub}'.format(cls= self.__class__.__name__,
         #                                        name=self.lookup_name,
         #                                        sub=stats_id
         #                                        )
@@ -97,7 +100,7 @@ class AutoDiskLookup(Lookup):
         #                                                     parent_stats=parent_stats, 
         #                                                     print_start_stop_times=print_start_stop_times
         #                                                     )
-        #=======================================================================        
+        # =======================================================================
         return None
 
     def _init_mem_cache(self):
@@ -107,13 +110,13 @@ class AutoDiskLookup(Lookup):
                                             config= self.config,
                                             **self.lookup_class_args
                                             )
+        self.cache.init_cache()
     
     def init_cache(self):
         if self.cache_enabled is None:
             self.cache_enabled = True
         if self.cache_enabled:
             self._init_mem_cache()        
-        
     
     def get_memory_size(self):
         ram_size = 0
@@ -159,10 +162,11 @@ class AutoDiskLookup(Lookup):
                                                        config= self.config,
                                                        path= self.path,
                                                        **self.lookup_class_args
-                                                       )            
-                ## Do not warn about protected access to _get_estimate_row_size
-                #pylint: disable=protected-access
-                self.cache._get_estimate_row_size(force_now=True)
+                                                       )
+                self.disk_cache.init_cache()
+                # Do not warn about protected access to _get_estimate_row_size
+                # pylint: disable=protected-access
+                self.cache.get_estimate_row_size(force_now=True)
                 self.disk_cache._row_size = self.cache._row_size
                 self.disk_cache._done_get_estimate_row_size = self.cache._done_get_estimate_row_size
             timer = Timer()
@@ -181,11 +185,11 @@ class AutoDiskLookup(Lookup):
             self.log.info('Flushing rows freed {:,.3f} MB from process (before {:,.3f} after {:,.3f})'.format(before_move_mb - after_move_mb, before_move_mb, after_move_mb))
             
     def check_memory(self):
-        ## Only check memory if we have rows in memory
+        # Only check memory if we have rows in memory
         if self.cache is not None and len(self.cache) > 0:
-            ## Every X rows check memory limits
+            # Every X rows check memory limits
             if (self.rows_cached - self.last_ram_check_at_row) >= self.ram_check_row_interval:                                
-                ## Double check our cache size. Calls to cache_row might have overwritten existing rows                
+                # Double check our cache size. Calls to cache_row might have overwritten existing rows                
                 self.rows_cached = len(self)
                 self.last_ram_check_at_row = self.rows_cached
                 
@@ -193,18 +197,20 @@ class AutoDiskLookup(Lookup):
                 
                 if self.max_percent_ram_used is not None:
                     if psutil.virtual_memory().percent > self.max_percent_ram_used:
-                        limit_reached = True                
-                        self.log.warning("{name}.fill_cache moving a segment to disk at due to system memory limit {pct} > {pct_limit}% with {rows:,} rows of data".format(
-                                                                                                                                              name = self.lookup_name,
-                                                                                                                                              rows = self.rows_cached,
-                                                                                                                                              pct = psutil.virtual_memory().percent,
-                                                                                                                                              pct_limit = self.max_percent_ram_used,
-                                                                                                                                              )
-                                  )
+                        limit_reached = True
+                        msg = "{name}.fill_cache moving a segment to disk at due to "
+                        msg += "system memory limit {pct} > {pct_limit}% with {rows:,} rows of data"
+                        self.log.warning(msg.format(
+                                                    name = self.lookup_name,
+                                                    rows = self.rows_cached,
+                                                    pct = psutil.virtual_memory().percent,
+                                                    pct_limit = self.max_percent_ram_used,
+                                                    )
+                        )
                 process_mb = self.our_process.memory_info().rss/(1024**2)
                 if self.max_process_ram_usage_mb is not None:
                     if process_mb > self.max_process_ram_usage_mb:
-                        ## Set flag to clean out the cache built so far below
+                        # Set flag to clean out the cache built so far below
                         limit_reached = True
                         self.log.warning("{name}.fill_cache moving a segment to disk at due to process memory limit {usg:,} > {usg_limit:,} KB with {rows:,} rows of data".format(
                                                                                                                                               name = self.lookup_name,
@@ -225,12 +231,12 @@ class AutoDiskLookup(Lookup):
     
             self.rows_cached += 1
             
-            ## Note: The memory check needs to be here and not in Table.fill_cache since rows can be added to cache 
-            ##       during the load and not just by fill_cache.
+            # Note: The memory check needs to be here and not in Table.fill_cache since rows can be added to cache 
+            #       during the load and not just by fill_cache.
             self.check_memory()
             
-            ## We need to make sure each row is in only once place
-            ## Since disk_cache keeps a memory index, has_row should be fast
+            # We need to make sure each row is in only once place
+            # Since disk_cache keeps a memory index, has_row should be fast
             if self.disk_cache is not None and self.disk_cache.has_row(row):
                 self.disk_cache.cache_row(row, allow_update= allow_update)
             else:
@@ -244,13 +250,13 @@ class AutoDiskLookup(Lookup):
             
 
     def __iter__(self):
-        '''
+        """
         The rows will come out in any order.
-        '''
+        """
         if self.cache is not None:
 
-            ##TODO: Turn off the flush to disk during this operation so that we don't change the dict
-            ## Also needs to work with uncache_row 
+            #TODO: Turn off the flush to disk during this operation so that we don't change the dict
+            # Also needs to work with uncache_row 
             
             for row in self.cache:
                 yield row
