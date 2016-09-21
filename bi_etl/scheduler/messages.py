@@ -1,8 +1,8 @@
-'''
+"""
 Created on Apr 22, 2015
 
 @author: woodd
-'''
+"""
 
 class ChildRunRequested(object):
     def __init__(self, child_task_id):

@@ -1,5 +1,5 @@
 #===============================================================================
-# '''
+# """
 # Created on May 15, 2015
 # 
 # @author: Derek Wood
@@ -11,7 +11,7 @@
 # 
 # Needs format unit tests!  
 # 
-# '''
+# """
 # 
 # import os
 # import sqlite3
@@ -42,9 +42,9 @@
 # 
 # class SQLLiteLookup(Lookup):
 #     def __init__(self, lookup_name, lookup_keys, parent_component, path= None):
-#         '''
+#         """
 #         Optional parameter path where the lookup files should be persisted to disk
-#         '''        
+#         """
 #         super(SQLLiteLookup, self).__init__(lookup_name, lookup_keys, parent_component)
 #         self._set_path(path)
 #         self.table = None 
@@ -116,9 +116,9 @@
 #             yield Row(row)
 #     
 #     def __iter__(self):
-#         '''
+#         """
 #         The rows will come out in any order.
-#         '''
+#         """
 #         if self.table is not None:
 #             return iter(self.table)
 #             

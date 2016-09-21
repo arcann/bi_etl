@@ -1,16 +1,15 @@
-'''
+"""
 Created on Aug 28, 2014
 
 @author: woodd
-'''
+"""
 
 from bi_etl.scheduler.task import ETLTask, Status
 from bi_etl.components.table import Table
 
 class ETL_Task_Status_CD(ETLTask):
 
-    @staticmethod
-    def depends_on():
+    def depends_on(self):
         return [ 
                ]
 

@@ -1,8 +1,8 @@
-'''
+"""
 Created on Sep 17, 2014
 
 @author: woodd
-'''
+"""
 
 from datetime import datetime
 import timeit

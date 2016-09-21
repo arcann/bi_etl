@@ -1,8 +1,8 @@
-'''
+"""
 Created on Sep 17, 2014
 
 @author: woodd
-'''
+"""
 from bi_etl.components.etlcomponent import ETLComponent
 
 class SQLQuery(ETLComponent):

@@ -1,8 +1,8 @@
-'''
+"""
 Created on Sep 17, 2014
 
 @author: woodd
-'''
+"""
 import csv
 import os
 
@@ -213,9 +213,9 @@ class CSVReader(ETLComponent):
 
     @property
     def reader(self):
-        '''
+        """
         Build or get the csv.reader object.
-        '''
+        """
         if self.__reader is None:
             ## Initialize the reader
             self.__reader = csv.reader(self.file, 
@@ -235,10 +235,10 @@ class CSVReader(ETLComponent):
 
     @property
     def line_num(self):
-        '''
+        """
         The current line number in the source file.
         line_num differs from rows_read in that rows_read deals with rows that would be returned to the caller
-        '''
+        """
         return self.reader.line_num
     
     def seek_row(self, target_row):
@@ -275,10 +275,10 @@ class CSVReader(ETLComponent):
         return (saved_position, saved_line_num)
         
     def __read_header_row(self):
-        '''
+        """
         Read the header row. This is a function so it can be overridden with more
         complex header parsing.
-        '''
+        """
         (saved_position, saved_line_num) = self.seek_row(self.header_row)
         if self.start_row == self.header_row:
             self.start_row += 1
@@ -291,9 +291,9 @@ class CSVReader(ETLComponent):
         return header_row
     
     def _obtain_column_names(self):
-        '''
+        """
         Get the column names from the file. ETLComponent only call this if self._column_names is None:
-        '''
+        """
         try:            
             header_row = self.__read_header_row()            
             ## Make sure to use setter here! It deals with duplicate names                
@@ -333,9 +333,9 @@ class CSVReader(ETLComponent):
                 raise e
         
     def close(self):
-        '''
+        """
         Close the file
-        '''        
+        """
         if self.__close_file:
             self.file.close()
         super(CSVReader, self).close()

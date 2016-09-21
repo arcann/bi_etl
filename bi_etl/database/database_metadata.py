@@ -19,7 +19,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
 
     def execute(self, sql):        
         with self.bind.connect() as connection:
-            connection.execute(sql)    
+            return connection.execute(sql)
     
     def execute_procedure(self, procedure_name):
         """

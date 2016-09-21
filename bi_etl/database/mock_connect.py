@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 Created on Jan 22, 2016
 
 @author: woodd
-'''
-from mock.mock import Mock
+"""
+from unittest.mock import Mock
 
 from bi_etl.database.connect import Connect
 

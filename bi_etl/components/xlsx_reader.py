@@ -1,8 +1,8 @@
-'''
+"""
 Created on Apr 2, 2015
 
 @author: woodd
-'''
+"""
 import os
 from openpyxl import load_workbook
 from bi_etl.components.etlcomponent import ETLComponent
@@ -11,7 +11,7 @@ from datetime import datetime, time
 __all__ = ['XLSXReader']
 
 class XLSXReader(ETLComponent):
-    ''' 
+    """
     XLSXReader will read rows from an Microsoft Excel XLSX formatted sheet.
     
     Parameters
@@ -65,7 +65,7 @@ class XLSXReader(ETLComponent):
     restval: str
         The value to put in columns that are in the column_names but 
         not present in a given row (missing values).     
-    '''
+    """
     def __init__(self,
                  task,
                  file_name,
@@ -108,10 +108,10 @@ class XLSXReader(ETLComponent):
     
     @property
     def header_row(self):
-        '''
+        """
         int
             The sheet row to read headers from. Default = 1.
-        '''
+        """
         return self.__header_row
 
     @header_row.setter
@@ -120,10 +120,10 @@ class XLSXReader(ETLComponent):
         
     @property
     def start_row(self):
-        '''
+        """
         int
             The sheet row to start reading datas from. Default = header_row + 1
-        '''
+        """
         if self.__start_row is not None:
             return self.__start_row
         else:
@@ -176,10 +176,10 @@ class XLSXReader(ETLComponent):
     
     @property
     def line_num(self):
-        '''
+        """
         The current line number in the source file.
         line_num differs from rows_read in that rows_read deals with rows that would be returned to the caller
-        '''
+        """
         return self.__active_row
     
     def _obtain_column_names(self):

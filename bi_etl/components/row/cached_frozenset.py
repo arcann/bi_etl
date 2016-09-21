@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 Created on Feb 13, 2016
 
 @author: woodd
-'''
+"""
 
 _frozenset_cache = dict()
 

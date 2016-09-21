@@ -1,8 +1,8 @@
-'''
+"""
 Created on Mar 26, 2015
 
 @author: woodd
-'''
+"""
 import unittest
 from collections import OrderedDict
 
@@ -317,9 +317,9 @@ class TestRow(unittest.TestCase):
         
           
     def _test_create_performance(self):
-        '''
+        """
         Establish a baseline of init performance to make sure it doens't get worse
-        '''            
+        """
         timer = Timer(start_running=True)
         row_lst = list()
         for _ in range(self.create_performance_iterations):
@@ -336,10 +336,10 @@ class TestRow(unittest.TestCase):
         self.assertLessEqual(row_seconds, dict_seconds*2, "Row init did not meet performance goal")
 
     def _test_get_performance(self):
-        '''
+        """
         Establish a baseline of get performance to make sure it doens't get worse.
         We expect the extra checks we do here to make Row slower than OrderedDict.
-        '''
+        """
         od = OrderedDict(self.source1)
         timer = Timer(start_running=True)
         for _ in range(self.get_performance_iterations):
@@ -358,10 +358,10 @@ class TestRow(unittest.TestCase):
         self.assertLessEqual(row_seconds, dict_seconds*8, "Row get did not meet performance goal")
         
     def _test_set_existing_performance(self):
-        '''
+        """
         Establish a baseline of set existing value performance to make sure it doens't get worse
         We expect the extra checks we do here to make Row slower than OrderedDict.
-        '''
+        """
         timer = Timer(start_running=True)
         od = OrderedDict(self.source1)
         for _ in range(self.set_existing_performance_iterations):
@@ -376,10 +376,10 @@ class TestRow(unittest.TestCase):
         self.assertLessEqual(timer.seconds_elapsed, dict_seconds*2, "Row set did not meet performance goal")
         
     def _test_set_new_performance(self):
-        '''
+        """
         Establish a baseline of set new value performance to make sure it doens't get worse.
         We expect the extra checks we do here to make Row slower than OrderedDict.
-        '''
+        """
         timer = Timer(start_running=True)
         od = OrderedDict(self.source1)
         for _ in range(self.set_new_performance_rows):

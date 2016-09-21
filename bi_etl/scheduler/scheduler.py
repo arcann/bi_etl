@@ -1,8 +1,8 @@
-'''
+"""
 Created on Apr 14, 2015
 
 @author: woodd
-'''
+"""
 import codecs
 from datetime import datetime, timedelta
 import time
@@ -51,9 +51,9 @@ from bi_etl.scheduler.exceptions import DependencyDeeperThanLimit
 #pylint: disable=line-too-long
 
 class Scheduler(SchedulerInterface):
-    '''
+    """
     Full-scheduler object with memory of active jobs.
-    '''
+    """
 
     MAX_DEPENDENTS_DEPTH = 100
 
@@ -86,19 +86,19 @@ class Scheduler(SchedulerInterface):
         if maximum_concurrent_tasks is None:
             try:
                 self.maximum_concurrent_tasks = multiprocessing.cpu_count()  # @UndefinedVariable
-                msg = '''
+                msg = """
                       Setting maximum_concurrent_tasks to CPU count of {}.
                       Provide Scheduler.maximum_concurrent_tasks in config if something else is desired.
-                      '''
+                      """
                 msg = textwrap.dedent(msg)
                 self.log.warning(msg.format(self.maximum_concurrent_tasks))
             except NotImplementedError as e:
                 self.log.warning(e)
                 self.maximum_concurrent_tasks = 1
-                msg = '''
+                msg = """
                       Defaulting to {} concurrent tasks. 
                       Provide maximum_concurrent_tasks in config if something else is desired.
-                      '''
+                      """
                 msg = textwrap.dedent(msg)
                 msg = msg.format(self.maximum_concurrent_tasks)
                 self.log.warning(msg)
@@ -294,10 +294,10 @@ class Scheduler(SchedulerInterface):
             self.log.warning("send_task_message called on task {} with no parent_to_child".format(etl_task))
 
     def set_task_summary_message(self, etl_task, summary_message, commit = False, from_client= False):
-        '''
+        """
         set the tasks summary message.
         Note: Since this is often called on conjunction with set_task_status, we default to no commit here.
-        '''
+        """
         self.add_log_message(etl_task, msg = summary_message, allow_duplicates= False)
         self.log.debug("set_task_summary_message task={} message={}".format(etl_task, summary_message))
         if etl_task.summary_message_from_client and not from_client:
@@ -308,18 +308,18 @@ class Scheduler(SchedulerInterface):
                 self.session.commit()
 
     def append_task_summary_message(self, etl_task, summary_message, commit = True):
-        '''
+        """
         Append to the tasks summary message.
-        '''
+        """
         self.set_task_summary_message(etl_task, etl_task.task_rec.summary_message + ' ' + summary_message)
         if commit:
             self.session.commit()
 
     def check_for_cpu(self, etl_task):
-        '''
+        """
         Checks for available CPU, if available it STARTS THE TASK and returns True.
         If not it returns False
-        '''
+        """
         if len(self.tasks_occupying_cpu) < self.maximum_concurrent_tasks:
             self.run_task(etl_task)
             return True
@@ -550,12 +550,12 @@ class Scheduler(SchedulerInterface):
 
 
     def check_for_new_task_commands(self):
-        '''
+        """
         Looks in the database repository for new task commands:
           * new task: Creates an ETLTask instance, and checks it's predesssors.
           * stop_requested: Sends a stop signal to the task
           * kill_requested: Sends s SIGKILL to terminate the task
-        '''
+        """
 
         ##TODO: For new tasks this method of reading ETL_Tasks works. However, for stop requests it can fail.
         ##      If the web-interface writes a stop request right as the scheduler updates the status message,
@@ -761,10 +761,10 @@ class Scheduler(SchedulerInterface):
 
     @staticmethod
     def _is_reloaded_instance(msg, class_obj):
-        '''
+        """
         Like isinstance but it should deal with modules that have been reloaded.
         Unlike isinstance it will NOT handle cases where msg inherits from class_obj
-        '''
+        """
         return str(type(msg)) == str(class_obj)
 
     def read_child_messages(self, etl_task):
@@ -933,9 +933,9 @@ class Scheduler(SchedulerInterface):
             self.log.error("check_if_done: {}".format(repr(e)))
 
     def check_for_previous_instance_tasks(self):
-        '''
+        """
         Looks in the database repository for tasks from a previous instance.
-        '''
+        """
         running_status_codes = list()
         for s in Status:
             if not s.is_finished() and not s == Status.new:

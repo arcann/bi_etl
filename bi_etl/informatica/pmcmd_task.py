@@ -1,20 +1,20 @@
-'''
+"""
 Created on May 5, 2015
 
 @author: woodd
-'''
+"""
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.informatica.pmcmd import PMCMD
 from bi_etl.scheduler.exceptions import ParameterError
 
 class PMCMD_Task(ETLTask):
-    '''
+    """
     Runs Informatica Workflows
-    '''
+    """
     def init(self):
-        '''
+        """
         pre-load initialization.        
-        '''
+        """
         try:
             folder = self.get_parameter('folder')
         except ParameterError:

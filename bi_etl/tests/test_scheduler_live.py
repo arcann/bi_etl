@@ -1,8 +1,8 @@
-'''
+"""
 Created on Dec 23, 2015
 
 @author: woodd
-'''
+"""
 from datetime import timedelta
 import logging
 import operator

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 Created on Jan 20, 2016
 
 @author: woodd
-'''
+"""
 
 class ColumnDifference(object):
     def __init__(self, 

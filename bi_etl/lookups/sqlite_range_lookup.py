@@ -1,5 +1,5 @@
 #===============================================================================
-# '''
+# """
 # Created on May 15, 2015
 # 
 # @author: Derek Wood
@@ -11,7 +11,7 @@
 # 
 # Needs formal unit tests!
 #    
-# '''
+# """
 # from sqlalchemy.sql.expression import bindparam
 # 
 # from bi_etl.components.row import Row
@@ -22,9 +22,9 @@
 # 
 # class SQLLiteRangeLookup(SQLLiteLookup):
 #     def __init__(self, lookup_name, lookup_keys, parent_component, begin_date, end_date, path= None):
-#         '''
+#         """
 #         Optional parameter path where the lookup files should be persisted to disk
-#         '''        
+#         """
 #         super(SQLLiteRangeLookup, self).__init__(lookup_name, lookup_keys, parent_component, path)
 #         self.begin_date = begin_date
 #         self.end_date = end_date

@@ -6,18 +6,14 @@ Created on Sep 25, 2014
 import logging
 import warnings
 from operator import attrgetter
-from _collections_abc import Iterable
-from typing import Generator
-
-from sqlalchemy.sql.schema import Column
+from typing import Iterable
 
 import bi_etl
+from bi_etl.components.row import Row
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
-from bi_etl.components.row import Row as _Row
-from bi_etl.components.row import RowStatus as _RowStatus
-
 from bi_etl.utility import dict_to_str
+from sqlalchemy.sql.schema import Column
 
 __all__ = ['ETLComponent']
 
@@ -275,7 +271,7 @@ class ETLComponent(Iterable):
                     where_dict: dict = None,
                     progress_frequency: int = None,
                     stats_id: str = None,
-                    parent_stats: Statistics = None) -> Generator[Row, None, None]:
+                    parent_stats: Statistics = None) -> Iterable(Row):
         """
         yields
         ------
@@ -332,7 +328,7 @@ class ETLComponent(Iterable):
                 self.process_messages()
                 self.log.debug("READ {name}:\n{row}".format(name=self, row=dict_to_str(row).encode('utf-8',errors='replace')))
             stats.timer.stop()
-            if isinstance(row, _Row):
+            if isinstance(row, Row):
                 yield row
             else:
                 yield self.Row(row)
@@ -341,7 +337,7 @@ class ETLComponent(Iterable):
                 break            
         stats.timer.stop()
         
-    def __iter__(self)-> Generator[Row, None, None]:
+    def __iter__(self)-> Iterable(Row):
         """
         Iterate over all rows.
         
@@ -354,7 +350,7 @@ class ETLComponent(Iterable):
         # So we use that on top of _raw_rows 
         return self.iter_result(self._raw_rows()) 
         
-    def where(self, criteria= None, order_by = None,  stats_id= None, parent_stats= None) -> Generator[Row, None, None]:
+    def where(self, criteria= None, order_by = None,  stats_id= None, parent_stats= None) -> Iterable(Row):
         assert order_by is None, '{} does not support order_by'.format(self)
         return self.iter_result(self._raw_rows(), where_dict=criteria, stats_id=stats_id, parent_stats=parent_stats)
         

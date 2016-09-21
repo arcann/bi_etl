@@ -1,8 +1,8 @@
-'''
+"""
 Created on May 20, 2015
 
 @author: woodd
-'''
+"""
 from datetime import datetime
 import getpass
 import importlib
@@ -42,6 +42,7 @@ def _pickle_method(method):
     return _unpickle_method, (func_name, obj, cls)
 
 def _unpickle_method(func_name, obj, cls):
+    funct = None
     for cls in cls.mro():
         try:
             funct = cls.__dict__[func_name]
@@ -49,7 +50,10 @@ def _unpickle_method(func_name, obj, cls):
             pass
         else:
             break
-    return funct.__get__(obj, cls)
+    if funct:
+        return funct.__get__(obj, cls)
+    else:
+        raise RuntimeError('function {} not found'.format(func_name))
 
 #pylint: disable=wrong-import-position, import-error
 try:
@@ -64,9 +68,9 @@ copyreg.pickle(types.MethodType, _pickle_method, _unpickle_method)
 #pylint: disable=invalid-name
 
 class SchedulerInterface(object):
-    '''
+    """
     Light scheduler interface that only interacts with the database.
-    '''
+    """
     CLASS_VERSION = 1.0
     CONFIG_SECTION = 'Scheduler'
     scan_etl_classes_performed = False
@@ -173,10 +177,10 @@ class SchedulerInterface(object):
                 self.scheduler_row = self.get_scheduler_row_for_id(scheduler_id)
     
             if self.scheduler_row is None:
-                msg = '''
+                msg = """
                       Scheduler not found by name (ini Scheduler section : host setting).'
                       Defaulting to scheduler ID 1, if that exists.
-                      '''
+                      """
                 self.log.warning( textwrap.dedent(msg) )
                 self.scheduler_row = self.get_scheduler_row_for_id(1)
     
@@ -206,15 +210,15 @@ class SchedulerInterface(object):
 
     @property
     def qualified_host_name(self):
-        '''
+        """
         Gets the qualified host name of the scheduler server.
-        '''
+        """
         return self.scheduler_row.qualified_host_name
 
     def _get_local_qualified_host_name(self):
-        '''
+        """
         Gets the qualified host name of the current server (not the scheduler server)
-        '''
+        """
         #=======================================================================
         # socket.getfqdn can return different values for each call if the host has multiple aliases.
         # In our case it alternated between values, however it seems like it could be more random than that.
@@ -305,9 +309,9 @@ class SchedulerInterface(object):
                                submit_by_user_id=None,
                                commit=True,
                                ):
-        '''
+        """
         Add a task to the scheduler using a module name
-        '''
+        """
         msg="add_task_by_exact_name module_name={module_name}, class_name={class_name} parent_task_id={parent_task_id} root_task_id={root_task_id}"
         self.log.debug(msg.format(module_name= module_name,
                                   class_name= class_name,
@@ -376,13 +380,13 @@ class SchedulerInterface(object):
                           submit_by_user_id=None,
                           commit=True,
                           ):
-        '''
+        """
         Add a task to the scheduler using an instance of the task class type.
 
         Returns
         -------
         task_id: int
-        '''
+        """
         ## Test that we got a class type
         if not isinstance(etl_task_class_type, type):
             ## Turn name into a class type
@@ -437,9 +441,9 @@ class SchedulerInterface(object):
                         self.log.debug('_scan_etl_classes_in_base: Skipping {} due to {}'.format(name, e))
     
     def _find_etl_classes_in_module(self, module):
-        '''
+        """
         Returns a dictionary of the ETLTask instances defined in a given module
-        '''
+        """
         class_matches_by_type = dict()
         
         ## Look for ETLTask inherited classes
@@ -540,13 +544,13 @@ class SchedulerInterface(object):
                          submit_by_user_id=None,
                          commit=True,
                          ):
-        '''
+        """
         Add a task to the scheduler using the module_name (partial) and optionally class_name
 
         Returns
         -------
         task_id: int
-        '''
+        """
         etl_task_class_name = self.find_etl_class_name(partial_module_name)
         return self.add_task_by_exact_name(etl_task_class_name,
                                            display_name= display_name,
@@ -564,17 +568,17 @@ class SchedulerInterface(object):
         return self.session.query(ETL_Tasks).get(task_id)
 
     def get_task_status(self, task_id):
-        '''
+        """
         Gets the Status of a task
 
         Returns
         -------
         status_of_task: bi_etl.scheduler.status.Status
-        '''
+        """
         return self.get_task_record(task_id).Status
 
     def wait_for_task(self, task_id, check_interval = 1, max_wait = None):
-        '''
+        """
         Waits for a task to finish.
 
         Parameters
@@ -592,7 +596,7 @@ class SchedulerInterface(object):
         Returns
         -------
         status_of_task: bi_etl.scheduler.status.Status
-        '''
+        """
         timer = Timer()
         while not self.get_task_status(task_id).is_finished():
             if max_wait:
@@ -629,7 +633,17 @@ class SchedulerInterface(object):
         if commit:
             self.session.commit()
 
-    def get_task_parameter_dict(self, task):
+    def get_task_parameter_dict(self, task) -> dict:
+        """
+
+        Parameters
+        ----------
+        task: int or ETL_Tasks
+
+        Returns
+        -------
+        dict
+        """
         if isinstance(task, int):
             task_id = task
             task_rec = self.get_task_record(task_id)
@@ -637,7 +651,9 @@ class SchedulerInterface(object):
             task_rec = task
             task_id = task_rec.task_id
             assert task_id is not None, "get_task_parameter_dict called for task with no task_id {}".format(task_rec)
-        self.log.debug("Getting parameters for task id {}".format(task_id) )
+        else:
+            raise ValueError('Unexpected type for task parameter {}'.format(type(task)))
+        self.log.debug("Getting parameters for task id {}".format(task_id))
         params_dict = dict()
         for param_rec in task_rec.parameters:
             try:
@@ -663,10 +679,10 @@ class SchedulerInterface(object):
         return params_dict
 
     def load_parameters(self, etl_task):
-        '''
+        """
         This is done in the etl_task thread/process (called by run method)
         so that the parameters don't have to be loaded into the scheduler thread or passed between threads/processes.
-        '''
+        """
         params_dict = self.get_task_parameter_dict(etl_task.task_id)
         for param_name in params_dict:
             etl_task.add_parameter(param_name, params_dict[param_name], local_only= True)

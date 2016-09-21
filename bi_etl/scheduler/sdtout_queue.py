@@ -1,15 +1,15 @@
-'''
+"""
 Created on Apr 17, 2015
 
 @author: woodd
-'''
+"""
 import sys
 
  
 class StdoutQueue(object):
-    '''
+    """
     This is a stdout replacement that sends messages to a Queue.  It ensures that all messages are strings.
-    '''
+    """
     def __init__(self,queue):
         self.queue = queue
 

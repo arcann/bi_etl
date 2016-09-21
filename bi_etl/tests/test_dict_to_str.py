@@ -1,8 +1,8 @@
-'''
+"""
 Created on Apr 1, 2015
 
 @author: woodd
-'''
+"""
 import unittest
 from bi_etl.utility import dict_to_str
 from datetime import datetime

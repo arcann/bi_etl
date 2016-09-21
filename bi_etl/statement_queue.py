@@ -1,17 +1,17 @@
-'''
+"""
 Created on Mar 2, 2015
 
 @author: woodd
-'''
+"""
 class StatementQueue(object):
-    '''
+    """
     A queue of pending SQLAlchemyy statements
-    '''
+    """
 
     def __init__(self):
-        '''
+        """
         Constructor
-        '''
+        """
         self.statements = dict()
         self.statement_values = dict()
         self.row_count = 0

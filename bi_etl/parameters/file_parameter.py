@@ -1,19 +1,19 @@
-'''
+"""
 Created on Apr 16, 2015
 
 @author: woodd
-'''
+"""
 from os.path import os
 
 class FileParameter(object):
-    '''
+    """
     Wrapper for passing files via ETLTask parameters
-    '''
+    """
 
     def __init__(self, file_name, file_contents= None):
-        '''
+        """
         Constructor
-        '''
+        """
         self.file_name = file_name
         self.file_contents = file_contents
        

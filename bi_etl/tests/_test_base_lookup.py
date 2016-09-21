@@ -1,8 +1,8 @@
-'''
+"""
 Created on Jan 5, 2016
 
 @author: woodd
-'''
+"""
 import unittest
 import logging
 import sys
@@ -15,10 +15,11 @@ from bi_etl.lookups.lookup import Lookup
 
 #pylint: disable=missing-docstring, protected-access
 
+
 class _TestBase(unittest.TestCase):
-    '''
+    """
     Abstract base class for tests common to all Lookup classes
-    '''
+    """
 
     def setUp(self):
         self.parent_component = DummyETLComponent()
@@ -51,7 +52,7 @@ class _TestBase(unittest.TestCase):
                       }
         self.row3 = Row(self.source3, primary_key=self.key3)
         
-        ## Only set TestClass and test_class_args if parent hasn't set them yet        
+        # Only set TestClass and test_class_args if parent hasn't set them yet
         if not hasattr(self,'TestClass'):
             self.TestClass = Lookup
         if not hasattr(self,'test_class_args'):
@@ -59,9 +60,8 @@ class _TestBase(unittest.TestCase):
             
     def tearDown(self):
         self.parent_component.close()
-        
-    @staticmethod
-    def _post_test_cleanup(lookup):
+
+    def _post_test_cleanup(self, lookup):
         lookup.clear_cache()
         
     @staticmethod
@@ -79,13 +79,13 @@ class _TestBase(unittest.TestCase):
     def testBeforeInit_1(self):
         lookup = self.TestClass('Test',self.key1, parent_component=self.parent_component, **self.test_class_args)
         self.assertRaises(ValueError, lookup.find_in_cache, row=self.row1)
-        _TestBase._post_test_cleanup(lookup)        
+        self._post_test_cleanup(lookup)
         
     def test_get_list_of_lookup_column_values_1(self):
         lookup = self._get_key1_lookup()
         expectedList = [ self.source1[self.key1_1] ]
         self.assertEqual(lookup.get_list_of_lookup_column_values(self.row1), expectedList)
-        _TestBase._post_test_cleanup(lookup)
+        self._post_test_cleanup(lookup)
         
     def test_cache_and_find_1(self):
         lookup = self._get_key1_lookup()
@@ -104,8 +104,8 @@ class _TestBase(unittest.TestCase):
         ## Test lookup fail
         search_row2 = Row({ self.key1_1: 2,  })
         self.assertRaises(NoResultFound, lookup.find_in_cache, row=search_row2)
-        
-        _TestBase._post_test_cleanup(lookup)
+
+        self._post_test_cleanup(lookup)
         
     def test_len_1(self):
         lookup = self._get_key1_lookup()
@@ -122,7 +122,7 @@ class _TestBase(unittest.TestCase):
             found_dict[row[self.key1_1]] = 1
         for cnt in range(1, 100):
             self.assertIn(cnt, found_dict, 'Iter did not return key {}'.format(cnt))
-        _TestBase._post_test_cleanup(lookup)
+            self._post_test_cleanup(lookup)
         
     ###### Tests for key of len 3
 
@@ -137,7 +137,7 @@ class _TestBase(unittest.TestCase):
     
         expectedList = [ self.source3[key] for key in self.key3]
         self.assertEqual(lookup.get_list_of_lookup_column_values(self.row3), expectedList)
-        _TestBase._post_test_cleanup(lookup)
+        self._post_test_cleanup(lookup)
                  
     def test_cache_and_find_3(self):
         lookup = self._get_key3_lookup()
@@ -167,8 +167,8 @@ class _TestBase(unittest.TestCase):
         notExpectedKeys = expectedKeys.clone()
         notExpectedKeys[self.key3_2]=datetime(2014,12,25,9,15,20)
         self.assertRaises(NoResultFound, lookup.find_in_cache, row=notExpectedKeys)
-        
-        _TestBase._post_test_cleanup(lookup)
+
+        self._post_test_cleanup(lookup)
         
     def test_len_3(self):
         lookup = self._get_key3_lookup()
@@ -185,5 +185,4 @@ class _TestBase(unittest.TestCase):
             found_dict[row[self.key3_1]] = 3
         for cnt in range(1, 300):
             self.assertIn(cnt, found_dict, 'Iter did not return key {}'.format(cnt))
-        _TestBase._post_test_cleanup(lookup)                    
-    
+        self._post_test_cleanup(lookup)

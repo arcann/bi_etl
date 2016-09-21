@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 Created on Dec 23, 2015
 
 @author: woodd
-'''
+"""
 
 import logging
 
 #pylint: disable=abstract-method
 class MockDatabaseMetadata(object):
-    '''
+    """
     Mock testing of sqlalchemy metadata
-    ''' 
+    """
     def __init__(self):
         self.execute_calls = list()
     
@@ -19,7 +19,7 @@ class MockDatabaseMetadata(object):
         self.execute_calls.append(sql)    
     
     def execute_procedure(self, procedure_name):
-        '''
+        """
         Execute a stored procedure 
         
         Parameters
@@ -33,7 +33,7 @@ class MockDatabaseMetadata(object):
             API error            
         sqlalchemy.exc.DatabaseError:
             Maybe?            
-        '''
+        """
         ##TODO: Capture statistics (basic Timer)
         ##TODO: support other database
         log = logging.getLogger(__name__)

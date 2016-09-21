@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 Created on Sep 17, 2014
 
 @author: woodd
-'''
+"""
 import warnings
 from decimal import Decimal
 from operator import attrgetter
+from typing import Iterable, Union, List
 
+from bi_etl.components.etlcomponent import ETLComponent
 from sqlalchemy.sql.schema import Column
 
 
@@ -53,12 +55,12 @@ def _get_name_Column_opt(input_name):
         return outname
 
 class RowCaseInsensitive(dict):
-    '''
+    """
     Replacement for core SQL Alchemy, CSV or other dictionary based rows.
     Handles converting column names (keys) between upper and lower case.
     Handles column names (keys) that are SQL Alchemy column objects.
     Keeps order of the columns (see columns_in_order) 
-    '''
+    """
     NUMERIC_TYPES = [int, float, Decimal]
     
     def __init__(self, data=None, parent = None, name= None, primary_key = None, status= None):
@@ -136,6 +138,8 @@ class RowCaseInsensitive(dict):
                     iterator = source_data
                 
                 first_col = True
+                is_tuple = False
+                needs_column_check = False
                 for k in iterator:
                     if first_col:
                         needs_column_check = isinstance(k, Column)                        
@@ -264,31 +268,31 @@ class RowCaseInsensitive(dict):
         self._raw_setitem(keyName, value)
             
     def get_name_by_position(self, position):
-        '''
+        """
         Get the column name in a given position.
         Note: The first column position is 1 (not 0 like a python list).
-        '''
+        """
         assert position > 0
         return self._columns_in_order[position-1] ## -1 because positions are 1 based not 0 based
             
     def get_by_position(self, position):
-        '''
+        """
         Get the column value by position. 
         Note: The first column position is 1 (not 0 like a python list).
-        '''
+        """
         assert position > 0
         return self[self._columns_in_order[position-1]] ## -1 because positions are 1 based not 0 based
     
     def set_by_position(self, position, value):
-        '''
+        """
         Set the column value by position. 
         Note: The first column position is 1 (not 0 like a python list).
-        '''
+        """
         assert position > 0
         self[self._columns_in_order[position-1]] = value ## -1 because positions are 1 based not 0 based
     
     def rename_column(self, old_name, new_name, ignore_missing = False):
-        '''
+        """
         Rename a column
         
         Parameters
@@ -302,7 +306,7 @@ class RowCaseInsensitive(dict):
         ignore_missing: boolean
             Ignore (don't raise error) if we don't have a column with the name in old_name.
             Defaults to False         
-        '''
+        """
         new_name = _get_name(new_name)
         assert new_name not in self, "Target column name {} already exists".format(new_name)
         try:
@@ -322,9 +326,12 @@ class RowCaseInsensitive(dict):
                 pass
             else:
                 raise e
-    
-    def rename_columns(self, rename_map, new_parent = None, ignore_missing = False):
-        '''
+
+    def rename_columns(self,
+                       rename_map: Union[dict, List[tuple]],
+                       new_parent: ETLComponent = None,
+                       ignore_missing: bool = False):
+        """
         Rename many columns at once.
         
         Parameters
@@ -333,16 +340,14 @@ class RowCaseInsensitive(dict):
             A dict or list of tuples to use to rename columns.
             Note: a list of tuples is better to use if the renames need to happen in a certain order.
         
-        new_name: str
-            The new name to give the column.
-            
+
         new_parent: ETLComponent
             (Optional) Change the parent to the passed value. 
             
         ignore_missing: boolean
             Ignore (don't raise error) if we don't have a column with the name in old_name.
             Defaults to False        
-        '''
+        """
         ## Note: subset with rename_map is currently slightly faster
         if isinstance(rename_map, dict):
             for k in rename_map.keys():
@@ -378,9 +383,13 @@ class RowCaseInsensitive(dict):
                 else:
                     raise e     
         if new_parent:            
-            self._get_info_from_parent(new_parent)            
-    
-    def subset(self, exclude= None, rename_map = None, keep_only= None, new_parent = None):
+            self._get_info_from_parent(new_parent)
+
+    def subset(self,
+               exclude: Iterable = None,
+               rename_map: dict = None,
+               keep_only: Iterable = None,
+               new_parent: ETLComponent = None):
         """
         Return a new row instance with a subset of the columns. Original row is not modified
         Excludes are done first, then renames and finally keep_only.
@@ -388,7 +397,7 @@ class RowCaseInsensitive(dict):
         Parameters
         ----------
         exclude: list
-            A list of column names (before renmaes) to exclude from the subset.
+            A list of column names (before renames) to exclude from the subset.
             Optional. Defaults to no excludes.
             
         rename_map: dict
@@ -402,9 +411,6 @@ class RowCaseInsensitive(dict):
         new_parent: ETLComponent
             (Optional) Change the parent of the subset row to the passed value. 
             
-        raise_on_not_exist: boolean
-            Raise error if we don't have a column with a given name.
-            Default to Trye
         """
         if keep_only is not None:
             keep_only = set([_get_name(c) for c in keep_only])
@@ -435,14 +441,14 @@ class RowCaseInsensitive(dict):
         return subRow
     
     def clone(self, new_parent = None):
-        '''
+        """
         Create a clone of this row.
         
         Parameters
         ----------
         new_parent: ETLComponent
             (Optional) Change the parent of the clone to the passed value. 
-        '''
+        """
         #pylint: disable=protected-access
         new_row = self.subset(new_parent= new_parent)
         #new_row._cached_column_set = self._cached_column_set
@@ -503,14 +509,14 @@ class RowCaseInsensitive(dict):
         
     
     def column_position(self, column_name):
-        '''
+        """
         Get the column position given a column name.
         
         Parameters
         ----------
         column_name: str
             The column name to find the position of        
-        '''
+        """
         normalized_name = _get_name(column_name)
         return self._columns_in_order.index(normalized_name) + 1 ## index is 0 based, positions are 1 based
     
@@ -554,9 +560,9 @@ class RowCaseInsensitive(dict):
             return str(val1) == str(val2)
     
     def compare_to(self, other_row, exclude= None, compare_only= None, coerce_types=True):
-        '''
+        """
         Compare one RowCaseInsensitive to another. Returns a list of differences.
-        '''
+        """
         if compare_only is not None:
             compare_only = set([other_row.get_column_name(c, raise_on_not_exist=False) for c in compare_only])
         
@@ -583,7 +589,7 @@ class RowCaseInsensitive(dict):
         return differences_list
 
     def transform(self, col_name, transform_function, *args, **kwargs):
-        '''
+        """
         Apply a transformation to a column.  
         The transformation function must take the value to be transformed as it's first argument.
         
@@ -597,7 +603,7 @@ class RowCaseInsensitive(dict):
             Positional arguments to pass to transform_function
         kwargs: dict
             Keyword arguments to pass to transform_function
-        '''
+        """
         normalized_col_name, value = self._get_name_value_pair(col_name, raise_on_not_exist= True)
         value = transform_function(value, *args, **kwargs)
         super().__setitem__(normalized_col_name, value)

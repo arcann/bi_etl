@@ -1,21 +1,21 @@
-'''
+"""
 Created on Mar 20, 2015
 
 @author: woodd
-'''
+"""
 from bi_etl.timer import Timer
 from collections import OrderedDict
 from bi_etl.utility import dict_to_str
 
 class Statistics(object):
-    '''
+    """
     classdocs
-    '''
+    """
 
     def __init__(self, name=None, print_start_stop_times = True):
-        '''
+        """
         Constructor
-        '''
+        """
         self._timer = Timer(start_running = False)
         self._stats_data = OrderedDict()
         self.print_start_stop_times = print_start_stop_times

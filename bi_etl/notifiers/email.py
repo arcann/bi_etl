@@ -27,7 +27,7 @@ class Email(Notifier):
             contents = None
             try:
                 from_address = self.config.get('SMTP', 'from')
-                gateway = self.config.get_or_default('SMTP', 'gateway','')
+                gateway = self.config.get_or_default('SMTP', 'gateway', None)
                 server = smtplib.SMTP(gateway)
                 server.set_debuglevel(self.config.getboolean_or_default('SMTP', 'debug', False))
                 if isinstance(message, MIMEText):

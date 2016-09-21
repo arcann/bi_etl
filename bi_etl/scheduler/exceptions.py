@@ -1,8 +1,8 @@
-'''
+"""
 Created on Apr 23, 2015
 
 @author: woodd
-'''
+"""
 
 
 class TaskStopRequested(Exception):

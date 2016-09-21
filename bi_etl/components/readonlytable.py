@@ -3,30 +3,32 @@ Created on Sep 17, 2014
 
 @author: woodd
 """
+import gc
+import traceback
+import warnings
 from datetime import datetime
 from operator import attrgetter
-import gc
-import warnings
-import traceback
-from typing import Generator
+from typing import Iterable
 
 import sqlalchemy
+from bi_etl import Timer
+from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.row import Row
+from bi_etl.components.row.row_status import RowStatus
+from bi_etl.exceptions import NoResultFound, MultipleResultsFound
+from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
+from bi_etl.lookups.lookup import Lookup
+from bi_etl.statistics import Statistics
+from bi_etl.utility import dict_to_str
+from sqlalchemy.sql import sqltypes, functions
 from sqlalchemy.sql.expression import text
 from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql import sqltypes, functions
-
-from bi_etl.components.etlcomponent import ETLComponent
-from bi_etl.exceptions import NoResultFound, MultipleResultsFound
-from bi_etl.lookups.lookup import Lookup
-from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
-from bi_etl import Timer
-from bi_etl.utility import dict_to_str
 
 __all__ = ['ReadOnlyTable']
 
 # Pylint does not like references to self.table.columns aka self.columns
 # pylint: disable=unsupported-membership-test, unsubscriptable-object, not-an-iterable
+
 
 class ReadOnlyTable(ETLComponent):
     """ 
@@ -331,7 +333,7 @@ class ReadOnlyTable(ETLComponent):
         if row1 is None:
             raise NoResultFound()
         row2 = results.fetchone()
-        if row2 != None:
+        if row2 is not None:
             raise MultipleResultsFound([row1,row2])
         return self.Row(row1)
     
@@ -376,7 +378,6 @@ class ReadOnlyTable(ETLComponent):
                 key_names = self.get_lookup(lookup_name).lookup_keys
             else:
                 self._check_pk_lookup()
-                lookup_name = self.PK_LOOKUP
                 key_names = self.primary_key
         else:
             # Handle case where we have a single key name item and not a list or dict
@@ -418,7 +419,14 @@ class ReadOnlyTable(ETLComponent):
     #   use_cache_as_source: to we can use the cache instead of the database
     #   stats_id, parent_stats: So we can capture SQL execution time in the right place.
     #pylint: disable=arguments-differ
-    def _raw_rows(self, criteria= None, order_by = None, column_list = None, exclude_cols = None, use_cache_as_source= None, stats_id= None, parent_stats= None):
+    def _raw_rows(self,
+                  criteria: list = None,
+                  order_by: list = None,
+                  column_list: list = None,
+                  exclude_cols: list = None,
+                  use_cache_as_source: bool = None,
+                  stats_id: str = None,
+                  parent_stats: Statistics= None):
         """
         Iterate over rows matching ``criteria``
         
@@ -431,6 +439,8 @@ class ReadOnlyTable(ETLComponent):
             Each value should represent a column to order by.
         exclude_cols: list
             List of columns to exclude from the results. (Only if getting from the database)
+        use_cache_as_source: bool
+            Should we read rows from the cache instead of the table
         stats_id: string
             Name of this step for the ETLTask statistics.
         parent_stats: bi_etl.statistics.Statistics
@@ -443,15 +453,16 @@ class ReadOnlyTable(ETLComponent):
             Row object with contents of a table/view row that matches ``criteria``
         """
         if stats_id is None:
-            stats_id = 'read'
-        stats = self.get_stats_entry(stats_id=self.default_stats_id, parent_stats= parent_stats)
+            stats_id = self.default_stats_id
+        stats = self.get_stats_entry(stats_id=stats_id, parent_stats= parent_stats)
         
         if use_cache_as_source is None:
             use_cache_as_source = True
             use_cache_as_source_requested = False
         else:
             use_cache_as_source_requested = use_cache_as_source
-            
+
+        pk_lookup = None
         if use_cache_as_source:
             if not(self.cache_filled and self.cache_clean):
                 use_cache_as_source = False
@@ -486,8 +497,7 @@ class ReadOnlyTable(ETLComponent):
                     use_cache_as_source = False
                     if use_cache_as_source_requested:
                         self.log.debug("KeyError finding lookup. Requires using database as source for {}".format(stats))
-                
-            
+
         if use_cache_as_source:
             # Note in this case the outer call where / iter_result will process the criteria
             if use_cache_as_source_requested:
@@ -536,7 +546,7 @@ class ReadOnlyTable(ETLComponent):
               use_cache_as_source= None,
               progress_frequency: int = None,
               stats_id= None,
-              parent_stats= None):
+              parent_stats= None) -> Iterable(Row):
         if isinstance(criteria, dict):
             where_dict = criteria
         else:
@@ -556,7 +566,7 @@ class ReadOnlyTable(ETLComponent):
                                 parent_stats=parent_stats
                                 )
     
-    def order_by(self, order_by, stats_id= None, parent_stats= None) -> Generator[Row, None, None]:
+    def order_by(self, order_by, stats_id= None, parent_stats= None) -> Iterable(Row):
         """
         Iterate over rows matching ``criteria``
         
@@ -788,7 +798,10 @@ class ReadOnlyTable(ETLComponent):
             lookup_class = self.default_lookup_class
         if lookup_class_kwargs is None:
             lookup_class_kwargs = self.default_lookup_class_kwargs
-            
+
+        for key in lookup_keys:
+            self.get_column_name(key)
+
         lookup = lookup_class(lookup_name="{}.{}".format(self.logical_name, lookup_name), 
                               lookup_keys=lookup_keys, 
                               parent_component= self,  
@@ -902,6 +915,10 @@ class ReadOnlyTable(ETLComponent):
         criteria : string or list of strings 
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+        exclude_cols: list
+            Columns to exclude when filling the cache
+        order_by: list
+            list of columns to sort by when filling the cache (helps range caches)
         assume_lookup_complete: boolean
             Should later lookup calls assume the cache is complete (and thus raise an Exception if a key combination is not found)? 
             Default to False if filtering criteria was used, otherwise defaults to True.
@@ -956,10 +973,10 @@ class ReadOnlyTable(ETLComponent):
                 # break out of rows loop (don't do this if we switch to disk based cache
                 break
             # Actually cache the row now
-            row.status = self.RowStatus.existing            
+            row.status = RowStatus.existing
             self.cache_row(row, allow_update= False)
             
-            if progress_frequency > 0 and progressTimer.seconds_elapsed >= progress_frequency:
+            if 0 < progress_frequency <= progressTimer.seconds_elapsed:
                 self.process_messages()
                 progressTimer.reset()
                 self.log.info(progress_message.format(
@@ -970,7 +987,8 @@ class ReadOnlyTable(ETLComponent):
         if not limit_reached:
             self.cache_filled = True
             self.cache_clean = True
-            # Set the table always_fallback_to_db value based on if criteria were used to load the cache and the assume_lookup_complete parameter
+            # Set the table always_fallback_to_db value based on if criteria
+            # were used to load the cache and the assume_lookup_complete parameter
             if criteria is not None:
                 # If criteria is used we'll default to not assuming the lookup is complete
                 if assume_lookup_complete is None:
@@ -980,15 +998,15 @@ class ReadOnlyTable(ETLComponent):
                 if assume_lookup_complete is None:
                     assume_lookup_complete = True
             self.always_fallback_to_db = not assume_lookup_complete
-            
-            
-            self.log.info("{table}.fill_cache cached {rows:,} rows of data".format(table = self.table.name,
-                                                                                   rows =rows_read
-                                                                                   )
-                          )
+
+            self.log.info("{table}.fill_cache cached {rows:,} rows of data".format(
+                table = self.table.name,
+                rows =rows_read
+                )
+            )
             self.log.info('Lookups will always_fallback_to_db = {}'.format(self.always_fallback_to_db))
             ram_size = 0
-            disk_size =0
+            disk_size = 0
             for lookup in self.__lookups.values():
                 this_ram_size = lookup.get_memory_size()
                 this_disk_size = lookup.get_disk_size()
@@ -1003,22 +1021,35 @@ class ReadOnlyTable(ETLComponent):
         # Restore read progress messages
         self.progress_frequency = savedReadProgress
 
-    def get_by_key(self, source_row, stats_id= 'get_by_key', parent_stats= None,):
+    def get_by_key(self,
+                   source_row: Row,
+                   stats_id: str= 'get_by_key',
+                   parent_stats: Statistics = None,) -> Row:
         """
         Get by the primary key.
-        Returns a :class:`~bi_etl.components.row.row_case_insensitive.Row`
+        Returns
+        -------
+        :class:`~bi_etl.components.row.row_case_insensitive.Row`
+
+        Throws
+        -------
+        NoResultFound
         """
         return self.get_by_lookup(ReadOnlyTable.PK_LOOKUP,source_row, stats_id= stats_id, parent_stats=parent_stats)
 
     def get_by_lookup(self, 
-                      lookup_name, 
-                      source_row, 
-                      stats_id= 'get_by_lookup',
-                      parent_stats= None,
+                      lookup_name: str,
+                      source_row: Row,
+                      stats_id: str = 'get_by_lookup',
+                      parent_stats: Statistics = None,
                       ):
         """
         Get by an alternate key.
         Returns a :class:`~bi_etl.components.row.row_case_insensitive.Row`
+
+        Throws
+        -------
+        NoResultFound
         """
         stats = self.get_stats_entry(stats_id, parent_stats=parent_stats)
         stats.print_start_stop_times = False
@@ -1039,16 +1070,21 @@ class ReadOnlyTable(ETLComponent):
                 stats['Found in cache'] += 1
                 stats.timer.stop()
                 return row
-            except (NoResultFound) as e:                
+            except NoResultFound as e:
                 stats['Not in cache'] += 1
                 if self.cache_clean and not self.always_fallback_to_db:
                     #  Don't pass onto SQL if the lookup cache has initialized but the value isn't there
                     stats.timer.stop()                    
                     raise e
                 # Otherwise we'll continue to the DB query below
-            except (KeyError,ValueError) as e:                
+            except (KeyError, ValueError):
                 # Lookup not cached. Allow database lookup to proceed, but give warning since we thought it was cached
-                warnings.warn("WARNING: {tbl} caching is enabled, but lookup {lkp} returned error {e}".format(tbl=self, lkp= lookup_name, e= traceback.format_exc()))
+                warnings.warn("WARNING: {tbl} caching is enabled, but lookup {lkp} returned error {e}".format(
+                    tbl=self,
+                    lkp= lookup_name,
+                    e= traceback.format_exc()
+                    )
+                )
 
         # Do a lookup on the database 
         try:

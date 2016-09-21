@@ -1,9 +1,9 @@
-'''
+"""
 Created on Oct 9, 2015
 
 @author: woodd
-'''
-
+"""
+import io
 from sys import stdout
 from decimal import Context, ROUND_HALF_EVEN
 
@@ -14,7 +14,7 @@ from operator import itemgetter
 
 
 class DataAnalyzer(ETLComponent):
-    '''
+    """
     Class that analyzes the data rows passed to it. 
     * Tracks distinct columns passed in
     * Tracks datatype of each column
@@ -26,7 +26,7 @@ class DataAnalyzer(ETLComponent):
         The  instance to register in (if not None)
     logical_name: str
         The logical name of this source. Used for log messages.
-    '''
+    """
     
     DEFAULT_FORMAT = "{col:30} type = {type:20} non_null_rows={non_null_rows:15,} cardinality={cardinality:15,}{msg}"
     PIPE_FORMAT = "{col}|{type}|{present}|{not_present_on_rows}|{non_null_rows}|{cardinality}|{most_common_value}|{msg}"
@@ -134,7 +134,7 @@ class DataAnalyzer(ETLComponent):
                         return dt_type 
                     except Exception:
                         pass  
-            ## Else it's an actual string
+            # Else it's an actual string
             return DataAnalyzer.DataType(name=type(value).__name__, length=len(value))
         elif isinstance(value, int):
             return DataAnalyzer.DataType(name='Integer', length= getIntegerPlaces(value))
@@ -156,7 +156,7 @@ class DataAnalyzer(ETLComponent):
     def analyze_column(self, column_name, column_value, column_number=None):
         self.column_present_count[column_name] = self.column_present_count.get(column_name,0) + 1
             
-        ## Process column names
+        # Process column names
         if column_number is not None:
             if len(self.column_names) < column_number:
                 self.column_names.append(column_name)
@@ -172,7 +172,7 @@ class DataAnalyzer(ETLComponent):
         else:
             self.duplicate_column_names.get(column_name,set()).add(column_number)                
               
-        ## Process column_valid_values
+        # Process column_valid_values
         if column_name not in self.column_valid_values:
             self.column_valid_values[column_name] = dict()
             if self.rows_processed != 1:
@@ -180,7 +180,7 @@ class DataAnalyzer(ETLComponent):
         value = column_value
         try:
             hash(column_value)
-        except TypeError: ## unhashable type
+        except TypeError:  # unhashable type
             value = str(column_value)
         
         self.column_valid_values[column_name][value] = self.column_valid_values[column_name].get(value,0) + 1
@@ -227,9 +227,9 @@ class DataAnalyzer(ETLComponent):
             self.column_data_types[column_name] = new_type
         
     def analyze_row(self, row):
-        '''
+        """
         Analyze the data row passed in. Call this for all the rows that should be analyzed.
-        '''
+        """
         stats = self.get_stats_entry(stats_id='analyze_row')
         stats.timer.start()
                 
@@ -245,16 +245,25 @@ class DataAnalyzer(ETLComponent):
                                 )
         self.next_row()            
         stats.timer.stop()
-            
-            
-    def print_analysis(self, out= None, valid_value_limit = 10, out_fmt = DEFAULT_FORMAT):
-        '''
-        Print the data analyzis results.
-        
-        Parameters:
-            out (File): The File to write the results to. Default=``stdout``
-            valid_value_limit (int): How many valid values should be printed.        
-        '''
+
+    def print_analysis(self,
+                       out: io.TextIOBase = None,
+                       valid_value_limit: int = 10,
+                       out_fmt: str = DEFAULT_FORMAT
+                       ):
+        """
+        Print the data analysis results.
+
+        Parameters
+        ----------
+        out:
+            The File to write the results to. Default=``stdout``
+            valid_value_limit (int): How many valid values should be printed.
+        valid_value_limit:
+            The number of valid values to output
+        out_fmt:
+            The format to use for lines
+        """
         if out is None:
             out = stdout
             

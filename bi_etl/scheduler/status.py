@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 Created on Dec 23, 2015
 
 @author: woodd
-'''
+"""
 from enum import IntEnum, unique
 
 @unique

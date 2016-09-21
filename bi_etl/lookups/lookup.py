@@ -126,13 +126,13 @@ class Lookup(object):
                 
                 self._row_size = new_row_size     
 
-    def cache_row(self, row, allow_update = True):
+    def cache_row(self, row: Row, allow_update = True):
         """
         Adds the given row to the cache for this lookup.
         
         Parameters
         ----------
-        row: bi_etl.components.row.row_case_insensitive
+        row: Row
             The row to cache
             
         allow_update: boolean
@@ -153,7 +153,7 @@ class Lookup(object):
                     raise ValueError('Key value {} already in cache and allow_update was False. Possible error with the keys defined for this lookup {}.'.format(lk_tuple, self.lookup_keys))
             self.cache[lk_tuple] = row
             
-            ## Capture memory usage snapshots
+            # Capture memory usage snapshots
             if self._row_size is None:   
                 self._get_first_row_size(row)
             else:

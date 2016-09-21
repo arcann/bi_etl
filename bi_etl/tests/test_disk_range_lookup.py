@@ -1,8 +1,8 @@
-'''
+"""
 Created on Jan 5, 2016
 
 @author: woodd
-'''
+"""
 import unittest
 
 from bi_etl.lookups.disk_range_lookup import DiskRangeLookup
@@ -23,10 +23,11 @@ class TestDiskRangeLookup(_TestBaseRangeLookup):
         super().tearDown()        
         self.temp_dir_mgr.cleanup()
         
-    def _get_hashable(self, val_list):
-        '''
+    @staticmethod
+    def _get_hashable(val_list):
+        """
         Overridden here because disk uses shelve which needs str keys
-        '''
+        """
         return str(val_list)
     
     def _post_test_cleanup(self, lookup):

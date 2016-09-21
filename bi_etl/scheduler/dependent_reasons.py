@@ -1,8 +1,8 @@
-'''
+"""
 Created on Dec 12, 2015
 
 @author: woodd
-'''
+"""
 from bi_etl.scheduler.task import Status
 def getFromString(reason_string):
     reason_instance = None

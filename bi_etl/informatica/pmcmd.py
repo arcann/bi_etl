@@ -1,8 +1,8 @@
-'''
+"""
 Created on May 5, 2015
 
 @author: woodd
-'''
+"""
 
 import logging
 import os
@@ -13,9 +13,9 @@ import bi_etl.bi_config_parser
 import errno
 
 class PMCMD(object):
-    '''
+    """
     classdocs
-    '''
+    """
     CONFIG_INFORMATICA_COMMANDS = 'INFORMATICA_COMMANDS'
 
     def __init__(self, 
@@ -111,9 +111,9 @@ class PMCMD(object):
             return False
         
     def startworkflow(self, workflow, runinsname= None,):
-        '''
+        """
         runinsname is an optional instance name for this run
-        '''
+        """
         cmd= []
         if sys.platform == 'win32' and self.run_via_cmd():
             cmd.append('cmd')

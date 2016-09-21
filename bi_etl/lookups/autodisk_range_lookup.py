@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-'''
+"""
 Created on Jan 5, 2016
 
 @author: woodd
-'''
+"""
 
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
 from bi_etl.lookups.range_lookup import RangeLookup
 from bi_etl.lookups.disk_range_lookup import DiskRangeLookup
 
 class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
-    '''
+    """
     Automatic memory / disk lookup cache.
     
     This version divides the cache into N chunks (default is 10). If RAM usage gets beyond limits, it starts moving chunks to disk.
@@ -24,11 +24,11 @@ class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
     Also worth considering is that if we bring a segment in from disk, it would best to keep the disk version. At that point any additions 
     to that segment would need to go to both places.
 
-    '''
+    """
     def __init__(self, lookup_name, lookup_keys, parent_component, begin_date, end_date, config=None, path=None):
-        '''
+        """
         Optional parameter path controls where the data is persisted
-        '''
+        """
         RangeLookup.__init__(self, 
                              lookup_name= lookup_name, 
                              lookup_keys= lookup_keys, 

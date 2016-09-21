@@ -1084,7 +1084,7 @@ class HistoryTable(Table):
                                parent_stats=parent_stats)
 
     def delete_not_in_set(self,
-                          list_of_key_tuples,
+                          set_of_key_tuples,
                           source_effective_date=None,
                           lookup_name=None,
                           criteria=None,
@@ -1094,7 +1094,7 @@ class HistoryTable(Table):
         """
         Overriden to call logical delete.
         """
-        self.logically_delete_not_in_set(set_of_key_tuples=list_of_key_tuples, criteria=criteria, stat_name=stat_name,
+        self.logically_delete_not_in_set(set_of_key_tuples=set_of_key_tuples, criteria=criteria, stat_name=stat_name,
                                          parent_stats=parent_stats)
 
     def logically_delete_not_processed(self,
