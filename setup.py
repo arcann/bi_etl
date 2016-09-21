@@ -1,8 +1,8 @@
-'''
+"""
 Created on Mar 26, 2015
 
 @author: woodd
-'''
+"""
 import os
 import sys
 from setuptools import setup, find_packages
@@ -20,10 +20,12 @@ install_requires = [
     'psutil',
     'pyodbc',
     'CaseInsensitiveDict',
+    'pyramid',
     ]
 
 extras_require = {
-        'mem_debug':  ['pympler'],
+        'mem_debug': ['pympler'],
+        'password_mgt': ['keyring'],
     }
 
 tests_require = [

@@ -1,8 +1,8 @@
-'''
+"""
 Created on Jan 5, 2016
 
 @author: woodd
-'''
+"""
 import unittest
 from datetime import datetime
 
@@ -76,8 +76,8 @@ class _TestBaseRangeLookup(_TestBase):
                             self.begin_date: datetime(9999,12,31,0,0,0)  
                            })
         self.assertRaises(AfterExisting, lookup.find_in_cache, row=search_row2)
-        
-        _TestBaseRangeLookup._post_test_cleanup(lookup)
+
+        self._post_test_cleanup(lookup)
         
     def test_cache_and_find_3(self):
         lookup = self._get_key3_lookup()
@@ -118,8 +118,8 @@ class _TestBaseRangeLookup(_TestBase):
         notExpectedKeys = expectedKeys.clone()
         notExpectedKeys[self.key3_2]=datetime(2014,12,25,9,15,20)
         self.assertRaises(NoResultFound, lookup.find_in_cache, row=notExpectedKeys)
-        
-        _TestBaseRangeLookup._post_test_cleanup(lookup)
+
+        self._post_test_cleanup(lookup)
         
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test']
