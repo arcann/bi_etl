@@ -50,9 +50,7 @@ class ETLComponent(Iterable):
     """
     DEFAULT_PROGRESS_FREQUENCY = 10  # Seconds
     DEFAULT_PROGRESS_MESSAGE = "{logical_name} current row # {row_number:,}"
-    RowStatus = _RowStatus
-    RowClass = _Row
-    
+
     def __init__(self,
                  task,
                  logical_name = None,
@@ -73,7 +71,7 @@ class ETLComponent(Iterable):
         self._rows_read = 0
         self.__enter_called = False
         self.__close_called = False
-        self.read_batch_size = 10000
+        self.read_batch_size = 1000
         self._iterator_applied_filters = False
         
         # self.log = logging.getLogger(__name__)
@@ -238,7 +236,7 @@ class ETLComponent(Iterable):
         """
         if name is None:
             name = self.row_name
-        return self.RowClass(data, name=name, primary_key=self.primary_key, parent= self)        
+        return Row(data, name=name, primary_key=self.primary_key, parent= self)
     
     @property
     def rows_read(self):
