@@ -4,7 +4,7 @@ Created on Mar 26, 2015
 @author: woodd
 """
 import os
-import sys
+
 from setuptools import setup, find_packages
 
 here = os.path.abspath(os.path.dirname(__file__))
@@ -34,7 +34,7 @@ tests_require = [
 ]
 
 setup(name='bi_etl',
-      version='0.2',
+      version='0.3',
       description='ETL (Extract Transform Load) framework geared towards BI database in particular.',
       long_description=README,
       classifiers=[
