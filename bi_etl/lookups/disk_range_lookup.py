@@ -21,7 +21,7 @@ class DiskRangeLookup(RangeLookup, DiskLookup):
                              end_date= end_date, 
                              config= config, 
                              )
-        ## Add on part of DiskLookup init that isn't covered by RangeLookup.__init__      
+        # Add on part of DiskLookup init that isn't covered by RangeLookup.__init__
         self._set_path(path)
 
     def init_cache(self):

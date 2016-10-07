@@ -12,7 +12,7 @@ from CaseInsensitiveDict import CaseInsensitiveDict
 
 from bi_etl import utility
 from bi_etl.bi_config_parser import BIConfigParser
-from bi_etl.database.connect import Connect
+from bi_etl.database.connect import Connect, DatabaseMetadata
 from bi_etl.notifiers.email import Email
 from bi_etl.scheduler import models
 from bi_etl.scheduler import queue_io
@@ -596,7 +596,7 @@ class ETLTask(object):
         # _database_pool is used to close connections when the task finishes
         self._database_pool.append(database_object)
 
-    def get_database(self, database_name, user=None, schema=None, **kwargs):
+    def get_database(self, database_name, user=None, schema=None, **kwargs) -> DatabaseMetadata:
         """
         Get a new database connection.
         
@@ -858,8 +858,8 @@ class ETLTask(object):
             stats = self.statistics
             if self.child_to_parent is not None:
                 self.child_to_parent.put(stats)
-            statsF = Statistics.format_statistics(stats)
-            self.log.info("{} statistics=\n{stats}".format(self, stats=statsF))
+            stats_formatted = Statistics.format_statistics(stats)
+            self.log.info("{} statistics=\n{stats}".format(self, stats=stats_formatted))
 
             self.start_following_tasks()
         except Exception as e:  # pylint: disable=broad-except

@@ -9,6 +9,7 @@ from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
 from bi_etl.lookups.range_lookup import RangeLookup
 from bi_etl.lookups.disk_range_lookup import DiskRangeLookup
 
+
 class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
     """
     Automatic memory / disk lookup cache.

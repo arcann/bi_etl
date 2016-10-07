@@ -60,10 +60,12 @@ class Lookup(object):
             return self._row_size * len(self)
         else:
             if len(self) > 0:
-                self.log.warning('Row size was 0 on call to get_memory_size with non zero row count ({:,})'.format(
-                    len(self)
-                    )
+                msg = '{lookup_name} Row size was 0 on call to get_memory_size with non zero row count ({cnt:,})'
+                msg = msg.format(
+                    lookup_name = self.lookup_name,
+                    cnt=len(self)
                 )
+                self.log.warning(msg)
             return 0
 
     def get_disk_size(self):
@@ -122,7 +124,11 @@ class Lookup(object):
                 # get_size_gc is slow but shouldn't be too bad twice (once here and once above in _get_first_row_size)
                 total_cache_size = get_size_gc(self.cache)
                 new_row_size = math.ceil(total_cache_size / row_cnt)
-                self.log.debug('Row memory size now estimated at {:,} bytes per row using cache of {:,} rows'.format(new_row_size, row_cnt))
+                msg = '{lookup_name} Row memory size now estimated at {size:,} bytes per row using cache of {cnt:,} rows'
+                msg = msg.format(lookup_name = self.lookup_name,
+                                 size=new_row_size,
+                                 cnt=row_cnt)
+                self.log.debug(msg)
                 
                 self._row_size = new_row_size     
 
@@ -150,7 +156,10 @@ class Lookup(object):
                 self.init_cache()
             if not allow_update:
                 if lk_tuple in self.cache:
-                    raise ValueError('Key value {} already in cache and allow_update was False. Possible error with the keys defined for this lookup {}.'.format(lk_tuple, self.lookup_keys))
+                    raise ValueError('Key value {} already in cache and allow_update was False.'
+                                     ' Possible error with the keys defined for this lookup {}.'
+                                     .format(lk_tuple, self.lookup_keys)
+                    )
             self.cache[lk_tuple] = row
             
             # Capture memory usage snapshots
@@ -158,9 +167,11 @@ class Lookup(object):
                 self._get_first_row_size(row)
             else:
                 self.get_estimate_row_size()
-        
+
     def commit(self):
-        """Placeholder for other implementations that might need it"""
+        """
+        Placeholder for other implementations that might need it
+        """
         pass
         
     def uncache_row(self, row):
@@ -169,14 +180,15 @@ class Lookup(object):
                 lk_tuple = self.get_hashable_combined_key(row)
                 del self.cache[lk_tuple]
             except KeyError:
-                ## This lookup uses columns not in the row provided. That means it's dirty beyond repair. Wipe it out.
-                warnings.warn("uncache_row called on {lookup} with insufficient values {row}".format(lookup=self, 
-                                                                                                     row=row
-                                                                                                     )
-                              )
+                # This lookup uses columns not in the row provided. That means it's dirty beyond repair. Wipe it out.
+                warnings.warn("uncache_row called on {lookup} with insufficient values {row}"
+                    .format(
+                        lookup=self,
+                        row=row
+                    )
+                )
                 del self.cache
                 self.cache = None
-            
 
     def __iter__(self):
         """
@@ -216,9 +228,10 @@ class Lookup(object):
         """
         Find a matching row in the lookup based on the lookup index (keys)
         """
-        
+        if not self.cache_enabled:
+            raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
         if self.cache is None:
-            raise ValueError("Lookup {} not cached".format(self.lookup_name))
+            self.init_cache()
         else:
             lk_tuple = self.get_hashable_combined_key(row)
             try:
@@ -270,5 +283,10 @@ class Lookup(object):
         elif len(rows) == 1:
             return Row(rows[0])
         else:
-            raise RuntimeError("find_in_remote_table {} matched multiple records {}".format(row, rows))
+            msg = "{lookup_name} find_in_remote_table {row} matched multiple records {rows}"
+            msg = msg.format(lookup_name = self.lookup_name,
+                             row=row,
+                             rows=rows
+                             )
+            raise RuntimeError(msg)
 

@@ -3,7 +3,6 @@ Created on Sep 17, 2014
 
 @author: woodd
 """
-import gc
 import traceback
 import warnings
 from datetime import datetime
@@ -121,7 +120,6 @@ class ReadOnlyTable(ETLComponent):
         self.trace_sql = False
         
         self.cache_filled = False
-        self.caching_enabled = False 
         self.cache_clean = False
         self.always_fallback_to_db = True
         self.maintain_cache_during_load = True
@@ -130,10 +128,9 @@ class ReadOnlyTable(ETLComponent):
         self.__delete_flag = None
         self.delete_flag_yes = 'Y'
         self.delete_flag_no = 'N'     
-                
-        
+
         self.special_values_descriptive_columns = set()
-        self.special_values_descriptive_min_length = 14 # Long enough to hold 'Not Applicable'      
+        self.special_values_descriptive_min_length = 14  # Long enough to hold 'Not Applicable'
         
         self.database = database
         self.__connection = None
@@ -311,7 +308,7 @@ class ReadOnlyTable(ETLComponent):
             self.log.debug('-------------------------')
         return self.connection().execute(statement, *multiparams, **params)
     
-    def get_one(self, statement):
+    def get_one(self, statement=None):
         """
         Gets one row from the statement.
         
@@ -328,6 +325,8 @@ class ReadOnlyTable(ETLComponent):
         MultipleResultsFound
             More than one row was returned.
         """
+        if statement is None:
+            statement = self.select()
         results = self.execute(statement)
         row1 = results.fetchone()
         if row1 is None:
@@ -866,30 +865,22 @@ class ReadOnlyTable(ETLComponent):
             lookup.clear_cache()
     
     def cache_row(self, row, allow_update= False):
-        if self.caching_enabled:
-            # TODO: For disk based caches we might want to only cache the full row for the PK_LOOKUP
-            #### and then only store the PK in the other caches. get_by_lookup would have to be aware of that.
-            #### It would trade disk usage for lookup performance. The time savings during fill_cache might make it worthwhile.
-            #### For memory based caches all the lookups should be pointing to the same row instance anyway.
-            for lookup in self.__lookups.values():
-                if lookup.cache_enabled:
-                    lookup.cache_row(row, allow_update)
+        for lookup in self.__lookups.values():
+            if lookup.cache_enabled:
+                lookup.cache_row(row, allow_update)
                     
     def cache_commit(self):
-        if self.caching_enabled:
-            for lookup in self.__lookups.values():
-                lookup.commit()
+        for lookup in self.__lookups.values():
+            lookup.commit()
                     
     def uncache_row(self, row):
-        if self.caching_enabled:
-            for lookup in self.__lookups.values():
-                lookup.uncache_row(row)
+        for lookup in self.__lookups.values():
+            lookup.uncache_row(row)
                 
     def uncache_where(self, key_names, key_values_dict):        
-        if self.caching_enabled:
-            if self.__lookups:
-                for lookup in self.__lookups.values():
-                    lookup.uncache_where(key_names= key_names, key_values_dict= key_values_dict)
+        if self.__lookups:
+            for lookup in self.__lookups.values():
+                lookup.uncache_where(key_names= key_names, key_values_dict= key_values_dict)
 
     def fill_cache(self, 
                    progress_frequency = 10,
@@ -934,12 +925,11 @@ class ReadOnlyTable(ETLComponent):
         self.log.info('{table}.fill_cache started'.format(table = self.table.name))
         stats = self.get_unique_stats_entry('fill_cache', parent_stats= parent_stats)
         stats.timer.start()        
-        self.caching_enabled = True
-        
+
         self.clear_cache()
-        progressTimer = Timer()
+        progress_timer = Timer()
         # Temporarily turn off read progress messages
-        savedReadProgress = self.progress_frequency
+        saved_read_progress = self.progress_frequency
         self.progress_frequency = None        
         rows_read = 0
         limit_reached = False
@@ -962,23 +952,17 @@ class ReadOnlyTable(ETLComponent):
                 
                 self.log.warning("{table} proceeding without using cache lookup".format(table = self.table.name))
                 
-                # Memory limit reached, clean out the cache we built so far:           
-                self.clear_cache()
-                self.caching_enabled = False
-                # We'll operate in non-cached mode
+                # We'll operate in partially cached mode
                 self.cache_filled = False
                 self.cache_clean = False
-                stats['rows_in_cache'] = 0
-                gc.collect()
-                # break out of rows loop (don't do this if we switch to disk based cache
                 break
             # Actually cache the row now
             row.status = RowStatus.existing
             self.cache_row(row, allow_update= False)
             
-            if 0 < progress_frequency <= progressTimer.seconds_elapsed:
+            if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 self.process_messages()
-                progressTimer.reset()
+                progress_timer.reset()
                 self.log.info(progress_message.format(
                                                       row_number= rows_read,
                                                       table = self.table,
@@ -1013,13 +997,14 @@ class ReadOnlyTable(ETLComponent):
                 self.log.info('Lookup {} Rows {:,} Size RAM= {:,} bytes DISK={:,} bytes'.format(lookup, len(lookup), this_ram_size, this_disk_size))
                 ram_size += this_ram_size
                 disk_size += this_disk_size
-            self.log.info('Total Lookups Size RAM= {:,} bytes DISK={:,} bytes'.format(ram_size, disk_size))
+            self.log.info('Note: RAM sizes do not add up as memory lookups share row objects')
+            self.log.info('Total Lookups Size DISK={:,} bytes'.format(disk_size))
             stats['rows_in_cache'] = len(self.__lookups[ReadOnlyTable.PK_LOOKUP])
         
         self.cache_commit()
         stats.timer.stop()
         # Restore read progress messages
-        self.progress_frequency = savedReadProgress
+        self.progress_frequency = saved_read_progress
 
     def get_by_key(self,
                    source_row: Row,
@@ -1027,13 +1012,6 @@ class ReadOnlyTable(ETLComponent):
                    parent_stats: Statistics = None,) -> Row:
         """
         Get by the primary key.
-        Returns
-        -------
-        :class:`~bi_etl.components.row.row_case_insensitive.Row`
-
-        Throws
-        -------
-        NoResultFound
         """
         return self.get_by_lookup(ReadOnlyTable.PK_LOOKUP,source_row, stats_id= stats_id, parent_stats=parent_stats)
 
@@ -1063,8 +1041,7 @@ class ReadOnlyTable(ETLComponent):
         lookup = self.get_lookup(lookup_name)
         assert isinstance(lookup, Lookup)
 
-        # caching_enabled means either a filled cache or batch mode where we have pending records
-        if self.caching_enabled and lookup.cache_enabled:
+        if lookup.cache_enabled:
             try:
                 row = lookup.find_in_cache(source_row)
                 stats['Found in cache'] += 1
@@ -1090,7 +1067,7 @@ class ReadOnlyTable(ETLComponent):
         try:
             stats['DB lookup performed'] += 1        
             row = lookup.find_in_remote_table(source_row)
-            row.status = self.RowStatus.existing
+            row.status = RowStatus.existing
             if self.maintain_cache_during_load and lookup.cache_enabled:
                 self.cache_row(row, allow_update=False)        
             stats['DB lookup found row'] += 1

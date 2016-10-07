@@ -262,6 +262,7 @@ class BIConfigParser(ConfigParser):
         """
         return self.get_or_default(section, option, None)
 
+    # noinspection PyPackageRequirements
     def get_database_connection_tuple(self, database_name, user_section=None):
         """
         Gets a tuple (userid, password) of connection information for a given database name.
@@ -292,6 +293,7 @@ class BIConfigParser(ConfigParser):
             password = self.get(user_section, 'password', raw=True)
         else:
             try:
+                # noinspection PyUnresolvedReferences
                 import keyring
                 key_ring_system = database_name
                 if self.has_section(database_name):
@@ -300,9 +302,8 @@ class BIConfigParser(ConfigParser):
 
                 password = keyring.get_password(key_ring_system, key_ring_userid)
             except ImportError:
-                keyring = None  # Prevent code warning
-                msg = "Config password not provided, and keyring not installed. "
-                msg += "When trying to get password for {}.{}".format(database_name, userid)
+                msg = "Config password not provided, and keyring not installed. " \
+                      "When trying to get password for {}.{}".format(database_name, userid)
                 raise KeyError(msg)
 
             if password is None:
@@ -453,20 +454,23 @@ class BIConfigParser(ConfigParser):
         self.rootLogger.setLevel(self.get_or_default('logging', 'root_level', logging.INFO))
 
         if console_output is None:
+            error_output = sys.stderr
             debug_output = sys.stdout
         else:
-            debug_output = console_output
-        console_log = logging.StreamHandler(debug_output)
-        console_log.setLevel(self.get_or_default('logging', 'console_log_level', 'DEBUG').upper())
-        self.rootLogger.addHandler(console_log)
-
-        if console_output is None:
-            error_output = sys.stderr
-        else:
             error_output = console_output
+            debug_output = console_output
+
+        def non_error(record):
+            return record.levelno != logging.ERROR
+
         console_error_log = logging.StreamHandler(error_output)
         console_error_log.setLevel(logging.ERROR)
         self.rootLogger.addHandler(console_error_log)
+
+        console_log = logging.StreamHandler(debug_output)
+        console_log.setLevel(self.get_or_default('logging', 'console_log_level', 'DEBUG').upper())
+        console_log.addFilter(non_error)
+        self.rootLogger.addHandler(console_log)
 
         console_entry_format = self.get_or_None('logging', 'console_entry_format')
         if console_entry_format:

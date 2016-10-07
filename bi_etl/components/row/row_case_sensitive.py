@@ -19,29 +19,6 @@ from bi_etl.components.row.row_status import RowStatus
 from bi_etl.components.row.cached_frozenset import get_cached_frozen_set
 
 
-__all__ = ['RowCaseSensitive']
-
-# For performance with the Column to str conversion we keep a cache of converted values
-
-__name_map_db = dict()
-
-
-def _get_name(input_name):
-    if input_name in __name_map_db:
-        return __name_map_db[input_name]
-    else:
-        # If the input_name is an SA Column use it's name.
-        # In Python 2.7 to 3.4, isinstance is a lot faster than try-except or hasattr (which does a try)
-        if isinstance(input_name, Column):
-            name_str = input_name.name
-        else:
-            if not isinstance(input_name, str):
-                raise ValueError("Row column name must be str, unicode, or Column. Got {}".format(type(input_name)))
-            name_str = input_name
-        __name_map_db[input_name] = name_str
-        return name_str
-
-
 class RowCaseSensitive(dict):
     """
     Replacement for core SQL Alchemy, CSV or other dictionary based rows.
@@ -49,6 +26,8 @@ class RowCaseSensitive(dict):
     Keeps order of the columns (see columns_in_order) 
     """
     NUMERIC_TYPES = [int, float, Decimal]
+    # For performance with the Column to str conversion we keep a cache of converted values
+    __name_map_db = dict()
     
     def __init__(self,
                  data=None,
@@ -72,6 +51,22 @@ class RowCaseSensitive(dict):
         
         # Populate our data
         self.update(data)
+
+    @staticmethod
+    def _get_name(input_name) -> str:
+        if input_name in RowCaseSensitive.__name_map_db:
+            return RowCaseSensitive.__name_map_db[input_name]
+        else:
+            # If the input_name is an SA Column use it's name.
+            # In Python 2.7 to 3.4, isinstance is a lot faster than try-except or hasattr (which does a try)
+            if isinstance(input_name, Column):
+                name_str = input_name.name
+            else:
+                if not isinstance(input_name, str):
+                    raise ValueError("Row column name must be str, unicode, or Column. Got {}".format(type(input_name)))
+                name_str = input_name
+                RowCaseSensitive.__name_map_db[input_name] = name_str
+            return name_str
         
     def _get_info_from_parent(self, parent: 'bi_etl.components.etlcomponent.ETLComponent'):
         # Try to get primary_key from our parent if we have one there
@@ -117,7 +112,10 @@ class RowCaseSensitive(dict):
         for (key, value) in idict['i']:
             super().__setitem__(key, value)
 
-    def update(self, *args, **kwds):
+    def str_formatted(self):
+        return dict_to_str(self)
+
+    def update(self, *args, **key_word_arguments):
         for source_data in args:
             if source_data is None:
                 continue
@@ -139,11 +137,11 @@ class RowCaseSensitive(dict):
                         first_col = False
                         
                     if is_tuple:
-                        key_name = _get_name(k[0])                        
+                        key_name = self._get_name(k[0])
                         self[key_name] = k[1]
                     else:                           
                         if needs_column_check:
-                            key_name = _get_name(k)
+                            key_name = self._get_name(k)
                         else:
                             key_name = k
                                 
@@ -155,35 +153,41 @@ class RowCaseSensitive(dict):
                 try:
                     # noinspection PyProtectedMember
                     # sqlalchemy.util._collections.ImmutableProperties
-                    attrs = source_data._sa_instance_state.attrs
-                    for a in attrs:  # instance of sqlalchemy.orm.state.AttributeState
+                    attributes = source_data._sa_instance_state.attrs
+                    for a in attributes:  # instance of sqlalchemy.orm.state.AttributeState
                         self._raw_setitem(a.key, getattr(source_data, a.key))
                 except AttributeError as e2:  # Not iterable
-                    raise ValueError(textwrap.dedent(
-                                        """\
-                                            Row couldn't get set with {args}.
-                                            First Error {e1}.
-                                            Error when assuming SQLAlchemy ORM row object {e2})
-                                         """
-                                         ).format(e1=e1, e2=e2, args=args)
-                                     )
-        for key_name, key_value in kwds.items():
-            key_name = _get_name(key_name)
+                    raise ValueError("Row couldn't get set with {args}."
+                                     " First Error {e1}."
+                                     "Error when assuming SQLAlchemy ORM row object {e2})"
+                                     .format(e1=e1, e2=e2, args=args)
+                    )
+        for key_name, key_value in key_word_arguments.items():
+            key_name = self._get_name(key_name)
             self[key_name] = key_value
     
     def _get_name_value_pair(self, key, raise_on_not_exist= True):
-        key_name = _get_name(key)
+        key_name = self._get_name(key)
         
         try:
             return key_name, super().__getitem__(key_name)
         except KeyError:
             # If we get here, everything failed
             if raise_on_not_exist:
-                raise KeyError("Row {} has no item {} it does have {}".format(self.name, key, self.columns_in_order()))
+                raise KeyError("{cls} {name} has no item {key}/{key_name} it does have {cols}"
+                               .format(cls= self.__class__.__name__,
+                                       name=self.name,
+                                       key=key,
+                                       key_name=key_name,
+                                       cols=self.columns_in_order()
+                                       )
+                               )
             else:
                 return None, None
     
     def get_column_name(self, key, raise_on_not_exist= True):
+        if key is None:
+            return None
         return self._get_name_value_pair(key, raise_on_not_exist)[0]
     
     @property
@@ -218,7 +222,13 @@ class RowCaseSensitive(dict):
             return dict_to_str(self)
 
     def __repr__(self):
-        return 'Row(name={},status={},primary_key={},\n{}'.format(self._name, self.status, self.primary_key, dict_to_str(self))
+        return '{cls}(name={name},status={status},primary_key={pk},\n{content}'.format(
+            cls= self.__class__.__name__,
+            name=self._name,
+            status=self.status,
+            pk = self.primary_key,
+            content=dict_to_str(self)
+        )
     
     def __str__(self):
         if self._name is not None or self.primary_key is not None:
@@ -246,8 +256,8 @@ class RowCaseSensitive(dict):
         return super().__contains__(key)
     
     def __contains__(self, key):
-        keyName = _get_name(key)                
-        return super().__contains__(keyName)
+        key_name = self._get_name(key)
+        return super().__contains__(key_name)
         
     def __getitem__(self, key):
         return self._get_name_value_pair(key, raise_on_not_exist= True)[1]       
@@ -262,7 +272,7 @@ class RowCaseSensitive(dict):
             self._columns_in_order.append(key) 
     
     def __setitem__(self, key, value):
-        key_name = _get_name(key)
+        key_name = self._get_name(key)
         self._raw_setitem(key_name, value)
             
     def get_name_by_position(self, position):
@@ -271,7 +281,9 @@ class RowCaseSensitive(dict):
         Note: The first column position is 1 (not 0 like a python list).
         """
         assert position > 0
-        return self._columns_in_order[position-1] ## -1 because positions are 1 based not 0 based
+
+        # -1 because positions are 1 based not 0 based
+        return self._columns_in_order[position-1]
             
     def get_by_position(self, position):
         """
@@ -279,7 +291,7 @@ class RowCaseSensitive(dict):
         Note: The first column position is 1 (not 0 like a python list).
         """
         assert position > 0
-        return self[self._columns_in_order[position-1]] ## -1 because positions are 1 based not 0 based
+        return self[self._columns_in_order[position-1]] # -1 because positions are 1 based not 0 based
     
     def set_by_position(self, position, value):
         """
@@ -287,7 +299,7 @@ class RowCaseSensitive(dict):
         Note: The first column position is 1 (not 0 like a python list).
         """
         assert position > 0
-        self[self._columns_in_order[position-1]] = value ## -1 because positions are 1 based not 0 based
+        self[self._columns_in_order[position-1]] = value # -1 because positions are 1 based not 0 based
     
     def rename_column(self, old_name, new_name, ignore_missing = False):
         """
@@ -305,7 +317,7 @@ class RowCaseSensitive(dict):
             Ignore (don't raise error) if we don't have a column with the name in old_name.
             Defaults to False         
         """
-        new_name = _get_name(new_name)
+        new_name = self._get_name(new_name)
         assert new_name not in self, "Target column name {} already exists".format(new_name)
         try:
             normalized_key, value = self._get_name_value_pair(old_name)
@@ -414,12 +426,12 @@ class RowCaseSensitive(dict):
             
         """
         if keep_only is not None:
-            keep_only = set([_get_name(c) for c in keep_only])
+            keep_only = set([self._get_name(c) for c in keep_only])
         if exclude is None:  
             exclude = []
         else:
-            exclude = set([_get_name(c) for c in exclude])
-        sub_row = RowCaseSensitive(name= self._name, parent= new_parent)
+            exclude = set([self._get_name(c) for c in exclude])
+        sub_row = self.__class__(name= self._name, parent= new_parent)
         for k in self._columns_in_order:
             if k not in exclude:
                 if rename_map is not None and k in rename_map:
@@ -439,7 +451,7 @@ class RowCaseSensitive(dict):
                     else:
                         out_col = k
                     if keep_only is None or out_col in keep_only:
-                        sub_row.primary_key.append(out_col)
+                        filtered_key.append(out_col)
             sub_row.primary_key = filtered_key
 
         return sub_row
@@ -509,7 +521,7 @@ class RowCaseSensitive(dict):
         column_name: str
             The column name to find the position of        
         """
-        normalized_name = _get_name(column_name)
+        normalized_name = self._get_name(column_name)
         return self._columns_in_order.index(normalized_name) + 1  # index is 0 based, positions are 1 based
     
     def columns_in_order(self):
@@ -526,7 +538,7 @@ class RowCaseSensitive(dict):
     def __delitem__(self, col_name):
         self._cached_column_set = None
         self._cached_positioned_column_set = None
-        normalized_col_name = _get_name(col_name)
+        normalized_col_name = self._get_name(col_name)
         super().__delitem__(normalized_col_name)
         self._columns_in_order.remove(normalized_col_name)
         

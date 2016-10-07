@@ -3,6 +3,8 @@ Created on Mar 2, 2015
 
 @author: woodd
 """
+
+
 class StatementQueue(object):
     """
     A queue of pending SQLAlchemyy statements
@@ -52,4 +54,3 @@ class StatementQueue(object):
             self.statement_values[key] = values_list
         values_list.append(values)
         self.row_count += 1    
-        

@@ -54,7 +54,9 @@ class AutoDiskLookup(Lookup):
         # If not passed in config
         if self.max_percent_ram_used is None:
             if self.config is not None:
-                self.max_percent_ram_used = self.config.getfloat_or_default('Limits','disk_swap_at_percent_ram_used',default= None)
+                self.max_percent_ram_used = self.config.getfloat_or_default('Limits',
+                                                                            'disk_swap_at_percent_ram_used',
+                                                                            default= None)
         # Finally default value
         if self.max_percent_ram_used is None:
             # Needs to be less than the default in bi_etl.components.table.Table.fill_cache
@@ -64,7 +66,9 @@ class AutoDiskLookup(Lookup):
         # If not passed in config
         if self.max_process_ram_usage_mb is None:
             if self.config is not None:
-                self.max_process_ram_usage_mb = self.config.getfloat_or_default('Limits','disk_swap_at_process_ram_usage_mb', default= None)
+                self.max_process_ram_usage_mb = self.config.getfloat_or_default('Limits',
+                                                                                'disk_swap_at_process_ram_usage_mb',
+                                                                                default= None)
         # Finally default value
         if self.max_process_ram_usage_mb is None:
             self.max_process_ram_usage_mb = 2.5 * 1024**3
@@ -83,7 +87,7 @@ class AutoDiskLookup(Lookup):
             self.path = path
         else:
             if self.config is not None:
-                self.path = self.config.get_or_default('Cache','path',DiskLookup.DEFAULT_PATH)
+                self.path = self.config.get_or_default('Cache', 'path', DiskLookup.DEFAULT_PATH)
             else:
                 self.path = DiskLookup.DEFAULT_PATH
 
@@ -155,6 +159,7 @@ class AutoDiskLookup(Lookup):
         
     def flush_to_disk(self):
         if self.cache is not None and len(self.cache) > 0:
+            rows_before = len(self)
             if self.disk_cache is None:
                 self.disk_cache = self.DiskLookupClass(lookup_name= self.lookup_name, 
                                                        lookup_keys= self.lookup_keys, 
@@ -178,11 +183,22 @@ class AutoDiskLookup(Lookup):
             self.cache.clear_cache()
             del self.cache
             self.cache = None         
-            self._init_mem_cache()       
+            self._init_mem_cache()
+            if len(self) != rows_before:
+                msg = "Row count changed during flush to disk." \
+                      " Rows before flush = {}, rows after flush = {}".format(rows_before, len(self))
+                raise AssertionError(msg)
             self.log.info('Flushing rows took {} seconds'.format(timer.seconds_elapsed_formatted))
             gc.collect()
             after_move_mb = self.our_process.memory_info().rss/(1024**2)
-            self.log.info('Flushing rows freed {:,.3f} MB from process (before {:,.3f} after {:,.3f})'.format(before_move_mb - after_move_mb, before_move_mb, after_move_mb))
+            self.log.info('Flushing rows freed {freed:,.3f} MB from process '
+                          'before {before:,.3f} after {after:,.3f})'
+                .format(
+                    freed=before_move_mb - after_move_mb,
+                    before=before_move_mb,
+                    after=after_move_mb
+                )
+            )
             
     def check_memory(self):
         # Only check memory if we have rows in memory
@@ -198,31 +214,31 @@ class AutoDiskLookup(Lookup):
                 if self.max_percent_ram_used is not None:
                     if psutil.virtual_memory().percent > self.max_percent_ram_used:
                         limit_reached = True
-                        msg = "{name}.fill_cache moving a segment to disk at due to "
-                        msg += "system memory limit {pct} > {pct_limit}% with {rows:,} rows of data"
-                        self.log.warning(msg.format(
-                                                    name = self.lookup_name,
-                                                    rows = self.rows_cached,
-                                                    pct = psutil.virtual_memory().percent,
-                                                    pct_limit = self.max_percent_ram_used,
-                                                    )
+                        self.log.warning(
+                            "{name}.fill_cache moving a segment to disk at due to "
+                            "system memory limit {pct} > {pct_limit}% with {rows:,} rows of data"
+                            .format(
+                                    name=self.lookup_name,
+                                    rows=self.rows_cached,
+                                    pct=psutil.virtual_memory().percent,
+                                    pct_limit=self.max_percent_ram_used,
+                            )
                         )
                 process_mb = self.our_process.memory_info().rss/(1024**2)
                 if self.max_process_ram_usage_mb is not None:
                     if process_mb > self.max_process_ram_usage_mb:
                         # Set flag to clean out the cache built so far below
                         limit_reached = True
-                        self.log.warning("{name}.fill_cache moving a segment to disk at due to process memory limit {usg:,} > {usg_limit:,} KB with {rows:,} rows of data".format(
-                                                                                                                                              name = self.lookup_name,
-                                                                                                                                              rows = self.rows_cached,
-                                                                                                                                              usg = process_mb,
-                                                                                                                                              usg_limit = self.max_process_ram_usage_mb,
-                                                                                                                                              )
-                                  )
+                        self.log.warning("{name}.fill_cache moving a segment to disk at due to process memory limit"
+                                         " {usg:,} > {usg_limit:,} KB with {rows:,} rows of data"
+                                         .format(name = self.lookup_name,
+                                                 rows = self.rows_cached,
+                                                 usg = process_mb,
+                                                 usg_limit = self.max_process_ram_usage_mb,
+                                         )
+                        )
                 if limit_reached:
                     self.flush_to_disk()    
-        
-        
 
     def cache_row(self, row, allow_update= True):
         if self.cache_enabled:        
@@ -269,14 +285,12 @@ class AutoDiskLookup(Lookup):
         if not self.cache_enabled:
             raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
         if self.cache is None:
-            raise ValueError("Lookup {} not initialized".format(self.lookup_name))
-        else:
-            try:                
-                return self.cache.find_in_cache(row, **kwargs)            
-            except NoResultFound:
-                if self.disk_cache is not None:
-                    return self.disk_cache.find_in_cache(row, **kwargs)
-                else:
-                    raise NoResultFound()
-    
+            self.init_cache()
+        try:
+            return self.cache.find_in_cache(row, **kwargs)
+        except NoResultFound:
+            if self.disk_cache is not None:
+                return self.disk_cache.find_in_cache(row, **kwargs)
+            else:
+                raise NoResultFound()
     

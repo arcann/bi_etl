@@ -181,6 +181,18 @@ def change_tz(source_datetime, from_tzone, to_tzone):
         return result_datetime    
 
 
+def ensure_datetime(dt):
+    """
+    Takes a date or a datetime as input, outputs a datetime
+    """
+    if isinstance(dt, datetime):
+        return dt
+    elif isinstance(dt, date):
+        return datetime(dt.year, dt.month, dt.day)
+    else:
+        raise ValueError('expected datetime, got {}'.format(dt))
+
+
 def nvl(value, default):
     """
     Pass value through unchanged unless it is NULL (None).
@@ -201,6 +213,7 @@ def nullif(v, value_to_null):
         return None
     else:
         return v
+
 
 def defaultMissing(v):
     """

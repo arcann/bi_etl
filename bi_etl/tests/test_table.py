@@ -52,6 +52,7 @@ from sqlalchemy.exc import DatabaseError
 
 #pylint: disable=missing-docstring, protected-access
 
+
 class TestTable(unittest.TestCase):
 
     def setUp(self):        
@@ -66,9 +67,9 @@ class TestTable(unittest.TestCase):
         self.mock_database = Connect.get_database_metadata(config=self.config, 
                                                            database_name=database_name,
                                                            )
+
     def tearDown(self):
         pass
-
 
     def testInit(self):
         tbl_name = 'testInit'
@@ -270,7 +271,7 @@ class TestTable(unittest.TestCase):
         with self.assertLogs(tbl.log, logging.ERROR) as log:
             try:
                 for i in range(rows_to_insert):
-                    row=tbl.Row()
+                    row = tbl.Row()
                     row['col1'] = i % 5
                     row['col2'] = 'this is row {}'.format(i)
                     row['col3'] = i/1000.0
@@ -948,8 +949,7 @@ class TestTable(unittest.TestCase):
                 self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
                 
         self.mock_database.execute('DROP TABLE {}'.format(tbl_name))                          
-    
-    
+
     def testSanityCheck1(self):        
         src_tbl_name = 'testSanityCheck1s'
         self.log.info(src_tbl_name)
@@ -966,7 +966,7 @@ class TestTable(unittest.TestCase):
         self.mock_database.execute("""
            CREATE TABLE {} (
               col1 INT  PRIMARY KEY,
-              col2b TEXT,
+              col2a TEXT,
               col3 REAL,
               col4 NUMERIC
            )
@@ -978,31 +978,30 @@ class TestTable(unittest.TestCase):
             with Table(self.task, 
                    self.mock_database,  
                    table_name= tgt_tbl_name) as tgt_tbl:
-                with mock.patch('bi_etl.components.etlcomponent.logging',autospec=True) as log:
+                with mock.patch('bi_etl.components.etlcomponent.logging', autospec=True) as log:
                     tgt_tbl.log = log
                     tgt_tbl.sanity_check_source_mapping(src_tbl,
-                                                        source_renames={'col2a': 'col2b'},
                                                         source_excludes=['col5'],
                                                         target_excludes=['col4'],
                                                         )
-                    self.assertFalse(log.error.called, 'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
-                    self.assertFalse(log.warning.called, 'unexpected warning from sanity_check_source_mapping. {}'.format(log.mock_calls))
+                    self.assertFalse(log.error.called,
+                                     'unexpected error from sanity_check_source_mapping. {}'
+                                     .format(log.mock_calls)
+                                     )
+                    self.assertFalse(log.warning.called,
+                                     'unexpected warning from sanity_check_source_mapping. {}'
+                                     .format(log.mock_calls)
+                                     )
                     log.reset_mock()
                     
                     tgt_tbl.sanity_check_source_mapping(src_tbl,
-                                                        #source_renames={'col2a': 'col2b'},
                                                         source_excludes=['col5'],
                                                         target_excludes=['col4'],
                                                         )                    
                     self.assertFalse(log.error.called)
-                    calls_str = '\n'.join([str(call) for call in log.mock_calls])
-                    self.assertIn('col2a', calls_str)        
-                    self.assertIn('col2b', calls_str)
                     log.reset_mock()
                     
                     tgt_tbl.sanity_check_source_mapping(src_tbl,
-                                                        source_renames={'col2a': 'col2b'},
-                                                        #source_excludes=['col5'],
                                                         target_excludes=['col4'],
                                                         )                    
                     self.assertFalse(log.error.called)
@@ -1011,9 +1010,7 @@ class TestTable(unittest.TestCase):
                     log.reset_mock()
                     
                     tgt_tbl.sanity_check_source_mapping(src_tbl,
-                                                        source_renames={'col2a': 'col2b'},
                                                         source_excludes=['col5'],
-                                                        #target_excludes=['col4'],
                                                         )
                     self.assertFalse(log.error.called)                    
                     calls_str = '\n'.join([str(call) for call in log.mock_calls])                    
@@ -1027,26 +1024,24 @@ class TestTable(unittest.TestCase):
                     src_row['col3'] = 0
                     src_row['col5'] = 0 
                     tgt_tbl.sanity_check_source_mapping(src_row,
-                                                        source_renames={'col2a': 'col2b'},
                                                         source_excludes=['col5'],
                                                         target_excludes=['col4'],
                                                         )                    
-                    calls_str = '\n'.join([str(call) for call in log.mock_calls])
-                    self.assertFalse(log.error.called, 'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
-                    self.assertFalse(log.warning.called, 'unexpected warning from sanity_check_source_mapping. {}'.format(log.mock_calls))        
+                    # calls_str = '\n'.join([str(call) for call in log.mock_calls])
+                    self.assertFalse(log.error.called,
+                                     'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
+                    self.assertFalse(log.warning.called,
+                                     'unexpected warning from sanity_check_source_mapping. {}'.format(log.mock_calls))
                     log.reset_mock()
                     
                     # Test using row and not source component
                     tgt_tbl.sanity_check_source_mapping(src_row,
-                                                        #source_renames={'col2a': 'col2b'},
                                                         source_excludes=['col5'],
                                                         target_excludes=['col4'],
                                                         )                    
-                    calls_str = '\n'.join([str(call) for call in log.mock_calls])
-                    self.assertFalse(log.error.called, 'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
-                    calls_str = '\n'.join([str(call) for call in log.mock_calls])
-                    self.assertIn('col2a', calls_str)        
-                    self.assertIn('col2b', calls_str)        
+                    # calls_str = '\n'.join([str(call) for call in log.mock_calls])
+                    self.assertFalse(log.error.called,
+                                     'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
                     log.reset_mock()
                                                         
         self.mock_database.execute('DROP TABLE {}'.format(src_tbl_name))        
@@ -1084,7 +1079,7 @@ class TestTable(unittest.TestCase):
             with Table(self.task, 
                    self.mock_database,  
                    table_name= tgt_tbl_name) as tgt_tbl:
-                with mock.patch('bi_etl.components.etlcomponent.logging',autospec=True) as log:
+                with mock.patch('bi_etl.components.etlcomponent.logging', autospec=True) as log:
                     tgt_tbl.log = log
                     
                     src_row = src_tbl.Row()
@@ -1093,9 +1088,9 @@ class TestTable(unittest.TestCase):
                     src_row['col3'] = 123.12
                     src_row['col4'] = 1234.12
                     src_row['col5'] = 'this is row blob'.encode('ascii')
-                     
+
+                    src_row.rename_columns({'col2a': 'col2b'})
                     tgt_row = tgt_tbl.build_row(src_row,
-                                                source_renames={'col2a': 'col2b'},
                                                 source_excludes=['ext1'],
                                                 target_excludes=['ext2'],
                                                 )
@@ -1116,9 +1111,9 @@ class TestTable(unittest.TestCase):
                     src_row['col3'] = '123.12'
                     src_row['col4'] = '1,234.12'
                     src_row['col5'] = 123
-                     
+
+                    src_row.rename_columns({'col2a': 'col2b'})
                     tgt_row = tgt_tbl.build_row(src_row,
-                                                source_renames={'col2a': 'col2b'},
                                                 source_excludes=['ext1'],
                                                 target_excludes=['ext2'],
                                                 )
@@ -1132,9 +1127,18 @@ class TestTable(unittest.TestCase):
                     self.assertNotIn('ext1', tgt_row)
                     self.assertNotIn('ext2', tgt_row)
                     
-    def testBuildRow2(self):        
+    def testBuildRow2(self):
+        self.mock_database.execute("""
+                          CREATE TABLE {} (
+                             col1 INT,
+                             col2 TEXT,
+                             col3 REAL,
+                             col4 NUMERIC,
+                             col5 BLOB
+                          )
+                       """.format('test'))
         tbl_name = 'testBuildRow2'
-        
+
         with CSVReader(self.task, 
                        filedata=None,
                        logical_name='testBuildRow2_src',                                        
@@ -1143,10 +1147,10 @@ class TestTable(unittest.TestCase):
                    self.mock_database,  
                    table_name= 'test',
                    ) as tgt_tbl:
-                # Just here to help pydev know the datatype
+                # Just here to help IDE know the data type
                 assert isinstance(tgt_tbl, Table)
                 
-                with mock.patch('bi_etl.components.etlcomponent.logging',autospec=True) as log:
+                with mock.patch('bi_etl.components.etlcomponent.logging', autospec=True) as log:
                     tgt_tbl.log = log
                     
                     # http://docs.sqlalchemy.org/en/latest/core/type_basics.html
@@ -1157,7 +1161,8 @@ class TestTable(unittest.TestCase):
                                                             Column('date_col', Date),
                                                             Column('datetime_col', DateTime),
                                                             Column('time_col', Time),
-                                                            Column('enum_col', Enum(['a','b','c'])), # We can't create table with this in sqlite
+                                                            Column('enum_col', Enum(['a','b','c'])),
+                                                            # We can't create table with this in sqlite
                                                             Column('float_col', Float),
                                                             Column('interval_col', Interval),
                                                             Column('large_binary_col', LargeBinary),
@@ -1264,93 +1269,7 @@ class TestTable(unittest.TestCase):
                         self.fail('Test number too long from str did not raise ValueError')
                     except ValueError:
                         pass
-                    src_row['numeric13_col'] = '1234567890123'
-                    
-                    # Test again with some explicit transformations
-                    src_row = src_tbl.Row()
-                    transformations = list()
-                    src_row['bool_col'] = 1
-                    src_row['date_col'] = '2001-01-01'
-                    transformations.append( Transformation('date_col',
-                                                           Conversion(str2date, '%Y-%m-%d') 
-                                                           )  
-                                           )
-                    src_row['datetime_col'] = '2001-01-01 12:51:43 PM'
-                    transformations.append( Transformation(column='datetime_col', 
-                                                           conversion=Conversion(str2datetime, dt_format='%Y-%m-%d %I:%M:%S %p' ) 
-                                                           )  
-                                           )
-                    src_row['time_col'] = '10:13:55 PM'
-                    transformations.append( Transformation(column='time_col', 
-                                                           conversion=Conversion(str2time, '%I:%M:%S %p' ) 
-                                                           )  
-                                           )
-                    src_row['enum_col'] = 'b'
-                    src_row['float_col'] = '123.45'                
-                    transformations.append( Transformation(column='float_col', 
-                                                           conversion=Conversion(str2float) 
-                                                           )  
-                                           )
-                    src_row['interval_col'] = 50
-                    src_row['large_binary_col'] = "It's a Python world."
-                    src_row['numeric13_col'] = '1234567890123'
-                    # Test not using Conversion class but simple tuple
-                    transformations.append( Transformation(column='numeric13_col', 
-                                                           conversion=(str2decimal) 
-                                                           )  
-                                           )
-                    src_row['numeric25_col'] = Decimal('1234567890123456789012345')
-                    src_row['numeric25_15_col'] = Decimal('1234567890.123456789012345')
-                    src_row['strin_10_col'] = 'NULL'
-                    # Test not using Conversion class but simple tuple
-                    transformations.append( Transformation(column='strin_10_col', 
-                                                           conversion=(nullif,('NULL')) 
-                                                           )  
-                                           )
-                     
-                    tgt_row = tgt_tbl.build_row(src_row, source_transformations=transformations)
-                    self.assertFalse(log.error.called, 'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
-                    self.assertFalse(log.warning.called, 'unexpected warning from sanity_check_source_mapping. {}'.format(log.mock_calls))                    
-                    self.assertEqual(tgt_row['bool_col'], True)
-                    self.assertEqual(tgt_row['date_col'], date(2001,1,1))
-                    self.assertEqual(tgt_row['datetime_col'], datetime(2001,1,1,12,51,43))
-                    self.assertEqual(tgt_row['time_col'], time(22,13,55))
-                    self.assertEqual(tgt_row['enum_col'], 'b')
-                    self.assertAlmostEqual(tgt_row['float_col'], 123.45, places=2)
-                    self.assertEqual(tgt_row['interval_col'], timedelta(seconds=50))
-                    self.assertEqual(tgt_row['large_binary_col'], "It's a Python world.".encode('utf-8'))
-                    self.assertEqual(tgt_row['numeric13_col'], 1234567890123)
-                    self.assertEqual(tgt_row['numeric25_col'], 1234567890123456789012345)
-                    self.assertAlmostEqual(tgt_row['numeric25_15_col'], Decimal('1234567890.123456789012345'), places=15)
-                    self.assertIsNone(tgt_row['strin_10_col'])
-                    log.reset_mock()
-                    
-                    # Test with transforms dict
-                    transformations_dict = dict()
-                    for trans in transformations:
-                        transformations_dict[trans[0]] = trans[1]
-                    tgt_row = tgt_tbl.build_row(src_row, source_transformations=transformations_dict)
-                    self.assertFalse(log.error.called, 'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
-                    self.assertFalse(log.warning.called, 'unexpected warning from sanity_check_source_mapping. {}'.format(log.mock_calls))                    
-                    self.assertEqual(tgt_row['bool_col'], True)
-                    self.assertEqual(tgt_row['date_col'], date(2001,1,1))
-                    self.assertEqual(tgt_row['datetime_col'], datetime(2001,1,1,12,51,43))
-                    self.assertEqual(tgt_row['time_col'], time(22,13,55))
-                    self.assertEqual(tgt_row['enum_col'], 'b')
-                    self.assertAlmostEqual(tgt_row['float_col'], 123.45, places=2)
-                    self.assertEqual(tgt_row['interval_col'], timedelta(seconds=50))
-                    self.assertEqual(tgt_row['large_binary_col'], "It's a Python world.".encode('utf-8'))
-                    self.assertEqual(tgt_row['numeric13_col'], 1234567890123)
-                    self.assertEqual(tgt_row['numeric25_col'], 1234567890123456789012345)
-                    self.assertAlmostEqual(tgt_row['numeric25_15_col'], Decimal('1234567890.123456789012345'), places=15)
-                    self.assertIsNone(tgt_row['strin_10_col'])
-                    log.reset_mock()
-                    
-                    # Test transform failure
-                    src_row['time_col'] = 'This is not a time'
-                    self.assertRaises(ValueError, tgt_tbl.build_row, src_row, source_transformations=transformations)
-                    self.assertTrue(log.error.called, 'Expected an error from build_row. {}'.format(log.mock_calls))
-    
+
     def _test_upsert_special_values_rows_check(self, tbl_name):
         tbl = Table(self.task, 
                     self.mock_database, 

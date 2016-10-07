@@ -16,7 +16,7 @@ class TestDiskRangeLookup(_TestBaseRangeLookup):
     def setUp(self):
         super().setUp()
         self.TestClass = DiskRangeLookup
-        self.temp_dir_mgr = tempfile.TemporaryDirectory(dir='e:\\temp')
+        self.temp_dir_mgr = tempfile.TemporaryDirectory()
         self.test_class_args['path'] = self.temp_dir_mgr.name
         
     def tearDown(self):

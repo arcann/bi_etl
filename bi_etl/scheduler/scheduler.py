@@ -737,7 +737,7 @@ class Scheduler(SchedulerInterface):
         if msg_ok:
             if not isinstance(msg, str):
                 msg = str(msg)
-            ## Add an ending new line if it's not there
+            # Add an ending new line if it's not there
             if not msg.endswith('\n'):
                 msg += '\n'
             etl_task.pending_log_msgs.append(msg)

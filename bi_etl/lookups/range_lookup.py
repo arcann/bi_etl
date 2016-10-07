@@ -5,6 +5,7 @@ Created on Feb 27, 2015
 """
 from datetime import datetime, date
 
+from conversions import ensure_datetime
 from sortedcontainers.sorteddict import SortedDict
 
 from sqlalchemy.sql.expression import bindparam
@@ -32,22 +33,13 @@ class RangeLookup(Lookup):
     def __len__(self):
         return self._len
 
-    @staticmethod
-    def normalize_datetime(dt):
-        if isinstance(dt, datetime):
-            return dt
-        elif isinstance(dt, date):
-            return datetime(dt.year, dt.month, dt.day, 0, 0, 0)
-        else:
-            raise ValueError('expected datetime, got {}'.format(dt))
-    
     def cache_row(self, row, allow_update = True):
         if self.cache_enabled:
             lk_tuple = self.get_hashable_combined_key(row)
             if self.cache is None:
                 self.init_cache()                
             versions_collection = self.cache.get(lk_tuple,None)
-            effective_date = self.normalize_datetime(row[self.begin_date])
+            effective_date = ensure_datetime(row[self.begin_date])
             assert isinstance(effective_date, datetime)
                 
             if versions_collection is None:
@@ -55,8 +47,13 @@ class RangeLookup(Lookup):
 
             if effective_date in versions_collection:
                 if not allow_update:
-                    self.log.error('Existing duplicate row = {}'.format(repr(versions_collection[effective_date] )))
-                    raise ValueError('Key {} + date {} already in cache and allow_update was False'.format(lk_tuple, effective_date))
+                    self.log.error('Key already in lookup!')
+                    self.log.error('Existing row = {}'.format(repr(versions_collection[effective_date] )))
+                    self.log.error('New duplicate row = {}'.format(repr(row)))
+                    raise ValueError('Key {} + date {} already in cache and allow_update was False'.format(
+                        lk_tuple,
+                        effective_date
+                    ))
             else:
                 self._len += 1
             
@@ -72,8 +69,8 @@ class RangeLookup(Lookup):
     def uncache_row(self, row):
         lk_tuple = self.get_hashable_combined_key(row)
         if self.cache is not None:                
-            versions_collection = self.cache.get(lk_tuple,None)
-            effective_date = self.normalize_datetime(row[self.begin_date])
+            versions_collection = self.cache.get(lk_tuple, None)
+            effective_date = ensure_datetime(row[self.begin_date])
                 
             if versions_collection:                
                 # Look for and remove existing instance that are exactly the same date
@@ -103,13 +100,13 @@ class RangeLookup(Lookup):
         if not self.cache_enabled:
             raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
         if self.cache is None:
-            raise ValueError("Lookup not cached")
+            self.init_cache()
         else:
             lk_tuple = self.get_hashable_combined_key(row)
             versions_collection = None
             try:
                 if effective_date is None:
-                    effective_date = self.normalize_datetime(row[self.begin_date])
+                    effective_date = ensure_datetime(row[self.begin_date])
                 versions_collection = self.cache[lk_tuple]
                 assert isinstance(versions_collection, SortedDict)
                 if versions_collection:
@@ -118,7 +115,7 @@ class RangeLookup(Lookup):
                         raise BeforeAllExisting(versions_collection[versions_collection.iloc[0]], effective_date)
                     first_effective_row = versions_collection[versions_collection.iloc[first_effective_index]]
                     # Check that record doesn't end before our date
-                    if self.normalize_datetime(first_effective_row[self.end_date]) < effective_date:
+                    if ensure_datetime(first_effective_row[self.end_date]) < effective_date:
                         raise AfterExisting(first_effective_row, effective_date)
                     return first_effective_row
             except KeyError:
@@ -139,7 +136,7 @@ class RangeLookup(Lookup):
     def _get_remote_stmt_where_values(self, row, effective_date = None):
         values_dict = super(RangeLookup, self)._get_remote_stmt_where_values(row)
         if effective_date is None:
-            effective_date = self.normalize_datetime(row[self.begin_date])
+            effective_date = ensure_datetime(row[self.begin_date])
         values_dict['eff_date'] = effective_date
         return values_dict
     
@@ -158,6 +155,7 @@ class RangeLookup(Lookup):
             # Which is what our parent Lookup does so we call that
             stmt_no_date = self.parent_component.select()
             stmt_no_date = super(RangeLookup, self)._add_remote_stmt_where_clause(stmt_no_date)
+            # order by the begin date
             stmt_no_date = stmt_no_date.order_by(self.parent_component.get_column(self.begin_date))
             self._remote_lookup_stmt_no_date = stmt_no_date.compile()
         values_dict = self._get_remote_stmt_where_values(row, effective_date)     
@@ -167,12 +165,23 @@ class RangeLookup(Lookup):
             # Which is what our parent Lookup does so we call that to set values
             values_dict = super(RangeLookup, self)._get_remote_stmt_where_values(row)
             results = self.parent_component.execute(self._remote_lookup_stmt_no_date, values_dict)
-            row = results.fetchone()
-            if row is None:
+            all_key_rows = results.fetchall()
+            if len(all_key_rows) == 0:
                 raise NoResultFound()
             else:
-                # If we found a row return the first (why we sorted)
-                raise BeforeAllExisting(Row(row), effective_date = row[self.begin_date])
+                row_counter = 0
+                for row in all_key_rows:
+                    row_counter += 1
+                    if row_counter == 1 and effective_date < row[self.begin_date]:
+                        raise BeforeAllExisting(Row(row), effective_date = row[self.begin_date])
+                    elif (ensure_datetime(row[self.begin_date])
+                          >= ensure_datetime(effective_date)
+                          >= ensure_datetime(row[self.end_date])
+                          ):
+                        return row
+                # If we reach this point return the last row in an AfterExisting exception
+                raise AfterExisting(row)
+
         elif len(rows) == 1:
             return Row(rows[0])
         else:

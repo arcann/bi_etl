@@ -86,7 +86,10 @@ class DiskLookup(Lookup):
                 if row_num >= row_cnt:
                     break      
             self._row_size = math.ceil(total_row_sizes / row_cnt)
-            self.log.debug('Row key size (in memory) now estimated at {:,} bytes per row'.format(self._row_size))
+            msg = '{lookup_name} row key size (in memory) now estimated at {size:,} bytes per row'
+            msg = msg.format(lookup_name= self.lookup_name,
+                             size= self._row_size)
+            self.log.debug(msg)
             self._done_get_estimate_row_size = True   
         
     def get_disk_size(self):

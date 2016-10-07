@@ -10,11 +10,12 @@ from bi_etl.lookups.disk_lookup import DiskLookup
 import tempfile
 import os
 
+
 class TestDiskLookup(_TestBase):
 
     def setUp(self):
         self.TestClass = DiskLookup
-        self.temp_dir_mgr = tempfile.TemporaryDirectory(dir='e:\\temp')
+        self.temp_dir_mgr = tempfile.TemporaryDirectory()
         self.test_class_args = {'path': self.temp_dir_mgr.name}
         super().setUp()
 
