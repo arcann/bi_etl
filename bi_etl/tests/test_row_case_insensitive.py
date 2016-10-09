@@ -11,7 +11,6 @@ from sqlalchemy.engine.result import RowProxy
 from sqlalchemy.sql.sqltypes import Integer, String, Numeric
 from bi_etl.timer import Timer
 from bi_etl.components.row.row_case_insensitive import RowCaseInsensitive
-from bi_etl.components.row.row_parent import RowParent
 from bi_etl.conversions import nullif
 
 #pylint: disable=missing-docstring, protected-access

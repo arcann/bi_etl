@@ -17,7 +17,7 @@ from sqlalchemy.sql.expression import bindparam
 
 from bi_etl import Timer
 from bi_etl.components.readonlytable import ReadOnlyTable, NoResultFound
-from bi_etl.components.row import Row
+from bi_etl.components.row.row import Row
 from bi_etl.components.row.column_difference import ColumnDifference  
 from bi_etl.conversions import str2date
 from bi_etl.conversions import str2decimal

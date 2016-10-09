@@ -14,7 +14,7 @@
 # """
 # from sqlalchemy.sql.expression import bindparam
 # 
-# from bi_etl.components.row import Row
+# from bi_etl.components.row.row import Row
 # from bi_etl.lookups.sqlite_lookup import SQLLiteLookup
 # from bi_etl.exceptions import NoResultFound
 #         

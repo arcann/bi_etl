@@ -13,7 +13,7 @@ from sqlalchemy.sql.expression import bindparam
 from bi_etl.exceptions import BeforeAllExisting, AfterExisting, NoResultFound
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.utility import dict_to_str
-from bi_etl.components.row import Row
+from bi_etl.components.row.row import Row
 
 __all__ = ['RangeLookup']
 
@@ -64,7 +64,7 @@ class RangeLookup(Lookup):
             if self._row_size is None:   
                 self._get_first_row_size(row)
             else:
-                self.get_estimate_row_size()
+                self._check_estimate_row_size()
             
     def uncache_row(self, row):
         lk_tuple = self.get_hashable_combined_key(row)
@@ -173,7 +173,7 @@ class RangeLookup(Lookup):
                 for row in all_key_rows:
                     row_counter += 1
                     if row_counter == 1 and effective_date < row[self.begin_date]:
-                        raise BeforeAllExisting(Row(row), effective_date = row[self.begin_date])
+                        raise BeforeAllExisting(self.parent_component.Row(row), effective_date = row[self.begin_date])
                     elif (ensure_datetime(row[self.begin_date])
                           >= ensure_datetime(effective_date)
                           >= ensure_datetime(row[self.end_date])
@@ -183,7 +183,7 @@ class RangeLookup(Lookup):
                 raise AfterExisting(row)
 
         elif len(rows) == 1:
-            return Row(rows[0])
+            return self.parent_component.Row(rows[0])
         else:
             msg = 'dict_to_str statement {}\n'.format(self._remote_lookup_stmt)
             msg += 'using keys {}\n'.format(dict_to_str(values_dict))

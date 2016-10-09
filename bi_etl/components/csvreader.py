@@ -12,15 +12,16 @@ import logging
 
 __all__ = ['CSVReader']
 
-## Only quote none is really needed here, QUOTE_MINIMAL is the default.
-## The other quoting levels are only relevant to the Writer
+# Only quote none is really needed here, QUOTE_MINIMAL is the default.
+# The other quoting levels are only relevant to the Writer
 QUOTE_NONE = csv.QUOTE_NONE
 QUOTE_MINIMAL = csv.QUOTE_MINIMAL
+
 
 class CSVReader(ETLComponent):
     """ 
     CSVReader is similar to csv.DictReader
-    However, instead of a dict it uses our :class:`~bi_etl.components.row.Row` class as it's return type.
+    However, instead of a dict it uses our :class:`~bi_etl.components.row.row.Row` class as it's return type.
     It uses :class:`csv.reader` (in :mod:`csv`) to read the file.
     
     Note optional, but important, parameter ``delimiter``.
@@ -308,11 +309,12 @@ class CSVReader(ETLComponent):
         len_column_names = len(self.column_names)
         try:
             self.seek_row(self.start_row)
+            this_iteration_header = self.generate_iteration_header(all_rows_same_columns=False)
             for row in self.reader:
                 if len(row) != 0:     
-                    ## Convert empty strings to None to be consistent with DB reads
-                    row = [None if s=='' else s for s in row]           
-                    d = self.Row(list(zip(self.column_names, row)))
+                    # Convert empty strings to None to be consistent with DB reads
+                    row = [None if s == '' else s for s in row]
+                    d = self.Row(list(zip(self.column_names, row)), iteration_header=this_iteration_header)
                     
                     len_row = len(row)
                     if len_column_names < len_row:

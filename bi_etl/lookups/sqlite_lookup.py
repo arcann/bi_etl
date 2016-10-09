@@ -21,7 +21,7 @@
 # import sqlalchemy.dialects.oracle.base
 # 
 # from bi_etl.lookups.lookup import Lookup
-# from bi_etl.components.row import Row
+# from bi_etl.components.row.row import Row
 # from bi_etl.components.table import Table
 # from bi_etl.scheduler.task import Database
 # from bi_etl.exceptions import NoResultFound

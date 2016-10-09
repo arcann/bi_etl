@@ -3,20 +3,20 @@ Created on May 15, 2015
 
 @author: woodd
 """
-import shelve
-import semidbm
-import math 
-import tempfile
-import string
-import os
 import dbm
+import math
+import os
+import pickle
+import shelve
+import string
 import sys
+import tempfile
 
+import semidbm
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.memory_size import get_dir_size
 from bi_etl.memory_size import get_size_gc
-import pickle
-        
+
 __all__ = ['DiskLookup']
 
 
@@ -58,7 +58,7 @@ class DiskLookup(Lookup):
             if sys.platform.startswith('win'):
                 self.dbm = semidbm.open(self.cache_file_path, 'n')            
             else:
-                file = os.path.join(self.cache_file_path,'data')
+                file = os.path.join(self.cache_file_path, 'data')
                 self.dbm = dbm.open(file, 'n')
             self.cache = shelve.BsdDbShelf(self.dbm, 
                                            protocol=pickle.HIGHEST_PROTOCOL,
@@ -75,7 +75,7 @@ class DiskLookup(Lookup):
             # Slow but shouldn't be too bad twice
             self._row_size = get_size_gc(self.dbm)
         
-    def get_estimate_row_size(self, force_now=False):
+    def _check_estimate_row_size(self, force_now=False):
         if force_now or not self._done_get_estimate_row_size:
             row_cnt = min(len(self),1000)
             total_row_sizes = 0

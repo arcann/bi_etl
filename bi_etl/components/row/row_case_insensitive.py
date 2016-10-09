@@ -4,21 +4,13 @@ Created on Sep 17, 2014
 
 @author: woodd
 """
-import warnings
-from decimal import Decimal
-from operator import attrgetter
-from typing import Union, List, Iterable
-
-from components.row.row_case_sensitive import RowCaseSensitive
-from sqlalchemy.sql.schema import Column
 
 from bi_etl.utility import dict_to_str
-from bi_etl.components.row.column_difference import ColumnDifference
-from bi_etl.components.row.row_status import RowStatus
-from bi_etl.components.row.cached_frozenset import get_cached_frozen_set
+from components.row.row import Row
+from sqlalchemy.sql.schema import Column
 
 
-class RowCaseInsensitive(RowCaseSensitive):
+class RowCaseInsensitive(Row):
     """
     Replacement for core SQL Alchemy, CSV or other dictionary based rows.
     Handles converting column names (keys) between upper and lower case.

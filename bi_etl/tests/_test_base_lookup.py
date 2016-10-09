@@ -8,7 +8,6 @@ import logging
 import sys
 from datetime import datetime, date
 
-from bi_etl.components.row import Row
 from bi_etl.exceptions import NoResultFound
 from bi_etl.tests.dummy_etl_component import DummyETLComponent
 from bi_etl.lookups.lookup import Lookup
@@ -22,9 +21,9 @@ class _TestBase(unittest.TestCase):
     """
 
     def setUp(self):
-        self.parent_component = DummyETLComponent()
         self.key1_1 = 'key1'
         self.key1 = [self.key1_1]
+        self.parent_component1 = DummyETLComponent(primary_key=self.key1)
         self.source1 = { 
                       self.key1_1: 1,
                       'strval': 'All good caches work perfectly',
@@ -32,7 +31,7 @@ class _TestBase(unittest.TestCase):
                       'intval': 1234567890,
                       'datetimeval': datetime(2005, 8, 25, 18, 23, 44)
                       }
-        self.row1 = Row(self.source1, primary_key=self.key1)
+        self.row1 = self.parent_component1.Row(data=self.source1)
         
         self.key3_1 = 'key1'
         self.key3_2 = 'key2'
@@ -50,7 +49,8 @@ class _TestBase(unittest.TestCase):
                       'intval3': sys.maxsize*10,  # test long
                       'dateval': date(2014, 4, 1)
                       }
-        self.row3 = Row(self.source3, primary_key=self.key3)
+        self.parent_component3 = DummyETLComponent(primary_key=self.key3)
+        self.row3 = self.parent_component3.Row(self.source3)
         
         # Only set TestClass and test_class_args if parent hasn't set them yet
         if not hasattr(self, 'TestClass'):
@@ -59,7 +59,7 @@ class _TestBase(unittest.TestCase):
             self.test_class_args = dict()
             
     def tearDown(self):
-        self.parent_component.close()
+        self.parent_component1.close()
 
     def _post_test_cleanup(self, lookup):
         lookup.clear_cache()
@@ -71,15 +71,15 @@ class _TestBase(unittest.TestCase):
     # Tests for single int key
 
     def _get_key1_lookup(self):
-        lookup = self.TestClass('Test',self.key1, parent_component=self.parent_component, **self.test_class_args)
+        lookup = self.TestClass('Test', self.key1, parent_component=self.parent_component1, **self.test_class_args)
         lookup.init_cache()
         lookup._set_log_level(logging.DEBUG)
         return lookup
 
     def test_get_list_of_lookup_column_values_1(self):
         lookup = self._get_key1_lookup()
-        expectedList = [ self.source1[self.key1_1] ]
-        self.assertEqual(lookup.get_list_of_lookup_column_values(self.row1), expectedList)
+        expected_list = [ self.source1[self.key1_1] ]
+        self.assertEqual(lookup.get_list_of_lookup_column_values(self.row1), expected_list)
         self._post_test_cleanup(lookup)
         
     def test_cache_and_find_1(self):
@@ -93,11 +93,11 @@ class _TestBase(unittest.TestCase):
         self.assertRaises(ValueError, lookup.cache_row, row=self.row1, allow_update=False)
         
         # Test lookups
-        search_row1 = Row({ self.key1_1: 1,  })
+        search_row1 = self.parent_component1.Row({ self.key1_1: 1,  })
         self.assertEqual(lookup.find_in_cache(search_row1), self.row1)
         
-        ## Test lookup fail
-        search_row2 = Row({ self.key1_1: 2,  })
+        # Test lookup fail
+        search_row2 = self.parent_component1.Row({ self.key1_1: 2,  })
         self.assertRaises(NoResultFound, lookup.find_in_cache, row=search_row2)
 
         self._post_test_cleanup(lookup)
@@ -124,7 +124,7 @@ class _TestBase(unittest.TestCase):
     def _get_key3_lookup(self):
         lookup = self.TestClass('Test',
                                 self.key3,
-                                parent_component=self.parent_component,
+                                parent_component=self.parent_component1,
                                 **self.test_class_args)
         lookup.init_cache()
         lookup._set_log_level(logging.DEBUG)

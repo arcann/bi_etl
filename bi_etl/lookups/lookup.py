@@ -12,7 +12,7 @@ from sqlalchemy.sql.expression import bindparam
 
 from bi_etl.exceptions import NoResultFound
 from bi_etl.memory_size import get_size_gc
-from bi_etl.components.row import Row
+from bi_etl.components.row.row import Row
 from bi_etl.exceptions import BeforeAllExisting
 from bi_etl.exceptions import AfterExisting
 
@@ -44,18 +44,18 @@ class Lookup(object):
         self.log.setLevel(log_level)
         
     @property 
-    def cache_enabled(self):
+    def cache_enabled(self) -> bool:
         if self._cache_enabled is None:
             return True
         else:
             return self._cache_enabled
         
     @cache_enabled.setter      
-    def cache_enabled(self, new_value):
+    def cache_enabled(self, new_value: bool):
         assert isinstance(new_value, bool)
         self._cache_enabled = new_value
         
-    def get_memory_size(self):
+    def get_memory_size(self) -> int:
         if self._row_size is not None:
             return self._row_size * len(self)
         else:
@@ -68,15 +68,15 @@ class Lookup(object):
                 self.log.warning(msg)
             return 0
 
-    def get_disk_size(self):
+    def get_disk_size(self) -> int:
         return 0
     
-    def add_size_to_stats(self):
+    def add_size_to_stats(self) -> None:
         self.stats['Final Row Count'] = len(self)
         self.stats['Memory Size'] = self.get_memory_size()
         self.stats['Disk Size'] = self.get_disk_size()
 
-    def get_list_of_lookup_column_values(self, row: Row):
+    def get_list_of_lookup_column_values(self, row: Row) -> list:
         lookup_values = list()
 
         for k in self.lookup_keys:
@@ -86,7 +86,7 @@ class Lookup(object):
     def get_hashable_combined_key(self, row: Row):
         return tuple(self.get_list_of_lookup_column_values(row))
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """
         Removes cache and resets to un-cached state
         """        
@@ -94,13 +94,13 @@ class Lookup(object):
             del self.cache
         self.cache = None
     
-    def __len__(self):
+    def __len__(self) -> int:
         if self.cache is not None:
             return len(self.cache)
         else:
             return 0
 
-    def init_cache(self):
+    def init_cache(self) -> None:
         """
         Initializes the cache as empty.
         """
@@ -109,12 +109,12 @@ class Lookup(object):
         if self.cache_enabled:         
             self.cache = dict()
 
-    def _get_first_row_size(self, row):
+    def _get_first_row_size(self, row) -> int:
         # get_size_gc is slow but shouldn't be too bad twice (once here and once below in _get_estimate_row_size)
         self._row_size = get_size_gc(row)
         # self.log.debug('First row memory size {:,} bytes (includes overhead)'.format(self._row_size ))
         
-    def get_estimate_row_size(self, force_now=False):
+    def _check_estimate_row_size(self, force_now=False):
         if force_now or not self._done_get_estimate_row_size:
             row_cnt = len(self)        
             if force_now or row_cnt >= self._row_count_to_get_estimate_row_size:
@@ -124,15 +124,16 @@ class Lookup(object):
                 # get_size_gc is slow but shouldn't be too bad twice (once here and once above in _get_first_row_size)
                 total_cache_size = get_size_gc(self.cache)
                 new_row_size = math.ceil(total_cache_size / row_cnt)
-                msg = '{lookup_name} Row memory size now estimated at {size:,} bytes per row using cache of {cnt:,} rows'
-                msg = msg.format(lookup_name = self.lookup_name,
-                                 size=new_row_size,
-                                 cnt=row_cnt)
-                self.log.debug(msg)
+                self.log.debug('{lookup_name} Row memory size now estimated at {size:,} '
+                               'bytes per row using cache of {cnt:,} rows'
+                               .format(lookup_name = self.lookup_name,
+                                       size=new_row_size,
+                                       cnt=row_cnt)
+                )
                 
                 self._row_size = new_row_size     
 
-    def cache_row(self, row: Row, allow_update = True):
+    def cache_row(self, row: Row, allow_update: bool = True):
         """
         Adds the given row to the cache for this lookup.
         
@@ -166,7 +167,7 @@ class Lookup(object):
             if self._row_size is None:   
                 self._get_first_row_size(row)
             else:
-                self.get_estimate_row_size()
+                self._check_estimate_row_size()
 
     def commit(self):
         """
@@ -174,7 +175,7 @@ class Lookup(object):
         """
         pass
         
-    def uncache_row(self, row):
+    def uncache_row(self, row: Row):
         if self.cache is not None:
             try:
                 lk_tuple = self.get_hashable_combined_key(row)
@@ -199,7 +200,7 @@ class Lookup(object):
             for row in self.cache.values():
                 yield row
 
-    def find_where(self, key_names, key_values_dict, limit= None):
+    def find_where(self, key_names: list, key_values_dict: dict, limit: int = None):
         """
         Scan all cached rows (expensive) to find list of rows that match criteria.
         """
@@ -216,7 +217,7 @@ class Lookup(object):
                     break
         return results
             
-    def uncache_where(self, key_names, key_values_dict):
+    def uncache_where(self, key_names: list, key_values_dict: dict):
         """
         Scan all cached rows (expensive) to find rows to remove.
         """
@@ -224,7 +225,7 @@ class Lookup(object):
         for row in deletes:
             self.uncache_row(row)
 
-    def find_in_cache(self, row):
+    def find_in_cache(self, row: Row):
         """
         Find a matching row in the lookup based on the lookup index (keys)
         """
@@ -239,7 +240,7 @@ class Lookup(object):
             except KeyError as e:
                 raise NoResultFound(e)
             
-    def has_row(self, row):
+    def has_row(self, row: Row) -> bool:
         try:
             self.find_in_cache(row)
         except (NoResultFound, BeforeAllExisting, AfterExisting):
@@ -256,7 +257,7 @@ class Lookup(object):
             col_num += 1
         return stmt
         
-    def _get_remote_stmt_where_values(self, row):
+    def _get_remote_stmt_where_values(self, row: Row) -> dict:
         values_dict = dict()
         col_num = 1
         for key_val in self.get_list_of_lookup_column_values(row):            
@@ -264,7 +265,7 @@ class Lookup(object):
             col_num += 1
         return values_dict
     
-    def find_in_remote_table(self, row):
+    def find_in_remote_table(self, row: Row) -> Row:
         """
         Find a matching row in the lookup based on the lookup index (keys)
         
@@ -281,7 +282,7 @@ class Lookup(object):
         if len(rows) == 0:
             raise NoResultFound()
         elif len(rows) == 1:
-            return Row(rows[0])
+            return self.parent_component.Row(data=rows[0])
         else:
             msg = "{lookup_name} find_in_remote_table {row} matched multiple records {rows}"
             msg = msg.format(lookup_name = self.lookup_name,

@@ -10,6 +10,7 @@ from datetime import datetime, time
 
 __all__ = ['XLSXReader']
 
+
 class XLSXReader(ETLComponent):
     """
     XLSXReader will read rows from an Microsoft Excel XLSX formatted sheet.
@@ -56,7 +57,8 @@ class XLSXReader(ETLComponent):
         (inherited from ETLComponent)
     
     progress_message: str
-        The progress message to print. Default is ``"{logical_name} row # {row_number}"``. Note ``logical_name`` and ``row_number`` subs.
+        The progress message to print. Default is ``"{logical_name} row # {row_number}"``.
+        Note ``logical_name`` and ``row_number`` subs.
         (inherited from ETLComponent)
         
     restkey: str
@@ -81,7 +83,7 @@ class XLSXReader(ETLComponent):
             except AttributeError:
                 logical_name = str(self.file_name)
         
-        ## Don't pass kwargs up. They should be set here at the end
+        # Don't pass kwargs up. They should be set here at the end
         super(XLSXReader, self).__init__(task=task,
                                          logical_name= logical_name,
                                         )
@@ -99,10 +101,9 @@ class XLSXReader(ETLComponent):
         self.__workbook = None        
         self.__active_worksheet = None
         
-        ## Should be the last call of every init            
+        # Should be the last call of every init
         self.set_kwattrs(**kwargs)
-        
-        
+
     def __repr__(self):
         return "XLSXReader({})".format(self.logical_name)
     
@@ -122,7 +123,7 @@ class XLSXReader(ETLComponent):
     def start_row(self):
         """
         int
-            The sheet row to start reading datas from. Default = header_row + 1
+            The sheet row to start reading data from. Default = header_row + 1
         """
         if self.__start_row is not None:
             return self.__start_row
@@ -199,23 +200,23 @@ class XLSXReader(ETLComponent):
             if value == '':
                 value = None
         elif isinstance(value, datetime):
-            ## Excel time values of 12:00:00 AM come in as 1899-12-30 instead
+            # Excel time values of 12:00:00 AM come in as 1899-12-30 instead
             if value == datetime(1899,12,30):
                 value = time(12,0,0)        
         return value
     
     @staticmethod
     def _get_cell_values(row_cells):
-        ## Convert empty strings to None to be consistent with DB reads    
+        # Convert empty strings to None to be consistent with DB reads
         return list(map(XLSXReader._get_cell_value, row_cells))
         
     def read_header_row(self):
-        ##See https://openpyxl.readthedocs.org/en/latest/tutorial.html
+        # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
         row = next(self.active_worksheet.get_squared_range(1,self.header_row,None,self.header_row))
         return XLSXReader._get_cell_values(row) 
 
     def _raw_rows(self):
-        ##See https://openpyxl.readthedocs.org/en/latest/tutorial.html
+        # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
         self.__active_row = self.start_row
         for row in self.active_worksheet.iter_rows(row_offset=self.start_row-1):
             self.__active_row += 1            
@@ -233,4 +234,3 @@ class XLSXReader(ETLComponent):
             
     def close(self):
         super(XLSXReader, self).close()
-            

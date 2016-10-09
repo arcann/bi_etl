@@ -7,6 +7,7 @@ Created on Aug 28, 2014
 from bi_etl.scheduler.task import ETLTask, Status
 from bi_etl.components.table import Table
 
+
 class ETL_Task_Status_CD(ETLTask):
 
     def depends_on(self):
@@ -39,23 +40,22 @@ class ETL_Task_Status_CD(ETLTask):
                 status_name = status.name.replace('_',' ').title()
                 status_name = status_name.replace('Cpu','CPU')
                 row['status_name'] = status_name
-                ## Add delete_flag to source
+                # Add delete_flag to source
                 row['delete_flag'] = 'N'
                 
-                ##etl_task_status_cd.trace_data = True
-                ##self.debug_sql(True)
+                # etl_task_status_cd.trace_data = True
+                # self.debug_sql(True)
                 etl_task_status_cd.upsert(
                                           row, 
                                          )
-            
-                
+
             etl_task_status_cd.commit()
     
-            ##: Process deletes
+            # Process deletes
             log.info("Checking for deletes")
             logically_deleted = etl_task_status_cd.Row()
             logically_deleted['delete_flag'] = 'Y'
-            etl_task_status_cd.update_not_processed(logically_deleted,)
+            etl_task_status_cd.update_not_processed(logically_deleted)
     
             etl_task_status_cd.commit()
         log.info("Done")

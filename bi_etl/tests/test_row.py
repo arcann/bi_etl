@@ -10,11 +10,11 @@ from sqlalchemy.sql.schema import Column, Table, DEFAULT_NAMING_CONVENTION
 from sqlalchemy.engine.result import RowProxy
 from sqlalchemy.sql.sqltypes import Integer, String, Numeric
 from bi_etl.timer import Timer
-from bi_etl.components.row import Row
-from bi_etl.components.row.row_parent import RowParent
+from bi_etl.components.row.row import Row
 from bi_etl.conversions import nullif
 
 #pylint: disable=missing-docstring, protected-access
+from tests.dummy_etl_component import DummyETLComponent
 
 
 class TestRow(unittest.TestCase):
@@ -32,23 +32,26 @@ class TestRow(unittest.TestCase):
                       'lower': 'two',
                       'UPPER': 1.5,
                       }
-        self.row1 = Row(self.source1)
+        self.parent_component1 = DummyETLComponent()
+        self.row1 = self.parent_component1.Row(self.source1)
         
         # Make a SQLAlchemy type of row (RowProxy)
         self.source2 = self._make_row_from_dict(self.source1)
-        self.row2 = Row(self.source2, name='my_row_name')
+        self.parent_component2 = DummyETLComponent(logical_name='my_row_name')
+        self.row2 = self.parent_component2.Row(self.source2)
         
         # Row3 will be our only row with a known order
-        self.row3_parent = RowParent(logical_name='row3', primary_key=['MixedCase'])
-        self.keys= ['MixedCase', 'lower', 'UPPER']
-        self.values= [1, 'two', 1.5]
-        self.row3 = Row(list(zip(self.keys, self.values)), parent=self.row3_parent)        
+        self.parent_component2 = DummyETLComponent(logical_name='row3', primary_key=['MixedCase'])
+        self.parent_component2.all_rows_same_columns = True
+        self.columns = ['MixedCase', 'lower', 'UPPER']
+        self.values = [1, 'two', 1.5]
+        self.row3 = self.parent_component2.Row(list(zip(self.columns, self.values)))
         
     def tearDown(self):
         pass
     
     def test_init_iter_zip(self):        
-        for k in self.keys:
+        for k in self.columns:
             self.assertEqual(self.row1[k], self.row3[k])
             
     def test_column_count(self):
@@ -105,12 +108,6 @@ class TestRow(unittest.TestCase):
         # For upper case columns we can access it by any case
         self._test_transform_single_case_example('UPPER')
 
-    def testDefaultName(self):
-        row1_name = self.row1.name
-        self.assertIsInstance(row1_name, str)
-        for c in self.source1:
-            self.assertIn(str(c), row1_name)
-    
     def _make_row_from_dict(self, row_dict):
         class MockMeta(object):
             def __init__(self, keys):
@@ -182,6 +179,7 @@ class TestRow(unittest.TestCase):
                 
             def _add_table(self, name, schema, table):
                 pass
+
             def _remove_table(self, name, schema):
                 pass
         metadata = MockMeta()
@@ -262,8 +260,8 @@ class TestRow(unittest.TestCase):
     def test_columns_in_order(self):
         # We have to use the list of tuple init call to maintain the ordering
         test_row = self.row3
-        columns_in_order = test_row.columns_in_order()
-        self.assertEqual(self.keys, columns_in_order)
+        columns_in_order = test_row.columns_in_order
+        self.assertEqual(self.columns, columns_in_order)
         
     def test_by_position(self):
         test_row = self.row3
@@ -273,7 +271,7 @@ class TestRow(unittest.TestCase):
         test_row = self.row3.clone()
         test_row.set_by_position(1, 'abc')
         self.assertEqual(test_row.get_by_position(1), 'abc')
-        self.assertEqual(test_row[self.keys[1-1]], 'abc')  # -1 because positions are 1 based
+        self.assertEqual(test_row[self.columns[1 - 1]], 'abc')  # -1 because positions are 1 based
         
           
     def _test_create_performance(self):
@@ -350,7 +348,7 @@ class TestRow(unittest.TestCase):
         dict_seconds = timer.seconds_elapsed
         timer.reset()        
         for _ in range(self.set_new_performance_rows):
-            row = Row()
+            row = self.parent_component1.Row()
             for i in range(self.set_new_performance_columns):
                 row['new key {}'.format(i)] = 'new value {}'.format(i)            
         timer.stop()

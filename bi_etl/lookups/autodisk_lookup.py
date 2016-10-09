@@ -171,7 +171,7 @@ class AutoDiskLookup(Lookup):
                 self.disk_cache.init_cache()
                 # Do not warn about protected access to _get_estimate_row_size
                 # pylint: disable=protected-access
-                self.cache.get_estimate_row_size(force_now=True)
+                self.cache._check_estimate_row_size(force_now=True)
                 self.disk_cache._row_size = self.cache._row_size
                 self.disk_cache._done_get_estimate_row_size = self.cache._done_get_estimate_row_size
             timer = Timer()

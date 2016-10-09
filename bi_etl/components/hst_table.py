@@ -14,7 +14,7 @@ from conversions import ensure_datetime
 from sqlalchemy.sql.expression import and_
 
 from bi_etl.components.table import Table
-from bi_etl.components.row import Row
+from bi_etl.components.row.row import Row
 from bi_etl.exceptions import AfterExisting, NoResultFound, BeforeAllExisting
 from bi_etl.lookups.autodisk_range_lookup import AutoDiskRangeLookup
 from bi_etl.timer import Timer
@@ -1136,7 +1136,7 @@ class HistoryTable(Table):
         """
         if self.delete_flag is None:
             raise ValueError('delete_flag is not set')
-        logically_deleted = self.Row(name='logically_deleted')
+        logically_deleted = self.Row(logical_name='logically_deleted')
         logically_deleted[self.delete_flag] = self.delete_flag_yes
         if self.last_update_date is not None:
             logically_deleted[self.last_update_date] = datetime.now()

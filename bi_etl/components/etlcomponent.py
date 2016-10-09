@@ -9,10 +9,11 @@ from operator import attrgetter
 from typing import Iterable
 
 import bi_etl
-from bi_etl.components.row import Row
+from bi_etl.components.row.row import Row
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
+from components.row.row_iteration_header import RowIterationHeader
 from sqlalchemy.sql.schema import Column
 
 __all__ = ['ETLComponent']
@@ -58,7 +59,8 @@ class ETLComponent(Iterable):
                  ):        
         self.default_stats_id = 'read'
         self.task = task            
-        self.logical_name = logical_name or id(self)
+        self.logical_name = logical_name or "{cls}#{id}".format(cls=self.__class__.__name__,
+                                                                id=id(self))
         self._primary_key = None
         self.__progress_frequency = self.DEFAULT_PROGRESS_FREQUENCY
         self.progress_message = self.DEFAULT_PROGRESS_MESSAGE
@@ -73,6 +75,7 @@ class ETLComponent(Iterable):
         self.__close_called = False
         self.read_batch_size = 1000
         self._iterator_applied_filters = False
+        self.all_rows_same_columns = False
         
         # self.log = logging.getLogger(__name__)
         self.log = logging.getLogger("{mod}.{cls}".format(mod = self.__class__.__module__, cls= self.__class__.__name__))
@@ -118,7 +121,7 @@ class ETLComponent(Iterable):
         pass
     
     def check_row_limit(self):
-        if not self.max_rows is None and self.rows_read >= self.max_rows:
+        if self.max_rows is not None and self.rows_read >= self.max_rows:
             self.log.info('Max rows limit {rows:,} reached'.format(rows=self.max_rows))
             return True
         else:
@@ -175,17 +178,18 @@ class ETLComponent(Iterable):
         for name, instance_list in duplicates.items():
             for instance_number, instance_index in enumerate(instance_list):
                 new_name = name + '_' + str(instance_number + 1)
-                self.log.warning('Column name {} in position {} was duplicated and was renamed to {}'.format(self._column_names[instance_index],
-                                                                                                             instance_index,
-                                                                                                             new_name,
-                                                                                                             ))
+                self.log.warning('Column name {} in position {} was duplicated and was renamed to {}'.format(
+                    self._column_names[instance_index],
+                    instance_index,
+                    new_name,
+                    ))
                 self._column_names[instance_index] = new_name     
     
     @property
     def primary_key(self):
         try:
             if self._primary_key is not None and len(self._primary_key) > 0:
-                if isinstance(self._primary_key[0],Column):
+                if isinstance(self._primary_key[0], Column):
                     self._primary_key = list(map(attrgetter('name'), self._primary_key))
                 return self._primary_key
             else:
@@ -229,15 +233,7 @@ class ETLComponent(Iterable):
     @property
     def row_name(self):
         return str(self)
-    
-    def Row(self, data=None, name=None):
-        """
-        Make a new empty row with this components structure.
-        """
-        if name is None:
-            name = self.row_name
-        return Row(data, name=name, primary_key=self.primary_key, parent= self)
-    
+
     @property
     def rows_read(self):
         """
@@ -267,6 +263,7 @@ class ETLComponent(Iterable):
     def iter_result(self,
                     result_list: object,
                     where_dict: dict = None,
+                    all_rows_same_columns = False,
                     progress_frequency: int = None,
                     stats_id: str = None,
                     parent_stats: Statistics = None) -> Iterable(Row):
@@ -280,7 +277,7 @@ class ETLComponent(Iterable):
             stats_id = self.default_stats_id
             if stats_id is None:
                 stats_id = 'read'
-        stats = self.get_stats_entry(stats_id=stats_id, parent_stats=parent_stats)
+        stats = self.get_unique_stats_entry(stats_id=stats_id, parent_stats=parent_stats)
         stats.timer.start()
         if progress_frequency is None:
             progress_frequency = self.__progress_frequency
@@ -291,6 +288,7 @@ class ETLComponent(Iterable):
             result_iter = self._fetch_many_iter(result_list)
         else:
             result_iter = result_list
+        this_iteration_header = self.generate_iteration_header(all_rows_same_columns=all_rows_same_columns)
 
         # noinspection PyTypeChecker
         for row in result_iter:
@@ -324,12 +322,15 @@ class ETLComponent(Iterable):
                     self.log_progress(row, stats)            
             if self.trace_data:
                 self.process_messages()
-                self.log.debug("READ {name}:\n{row}".format(name=self, row=dict_to_str(row).encode('utf-8',errors='replace')))
+                self.log.debug("READ {name}:\n{row}".format(name=self,
+                                                            row=dict_to_str(row).encode('utf-8',
+                                                                                        errors='replace')
+                                                            )
+                              )
             stats.timer.stop()
-            if isinstance(row, Row):
-                yield row
-            else:
-                yield self.Row(row)
+            if not isinstance(row, Row):
+                row = self.Row(row, iteration_header=this_iteration_header)
+            yield row
             stats.timer.start()
             if self.check_row_limit():
                 break            
@@ -424,4 +425,23 @@ class ETLComponent(Iterable):
     @property
     def statistics(self):
         return self._stats
+
+    def Row(self, data=None, logical_name=None, iteration_header=None, all_rows_same_columns=None):
+        """
+        Make a new empty row with this components structure.
+        """
+        if iteration_header is None:
+            iteration_header = self.generate_iteration_header(logical_name=logical_name,
+                                                              all_rows_same_columns=all_rows_same_columns)
+        return Row(iteration_header=iteration_header, data=data)
+
+    def generate_iteration_header(self, logical_name=None, all_rows_same_columns=False):
+        if logical_name is None:
+            logical_name = self.row_name
+        if all_rows_same_columns is None:
+            all_rows_same_columns = self.all_rows_same_columns
+        return RowIterationHeader(logical_name=logical_name,
+                                  primary_key=self.primary_key,
+                                  all_rows_same_columns=all_rows_same_columns,
+                                  parent= self)
 

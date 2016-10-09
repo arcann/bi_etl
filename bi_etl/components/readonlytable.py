@@ -12,7 +12,7 @@ from typing import Iterable
 import sqlalchemy
 from bi_etl import Timer
 from bi_etl.components.etlcomponent import ETLComponent
-from bi_etl.components.row import Row
+from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.exceptions import NoResultFound, MultipleResultsFound
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
@@ -108,8 +108,7 @@ class ReadOnlyTable(ETLComponent):
         super(ReadOnlyTable, self).__init__(task= task,
                                             logical_name= table_name,
                                             )
-        
-        
+        self.all_rows_same_columns = True
         self.__lookups = dict()
         # Default lookup class is AutoDiskLookup
         self.default_lookup_class = AutoDiskLookup
@@ -333,7 +332,7 @@ class ReadOnlyTable(ETLComponent):
             raise NoResultFound()
         row2 = results.fetchone()
         if row2 is not None:
-            raise MultipleResultsFound([row1,row2])
+            raise MultipleResultsFound([row1, row2])
         return self.Row(row1)
     
     def select(self, column_list = None, exclude_cols = None):
@@ -560,6 +559,7 @@ class ReadOnlyTable(ETLComponent):
                                           )
         return self.iter_result(result_rows_iter, 
                                 where_dict= where_dict,
+                                all_rows_same_columns = True,
                                 progress_frequency= progress_frequency,
                                 stats_id=stats_id, 
                                 parent_stats=parent_stats
@@ -671,17 +671,17 @@ class ReadOnlyTable(ETLComponent):
                         ):
         row = self.Row()
         for column in self.columns:
-            targetType = column.type
+            target_type = column.type
             if self.custom_special_values and column.name in self.custom_special_values:
-                cust_value = self.custom_special_values[column.name]
+                custom_value = self.custom_special_values[column.name]
                 # Note: We test for setitem because dict like containers have it but str doesn't have it.
-                if hasattr(cust_value,'__setitem__'):  
-                    row[column.name] = cust_value[short_char]
+                if hasattr(custom_value,'__setitem__'):
+                    row[column.name] = custom_value[short_char]
                 else:
-                    row[column.name] = cust_value
+                    row[column.name] = custom_value
             elif column.name == self.delete_flag:
                 row[column.name] = 'N'
-            elif isinstance(targetType, sqltypes.String):
+            elif isinstance(target_type, sqltypes.String):
                 if column.name in self.special_values_descriptive_columns:
                     row[column.name] = long_char
                 if column.type.length is None:
@@ -690,17 +690,17 @@ class ReadOnlyTable(ETLComponent):
                     row[column.name] = long_char
                 else:                 
                     row[column.name] = short_char
-            elif (   isinstance(targetType, sqltypes.DATE) 
-                or isinstance(targetType, sqltypes.DATETIME) 
-                or isinstance(targetType, sqlalchemy.types.DateTime)
+            elif (   isinstance(target_type, sqltypes.DATE)
+                or isinstance(target_type, sqltypes.DATETIME)
+                or isinstance(target_type, sqlalchemy.types.DateTime)
                ): 
                 row[column.name] = date_value
-            elif (isinstance(targetType, sqltypes.INTEGER)
-                  or isinstance(targetType, sqltypes.Numeric)
+            elif (isinstance(target_type, sqltypes.INTEGER)
+                  or isinstance(target_type, sqltypes.Numeric)
                   ):
                 row[column.name] = int_value
-            elif (   isinstance(targetType, sqltypes.FLOAT)
-                  or isinstance(targetType, sqltypes.Numeric)
+            elif (   isinstance(target_type, sqltypes.FLOAT)
+                  or isinstance(target_type, sqltypes.Numeric)
                   ):
                 row[column.name] = float(int_value)
         return row
@@ -734,7 +734,7 @@ class ReadOnlyTable(ETLComponent):
         =========== ========= 
         
         """
-        return self.get_special_row('!','Invalid',-8888,datetime(9999,8,1))
+        return self.get_special_row('!', 'Invalid', -8888, datetime(9999, 8, 1))
     
     def get_not_applicable_row(self):
         """
@@ -749,7 +749,7 @@ class ReadOnlyTable(ETLComponent):
         Date        9999-7-1
         =========== =========          
         """
-        return self.get_special_row('~','Not Applicable',-7777,datetime(9999,7,1))        
+        return self.get_special_row('~', 'Not Applicable', -7777, datetime(9999, 7, 1))
     
     def get_various_row(self):
         """
@@ -792,7 +792,12 @@ class ReadOnlyTable(ETLComponent):
         if not self.__lookups:
             self.__lookups = dict()            
         if lookup_name in self.__lookups:
-            self.log.warning("{} define_lookup is overriding the {} lookup with {}".format(self, lookup_name, lookup_keys))
+            self.log.warning("{} define_lookup is overriding the {} lookup with {}".format(
+                self,
+                lookup_name,
+                lookup_keys
+                )
+            )
         if lookup_class is None:
             lookup_class = self.default_lookup_class
         if lookup_class_kwargs is None:
@@ -812,7 +817,8 @@ class ReadOnlyTable(ETLComponent):
     def _check_pk_lookup(self):
         if not self.__lookups:
             self.__lookups = dict()
-        # Check that we have setup the PK lookup. Late binding so that it will take overrides to the default lookup class
+        # Check that we have setup the PK lookup.
+        # Late binding so that it will take overrides to the default lookup class
         if ReadOnlyTable.PK_LOOKUP not in self.__lookups:
             if self.primary_key:    
                 self.define_lookup(ReadOnlyTable.PK_LOOKUP, self.primary_key)
