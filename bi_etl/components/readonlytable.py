@@ -531,7 +531,7 @@ class ReadOnlyTable(ETLComponent):
                     stmt = stmt.order_by(*order_by)
                 else:
                     stmt = stmt.order_by(order_by)
-            
+            self.log.debug(stmt)
             stats.timer.start() 
             select_result = self.execute(stmt)
             stats.timer.stop()
