@@ -4,9 +4,10 @@ Created on Sep 17, 2014
 @author: woodd
 """
 
-from datetime import datetime
 import timeit
 from collections import OrderedDict
+from datetime import datetime
+
 
 class Timer(object):
 
@@ -22,22 +23,22 @@ class Timer(object):
             self.start()
 
     @staticmethod
-    def now():
+    def now() -> float:
         return timeit.default_timer()
 
     @property
-    def seconds_elapsed(self):
+    def seconds_elapsed(self) -> float:
         if self.running:
             return self.stored_time + (Timer.now() - self.start_time_precise)
         else:
             return self.stored_time
 
     @property
-    def seconds_elapsed_formatted(self):
+    def seconds_elapsed_formatted(self) -> str:
         return "{:.3f}".format(self.seconds_elapsed)
 
     @property
-    def statistics(self):
+    def statistics(self) -> OrderedDict:
         stats = OrderedDict()
         if self.first_start_time != self.start_time:
             stats['first start time'] = self.first_start_time
@@ -51,24 +52,26 @@ class Timer(object):
         else:
             return {self.task_name: stats}
 
-    def message(self, task_name = None):
+    def message(self, task_name = None) -> str:
         if not task_name:
             task_name = self.task_name or "Un-named task"
         if self.running:
             self.stop()
         return "{task} took {secs}".format(task = task_name, secs = self.seconds_elapsed)
 
-    def message_detailed(self, task_name = None):
+    def message_detailed(self, task_name = None) -> str:
         if not task_name:
             task_name = self.task_name or "Un-named task"
         if self.running:
             self.stop()
-        return "{task} started at {start} stopped at {stop} and took {secs} seconds".format(task = task_name,
-                                                                                            start = self.start_time,
-                                                                                            stop = self.stop_time,
-                                                                                            secs = self.seconds_elapsed)
+        return "{task} started at {start} stopped at {stop} and took {secs} seconds"\
+            .format(task = task_name,
+                    start = self.start_time,
+                    stop = self.stop_time,
+                    secs = self.seconds_elapsed
+                    )
 
-    def start(self):
+    def start(self)-> None:
         if not self.running:
             self.start_time = datetime.now()
             if self.first_start_time is None:
@@ -76,15 +79,17 @@ class Timer(object):
             self.start_time_precise = Timer.now()
             self.running = True
 
-    def stop(self):
+    def stop(self)-> None:
         if self.running:
             self.stop_time = datetime.now()
-            if not self.start_time_precise is None:
+            if self.start_time_precise is not None:
                 self.stored_time += Timer.now() - self.start_time_precise
             else:
-                raise ValueError("stop called on Timer that was not started. Name={}".format(self.task_name))
+                raise ValueError("stop called on Timer that was not started. Name={}"
+                                 .format(self.task_name)
+                                 )
             self.running = False
 
-    def reset(self):
+    def reset(self)-> None:
         """Resets the clock statistics and restarts it."""        
         self.__init__()
