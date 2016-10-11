@@ -33,6 +33,7 @@ class Row(object):
         # or have a way of retrieving in __setstate__
         super().__init__()
         # We need to accept None for iteration_header for shelve to be efficient
+        self._data_values = list()
         if iteration_header is not None:
             assert isinstance(iteration_header, RowIterationHeader), \
                 "First argument to Row needs to be RowIterationHeader type"
@@ -40,8 +41,6 @@ class Row(object):
             self.iteration_header.add_row(self)
             ## Build out the list ahead of time
             ##self._data_values = [None for _ in range(self.iteration_header.column_count())]
-        else:
-            self._data_values = list()
         self.status = status
 
         # Populate our data
@@ -200,15 +199,12 @@ class Row(object):
             name=self.name,
             status=self.status,
             pk = self.primary_key,
-            content=dict_to_str(self)
+            content=self.str_formatted()
         )
 
     def __str__(self):
         if self.primary_key is not None:
-            try:
-                key_values = list(self.subset(keep_only=self.primary_key).values())
-            except KeyError as e:
-                key_values = list(str(e))
+            key_values = [(col, self.get(col, '<N/A>')) for col in self.primary_key]
             return "{name} key_values={keys} status={s}".format(name=self.name,
                                                                 keys=key_values,
                                                                 s=self.status
@@ -231,15 +227,28 @@ class Row(object):
 
     def __getitem__(self, column_specifier):
         column_name = self._get_name(column_specifier)
-        pos = self.iteration_header.get_column_position(column_name)
-        return self._data_values[pos]
+        position = self.iteration_header.get_column_position(column_name)
+        if position < len(self._data_values):
+            return self._data_values[position]
+        else:
+            return None
+
+    def get(self, column_specifier, default_value=None):
+        column_name = self._get_name(column_specifier)
+        try:
+            position = self.iteration_header.get_column_position(column_name)
+            if position < len(self._data_values):
+                return self._data_values[position]
+        except KeyError:
+            pass
+        return default_value
 
     def _extend_to_size(self, desired_size):
-        if len(self._data_values) < desired_size:
-            self._data_values.extend([None for _ in range(desired_size - len(self._data_values))])
+        if len(self._data_values) <= desired_size:
+            self._data_values.extend([None for _ in range(desired_size + 1 - len(self._data_values))])
 
     def _raw_setitem(self, column_name, value):
-        position = self.iteration_header.get_column_position(column_name)
+        position = self.iteration_header.get_column_position(column_name, allow_create=True)
         self._extend_to_size(position)
         self._data_values[position] = value
 
@@ -256,7 +265,7 @@ class Row(object):
         Get the column name in a given position.
         Note: The first column position is 1 (not 0 like a python list).
         """
-        assert 0 > position > self.iteration_header.column_count(), IndexError(
+        assert 0 < position <= self.iteration_header.column_count(), IndexError(
             "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count())
         )
 
@@ -268,7 +277,7 @@ class Row(object):
         Get the column value by position.
         Note: The first column position is 1 (not 0 like a python list).
         """
-        assert 0 > position > self.iteration_header.column_count(), IndexError(
+        assert 0 < position <= self.iteration_header.column_count(), IndexError(
             "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count())
         )
         if position <= len(self._data_values):
@@ -282,7 +291,7 @@ class Row(object):
         Set the column value by position.
         Note: The first column position is 1 (not 0 like a python list).
         """
-        assert 0 > position > self.iteration_header.column_count(), IndexError(
+        assert 0 < position <= self.iteration_header.column_count(), IndexError(
             "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count())
         )
         self._extend_to_size(position)
@@ -332,7 +341,13 @@ class Row(object):
 
     def __delitem__(self, column_specifier):
         column_name = self._get_name(column_specifier)
-        self.iteration_header = self.iteration_header.get_next_header('-:' + column_name)
+        ###self.iteration_header = self.iteration_header.get_next_header('-:' + column_name)
+        # TODO: We need to know if the header returned is before or after the remove
+        # Or rather we need to call like this
+        self.iteration_header = self.iteration_header.remove_column(column_name, self)
+        # Then the iteration header would either pick a new header or build one
+        # it would also modify the row values as required
+        ###############
         position = self.iteration_header.remove_column(column_name)
         if position <= len(self._data_values):
             del self._data_values[position]
@@ -352,10 +367,10 @@ class Row(object):
             Ignore (don't raise error) if we don't have a column with a given name
             Defaults to False
         """
-        self.iteration_header = self.iteration_header.get_next_header('-:*')
+
         for column_specifier in remove_list:
             try:
-                column_name = self._get_name(column_specifier)
+
                 position = self.iteration_header.remove_column(column_name)
                 if position <= len(self._data_values):
                     del self._data_values[position]
@@ -434,7 +449,7 @@ class Row(object):
         """
         A list of the columns of this row (order not guaranteed in child instances).
         """
-        return self._columns_in_order
+        return self.iteration_header.columns_in_order
 
     @property
     def column_set(self):
@@ -579,7 +594,7 @@ class Row(object):
         try:
             column_name = self._get_name(column_specifier)
             position = self.iteration_header.get_column_position(column_name)
-            value = self.get_by_position(position)
+            value = self._data_values[position]
         except KeyError as e:
             # If we get here, everything failed
             if raise_on_not_exist:

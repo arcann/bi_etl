@@ -3,6 +3,7 @@ Created on May 26, 2015
 
 @author: woodd
 """
+import functools
 from operator import attrgetter
 from typing import Union, List, Iterable
 
@@ -67,6 +68,7 @@ class RowIterationHeader(object):
                                             parent=None
                                             )
             new_header.columns_in_order = self.columns_in_order
+            new_header._columns_positions = self._columns_positions
 
             self._actions_to_next_headers[action] = new_header
         return self._actions_to_next_headers[action]
@@ -145,11 +147,11 @@ class RowIterationHeader(object):
                                 )
                         )
 
-    def get_column_position(self, column_name):
+    def get_column_position(self, column_name, allow_create=False):
         try:
-            return self._columns_positions[column_name]
+            position = self._columns_positions[column_name]
         except KeyError:
-            if self.columns_frozen:
+            if self.columns_frozen or not allow_create:
                 raise self._key_error(column_name)
             else:
                 new_pos = len(self.columns_in_order)
@@ -157,8 +159,11 @@ class RowIterationHeader(object):
                 self._columns_positions[column_name] = new_pos
                 self._cached_column_set = None
                 self._cached_positioned_column_set = None
+                position = new_pos
+        return position
 
-    def rename_column(self, old_name, new_name, ignore_missing = False) -> int:
+    @functools.lru_cache()
+    def header_rename_column(self, old_name, new_name, ignore_missing = False) -> int:
         """
         Rename a column
 
@@ -180,11 +185,12 @@ class RowIterationHeader(object):
             self.columns_in_order[position] = new_name
             del self._columns_positions[old_name]
             self._columns_positions[new_name] = position
-            try:
-                pk_position = self.primary_key.index(old_name)
-                self.primary_key[pk_position] = new_name
-            except ValueError:
-                pass
+            if self.primary_key is not None:
+                try:
+                    pk_position = self.primary_key.index(old_name)
+                    self.primary_key[pk_position] = new_name
+                except ValueError:
+                    pass
 
             return position
 
@@ -284,9 +290,9 @@ class RowIterationHeader(object):
         old_names = self.columns_in_order.copy()
         #old_name_positions = self._columns_positions.copy()
         self.rename_columns(rename_map)
-        for old_column_name, parent_position in enumerate(old_names):
+        for parent_position, old_column_name in enumerate(old_names):
             remove_column = True
-            new_column_name = self.get_column_position(parent_position)
+            new_column_name = self.columns_in_order[parent_position]
             if old_column_name not in exclude:
                 if keep_only is None or new_column_name in keep_only:
                     position_mapping_list.append(parent_position)

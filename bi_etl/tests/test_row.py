@@ -245,7 +245,7 @@ class TestRow(unittest.TestCase):
         self.assertIn('UPPER', test_row)
         self.assertNotIn('MixedCase', test_row.column_set)
         self.assertEqual(test_row.column_count, 2, 'test_row.column_count #1 returned wrong value.')
-        self.assertEqual(test_row.columns_in_order(), ['lower', 'UPPER'])
+        self.assertEqual(test_row.columns_in_order, ['lower', 'UPPER'])
         
         test_row['New'] = 'New Value'
         test_row.remove_columns(['lower', 'UPPER'])
