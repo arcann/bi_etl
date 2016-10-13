@@ -468,10 +468,13 @@ class Table(ReadOnlyTable):
                                 else:
                                     target_column_value = str(target_column_value)
                                 #Note: t_type.length is None for CLOB fields
-                                if isinstance(t_type.length, int):                                    
-                                    if len(target_column_value) > t_type.length:
+                                try:
+                                    if t_type.length is not None and len(target_column_value) > t_type.length:
                                         type_error = True
                                         err_msg = "length {} > {} limit".format(len(target_column_value), t_type.length)
+                                except TypeError:
+                                    # t_type.length is not a comparable type
+                                    pass
                             elif t_type.python_type == bytes:
                                 if isinstance(target_column_value, str):
                                     target_column_value = target_column_value.encode('utf-8')
