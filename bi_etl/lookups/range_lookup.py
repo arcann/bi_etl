@@ -3,17 +3,16 @@ Created on Feb 27, 2015
 
 @author: woodd
 """
-from datetime import datetime, date
+from datetime import datetime
 
-from conversions import ensure_datetime
 from sortedcontainers.sorteddict import SortedDict
-
 from sqlalchemy.sql.expression import bindparam
 
+from bi_etl.components.row import Row
+from bi_etl.conversions import ensure_datetime
 from bi_etl.exceptions import BeforeAllExisting, AfterExisting, NoResultFound
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.utility import dict_to_str
-from bi_etl.components.row import Row
 
 __all__ = ['RangeLookup']
 

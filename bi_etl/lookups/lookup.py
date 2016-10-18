@@ -157,8 +157,8 @@ class Lookup(object):
             if not allow_update:
                 if lk_tuple in self.cache:
                     raise ValueError('Key value {} already in cache and allow_update was False.'
-                                     ' Possible error with the keys defined for this lookup {}.'
-                                     .format(lk_tuple, self.lookup_keys)
+                                     ' Possible error with the keys defined for this lookup {} {}.'
+                                     .format(lk_tuple, self.lookup_name, self.lookup_keys)
                     )
             self.cache[lk_tuple] = row
             

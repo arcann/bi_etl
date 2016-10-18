@@ -9,8 +9,8 @@ import warnings
 from typing import Iterable, Union, Callable, List
 
 from bi_etl.statistics import Statistics
-from components.row.row_status import RowStatus
-from conversions import ensure_datetime
+from bi_etl.components.row.row_status import RowStatus
+from bi_etl.conversions import ensure_datetime
 from sqlalchemy.sql.expression import and_
 
 from bi_etl.components.table import Table
@@ -626,6 +626,10 @@ class HistoryTable(Table):
         -------
         new_row
         """
+        if self.begin_date is None:
+            raise ValueError("begin_date column name not set")
+        if self.end_date is None:
+            raise ValueError("end_date column name not set")
         if source_row.get(self.begin_date, None) is None:
             if source_effective_date is None:
                 source_row[self.begin_date] = self.default_begin_date

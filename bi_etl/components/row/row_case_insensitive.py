@@ -9,7 +9,7 @@ from decimal import Decimal
 from operator import attrgetter
 from typing import Union, List, Iterable
 
-from components.row.row_case_sensitive import RowCaseSensitive
+from bi_etl.components.row.row_case_sensitive import RowCaseSensitive
 from sqlalchemy.sql.schema import Column
 
 from bi_etl.utility import dict_to_str

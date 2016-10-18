@@ -31,7 +31,7 @@ from bi_etl.conversions import str2datetime
 from bi_etl.conversions import str2time
 from bi_etl.conversions import nvl
 from bi_etl.conversions import replace_tilda
-from utility import dict_to_str
+from bi_etl.utility import dict_to_str
 
 
 class Table(ReadOnlyTable):
@@ -654,6 +654,9 @@ class Table(ReadOnlyTable):
         self._delete_pending_batch(parent_stats= parent_stats)
         # Need to update pending first in case we are doing update & insert pairs
         self._update_pending_batch(parent_stats= parent_stats)
+
+        # TODO: Remove test code
+        self.commit()
         
         if len(self.pending_insert_rows) == 0:
             return

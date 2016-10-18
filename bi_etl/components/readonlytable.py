@@ -108,8 +108,7 @@ class ReadOnlyTable(ETLComponent):
         super(ReadOnlyTable, self).__init__(task= task,
                                             logical_name= table_name,
                                             )
-        
-        
+
         self.__lookups = dict()
         # Default lookup class is AutoDiskLookup
         self.default_lookup_class = AutoDiskLookup

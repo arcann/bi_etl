@@ -250,12 +250,15 @@ class AutoDiskLookup(Lookup):
             # Note: The memory check needs to be here and not in Table.fill_cache since rows can be added to cache 
             #       during the load and not just by fill_cache.
             self.check_memory()
+
+            # TODO: Python memory is hard to free... so read first rows into RAM and then use disk for all rows after
             
             # We need to make sure each row is in only once place
             # Since disk_cache keeps a memory index, has_row should be fast
-            if self.disk_cache is not None and self.disk_cache.has_row(row):
+            lk_tuple = self.get_hashable_combined_key(row)
+            if self.disk_cache is not None and lk_tuple in self.disk_cache:
                 self.disk_cache.cache_row(row, allow_update= allow_update)
-            else:
+            else:  # Use RAM cache if the row is not already on disk
                 self.cache.cache_row(row, allow_update= allow_update)
         
     def uncache_row(self, row):
@@ -263,7 +266,6 @@ class AutoDiskLookup(Lookup):
             self.cache.uncache_row(row)
         if self.disk_cache is not None:
             self.disk_cache.uncache_row(row)
-            
 
     def __iter__(self):
         """
@@ -293,4 +295,3 @@ class AutoDiskLookup(Lookup):
                 return self.disk_cache.find_in_cache(row, **kwargs)
             else:
                 raise NoResultFound()
-    
