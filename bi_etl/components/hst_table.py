@@ -720,7 +720,19 @@ class HistoryTable(Table):
             new_row[self.begin_date_column] = source_effective_date
             # check that we aren't inserting after all existing rows
             if new_row[self.end_date_column] < source_effective_date:
-                warnings.warn("The table had an existing key sequence that did not cover all dates.")
+                self.warnings_issued += 1
+                if self.warnings_issued < self.warnings_limit:
+                    self.log.warning("The table had an existing key sequence that did not cover all dates. "
+                                     "Keys = {keys}.".format(
+                                        keys=self.get_pk_lookup().get_list_of_lookup_column_values(row)
+                                        )
+                                     )
+                    for row in self.get_pk_lookup().get_versions_collection(row):
+                        self.log.info("begin= {begin}\tend= {end}".format(
+                            begin= row[self.begin_date],
+                            end= row[self.end_date]
+                            ),
+                        )
                 new_row[self.end_date_column] = self.default_end_date
 
             # Retire the existing row (after clone so that the existing end_date is passed on to the new row)

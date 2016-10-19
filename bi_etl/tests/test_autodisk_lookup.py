@@ -13,6 +13,7 @@ from bi_etl.components.row import Row
 
 #pylint: disable=missing-docstring, protected-access
 
+
 class TestAutodiskLookup(_TestBase):
 
     def setUp(self):
@@ -24,33 +25,47 @@ class TestAutodiskLookup(_TestBase):
     def tearDown(self):
         super().tearDown()
         
-    def _makerow(self, rowKey):
+    def _makerow(self, row_key):
         source1 = { 
-                      self.key1[0]: rowKey,
-                      'strval': 'All good caches work perfectly {}'.format(rowKey),
-                      'floatval': 1000000.15111 + rowKey,
-                      'intval': 12345678900000 + rowKey,
-                      'datetimeval': datetime(2005,8,rowKey%25+1,rowKey%24,23,44)
+                      self.key1[0]:  row_key,
+                      'strval': 'All good caches work perfectly {}'.format(row_key),
+                      'floatval':    1000000.15111 + row_key,
+                      'intval':      12345678900000 + row_key,
+                      'datetimeval': datetime(2005, 8, row_key % 25 + 1, row_key % 24, 23, 44)
                   }
         return Row(source1, primary_key=self.key1)
         
     def testMemoryLimit(self):        
-        lookup = self.TestClass('Test',self.key1, parent_component=self.parent_component, **self.test_class_args)
+        lookup = self.TestClass('Test',
+                                self.key1,
+                                parent_component=self.parent_component,
+                                **self.test_class_args)
         rows_before_move = 100
         rows_after_move = 1000
         lookup.ram_check_row_interval = rows_before_move+1
-        rowKey = 0
+        row_key = 0
+        row_list = list()
         for _ in range(rows_before_move):
-            rowKey += 1
-            newRow = self._makerow(rowKey)
-            lookup.cache_row(newRow)
+            row_key += 1
+            new_row = self._makerow(row_key)
+            row_list.append(new_row)
+            lookup.cache_row(new_row)
+        # Force hitting RAM limit
         lookup.ram_check_row_interval = 1000
         lookup.max_process_ram_usage_mb = 1
         for _ in range(rows_after_move):
-            rowKey += 1
-            newRow = self._makerow(rowKey)            
-            lookup.cache_row(newRow)
+            row_key += 1
+            new_row = self._makerow(row_key)
+            row_list.append(new_row)
+            lookup.cache_row(new_row)
+
+        for row in row_list:
+            found_row = lookup.find_in_cache(row)
+            self.assertEquals(found_row, row)
+
         self.assertGreaterEqual(lookup.get_disk_size(), 1000, 'Disk usage not reported correctly')
+
+        self.assertEquals(len(lookup), rows_before_move + rows_after_move)
         
         self._post_test_cleanup(lookup)
     

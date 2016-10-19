@@ -5,8 +5,12 @@ Created on Feb 26, 2015
 """
 import warnings
 import logging
+from typing import Union
+
 import psutil
 import math
+
+from sortedcontainers.sorteddict import SortedDict
 
 from sqlalchemy.sql.expression import bindparam
 
@@ -228,16 +232,31 @@ class Lookup(object):
         """
         Find a matching row in the lookup based on the lookup index (keys)
         """
+        lk_tuple = self.get_hashable_combined_key(row)
+        return self.get_versions_collection(lk_tuple)
+
+    def get_versions_collection(self, lk_tuple) -> Union[Row, SortedDict]:
+        """
+        Placeholder for compatibility with range caches
+
+        Parameters
+        ----------
+        lk_tuple
+            The lookup tuple (see get_hashable_combined_key)
+
+        Returns
+        -------
+        A single row or an SortedDict of rows
+        """
         if not self.cache_enabled:
             raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
         if self.cache is None:
             self.init_cache()
-        else:
-            lk_tuple = self.get_hashable_combined_key(row)
-            try:
-                return self.cache[lk_tuple]
-            except KeyError as e:
-                raise NoResultFound(e)
+
+        try:
+            return self.cache[lk_tuple]
+        except KeyError as e:
+            raise NoResultFound(e)
             
     def has_row(self, row):
         try:

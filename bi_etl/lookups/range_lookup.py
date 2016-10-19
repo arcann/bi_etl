@@ -4,6 +4,7 @@ Created on Feb 27, 2015
 @author: woodd
 """
 from datetime import datetime
+from typing import Union
 
 from sortedcontainers.sorteddict import SortedDict
 from sqlalchemy.sql.expression import bindparam
@@ -37,7 +38,7 @@ class RangeLookup(Lookup):
             lk_tuple = self.get_hashable_combined_key(row)
             if self.cache is None:
                 self.init_cache()                
-            versions_collection = self.cache.get(lk_tuple,None)
+            versions_collection = self.cache.get(lk_tuple, None)
             effective_date = ensure_datetime(row[self.begin_date])
             assert isinstance(effective_date, datetime)
                 
@@ -87,7 +88,21 @@ class RangeLookup(Lookup):
             for versions_collection in self.cache.values():
                 for row in versions_collection.values():
                     yield row
-    
+
+    def get_versions_collection(self, row) -> Union[Row, SortedDict]:
+        if not self.cache_enabled:
+            raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
+        if self.cache is None:
+            self.init_cache()
+
+        lk_tuple = self.get_hashable_combined_key(row)
+        try:
+            versions_collection = self.cache[lk_tuple]
+            assert isinstance(versions_collection, SortedDict)
+            return versions_collection
+        except KeyError:
+            raise NoResultFound()
+
     # pylint: disable=arguments-differ
     def find_in_cache(self, row, effective_date= None):
         """
@@ -96,35 +111,26 @@ class RangeLookup(Lookup):
         Can raise NoResultFound if the key is not in the cache.
         Can raise BeforeAllExisting is the effective date provided is before all existing records.
         """
-        if not self.cache_enabled:
-            raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
-        if self.cache is None:
-            self.init_cache()
-        else:
-            lk_tuple = self.get_hashable_combined_key(row)
-            versions_collection = None
-            try:
-                if effective_date is None:
-                    effective_date = ensure_datetime(row[self.begin_date])
-                versions_collection = self.cache[lk_tuple]
-                assert isinstance(versions_collection, SortedDict)
-                if versions_collection:
-                    first_effective_index = versions_collection.bisect_right(effective_date)-1
-                    if first_effective_index <= -1:
-                        raise BeforeAllExisting(versions_collection[versions_collection.iloc[0]], effective_date)
-                    first_effective_row = versions_collection[versions_collection.iloc[first_effective_index]]
-                    # Check that record doesn't end before our date
-                    if ensure_datetime(first_effective_row[self.end_date]) < effective_date:
-                        raise AfterExisting(first_effective_row, effective_date)
-                    return first_effective_row
-            except KeyError:
-                raise NoResultFound()
-            except TypeError as e:
-                msg = str(e)
-                msg += "\nversions_collection = " + str(versions_collection)
-                msg += "\nversions_collection key[0]= " + str(versions_collection.keys()[0])
-                msg += "\neffective_date = " + str(effective_date)
-                raise TypeError(msg)
+        if effective_date is None:
+            effective_date = ensure_datetime(row[self.begin_date])
+
+        versions_collection = self.get_versions_collection(row)
+        assert isinstance(versions_collection, SortedDict)
+        try:
+            first_effective_index = versions_collection.bisect_right(effective_date)-1
+            if first_effective_index <= -1:
+                raise BeforeAllExisting(versions_collection[versions_collection.iloc[0]], effective_date)
+            first_effective_row = versions_collection[versions_collection.iloc[first_effective_index]]
+            # Check that record doesn't end before our date
+            if ensure_datetime(first_effective_row[self.end_date]) < effective_date:
+                raise AfterExisting(first_effective_row, effective_date)
+            return first_effective_row
+        except TypeError as e:
+            msg = str(e)
+            msg += "\nversions_collection = " + str(versions_collection)
+            msg += "\nversions_collection key[0]= " + str(versions_collection.keys()[0])
+            msg += "\neffective_date = " + str(effective_date)
+            raise TypeError(msg)
                 
     def _add_remote_stmt_where_clause(self, stmt):
         stmt = super(RangeLookup, self)._add_remote_stmt_where_clause(stmt)
