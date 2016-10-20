@@ -6,6 +6,7 @@ Created on Sep 15, 2014
 import errno
 import logging
 import traceback
+import warnings
 from queue import Empty
 
 from CaseInsensitiveDict import CaseInsensitiveDict
@@ -476,7 +477,7 @@ class ETLTask(object):
         if self.task_id is not None:
             self.scheduler.load_parameters(self)
 
-    def add_parameter(self,
+    def set_parameter(self,
                       param_name: str,
                       param_value: object,
                       local_only: bool = False,
@@ -506,7 +507,19 @@ class ETLTask(object):
         else:
             print("add_parameter local {}={}".format(param_name, param_value))
 
-    def add_parameters(self, local_only=False, commit=True, *args, **kwargs):
+    # Deprecated name
+    def add_parameter(self,
+                      param_name: str,
+                      param_value: object,
+                      local_only: bool = False,
+                      commit: bool = True):
+            warnings.warn("add_parameter is deprecated, please use set_parameter instead")
+            self.set_parameter(param_name=param_name,
+                               param_value=param_value,
+                               local_only=local_only,
+                               commit=commit)
+
+    def set_parameters(self, local_only=False, commit=True, *args, **kwargs):
         """
         Add multiple parameters to this task.
         Parameters can be passed in as any combination of:
@@ -529,7 +542,7 @@ class ETLTask(object):
         # Support add_parameters(param1='example', param2=100)
         self._parameter_dict.update(kwargs)
         for param_name, param_value in kwargs.items():
-            self.add_parameter(param_name, param_value, local_only=local_only, commit=commit)
+            self.set_parameter(param_name, param_value, local_only=local_only, commit=commit)
         # Also accept a list of dicts, tuples, or lists
         # eg. add_parameters( [ ('param1','example'), ('param2',100) ] )
         #  or add_parameters( [ ['param1','example'], ['param2',100] ] )
@@ -541,12 +554,20 @@ class ETLTask(object):
         for arg in args:
             if isinstance(arg, dict):
                 for param_name, param_value in arg.items():
-                    self.add_parameter(param_name, param_value, local_only=local_only, commit=commit)
+                    self.set_parameter(param_name, param_value, local_only=local_only, commit=commit)
             elif hasattr(arg, '__getitem__'):
                 if len(arg) == 2:
-                    self.add_parameter(arg[0], arg[1], local_only=local_only, commit=commit)
+                    self.set_parameter(arg[0], arg[1], local_only=local_only, commit=commit)
                 else:
                     raise ValueError("add_parameters sequence {} had unexpected length {}".format(arg, len(arg)))
+
+    # Deprecated name
+    def add_parameters(self, local_only=False, commit=True, *args, **kwargs):
+        warnings.warn("add_parameters is deprecated, please use set_parameters instead")
+        self.set_parameters(local_only=local_only,
+                            commit=commit,
+                            *args,
+                            **kwargs)
 
     def parameters(self):
         """
@@ -1035,7 +1056,7 @@ def run_task(task_name,
                              config=config,
                              )
         if parameters is not None and len(parameters) > 0:
-            etl_task.add_parameters(parameters)
+            etl_task.set_parameters(parameters)
         ran_ok = etl_task.run(no_mail=no_mail,
                               parent_to_child=parent_to_child,
                               child_to_parent=child_to_parent,
