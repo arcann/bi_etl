@@ -21,7 +21,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         with self.bind.connect() as connection:
             return connection.execute(sql)
     
-    def execute_procedure(self, procedure_name):
+    def execute_procedure(self, procedure_name, *args):
         """
         Execute a stored procedure 
         
@@ -29,6 +29,8 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         ----------
         procedure_name: str
             The procedure to run.
+        args:
+            The arguments to pass
             
         Raises
         ------
@@ -37,9 +39,15 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         sqlalchemy.exc.DatabaseError:
             Maybe?            
         """
-        ##TODO: Capture statistics (basic Timer)
-        ##TODO: support other database
         log = logging.getLogger(__name__)
-        sql_command = 'BEGIN {}; END;'.format(procedure_name)         
-        log.debug("SQL = {}".format(sql_command))
-        self.execute(sql_command)
+        log.debug("Calling procedure {} {}".format(procedure_name, args))
+        dpapi_connection = self.bind.raw_connection()
+        try:
+            cursor = dpapi_connection.cursor()
+            cursor.callproc(procedure_name, args)
+            results = list(cursor.fetchall())
+            cursor.close()
+            dpapi_connection.commit()
+        finally:
+            dpapi_connection.close()
+        return results

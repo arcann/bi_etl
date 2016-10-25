@@ -148,13 +148,10 @@ class ReadOnlyTable(ETLComponent):
             if not table_name_case_sensitive:
                 table_name = table_name.lower()
             self.table = sqlalchemy.schema.Table(table_name, database, autoload=True, quote=False)
-            
-            
-            
+
         if exclude_columns:
             self.exclude_columns(exclude_columns)
-        
-        
+
         self.custom_special_values = dict()
         
         # Should be the last call of every init            
@@ -814,7 +811,8 @@ class ReadOnlyTable(ETLComponent):
     def _check_pk_lookup(self):
         if not self.__lookups:
             self.__lookups = dict()
-        # Check that we have setup the PK lookup. Late binding so that it will take overrides to the default lookup class
+        # Check that we have setup the PK lookup.
+        # Late binding so that it will take overrides to the default lookup class
         if ReadOnlyTable.PK_LOOKUP not in self.__lookups:
             if self.primary_key:    
                 self.define_lookup(ReadOnlyTable.PK_LOOKUP, self.primary_key)
@@ -1015,7 +1013,15 @@ class ReadOnlyTable(ETLComponent):
         """
         Get by the primary key.
         """
-        return self.get_by_lookup(ReadOnlyTable.PK_LOOKUP,source_row, stats_id= stats_id, parent_stats=parent_stats)
+        if not isinstance(source_row, Row):
+            if isinstance(source_row, list):
+                source_row = self.Row(zip(self.primary_key, source_row))
+            else:
+                source_row = self.Row(zip(self.primary_key, [source_row]))
+        return self.get_by_lookup(ReadOnlyTable.PK_LOOKUP,
+                                  source_row,
+                                  stats_id= stats_id,
+                                  parent_stats=parent_stats)
 
     def get_by_lookup(self, 
                       lookup_name: str,

@@ -187,7 +187,7 @@ class ETLComponent(Iterable):
     def primary_key(self):
         try:
             if self._primary_key is not None and len(self._primary_key) > 0:
-                if isinstance(self._primary_key[0],Column):
+                if isinstance(self._primary_key[0], Column):
                     self._primary_key = list(map(attrgetter('name'), self._primary_key))
                 return self._primary_key
             else:
