@@ -93,11 +93,11 @@ class _TestBase(unittest.TestCase):
         self.assertRaises(ValueError, lookup.cache_row, row=self.row1, allow_update=False)
         
         # Test lookups
-        search_row1 = self.parent_component1.Row({ self.key1_1: 1,  })
+        search_row1 = self.parent_component1.Row( {self.key1_1: 1} )
         self.assertEqual(lookup.find_in_cache(search_row1), self.row1)
         
         # Test lookup fail
-        search_row2 = self.parent_component1.Row({ self.key1_1: 2,  })
+        search_row2 = self.parent_component1.Row( {self.key1_1: 2} )
         self.assertRaises(NoResultFound, lookup.find_in_cache, row=search_row2)
 
         self._post_test_cleanup(lookup)

@@ -4,9 +4,11 @@ Created on Sep 17, 2014
 
 @author: woodd
 """
+from bi_etl.components.row.row_status import RowStatus
 
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.utility import dict_to_str
-from components.row.row import Row
+from bi_etl.components.row.row import Row
 from sqlalchemy.sql.schema import Column
 
 
@@ -22,15 +24,11 @@ class RowCaseInsensitive(Row):
     __name_map_db = dict()
 
     def __init__(self,
+                 iteration_header: RowIterationHeader = None,
                  data=None,
-                 parent: 'bi_etl.components.etlcomponent.ETLComponent' = None,
-                 name: str = None,
-                 primary_key: list = None,
-                 status= None):
+                 status: RowStatus = None):
         super().__init__(data=data,
-                         parent=parent,
-                         name=name,
-                         primary_key=primary_key,
+                         iteration_header=iteration_header,
                          status=status)
 
     @staticmethod

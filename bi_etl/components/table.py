@@ -4,34 +4,34 @@ Created on Sep 17, 2014
 @author: woodd
 """
 import codecs
+import traceback
+import warnings
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from decimal import InvalidOperation
-import traceback
-import warnings
 from typing import Iterable, Union
 
-from bi_etl.components.row.row_status import RowStatus
-from bi_etl.statistics import Statistics
 from sqlalchemy.sql.expression import bindparam
 
 from bi_etl import Timer
+from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.readonlytable import ReadOnlyTable, NoResultFound
+from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row import Row
-from bi_etl.components.row.column_difference import ColumnDifference  
+from bi_etl.components.row.row_status import RowStatus
+from bi_etl.conversions import nvl
+from bi_etl.conversions import replace_tilda
 from bi_etl.conversions import str2date
+from bi_etl.conversions import str2datetime
 from bi_etl.conversions import str2decimal
 from bi_etl.conversions import str2float
 from bi_etl.conversions import str2int
-from bi_etl.utility import getIntegerPlaces
-from bi_etl.statement_queue import StatementQueue
-from bi_etl.components.etlcomponent import ETLComponent
-from bi_etl.exceptions import ColumnMappingError
-from bi_etl.conversions import str2datetime
 from bi_etl.conversions import str2time
-from bi_etl.conversions import nvl
-from bi_etl.conversions import replace_tilda
-from utility import dict_to_str
+from bi_etl.exceptions import ColumnMappingError
+from bi_etl.statement_queue import StatementQueue
+from bi_etl.statistics import Statistics
+from bi_etl.utility import dict_to_str
+from bi_etl.utility import getIntegerPlaces
 
 
 class Table(ReadOnlyTable):

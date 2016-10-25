@@ -11,7 +11,7 @@ from typing import Union, List, Iterable
 from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.utility import dict_to_str
-from components.row.row_iteration_header import RowIterationHeader
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from sqlalchemy.sql.schema import Column
 
 
@@ -39,8 +39,6 @@ class Row(object):
                 "First argument to Row needs to be RowIterationHeader type"
             self.iteration_header = iteration_header
             self.iteration_header.add_row(self)
-            ## Build out the list ahead of time
-            ##self._data_values = [None for _ in range(self.iteration_header.column_count())]
         self.status = status
 
         # Populate our data
@@ -72,15 +70,15 @@ class Row(object):
             's': status_value,
             'h': self.iteration_header.iteration_id,
             'v': self._data_values,
-            }
+        }
         return (self.__class__,
-                #A tuple of arguments for the callable object.
+                # A tuple of arguments for the callable object.
                 (),
                 # State to be passed to setstate
                 outgoing_dict,
-               )
+                )
 
-    #pylint: disable=attribute-defined-outside-init
+    # pylint: disable=attribute-defined-outside-init
     def __setstate__(self, incoming_dict):
         self.__dict__ = incoming_dict
         if incoming_dict['s'] is not None:
@@ -89,73 +87,72 @@ class Row(object):
             self.status = None
 
         self.iteration_header = RowIterationHeader.get_by_id(incoming_dict['h'])
-
         # Restore column values
-        for seq, value in enumerate(incoming_dict['v']):
-            self.set_by_position(seq, value)
+        self._data_values = incoming_dict['v']
+
+    def update_from_dict(self, source_dict):
+        for column_specifier, value in source_dict.items():
+            column_name = self._get_name(column_specifier)
+            self._raw_setitem(column_name, value)
+
+    def update_from_row_proxy(self, source_row):
+        for column_specifier, value in source_row.items():
+            column_name = self._get_name(column_specifier)
+            self._raw_setitem(column_name, value)
+
+    def update_from_tuples(self, tuples_list):
+        for column_specifier, value in tuples_list:
+            column_name = self._get_name(column_specifier)
+            self._raw_setitem(column_name, value)
+
+    def update_from_values(self, values_list):
+        if len(self.columns_in_order) >= (len(self._data_values) + len(values_list)):
+            self._data_values.extend(values_list)
+        else:
+            raise ValueError("Insufficient columns to store list of values in row.")
 
     def update(self, *args, **key_word_arguments):
+        if len(key_word_arguments) > 0:
+            self.update_from_dict(key_word_arguments)
+
         for source_data in args:
-            if source_data is None:
-                continue
             try:
-                # Check for dict like row
-                # sqlalchemy.engine.RowProxy doesn't have iter, but does have iterkeys
-                try:
-                    iterator = iter(source_data.keys())
-                except AttributeError:
-                    iterator = source_data
-
-                first_col = True
-                is_tuple = False
-                is_dict_like = False
-                name_needs_column_check = False
-                for k in iterator:
-                    if first_col:
-                        if isinstance(k, tuple):
-                            is_tuple = True
-                            name_needs_column_check = isinstance(k[0], Column)
+                source_data[None]
+                # Is a dict with None it it! That's odd, but...
+                self.update_from_dict(source_data)
+            except KeyError:
+                # Is a dict
+                self.update_from_dict(source_data)
+            except AttributeError:
+                self.update_from_row_proxy(source_data)
+            except TypeError as e:
+                # Not a dict
+                if hasattr(source_data, '__iter__') and not isinstance(source_data, str):
+                    try:
+                        source_data = list(source_data)
+                        # List of tuples (column_name, value) or list of values (only if we have column names already)
+                        if isinstance(source_data[0], tuple):
+                            self.update_from_tuples(source_data)
                         else:
-                            try:
-                                source_data[k]
-                                name_needs_column_check = isinstance(k, Column)
-                                is_dict_like = True
-                            except TypeError:
-                                # Probably list or list like
-                                pass
-                        first_col = False
-
-                    if is_tuple:
-                        column_name = self._get_name(k[0])
-                        self[column_name] = k[1]
-                    elif is_dict_like:
-                        if name_needs_column_check:
-                            column_name = self._get_name(k)
-                        else:
-                            column_name = k
-
-                        self[column_name] = source_data[k]
-                    else:  # List of values
-                        self._data_values.extend(k)
-
-            except AttributeError as e1:
-                # Check for SQLAlchemy ORM row object
-                # pylint: disable=protected-access
-                try:
-                    # noinspection PyProtectedMember
-                    # sqlalchemy.util._collections.ImmutableProperties
-                    attributes = source_data._sa_instance_state.attrs
-                    for a in attributes:  # instance of sqlalchemy.orm.state.AttributeState
-                        self._raw_setitem(a.key, getattr(source_data, a.key))
-                except AttributeError as e2:  # Not iterable
-                    raise ValueError("Row couldn't get set with {args}."
-                                     " First Error {e1}."
-                                     "Error when assuming SQLAlchemy ORM row object {e2})"
-                                     .format(e1=e1, e2=e2, args=args)
-                    )
-        for column_name, column_value in key_word_arguments.items():
-            column_name = self._get_name(column_name)
-            self[column_name] = column_value
+                            self.update_from_values(source_data)
+                    except TypeError as e1:
+                        try:
+                            # noinspection PyProtectedMember
+                            # sqlalchemy.util._collections.ImmutableProperties
+                            attributes = source_data._sa_instance_state.attrs
+                            for a in attributes:  # instance of sqlalchemy.orm.state.AttributeState
+                                self._raw_setitem(a.key, getattr(source_data, a.key))
+                        except AttributeError as e2:  # Not iterable
+                            raise ValueError("Row couldn't get set with {args}."
+                                             " First Error {e1}."
+                                             "Error when assuming SQLAlchemy ORM row object {e2})"
+                                             .format(e1=e1, e2=e2, args=source_data)
+                                             )
+                else:
+                    raise ValueError("Row couldn't get set with {atype} {args}."
+                                     " Error {e}."
+                                     .format(e=e, args=source_data, atype=type(args))
+                                     )
 
     def get_column_position(self, column_specifier):
         column_name = self._get_name(column_specifier)
@@ -243,22 +240,36 @@ class Row(object):
             pass
         return default_value
 
+    def as_dict(self) -> dict:
+        return dict(zip(self.columns_in_order, self._data_values))
+
+    def items(self):
+        for column_name, column_value in zip(self.columns_in_order, self._data_values):
+            yield column_name, column_value
+
+    def __len__(self):
+        return len(self.columns_in_order)
+
+    def __iter__(self):
+        for column_name in self.columns_in_order:
+            yield column_name
+
+    def __copy__(self):
+        return self.clone()
+
+    def keys(self):
+        return self.columns_in_order
+
     def _extend_to_size(self, desired_size):
         if len(self._data_values) <= desired_size:
             self._data_values.extend([None for _ in range(desired_size + 1 - len(self._data_values))])
 
     def _raw_setitem(self, column_name, value):
-        position = self.iteration_header.get_column_position(column_name, allow_create=True)
-        self._extend_to_size(position)
-        self._data_values[position] = value
+        self.iteration_header = self.iteration_header.row_set_item(column_name, value, self)
 
     def __setitem__(self, key, value):
         key_name = self._get_name(key)
-        try:
-            self._raw_setitem(key_name, value)
-        except KeyError:
-            self.iteration_header = self.iteration_header.get_next_header('+' + key_name)
-            self._raw_setitem(key_name, value)
+        self._raw_setitem(key_name, value)
 
     def get_name_by_position(self, position):
         """
@@ -270,7 +281,7 @@ class Row(object):
         )
 
         # -1 because positions are 1 based not 0 based
-        return self.iteration_header.columns_in_order[position-1]
+        return self.iteration_header._columns_in_order[position - 1]
 
     def get_by_position(self, position):
         """
@@ -285,6 +296,17 @@ class Row(object):
             return self._data_values[position - 1]
         else:
             return None
+
+    def set_by_zposition(self, zposition, value):
+        """
+        Set the column value by zposition (zero based)
+        Note: The first column position is 0 for this method
+        """
+        assert 0 <= zposition < self.iteration_header.column_count(), IndexError(
+            "Position {} is invalid. Expected 0 to {}".format(zposition, self.iteration_header.column_count())
+        )
+        self._extend_to_size(zposition+1)
+        self._data_values[zposition] = value
 
     def set_by_position(self, position, value):
         """
@@ -316,9 +338,9 @@ class Row(object):
         """
         old_name = self._get_name(old_name)
         new_name = self._get_name(new_name)
-        self.iteration_header = self.iteration_header.get_next_header('r:'+old_name)
-
-        self.iteration_header.rename_column(old_name, new_name, ignore_missing=ignore_missing)
+        self.iteration_header = self.iteration_header.rename_column(old_name,
+                                                                    new_name,
+                                                                    ignore_missing=ignore_missing)
 
     def rename_columns(self,
                        rename_map: Union[dict, List[tuple]],
@@ -336,21 +358,11 @@ class Row(object):
             Ignore (don't raise error) if we don't have a column with the name in old_name.
             Defaults to False
         """
-        self.iteration_header = self.iteration_header.get_next_header('r:*')
-        self.iteration_header.rename_columns(rename_map, ignore_missing=ignore_missing)
+        self.iteration_header = self.iteration_header.rename_columns(rename_map, ignore_missing=ignore_missing)
 
     def __delitem__(self, column_specifier):
         column_name = self._get_name(column_specifier)
-        ###self.iteration_header = self.iteration_header.get_next_header('-:' + column_name)
-        # TODO: We need to know if the header returned is before or after the remove
-        # Or rather we need to call like this
-        self.iteration_header = self.iteration_header.remove_column(column_name, self)
-        # Then the iteration header would either pick a new header or build one
-        # it would also modify the row values as required
-        ###############
-        position = self.iteration_header.remove_column(column_name)
-        if position <= len(self._data_values):
-            del self._data_values[position]
+        self.iteration_header = self.iteration_header.row_remove_column(column_name, self)
 
     def remove_columns(self,
                        remove_list,
@@ -367,18 +379,11 @@ class Row(object):
             Ignore (don't raise error) if we don't have a column with a given name
             Defaults to False
         """
-
         for column_specifier in remove_list:
-            try:
-
-                position = self.iteration_header.remove_column(column_name)
-                if position <= len(self._data_values):
-                    del self._data_values[position]
-            except KeyError as e:
-                if ignore_missing:
-                    pass
-                else:
-                    raise e
+            column_name = self._get_name(column_specifier)
+            self.iteration_header = self.iteration_header.row_remove_column(column_name,
+                                                                            row=self,
+                                                                            ignore_missing=ignore_missing)
 
     def clone(self) -> 'Row':
         """
@@ -394,7 +399,7 @@ class Row(object):
                exclude: Iterable = None,
                rename_map: Union[dict, List[tuple]] = None,
                keep_only: Iterable = None,
-              ) -> 'Row':
+               )-> 'Row':
         """
         Return a new row instance with a subset of the columns. Original row is not modified
         Excludes are done first, then renames and finally keep_only.
@@ -433,15 +438,10 @@ class Row(object):
             sub_row = self.clone()
         else:
             # Make a new header
-            new_iteration_header = self.iteration_header.get_next_header('subset')
-            position_mapping_list = new_iteration_header.subset(exclude=exclude,
-                                                                rename_map=rename_map,
-                                                                keep_only=keep_only)
-            # Make the new row with that new header
-            sub_row = self.__class__(iteration_header= new_iteration_header)
-            # Copy data
-            for parent_position in position_mapping_list:
-                sub_row._data_values.append( self._data_values[parent_position] )
+            sub_row = self.iteration_header.row_subset(row=self,
+                                                       exclude=exclude,
+                                                       rename_map=rename_map,
+                                                       keep_only=keep_only)
         return sub_row
 
     @property
@@ -449,7 +449,7 @@ class Row(object):
         """
         A list of the columns of this row (order not guaranteed in child instances).
         """
-        return self.iteration_header.columns_in_order
+        return self.iteration_header._columns_in_order
 
     @property
     def column_set(self):
@@ -519,7 +519,7 @@ class Row(object):
                 col_name=col_name,
                 type1=type(val1),
                 type2=type(val2),
-                )
+            )
             warnings.warn(msg)
             return str(val1) == str(val2)
 
@@ -564,7 +564,7 @@ class Row(object):
                                                                  old_value= existing_column_value,
                                                                  new_value= other_col_value,
                                                                  )
-                                            )
+                                                )
         return differences_list
 
     def transform(self,

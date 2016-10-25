@@ -13,7 +13,7 @@ from bi_etl.components.row.row import Row
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
-from components.row.row_iteration_header import RowIterationHeader
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from sqlalchemy.sql.schema import Column
 
 __all__ = ['ETLComponent']
@@ -129,9 +129,9 @@ class ETLComponent(Iterable):
     
     def log_progress(self, row, stats):
         try:
-            self.log.info(self.progress_message.format(row_number= stats['rows_read'],
-                                                       logical_name = self.logical_name,
-                                                       **row
+            self.log.info(self.progress_message.format(row_number=stats['rows_read'],
+                                                       logical_name=self.logical_name,
+                                                       **row.as_dict()
                                                        )
                           )
         except (IndexError, ValueError, KeyError) as e:
@@ -301,7 +301,10 @@ class ETLComponent(Iterable):
                             break
                     if not passed_filter:
                         continue
-                                
+            if not isinstance(row, Row):
+                row = Row(data=row, iteration_header=this_iteration_header)
+            # If we already have a Row object, we'll keep the same iteration header
+
             # Add to global read counter
             self._rows_read += 1 
             # Add to current stat counter
@@ -328,8 +331,7 @@ class ETLComponent(Iterable):
                                                             )
                               )
             stats.timer.stop()
-            if not isinstance(row, Row):
-                row = self.Row(row, iteration_header=this_iteration_header)
+
             yield row
             stats.timer.start()
             if self.check_row_limit():
@@ -443,5 +445,5 @@ class ETLComponent(Iterable):
         return RowIterationHeader(logical_name=logical_name,
                                   primary_key=self.primary_key,
                                   all_rows_same_columns=all_rows_same_columns,
-                                  parent= self)
+                                  parent=self)
 

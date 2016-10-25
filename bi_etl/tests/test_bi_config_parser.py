@@ -58,7 +58,10 @@ class Test(unittest.TestCase):
         self.log_folder.cleanup()
         os.chdir(self.origDir)
         os.remove(self.tempFile)
-        shutil.rmtree(self.tempDir)
+        try:
+            shutil.rmtree(self.tempDir)
+        except PermissionError:
+            pass
 
     def test_read_config_ini_NF(self):
         config = bi_etl.bi_config_parser.BIConfigParser()

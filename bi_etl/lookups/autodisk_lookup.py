@@ -293,4 +293,3 @@ class AutoDiskLookup(Lookup):
                 return self.disk_cache.find_in_cache(row, **kwargs)
             else:
                 raise NoResultFound()
-    

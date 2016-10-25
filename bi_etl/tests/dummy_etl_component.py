@@ -12,14 +12,17 @@ class DummyETLComponent(ETLComponent):
     classdocs
     """
 
-    def __init__(self, task=None, logical_name=None, primary_key=None):
+    def __init__(self, task=None, logical_name=None, primary_key=None, data=None):
         """
         Constructor
         """
         if task is None:
             task = ETLTask()
-        super().__init__(task=task, logical_name= logical_name, primary_key=primary_key)
-        self.data = list()
-        
-    def __iter__(self):
-        return iter(self.data)
+        super().__init__(task=task, logical_name=logical_name, primary_key=primary_key)
+        if data is None:
+            self.data = list()
+        else:
+            self.data = data
+
+    def _raw_rows(self):
+        return self.data

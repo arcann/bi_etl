@@ -12,7 +12,7 @@ from bi_etl.components.row.row import Row
 from bi_etl.exceptions import NoResultFound
 from bi_etl.exceptions import BeforeAllExisting
 from bi_etl.exceptions import AfterExisting
-from tests.dummy_etl_component import DummyETLComponent
+from bi_etl.tests.dummy_etl_component import DummyETLComponent
 
 
 class _TestBaseRangeLookup(_TestBase):

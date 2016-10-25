@@ -3,15 +3,14 @@ Created on Jan 5, 2016
 
 @author: woodd
 """
-import unittest
-
-from bi_etl.tests._test_base_lookup import _TestBase
-from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
 import tempfile
+import unittest
 from datetime import datetime
 
+from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
+from bi_etl.tests._test_base_lookup import _TestBase
+
 # pylint: disable=missing-docstring, protected-access
-from tests.dummy_etl_component import DummyETLComponent
 
 
 class TestAutodiskLookup(_TestBase):
