@@ -58,7 +58,7 @@ class DiskLookup(Lookup):
             if sys.platform.startswith('win'):
                 self.dbm = semidbm.open(self.cache_file_path, 'n')            
             else:
-                file = os.path.join(self.cache_file_path,'data')
+                file = os.path.join(self.cache_file_path, 'data')
                 self.dbm = dbm.open(file, 'n')
             self.cache = shelve.BsdDbShelf(self.dbm, 
                                            protocol=pickle.HIGHEST_PROTOCOL,
@@ -77,7 +77,7 @@ class DiskLookup(Lookup):
         
     def get_estimate_row_size(self, force_now=False):
         if force_now or not self._done_get_estimate_row_size:
-            row_cnt = min(len(self),1000)
+            row_cnt = min(len(self), 1000)
             total_row_sizes = 0
             row_num = 0
             for row in self:

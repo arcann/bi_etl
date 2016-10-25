@@ -515,7 +515,7 @@ class HistoryTable(Table):
 
         if lookup.cache_enabled:
             try:
-                cache_hit = lookup.find_in_cache(source_row, effective_date)
+                cache_hit = lookup.find_in_cache(source_row, effective_date=effective_date)
                 stats['Found in cache'] += 1
                 stats.timer.stop()
                 if cache_hit:
@@ -724,8 +724,8 @@ class HistoryTable(Table):
                 self.warnings_issued += 1
                 if self.warnings_issued < self.warnings_limit:
                     self.log.warning("The table had an existing key sequence that did not cover all dates. "
-                                     "Keys = {keys}.".format(
-                                        keys=self.get_pk_lookup().get_list_of_lookup_column_values(row)
+                                     "Natural Keys = {keys}.".format(
+                                        keys=self.get_nk_lookup().get_list_of_lookup_column_values(row)
                                         )
                                      )
                     for row in self.get_pk_lookup().get_versions_collection(row):

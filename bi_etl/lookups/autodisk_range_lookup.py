@@ -53,5 +53,5 @@ class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
     def cache_row(self, row, allow_update = True):
         AutoDiskLookup.cache_row(self, row, allow_update=allow_update)
         
-    def find_in_cache(self, row, effective_date= None):
-        return AutoDiskLookup.find_in_cache(self, row=row, effective_date=effective_date)
+    def find_in_cache(self, row, **kwargs):
+        return RangeLookup.find_in_cache(self, row=row, **kwargs)

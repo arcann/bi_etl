@@ -104,6 +104,10 @@ class _TestBaseRangeLookup(_TestBase):
         expected_keys[self.begin_date] = datetime(2003, 1, 1, 0, 0, 0)
         self.assertEqual(lookup.find_in_cache(expected_keys), test_earlier_row)
 
+        # Test lookup of earlier row
+        self.assertEqual(lookup.find_in_cache(expected_keys, effective_date = datetime(2003, 1, 1, 0, 0, 0)),
+                         test_earlier_row)
+
         # Test lookup fail
         not_expected_keys = expected_keys.clone()
         not_expected_keys[self.key3_1] = 99

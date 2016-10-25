@@ -105,13 +105,14 @@ class RangeLookup(Lookup):
             raise NoResultFound()
 
     # pylint: disable=arguments-differ
-    def find_in_cache(self, row, effective_date= None):
+    def find_in_cache(self, row, **kwargs):
         """
         Find an existing row in the cache effective on the date provided.  
         Can raise ValueError if the cache is not setup.
         Can raise NoResultFound if the key is not in the cache.
         Can raise BeforeAllExisting is the effective date provided is before all existing records.
         """
+        effective_date = kwargs['effective_date']
         if effective_date is None:
             effective_date = ensure_datetime(row[self.begin_date])
 

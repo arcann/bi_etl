@@ -5,14 +5,14 @@ Created on Sep 17, 2014
 @author: woodd
 """
 import warnings
+from datetime import datetime, date, time
 from decimal import Decimal
 from operator import attrgetter
-import textwrap
 from typing import Union, List, Iterable
 
 from sqlalchemy.sql.schema import Column
 
-import bi_etl.components
+#import bi_etl.components
 from bi_etl.utility import dict_to_str
 from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row_status import RowStatus
@@ -25,10 +25,15 @@ class RowCaseSensitive(dict):
     Handles column names (keys) that are SQL Alchemy column objects.
     Keeps order of the columns (see columns_in_order) 
     """
+
     NUMERIC_TYPES = [int, float, Decimal]
     # For performance with the Column to str conversion we keep a cache of converted values
     __name_map_db = dict()
-    
+
+    # For memory performance, keep a lookup of known objects so we store each only once
+    # TODO: Move to lookup
+    object_dict = dict()
+
     def __init__(self,
                  data=None,
                  parent: 'bi_etl.components.etlcomponent.ETLComponent' = None,
@@ -267,6 +272,12 @@ class RowCaseSensitive(dict):
         return self._get_name_value_pair(key, raise_on_not_exist= True)[1]       
 
     def _raw_setitem(self, key, value):
+        if type(value) in [str, datetime, date, time]:
+            if value in RowCaseSensitive.object_dict:
+                value = RowCaseSensitive.object_dict[value]
+            else:
+                RowCaseSensitive.object_dict[value] = value
+        
         if self.__raw_contains(key):
             super().__setitem__(key, value)
         else:

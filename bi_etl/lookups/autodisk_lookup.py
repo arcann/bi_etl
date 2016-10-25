@@ -4,6 +4,8 @@ Created on Jan 5, 2016
 
 @author: woodd
 """
+from typing import Union
+
 from bi_etl.components.row.row_case_insensitive import RowCaseInsensitive as Row
 from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.lookup import Lookup
@@ -11,6 +13,7 @@ from bi_etl.lookups.disk_lookup import DiskLookup
 from bi_etl.timer import Timer
 import gc
 import psutil
+from sortedcontainers import SortedDict
 
 __all__ = ['Lookup']
 
@@ -287,17 +290,17 @@ class AutoDiskLookup(Lookup):
         if self.disk_cache is not None:
             for row in self.disk_cache:
                 yield row
-  
-    def find_in_cache(self, row, **kwargs):
-        """Find a matching row in the lookup based on the lookup index (keys)"""
+
+    def get_versions_collection(self, row) -> Union[Row, SortedDict]:
         if not self.cache_enabled:
             raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
         if self.cache is None:
             self.init_cache()
+
         try:
-            return self.cache.find_in_cache(row, **kwargs)
+            return self.cache.get_versions_collection(row)
         except NoResultFound:
             if self.disk_cache is not None:
-                return self.disk_cache.find_in_cache(row, **kwargs)
+                return self.disk_cache.get_versions_collection(row)
             else:
                 raise NoResultFound()

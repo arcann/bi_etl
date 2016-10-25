@@ -185,7 +185,8 @@ class Lookup(object):
                 lk_tuple = self.get_hashable_combined_key(row)
                 del self.cache[lk_tuple]
             except KeyError:
-                # This lookup uses columns not in the row provided. That means it's dirty beyond repair. Wipe it out.
+                # This lookup uses columns not in the row provided.
+                # That means it's dirty beyond repair. Wipe it out.
                 warnings.warn("uncache_row called on {lookup} with insufficient values {row}"
                     .format(
                         lookup=self,
@@ -229,21 +230,14 @@ class Lookup(object):
         for row in deletes:
             self.uncache_row(row)
 
-    def find_in_cache(self, row):
+    def get_versions_collection(self, row) -> Union[Row, SortedDict]:
         """
-        Find a matching row in the lookup based on the lookup index (keys)
-        """
-        lk_tuple = self.get_hashable_combined_key(row)
-        return self.get_versions_collection(lk_tuple)
-
-    def get_versions_collection(self, lk_tuple) -> Union[Row, SortedDict]:
-        """
-        Placeholder for compatibility with range caches
+        This method exists for compatibility with range caches
 
         Parameters
         ----------
-        lk_tuple
-            The lookup tuple (see get_hashable_combined_key)
+        row
+            The row with keys to search row
 
         Returns
         -------
@@ -254,14 +248,33 @@ class Lookup(object):
         if self.cache is None:
             self.init_cache()
 
+        lk_tuple = self.get_hashable_combined_key(row)
         try:
             return self.cache[lk_tuple]
         except KeyError as e:
             raise NoResultFound(e)
-            
+
+    def find_in_cache(self, row, **kwargs):
+        """
+        Find a matching row in the lookup based on the lookup index (keys)
+        """
+        assert len(kwargs) == 0, "lookup.find_in_cache got unexpected args {}".format(kwargs)
+        return self.get_versions_collection(row)
+
     def has_row(self, row):
+        """
+        Does the row exist in the cache (for any date if it's a date range cache)
+
+        Parameters
+        ----------
+        row
+
+        Returns
+        -------
+
+        """
         try:
-            self.find_in_cache(row)
+            self.get_versions_collection(row)
         except (NoResultFound, BeforeAllExisting, AfterExisting):
             return False
         return True

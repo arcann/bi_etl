@@ -15,6 +15,7 @@ import traceback
 import warnings
 from typing import Iterable, Union
 
+import math
 import sqlalchemy
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.statistics import Statistics
@@ -511,6 +512,8 @@ class Table(ReadOnlyTable):
                                     # The thought is that ETL jobs that need the perfomance and can guarantee no commas 
                                     # can explicitly use float
                                     target_column_value = str2float(target_column_value)
+                                elif math.isnan(target_column_value):
+                                    target_column_value = None
                             elif t_type.python_type == Decimal:
                                 if isinstance(target_column_value, str):      
                                     # If for performance reasons you don't want this conversion...
@@ -518,28 +521,31 @@ class Table(ReadOnlyTable):
                                     # str2decimal takes 765 ns vs 312 ns for Decimal() but handles commas and signs.
                                     # The thought is that ETL jobs that need the performance and can guarantee no commas 
                                     # can explicitly use float or Decimal
-                                    target_column_value = str2decimal(target_column_value)                            
-                                # Testing trace output
-                                #===============================================
-                                # try:
-                                #     self.log.debug("{} t_type={}".format(target_name, t_type)) 
-                                #     self.log.debug("{} t_type.precision={}".format(target_name, t_type.precision))
-                                #     self.log.debug("{} target_column_value={}".format(target_name, target_column_value))
-                                #     self.log.debug("{} getIntegerPlaces(target_column_value)={}".format(target_name, getIntegerPlaces(target_column_value)))
-                                #     self.log.debug("{} (t_type.precision - t_type.scale)={}".format(target_name, (nvl(t_type.precision,0) - nvl(t_type.scale,0))))
-                                # except AttributeError as e:
-                                #     self.log.error(traceback.format_exc())
-                                #     self.log.debug(repr(e))
-                                #===============================================
-                                if t_type.precision is not None:
-                                    scale = nvl(t_type.scale, 0)
-                                    if getIntegerPlaces(target_column_value) > (t_type.precision - scale):
-                                        type_error = True
-                                        err_msg= "{} digits > {} = (prec {} - scale {}) limit".format(getIntegerPlaces(target_column_value), 
-                                                                                         (t_type.precision - scale),
-                                                                                         t_type.precision,
-                                                                                         t_type.scale,
-                                                                                         )
+                                    target_column_value = str2decimal(target_column_value)
+                                elif math.isnan(target_column_value):
+                                    target_column_value = None
+                                else:
+                                    # Testing trace output
+                                    #===============================================
+                                    # try:
+                                    #     self.log.debug("{} t_type={}".format(target_name, t_type))
+                                    #     self.log.debug("{} t_type.precision={}".format(target_name, t_type.precision))
+                                    #     self.log.debug("{} target_column_value={}".format(target_name, target_column_value))
+                                    #     self.log.debug("{} getIntegerPlaces(target_column_value)={}".format(target_name, getIntegerPlaces(target_column_value)))
+                                    #     self.log.debug("{} (t_type.precision - t_type.scale)={}".format(target_name, (nvl(t_type.precision,0) - nvl(t_type.scale,0))))
+                                    # except AttributeError as e:
+                                    #     self.log.error(traceback.format_exc())
+                                    #     self.log.debug(repr(e))
+                                    #===============================================
+                                    if t_type.precision is not None:
+                                        scale = nvl(t_type.scale, 0)
+                                        if getIntegerPlaces(target_column_value) > (t_type.precision - scale):
+                                            type_error = True
+                                            err_msg= "{} digits > {} = (prec {} - scale {}) limit".format(getIntegerPlaces(target_column_value),
+                                                                                             (t_type.precision - scale),
+                                                                                             t_type.precision,
+                                                                                             t_type.scale,
+                                                                                             )
                             elif t_type.python_type == date:
                                 # If we already have a datetime, make it a date
                                 if isinstance(target_column_value, datetime):
@@ -919,17 +925,17 @@ class Table(ReadOnlyTable):
                 self.rollback()
                 self.begin()
                 # Retry one at a time
-                for (stmt, row) in pending_insert_statements.iter_single_statements():
+                for row_num, (stmt, row) in enumerate(pending_insert_statements.iter_single_statements()):
                     try:
-                        #print(row)
                         # TODO: This should share the same code as insert_row's Immediate insert section
                         self.connection().execute(stmt, row)
                     except Exception as e:
                         if not isinstance(row, Row):
                             row = Row(row)
-                        self.log.error("Error with stmt {} stmt_values {}".format(
-                            stmt,
-                            row.str_formatted()
+                        self.log.error("Error with row {row_num} stmt {stmv} stmt_values {vals}".format(
+                            row_num=row_num,
+                            stmt=stmt,
+                            vals=row.str_formatted()
                         ))
                         raise e
                 # If that didn't cause the error... re raise the original error
