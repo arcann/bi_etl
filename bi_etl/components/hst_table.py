@@ -255,6 +255,7 @@ class HistoryTable(Table):
     def natural_key(self, value: list):
         self.__natural_key_override = True
         self.__natural_key = value
+        self.ensure_nk_lookup()
 
     def _get_nk_lookup_name(self):
         if self.__natural_key_override:

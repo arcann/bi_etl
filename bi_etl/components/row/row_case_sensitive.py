@@ -63,7 +63,11 @@ class RowCaseSensitive(dict):
                 name_str = input_name.name
             else:
                 if not isinstance(input_name, str):
-                    raise ValueError("Row column name must be str, unicode, or Column. Got {}".format(type(input_name)))
+                    raise ValueError("Row column name must be str, unicode, or Column."
+                                     " Got {val}{type} ".format(
+                                      val=input_name,
+                                      type=type(input_name))
+                    )
                 name_str = input_name
                 RowCaseSensitive.__name_map_db[input_name] = name_str
             return name_str
@@ -90,7 +94,7 @@ class RowCaseSensitive(dict):
                  's': status_value, 
                  'p': self.primary_key,
                  'c': self._columns_in_order,
-                 'i':list(self.items()),                                
+                 'i': list(self.items()),
                 }, 
                 
                )  

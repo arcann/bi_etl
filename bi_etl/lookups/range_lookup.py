@@ -33,8 +33,9 @@ class RangeLookup(Lookup):
     def __len__(self):
         return self._len
 
-    def cache_row(self, row, allow_update = True):
+    def cache_row(self, row: Row, allow_update: bool = True):
         if self.cache_enabled:
+            assert isinstance(row, Row), "cache_row requires Row and not {}".format(type(row))
             lk_tuple = self.get_hashable_combined_key(row)
             if self.cache is None:
                 self.init_cache()                
@@ -85,7 +86,7 @@ class RangeLookup(Lookup):
         The natural keys will come out in any order. However, the versions within a natural key set will come out in ascending order.  
         """
         if self.cache is not None:
-            for versions_collection in self.cache.values():
+            for versions_collection in list(self.cache.values()):
                 for row in versions_collection.values():
                     yield row
 

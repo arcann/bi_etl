@@ -12,6 +12,7 @@ import time
 from bi_etl.scheduler.exceptions import ParameterError
 from bi_etl.scheduler.task import ETLTask
 
+
 class ETL_Test_Task_Base(ETLTask):
     
     #===========================================================================
@@ -35,5 +36,5 @@ class ETL_Test_Task_Base(ETLTask):
             job_run_seconds = random.randint(1, 5)
         self.log.info("Runtime will be {} seconds".format(job_run_seconds))
         time.sleep(job_run_seconds)
-        self.add_parameter('actual_finish', datetime.now(), commit=True)
+        self.set_parameter('actual_finish', datetime.now(), commit=True)
         self.log.info('actual_finish = {}'.format(self.get_parameter('actual_finish')))

@@ -155,6 +155,7 @@ class Lookup(object):
         
         """        
         if self.cache_enabled:
+            assert isinstance(row, Row), "cache_row requires Row and not {}".format(type(row))
             lk_tuple = self.get_hashable_combined_key(row)
             if self.cache is None:
                 self.init_cache()

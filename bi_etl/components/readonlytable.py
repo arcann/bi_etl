@@ -264,7 +264,10 @@ class ReadOnlyTable(ETLComponent):
         self.database.remove(self.table)
         self.table = sqlalchemy.schema.Table(self.table_name, self.database, *self._columns, quote=False)
     
-    def connection(self):
+    def is_connected(self) -> bool:
+        return self.__connection is not None
+
+    def connection(self) -> sqlalchemy.engine.base.Connection:
         if self.__connection is None and self.table is not None:
             self.__connection = self.table.metadata.bind.connect()
         return self.__connection
