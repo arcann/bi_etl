@@ -11,6 +11,10 @@ from decimal import Decimal
 from decimal import InvalidOperation
 from typing import Iterable, Union
 
+import math
+import sqlalchemy
+from bi_etl.components.row.row_status import RowStatus
+from bi_etl.statistics import Statistics
 from sqlalchemy.sql.expression import bindparam
 
 from bi_etl import Timer
@@ -32,6 +36,9 @@ from bi_etl.statement_queue import StatementQueue
 from bi_etl.statistics import Statistics
 from bi_etl.utility import dict_to_str
 from bi_etl.utility import getIntegerPlaces
+from bi_etl.conversions import nvl
+from bi_etl.conversions import replace_tilda
+from bi_etl.utility import dict_to_str
 
 
 class Table(ReadOnlyTable):
@@ -155,7 +162,10 @@ class Table(ReadOnlyTable):
                                     table_name_case_sensitive= table_name_case_sensitive,
                                     exclude_columns= exclude_columns,
                                     )
-
+        self.load_via_bcp = False
+        self.bcp_table_name = 'dbo.' + self.table.name
+        self.bcp_update_table_name = self.table_name + '_UPD'
+        self._bcp_update_table_dict = dict()
         self.track_source_rows = False
         self.auto_generate_key = False
         self.last_update_date = None
@@ -211,6 +221,9 @@ class Table(ReadOnlyTable):
     def close(self):                
         super(Table, self).close()        
         self.clear_cache()
+        # Clean out update temp tables
+        for update_table_object, pending_rows in self._bcp_update_table_dict:
+            self.database.execute("DROP TABLE {}".format(update_table_object.table_name))
 
     def __iter__(self) -> Iterable(Row):
         # Note: yield_per will break if the transaction is committed while we are looping
@@ -468,10 +481,13 @@ class Table(ReadOnlyTable):
                                 else:
                                     target_column_value = str(target_column_value)
                                 #Note: t_type.length is None for CLOB fields
-                                if isinstance(t_type.length, int):                                    
-                                    if len(target_column_value) > t_type.length:
+                                try:
+                                    if t_type.length is not None and len(target_column_value) > t_type.length:
                                         type_error = True
                                         err_msg = "length {} > {} limit".format(len(target_column_value), t_type.length)
+                                except TypeError:
+                                    # t_type.length is not a comparable type
+                                    pass
                             elif t_type.python_type == bytes:
                                 if isinstance(target_column_value, str):
                                     target_column_value = target_column_value.encode('utf-8')
@@ -497,6 +513,8 @@ class Table(ReadOnlyTable):
                                     # The thought is that ETL jobs that need the perfomance and can guarantee no commas 
                                     # can explicitly use float
                                     target_column_value = str2float(target_column_value)
+                                elif math.isnan(target_column_value):
+                                    target_column_value = None
                             elif t_type.python_type == Decimal:
                                 if isinstance(target_column_value, str):      
                                     # If for performance reasons you don't want this conversion...
@@ -504,28 +522,31 @@ class Table(ReadOnlyTable):
                                     # str2decimal takes 765 ns vs 312 ns for Decimal() but handles commas and signs.
                                     # The thought is that ETL jobs that need the performance and can guarantee no commas 
                                     # can explicitly use float or Decimal
-                                    target_column_value = str2decimal(target_column_value)                            
-                                # Testing trace output
-                                #===============================================
-                                # try:
-                                #     self.log.debug("{} t_type={}".format(target_name, t_type)) 
-                                #     self.log.debug("{} t_type.precision={}".format(target_name, t_type.precision))
-                                #     self.log.debug("{} target_column_value={}".format(target_name, target_column_value))
-                                #     self.log.debug("{} getIntegerPlaces(target_column_value)={}".format(target_name, getIntegerPlaces(target_column_value)))
-                                #     self.log.debug("{} (t_type.precision - t_type.scale)={}".format(target_name, (nvl(t_type.precision,0) - nvl(t_type.scale,0))))
-                                # except AttributeError as e:
-                                #     self.log.error(traceback.format_exc())
-                                #     self.log.debug(repr(e))
-                                #===============================================
-                                if t_type.precision is not None:
-                                    scale = nvl(t_type.scale, 0)
-                                    if getIntegerPlaces(target_column_value) > (t_type.precision - scale):
-                                        type_error = True
-                                        err_msg= "{} digits > {} = (prec {} - scale {}) limit".format(getIntegerPlaces(target_column_value), 
-                                                                                         (t_type.precision - scale),
-                                                                                         t_type.precision,
-                                                                                         t_type.scale,
-                                                                                         )
+                                    target_column_value = str2decimal(target_column_value)
+                                elif math.isnan(target_column_value):
+                                    target_column_value = None
+                                else:
+                                    # Testing trace output
+                                    #===============================================
+                                    # try:
+                                    #     self.log.debug("{} t_type={}".format(target_name, t_type))
+                                    #     self.log.debug("{} t_type.precision={}".format(target_name, t_type.precision))
+                                    #     self.log.debug("{} target_column_value={}".format(target_name, target_column_value))
+                                    #     self.log.debug("{} getIntegerPlaces(target_column_value)={}".format(target_name, getIntegerPlaces(target_column_value)))
+                                    #     self.log.debug("{} (t_type.precision - t_type.scale)={}".format(target_name, (nvl(t_type.precision,0) - nvl(t_type.scale,0))))
+                                    # except AttributeError as e:
+                                    #     self.log.error(traceback.format_exc())
+                                    #     self.log.debug(repr(e))
+                                    #===============================================
+                                    if t_type.precision is not None:
+                                        scale = nvl(t_type.scale, 0)
+                                        if getIntegerPlaces(target_column_value) > (t_type.precision - scale):
+                                            type_error = True
+                                            err_msg= "{} digits > {} = (prec {} - scale {}) limit".format(getIntegerPlaces(target_column_value),
+                                                                                             (t_type.precision - scale),
+                                                                                             t_type.precision,
+                                                                                             t_type.scale,
+                                                                                             )
                             elif t_type.python_type == date:
                                 # If we already have a datetime, make it a date
                                 if isinstance(target_column_value, datetime):
@@ -643,7 +664,197 @@ class Table(ReadOnlyTable):
         if self.insert_hint is not None:
             ins.with_hint(self.insert_hint)
         return ins
-   
+
+    def _bcp(self,
+             file_path,
+             bcp_format_path=None,
+             direction='in',
+             temp_dir=None,
+             start_line=1,
+             ):
+        if temp_dir is None:
+            cleanup_temp = True
+            temp_dir = tempfile.TemporaryDirectory()
+        else:
+            cleanup_temp = False
+
+        bcp_errors = os.path.join(temp_dir, "bcp.errors")
+        bcp_output = os.path.join(temp_dir, "bcp.output")
+
+        cmd = [self.task.config.get_or_default('BCP', 'path', 'bcp'),
+               self.bcp_table_name,
+               # in / out
+               direction,
+               file_path,
+               '-S', self.table.bind.url.host,
+               '-d', self.table.bind.url.database,
+               '-U', self.table.bind.url.username,
+               '-P', self.table.bind.url.password,
+               # Max errors
+               '-m', '0',
+               '-o', bcp_output,
+               '-e', bcp_errors,
+               '-b', '10000',
+               # UTF-8
+               '-C', 'UTF-8',
+               # pipe delimited
+               '-t', '|',
+               # hints
+               '-h', 'CHECK_CONSTRAINTS,TABLOCK',
+               #'-h', 'CHECK_CONSTRAINTS',
+               #Specify start line defaults to 1 in params
+               '-F', str(start_line),
+               # packet size = Max
+               '-a', '65535']
+        if bcp_format_path:
+            cmd.extend(['-f', bcp_format_path])
+        else:
+            # UTF Mode
+            cmd.extend(['-w'])
+        self.log.debug(" ".join(cmd).replace(self.table.bind.url.password, '****'))
+
+        try:
+            rc = subprocess.check_call(cmd)
+            self.log.debug('bcp rc = {}'.format(rc))
+            with open(bcp_output, 'r') as bcp_output_file:
+                messages = bcp_output_file.read()
+            self.log.debug('BCP raw output:')
+            self.log.debug(messages)
+            with open(bcp_errors, 'r') as bcp_error_file:
+                error_messages = bcp_error_file.read()
+            self.log.debug('BCP raw errors:')
+            self.log.debug(error_messages)
+            messages += error_messages
+            self.log.debug('BCP line by line output:')
+            rows = 0
+            for line in messages.split('\n'):
+                self.log.debug("'{}'".format(line))
+                #line.replace('\r', '')
+                if line.endswith(' rows copied.'):
+                    rows = int(line[:-13])
+            return rows
+
+        except IOError as e:
+            raise e
+        except subprocess.CalledProcessError as e:
+            self.log.error("Error code " + str(e.returncode))
+            self.log.error("From " + ' '.join(e.cmd))
+            with open(bcp_output, 'r') as bcp_output_file:
+                messages = bcp_output_file.read()
+            self.log.debug('BCP raw output:')
+            self.log.debug(messages)
+            with open(bcp_errors, 'r') as bcp_error_file:
+                error_messages = bcp_error_file.read()
+            self.log.debug('BCP raw errors:')
+            self.log.debug(error_messages)
+            raise e
+        finally:
+            if cleanup_temp:
+                temp_dir.cleanup()
+
+    @staticmethod
+    def _bcp_format_value(value):
+        if isinstance(value, datetime):
+            return ('{year:4d}-{month:02d}-{day:02d} {hour:02d}:{min:02d}:{sec:06.3f}'
+                    .format(year=value.year,
+                            month=value.month,
+                            day=value.day,
+                            hour=value.hour,
+                            min=value.minute,
+                            sec=value.second + value.microsecond / 1000000)
+                    )
+        elif value is None:
+            return ''
+        else:
+            return str(value).replace('|', '/')
+
+    def bcp_insert_rows(self, rows_to_insert):
+        # Close connection to avoid locks
+        # self.connection().close()
+        if self.__transaction is not None:
+            # Check if a transaction is still active.
+            if self.__transaction.is_active:
+                self.__transaction.commit()
+        # TODO: Remove this testing code
+        bcp_dir = r"c:\temp"
+        if bcp_dir:
+        #with tempfile.TemporaryDirectory() as bcp_dir:
+            bcp_file_path = os.path.join(bcp_dir, "bcp_file")
+            bcp_format_path = os.path.join(bcp_dir, "bcp.fmt")
+            with open(bcp_format_path, "w", encoding="utf-8") as bcp_fmt:
+                field_list = list()
+                column_list = list()
+                max_col = len(self.columns)
+                term = '|\\0'
+                for col_num, column in enumerate(self.columns):
+                    c_type = column.type
+                    p_type = c_type.python_type
+                    if p_type == int:
+                        size = 24
+                        b_type = "SQLINT"
+                    elif p_type == datetime:
+                        size = 48
+                        b_type = "SQLDATETIME"
+                    elif p_type == str:
+                        size = c_type.length * 2
+                        b_type = "SQLVARYCHAR"
+                    else:
+                        raise ValueError(
+                            "bcp method not coded to support data type {type} for column {col}"
+                            .format(type=p_type,
+                                    col=column)
+                        )
+                    if col_num+1 == max_col:
+                        term = "\\r\\0\\n\\0"
+                    field_list.append(
+                        '<FIELD ID="{col_num}" xsi:type="NCharTerm" TERMINATOR="{term}" MAX_LENGTH="{size}"/>'\
+                        .format(col_num=col_num+1,
+                                size=size,
+                                term=term
+                                )
+                    )
+                    column_list.append(
+                        '<COLUMN SOURCE="{col_num}" NAME="{name}" xsi:type="{b_type}"/>'
+                        .format(col_num=col_num+1,
+                                name=column.name,
+                                b_type=b_type,
+                                )
+                    )
+                bcp_fmt.write(textwrap.dedent("""\
+                                <?xml version="1.0"?>
+                                <BCPFORMAT xmlns="http://schemas.microsoft.com/sqlserver/2004/bulkload/format" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                                <RECORD>
+                                """))
+                bcp_fmt.write('\n'.join(field_list))
+                bcp_fmt.write(textwrap.dedent("""\n</RECORD>\n<ROW>"""))
+                bcp_fmt.write('\n'.join(column_list))
+                bcp_fmt.write(textwrap.dedent("""\n</ROW>\n</BCPFORMAT>"""))
+
+            with open(bcp_file_path, "wt",
+                      encoding='utf_16_le',
+                      ) as bcp_file:
+                bcp_file.write('\uFEFF')
+                for row_num, row in enumerate(rows_to_insert):
+                    values = [self._bcp_format_value(row.get(column_name, None))
+                              for column_name in self.column_names]
+                    line = '|'.join(values)
+                    if row_num == 0:
+                        # Write a dummy row to skip the BOM line
+                        # That was causing parsing issues in BCP
+                        bcp_file.write(line)
+                        bcp_file.write('\r\n')
+                    bcp_file.write(line)
+                    bcp_file.write('\r\n')
+            rows_inserted = self._bcp(bcp_file_path,
+                                      bcp_format_path,
+                                      start_line=2,
+                                      temp_dir=bcp_dir)
+            if rows_inserted != len(self.pending_insert_rows):
+                self.log.error("BCP Error")
+                self.log.error("Expected: {}".format(len(self.pending_insert_rows)))
+                self.log.error("Actual: {}".format(rows_inserted))
+                raise RuntimeError("BCP Error. See error log.")
+
     def _insert_pending_batch(self,
                               stat_name = 'insert',
                               parent_stats= None):
@@ -651,7 +862,7 @@ class Table(ReadOnlyTable):
         self._delete_pending_batch(parent_stats= parent_stats)
         # Need to update pending first in case we are doing update & insert pairs
         self._update_pending_batch(parent_stats= parent_stats)
-        
+
         if len(self.pending_insert_rows) == 0:
             return
         
@@ -663,66 +874,75 @@ class Table(ReadOnlyTable):
             stats = self.pending_insert_stats
             if stats is None:
                 stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
-        prepare_stats = self.get_stats_entry('prepare ' + stat_name, parent_stats= stats)
-        prepare_stats.print_start_stop_times = False
-        prepare_stats.timer.start()
-        pending_insert_statements = StatementQueue()
-        for new_row in self.pending_insert_rows:
-            if new_row.status != RowStatus.deleted:
-                stmt_key = new_row.positioned_column_set
-                stmt = pending_insert_statements.get_statement_by_key(stmt_key)
-                if stmt is None:
-                    prepare_stats['statements prepared'] += 1
-                    
-                    stmt = self._insert_stmt()                    
-                    for c in new_row:
-                        col_obj = self.get_column(c)
-                        stmt = stmt.values( { col_obj.name: bindparam(col_obj, type_=col_obj.type) } )
-                    # this was causing InterfaceError: (cx_Oracle.InterfaceError) not a query
-                    # stmt = stmt.compile()
-                    pending_insert_statements.add_statement(stmt_key, stmt)
-                prepare_stats['rows prepared'] += 1
-                stmt_values = dict()
-                for c in new_row:
-                    col_obj = self.get_column(c)
-                    stmt_values[col_obj.name] = new_row[c]
-                pending_insert_statements.append_values_by_key(stmt_key, stmt_values)
-                
-                # Change the row status to existing, now any updates should be via update statements
-                new_row.status = RowStatus.existing            
-        prepare_stats.timer.stop()
-        try:
-            db_stats = self.get_stats_entry(stat_name + ' database execute', parent_stats= stats)
-            db_stats.print_start_stop_times = False            
-            db_stats.timer.start()
-            rows_affected = pending_insert_statements.execute(self.connection())
-            db_stats.timer.stop()
-            db_stats['rows inserted'] += rows_affected
+        if self.load_via_bcp:
+            bcp_stats = self.get_stats_entry(stat_name + ' bcp insert', parent_stats=stats)
+            bcp_stats.print_start_stop_times = False
+            bcp_stats.timer.start()
+            self.bcp_insert_rows(self.pending_insert_rows)
             del self.pending_insert_rows
             self.pending_insert_rows = list()
-        except Exception as e:
-            self.log.error(traceback.format_exc())
-            self.log.error("Bulk insert failed. Applying as single inserts to find error row...")
-            self.rollback()
-            self.begin()
-            # Retry one at a time                        
-            for (stmt, row) in pending_insert_statements.iter_single_statements():
-                try:                
-                    #print(row)
-                    # TODO: This should share the same code as insert_row's Immediate insert section
-                    self.connection().execute(stmt, row)
-                except Exception as e:
-                    if not isinstance(row, Row):
-                        row = Row(row)
-                    self.log.error("Error with stmt {} stmt_values {}".format(
-                        stmt,
-                        row.str_formatted()
-                    ))
-                    raise e
-            # If that didn't cause the error... re raise the original error
-            self.log.error("Single inserts did not produce the error. Original error will be issued below.") 
-            self.rollback()
-            raise e
+            bcp_stats.timer.stop()
+        else:
+            prepare_stats = self.get_stats_entry('prepare ' + stat_name, parent_stats= stats)
+            prepare_stats.print_start_stop_times = False
+            prepare_stats.timer.start()
+            pending_insert_statements = StatementQueue()
+            for new_row in self.pending_insert_rows:
+                if new_row.status != RowStatus.deleted:
+                    stmt_key = new_row.positioned_column_set
+                    stmt = pending_insert_statements.get_statement_by_key(stmt_key)
+                    if stmt is None:
+                        prepare_stats['statements prepared'] += 1
+
+                        stmt = self._insert_stmt()
+                        for c in new_row:
+                            col_obj = self.get_column(c)
+                            stmt = stmt.values( { col_obj.name: bindparam(col_obj, type_=col_obj.type) } )
+                        # this was causing InterfaceError: (cx_Oracle.InterfaceError) not a query
+                        # stmt = stmt.compile()
+                        pending_insert_statements.add_statement(stmt_key, stmt)
+                    prepare_stats['rows prepared'] += 1
+                    stmt_values = dict()
+                    for c in new_row:
+                        col_obj = self.get_column(c)
+                        stmt_values[col_obj.name] = new_row[c]
+                    pending_insert_statements.append_values_by_key(stmt_key, stmt_values)
+
+                    # Change the row status to existing, now any updates should be via update statements
+                    new_row.status = RowStatus.existing
+            prepare_stats.timer.stop()
+            try:
+                db_stats = self.get_stats_entry(stat_name + ' database execute', parent_stats= stats)
+                db_stats.print_start_stop_times = False
+                db_stats.timer.start()
+                rows_affected = pending_insert_statements.execute(self.connection())
+                db_stats.timer.stop()
+                db_stats['rows inserted'] += rows_affected
+                del self.pending_insert_rows
+                self.pending_insert_rows = list()
+            except Exception as e:
+                self.log.error(traceback.format_exc())
+                self.log.error("Bulk insert failed. Applying as single inserts to find error row...")
+                self.rollback()
+                self.begin()
+                # Retry one at a time
+                for row_num, (stmt, row) in enumerate(pending_insert_statements.iter_single_statements()):
+                    try:
+                        # TODO: This should share the same code as insert_row's Immediate insert section
+                        self.connection().execute(stmt, row)
+                    except Exception as e:
+                        if not isinstance(row, Row):
+                            row = Row(row)
+                        self.log.error("Error with row {row_num} stmt {stmv} stmt_values {vals}".format(
+                            row_num=row_num,
+                            stmt=stmt,
+                            vals=row.str_formatted()
+                        ))
+                        raise e
+                # If that didn't cause the error... re raise the original error
+                self.log.error("Single inserts did not produce the error. Original error will be issued below.")
+                self.rollback()
+                raise e
 
     def insert_row(self,
                    source_row: Row,  # Must be a single row
@@ -1187,6 +1407,79 @@ class Table(ReadOnlyTable):
                                          use_cache_as_source=use_cache_as_source,
                                          parent_stats=parent_stats)
 
+    def _update_via_bcp(self, update_rows):
+        for row in update_rows:
+            if row.status not in [RowStatus.deleted, RowStatus.insert]:
+                update_stmt_key = row.column_set
+                if update_stmt_key in self._bcp_update_table_dict:
+                    update_table_object, pending_rows = self._bcp_update_table_dict[update_stmt_key]
+                else:
+                    created = False
+                    id = 0
+                    while not created:
+                        table_name = "tmp_" + str(datetime.now().toordinal()) + str(id)
+                        try:
+                            row_columns = [self.get_column(col_name).copy() for col_name in row.columns]
+                            sa_table = sqlalchemy.schema.Table(table_name,
+                                                               self.database,
+                                                               *row_columns)
+                            sa_table.create()
+                            created = True
+                        except (sqlalchemy.exc.OperationalError, sqlalchemy.exc.InvalidRequestError):
+                            id += 1
+
+                    update_table_object = Table(task = self.task,
+                                                table_name = table_name,
+                                                database = self.database,
+                                                )
+                    update_table_object.close()
+                    if self.__transaction is not None:
+                        # Check if a transaction is still active.
+                        if self.__transaction.is_active:
+                            self.__transaction.commit()
+                            self.__transaction.close()
+                    if self.is_connected:
+                        self.connection().close()
+                    pending_rows = list()
+                    self._bcp_update_table_dict[update_stmt_key] = update_table_object, pending_rows
+                pending_rows.append(row)
+
+        for update_table_object, pending_rows in self._bcp_update_table_dict.values():
+            update_table_object.truncate()
+            update_table_object.bcp_insert_rows(pending_rows)
+            database_type = type(self.connection().dialect).name
+            if database_type == 'oracle':
+                raise NotImplementedError("Oracle MERGE not yet implemented")
+            elif database_type in ['mssql']:
+                sets_list = ["{column} = {updates_tbl}.{column}".format(column=column,
+                                                                        updates_tbl=update_table_object.table_name,
+                                                                        )
+                             for column in update_table_object.column_names
+                            ]
+                sets = ','.join(sets_list)
+
+                key_join_list = ["{target_tbl}.{column} = {updates_tbl}.{column}".format(column=column,
+                                                                                         target_tbl=self.table_name,
+                                                                                         updates_tbl=update_table_object.table_name,)
+                                 for column in self.primary_key]
+                key_joins = ','.join(key_join_list)
+
+                sql = """\
+                    UPDATE {target_tbl}
+                    SET {sets}
+                    FROM {target_tbl}
+                         INNER JOIN
+                         {updates_tbl}
+                           ON {key_joins}
+                    """.format(target_tbl=self.table_name,
+                               sets=sets,
+                               updates_tbl=update_table_object.table_name,
+                               key_joins= key_joins
+                               )
+                self.database.execute(sql)
+            else:
+                raise NotImplementedError("UPDATE FROM/MERGE not yet implemented for {}".format(database_type))
+
     def _update_pending_batch(self,
                               stat_name: str = 'update',
                               parent_stats: Statistics = None):
@@ -1215,68 +1508,72 @@ class Table(ReadOnlyTable):
                 stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         stats.timer.start()
         self.begin()
-        pending_update_statements = StatementQueue()
-        
-        for row_dict in self.pending_update_rows:
-            if row_dict.status not in [RowStatus.deleted, RowStatus.insert]:
-                stats['apply updates sent to db'] += 1
-                update_stmt_key = row_dict.column_set
-                update_stmt = pending_update_statements.get_statement_by_key(update_stmt_key)
-                if update_stmt is None:
-                    update_stmt = self._update_stmt()
+
+        if self.load_via_bcp:
+            self._update_via_bcp(self.pending_update_rows)
+        else:
+            pending_update_statements = StatementQueue()
+
+            for row_dict in self.pending_update_rows:
+                if row_dict.status not in [RowStatus.deleted, RowStatus.insert]:
+                    stats['apply updates sent to db'] += 1
+                    update_stmt_key = row_dict.column_set
+                    update_stmt = pending_update_statements.get_statement_by_key(update_stmt_key)
+                    if update_stmt is None:
+                        update_stmt = self._update_stmt()
+                        for key_column in self.primary_key:
+                            key = self.get_column(key_column)
+                            #bind_name = self.make_bind_name('k',key.name)
+                            bind_name = key.name
+                            # Note SQLAlchemy takes care of converting to positional “qmark” bind parameters as needed
+                            update_stmt = update_stmt.where(key == bindparam(bind_name, type_= key.type))
+                        for c in row_dict.columns:
+                            # Since we know we aren't updating the key, don't send the keys in the values clause
+                            if c not in self.primary_key:
+                                #bind_name = self.make_bind_name('c',c)
+                                col_obj = self.get_column(c)
+                                bind_name = col_obj.name
+                                update_stmt = update_stmt.values( { c: bindparam(bind_name, type_= col_obj.type) } )
+                        update_stmt = update_stmt.compile()
+                        pending_update_statements.add_statement(update_stmt_key, update_stmt)
+
+                    stmt_values = dict()
                     for key_column in self.primary_key:
-                        key = self.get_column(key_column)                    
+                        key = self.get_column(key_column)
                         #bind_name = self.make_bind_name('k',key.name)
                         bind_name = key.name
-                        # Note SQLAlchemy takes care of converting to positional “qmark” bind parameters as needed
-                        update_stmt = update_stmt.where(key == bindparam(bind_name, type_= key.type))
+                        stmt_values[bind_name] = row_dict[key_column]
+
                     for c in row_dict.columns:
                         # Since we know we aren't updating the key, don't send the keys in the values clause
                         if c not in self.primary_key:
                             #bind_name = self.make_bind_name('c',c)
+                            #bind_name = c
                             col_obj = self.get_column(c)
                             bind_name = col_obj.name
-                            update_stmt = update_stmt.values( { c: bindparam(bind_name, type_= col_obj.type) } )
-                    update_stmt = update_stmt.compile()
-                    pending_update_statements.add_statement(update_stmt_key, update_stmt)
-                
-                stmt_values = dict()
-                for key_column in self.primary_key:
-                    key = self.get_column(key_column)                    
-                    #bind_name = self.make_bind_name('k',key.name)
-                    bind_name = key.name
-                    stmt_values[bind_name] = row_dict[key_column]
-                
-                for c in row_dict.columns:
-                    # Since we know we aren't updating the key, don't send the keys in the values clause
-                    if c not in self.primary_key:
-                        #bind_name = self.make_bind_name('c',c)
-                        #bind_name = c
-                        col_obj = self.get_column(c)
-                        bind_name = col_obj.name
-                        stmt_values[bind_name] = row_dict[c]
-                
-                pending_update_statements.append_values_by_key(update_stmt_key, stmt_values)
-                row_dict.status = RowStatus.existing
-        try:            
-            rows_applied = pending_update_statements.execute(self.connection())
-            stats['apply updates db applied'] += rows_applied
-            #len(self.pending_update_rows)
-            del self.pending_update_rows
-            self.pending_update_rows = list()
-        except Exception as e:            
-            # Retry one at a time
-            self.log.error("Bulk update failed. Applying as single updates to find error row...")
-            for (stmt, row_dict) in pending_update_statements.iter_single_statements():
-                try:                
-                    self.connection().execute(stmt, row_dict)
-                except Exception as e:
-                    self.log.error("Error with row {}".format(dict_to_str(row_dict)))
-                    raise e
-            # If that didn't cause the error... re-raise the original error
-            self.log.error("Single updates did not produce the error. Original error will be issued below.") 
-            self.rollback()
-            raise e
+                            stmt_values[bind_name] = row_dict[c]
+
+                    pending_update_statements.append_values_by_key(update_stmt_key, stmt_values)
+                    row_dict.status = RowStatus.existing
+            try:
+                rows_applied = pending_update_statements.execute(self.connection())
+                stats['apply updates db applied'] += rows_applied
+                #len(self.pending_update_rows)
+            except Exception as e:
+                # Retry one at a time
+                self.log.error("Bulk update failed. Applying as single updates to find error row...")
+                for (stmt, row_dict) in pending_update_statements.iter_single_statements():
+                    try:
+                        self.connection().execute(stmt, row_dict)
+                    except Exception as e:
+                        self.log.error("Error with row {}".format(dict_to_str(row_dict)))
+                        raise e
+                # If that didn't cause the error... re-raise the original error
+                self.log.error("Single updates did not produce the error. Original error will be issued below.")
+                self.rollback()
+                raise e
+        del self.pending_update_rows
+        self.pending_update_rows = list()
         stats.timer.stop()
 
     def _add_pending_update(self, row, parent_stats= None):

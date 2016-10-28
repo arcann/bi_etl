@@ -19,10 +19,10 @@ from bi_etl.tests.dummy_etl_component import DummyETLComponent
 
 class TestRow(unittest.TestCase):
     # Iteration counts tuned so that tests take less than a second
-    create_performance_iterations = 3*10**4
-    get_performance_iterations = 10**6
-    set_existing_performance_iterations = 5*10**5
-    set_new_performance_rows = 10**3
+    create_performance_iterations = 3 * 10 ** 4
+    get_performance_iterations = 10 ** 6
+    set_existing_performance_iterations = 5 * 10 ** 5
+    set_new_performance_rows = 10 ** 3
     set_new_performance_columns = 100
 
     def setUp(self):
@@ -76,7 +76,7 @@ class TestRow(unittest.TestCase):
             self.assertEquals(d[k], self.source1a[k],
                               'row1[{}] returned wrong value {} != {}'.format(k, d[k], self.source1a[k]))
 
-    def test_init_iter_zip(self):        
+    def test_init_iter_zip(self):
         for k in self.columns:
             self.assertEqual(self.row1a[k], self.row3a[k],
                              "Value mismatch for {k} {v1} != {v2} (the iter zip init)"
@@ -102,7 +102,7 @@ class TestRow(unittest.TestCase):
             _ = row[key]
         # Check that we got a good exception message
         self.assertIn(key, str(e.exception))
-    
+
     def test_getter_fail_1(self):
         self._test_getter_fail(self.row1a, 'DoesNotExist')
 
@@ -119,14 +119,14 @@ class TestRow(unittest.TestCase):
         test_row = self.row2a.clone()
         test_row[name] = 21
         self.assertEqual(test_row[name], 21)
-    
+
     def _test_setter_single_case(self, name):
         self._test_setter_single_case_example(name)
 
     def test_transform_mixed_case(self):
         test_row = self.row2a.clone()
         mixed_case_str = 'MixedCase'
-        test_row.transform(mixed_case_str, str)         
+        test_row.transform(mixed_case_str, str)
         self.assertEqual(test_row[mixed_case_str], '1')
 
     def _test_transform_single_case_example(self, name):
@@ -134,7 +134,7 @@ class TestRow(unittest.TestCase):
         test_row = self.row2a.clone()
         test_row.transform(name, nullif, value_to_null='not_our_value')
         self.assertEqual(test_row[name], self.row2a[name])
-        
+
         test_row.transform(name, nullif, value_to_null=self.row2a[name])
         self.assertIsNone(test_row[name], 'nullif transform failed in _test_transform_single_case_example')
 
@@ -149,40 +149,41 @@ class TestRow(unittest.TestCase):
     def _make_row_from_dict(self, row_dict):
         class MockMeta(object):
             def __init__(self, keys):
-                self.keys = keys   
+                self.keys = keys
+
         metadata = MockMeta(list(row_dict.keys()))
 
         def proc1(value):
             return value
-        
-        row = [v for v in row_dict.values()]        
-        processors = [proc1 for _ in row_dict]  # @UnusedVariable
+
+        row = [v for v in row_dict.values()]
+        processors = [proc1 for _ in row_dict]
         keymap = {}
         index = 0
         for key in row_dict.keys():
             keymap[key] = (proc1, key, index)
             keymap[index] = (proc1, key, index)
             index += 1
-        
+
         # return sqlalchemy.engine.result.RowProxy
-        return RowProxy(metadata,  #parent
+        return RowProxy(metadata,  # parent
                         row,
                         processors,
                         keymap
                         )
-    
+
     def _make_row_from_list(self, row_list):
         class MockMeta(object):
             def __init__(self, keys):
-                self.keys = keys   
-        
-        keys = [t[0] for t in row_list]
-        metadata = MockMeta(keys)
+                self.keys = keys
+
+        row_keys = [t[0] for t in row_list]
+        metadata = MockMeta(row_keys)
 
         def proc1(value):
             return value
-        
-        row = [t[1] for t in row_list]        
+
+        row = [t[1] for t in row_list]
         processors = [proc1 for _ in row_list]
         index = 0
         keymap = {}
@@ -190,9 +191,9 @@ class TestRow(unittest.TestCase):
             keymap[key] = (proc1, key, index)
             keymap[index] = (proc1, key, index)
             index += 1
-        
+
         # return sqlalchemy.engine.result.RowProxy
-        return RowProxy(metadata,  #parent
+        return RowProxy(metadata,  # parent
                         row,
                         processors,
                         keymap
@@ -201,7 +202,7 @@ class TestRow(unittest.TestCase):
     def test_SA_init(self):        
         self.assertEqual(self.row2a.name, self.sa_row_name, "row.name didn't return correct value")
         self.assertIn(self.sa_row_name, str(self.row2a), "str(Row) didn't return row name")
-        
+
         self.assertEqual(self.row2a['MixedCase'], self.source2a['MixedCase'])
         self.assertEqual(self.row2a['lower'], self.source2a['lower'])
         self._test_getter_fail(self.row2a, 'LOWER')
@@ -209,25 +210,26 @@ class TestRow(unittest.TestCase):
         self._test_getter_fail(self.row2a, 'upper')
 
         class MockMeta(object):
-            def __init__(self, tables= None):
+            def __init__(self, tables=None):
                 self.schema = None
                 self.tables = tables or []
                 self.naming_convention = DEFAULT_NAMING_CONVENTION
                 self._fk_memos = []
-                
+
             def _add_table(self, name, schema, table):
                 pass
 
             def _remove_table(self, name, schema):
                 pass
+
         metadata = MockMeta()
         mytable = Table("mytable", metadata,
                         Column('MixedCase', Integer, primary_key=True),
                         Column('lower', String(50)),
                         Column('UPPER', Numeric),
-                   )
+                        )
         # Check that the column str representation is as we expect
-        self.assertEqual( str(mytable.c.UPPER), 'mytable.UPPER' )
+        self.assertEqual(str(mytable.c.UPPER), 'mytable.UPPER')
         # Check that we can still get the value using the Column
         self.assertEqual(self.row2a[mytable.c.UPPER], self.source2a['UPPER'])
         # Should also work on row1 which was not built with a RowProxy
@@ -237,11 +239,11 @@ class TestRow(unittest.TestCase):
         full_clone = self.row1a.subset()
         self.assertEqual(full_clone.columns_in_order, self.row1a.columns_in_order)
         self.assertEqual(full_clone.column_set, self.row1a.column_set)
-        
+
         clone = self.row1a.subset()
         self.assertEqual(clone.columns_in_order, self.row1a.columns_in_order)
         self.assertEqual(clone.column_set, self.row1a.column_set)
-        
+
         drop_mixed = self.row1a.subset(exclude=['MixedCase'])
         self.assertIn('lower', drop_mixed)
         self.assertIn('UPPER', drop_mixed)
@@ -253,8 +255,8 @@ class TestRow(unittest.TestCase):
         self.assertIn('lower', keep_lower.column_set)
         self.assertNotIn('UPPER', keep_lower.column_set)
         self.assertNotIn('MixedCase', keep_lower.column_set)
-        self.assertEqual(keep_lower.column_count, 1, 'keep_lower.column_count returned wrong value.')                
-        
+        self.assertEqual(keep_lower.column_count, 1, 'keep_lower.column_count returned wrong value.')
+
     def test_rename_column(self):
         test_row = self.row1a.clone()
         test_row.rename_column('MixedCase', 'batman')
@@ -263,7 +265,7 @@ class TestRow(unittest.TestCase):
         self.assertIn('UPPER', test_row)
         self.assertNotIn('MixedCase', test_row.columns)
         self.assertEqual(test_row.column_count, 3, 'test_row.column_count returned wrong value.')
-        
+
     def test_rename_columns(self):
         test_row = self.row1a.clone()
         test_row.rename_columns( {'lower': 'batman', 'UPPER':'robin'} )
@@ -273,7 +275,7 @@ class TestRow(unittest.TestCase):
         self.assertNotIn('lower', test_row.columns)
         self.assertNotIn('UPPER', test_row.columns)
         self.assertEqual(test_row.column_count, 3, 'test_row.column_count returned wrong value.')
-        
+
     def test_remove_columns(self):
         test_row = self.row3a.subset()
         self.assertEqual(test_row.column_set, self.row3a.column_set)
@@ -315,66 +317,69 @@ class TestRow(unittest.TestCase):
 
     def _test_create_performance(self):
         """
-        Establish a baseline of init performance to make sure it doens't get worse
+        Establish a baseline of init performance to make sure it doesn't get worse
         """
         timer = Timer(start_running=True)
         row_lst = list()
         for _ in range(self.create_performance_iterations):
             row_lst.append(OrderedDict(self.source1a))
         timer.stop()
-        dict_seconds = timer.seconds_elapsed        
-        del row_lst[:]        
+        dict_seconds = timer.seconds_elapsed
+        del row_lst[:]
         timer.reset()
         for _ in range(self.create_performance_iterations):
             row_lst.append(Row(self.source1a))
         timer.stop()
         row_seconds = timer.seconds_elapsed
-        print("create performance {:.2f} that of OrderedDict = {:f} per call".format(row_seconds / dict_seconds, row_seconds/self.create_performance_iterations))
-        self.assertLessEqual(row_seconds, dict_seconds*2, "Row init did not meet performance goal")
+        print("create performance {:.2f} that of OrderedDict = {:f} per call".format(row_seconds / dict_seconds,
+                                                                                     row_seconds / self.create_performance_iterations))
+        self.assertLessEqual(row_seconds, dict_seconds * 2, "Row init did not meet performance goal")
 
     def _test_get_performance(self):
         """
-        Establish a baseline of get performance to make sure it doens't get worse.
+        Establish a baseline of get performance to make sure it doesn't get worse.
         We expect the extra checks we do here to make Row slower than OrderedDict.
         """
         od = OrderedDict(self.source1a)
         timer = Timer(start_running=True)
         for _ in range(self.get_performance_iterations):
-            _ = od['UPPER']            
+            _ = od['UPPER']
         timer.stop()
         dict_seconds = timer.seconds_elapsed
         
         test_row = self.row1a
         timer.reset()        
         for _ in range(self.get_performance_iterations):
-            _ = test_row['UPPER']            
+            _ = test_row['UPPER']
         timer.stop()
         row_seconds = timer.seconds_elapsed
-        
-        print("get performance {:.2f} that of OrderedDict = {:f} per call".format(row_seconds / dict_seconds, row_seconds/self.get_performance_iterations))
-        self.assertLessEqual(row_seconds, dict_seconds*8, "Row get did not meet performance goal")
-        
+
+        print("get performance {:.2f} that of OrderedDict = {:f} per call".format(row_seconds / dict_seconds,
+                                                                                  row_seconds / self.get_performance_iterations))
+        self.assertLessEqual(row_seconds, dict_seconds * 8, "Row get did not meet performance goal")
+
     def _test_set_existing_performance(self):
         """
-        Establish a baseline of set existing value performance to make sure it doens't get worse
+        Establish a baseline of set existing value performance to make sure it doesn't get worse
         We expect the extra checks we do here to make Row slower than OrderedDict.
         """
         timer = Timer(start_running=True)
         od = OrderedDict(self.source1a)
         for _ in range(self.set_existing_performance_iterations):
-            od['lower'] = 'new value'            
+            od['lower'] = 'new value'
         timer.stop()
         dict_seconds = timer.seconds_elapsed
-        timer.reset()        
+        timer.reset()
         for _ in range(self.set_existing_performance_iterations):
             self.row1a['lower'] = 'new value'
         timer.stop()
-        print("set existing performance {:.2f} that of OrderedDict  = {:f} per call".format(timer.seconds_elapsed / dict_seconds, timer.seconds_elapsed/self.set_existing_performance_iterations ))
-        self.assertLessEqual(timer.seconds_elapsed, dict_seconds*2, "Row set did not meet performance goal")
-        
+        print("set existing performance {:.2f} that of OrderedDict  = {:f} per call".format(
+            timer.seconds_elapsed / dict_seconds, timer.seconds_elapsed / self.set_existing_performance_iterations))
+        self.assertLessEqual(timer.seconds_elapsed, dict_seconds * 2, "Row set did not meet performance goal")
+
     def _test_set_new_performance(self):
         """
-        Establish a baseline of set new value performance to make sure it doens't get worse.
+        Establish a baseline of set new value performance to make sure it doesn't get worse.
         We expect the extra checks we do here to make Row slower than OrderedDict.
         """
         timer = Timer(start_running=True)
@@ -382,17 +387,33 @@ class TestRow(unittest.TestCase):
         for _ in range(self.set_new_performance_rows):
             od = OrderedDict(self.source1a)
             for i in range(self.set_new_performance_columns):
-                od['new key {}'.format(i)] = 'new value {}'.format(i)            
+                od['new key {}'.format(i)] = 'new value {}'.format(i)
         timer.stop()
         dict_seconds = timer.seconds_elapsed
-        timer.reset()        
+        timer.reset()
         for _ in range(self.set_new_performance_rows):
             row = self.parent_component1.Row()
             for i in range(self.set_new_performance_columns):
-                row['new key {}'.format(i)] = 'new value {}'.format(i)            
+                row['new key {}'.format(i)] = 'new value {}'.format(i)
         timer.stop()
-        print("set new performance {:.2f} that of OrderedDict  = {:f} per call".format(timer.seconds_elapsed / dict_seconds, timer.seconds_elapsed/(self.set_new_performance_rows * (self.set_new_performance_columns))))
-        self.assertLessEqual(timer.seconds_elapsed, dict_seconds*2, "Row set new did not meet performance goal")
+        print("set new performance {:.2f} that of OrderedDict  = {:f} per call".format(
+            timer.seconds_elapsed / dict_seconds,
+            timer.seconds_elapsed / (self.set_new_performance_rows * self.set_new_performance_columns)))
+        self.assertLessEqual(timer.seconds_elapsed, dict_seconds * 2, "Row set new did not meet performance goal")
 
-if __name__ == "__main__":    
+    def test_from_pandas(self):
+        try:
+            import pandas
+            row4_parent = RowParent(logical_name='row4', primary_key=['MixedCase'])
+            pandas_series = pandas.Series(data=self.values, index=self.keys)
+            row4 = Row(pandas_series, parent=row4_parent)
+            for k in self.keys:
+                self.assertIn(k, row4.column_set)
+                self.assertEqual(self.row1[k], row4[k])
+
+        except ImportError:
+            pass
+
+
+if __name__ == "__main__":
     unittest.main()

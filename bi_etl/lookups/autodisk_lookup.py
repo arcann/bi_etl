@@ -4,13 +4,16 @@ Created on Jan 5, 2016
 
 @author: woodd
 """
+from typing import Union
 
+from bi_etl.components.row.row_case_insensitive import RowCaseInsensitive as Row
 from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.lookups.disk_lookup import DiskLookup
 from bi_etl.timer import Timer
 import gc
 import psutil
+from sortedcontainers import SortedDict
 
 __all__ = ['Lookup']
 
@@ -75,9 +78,9 @@ class AutoDiskLookup(Lookup):
             
         self._set_path(path)
         
-        self.ram_check_row_interval = 1000
+        self.ram_check_row_interval = 5000
         self.last_ram_check_at_row = 0
-        self.disk_cache = None   
+        self.disk_cache = None
         self.MemoryLookupClass = Lookup
         self.DiskLookupClass = DiskLookup
         self.lookup_class_args = kwargs
@@ -156,24 +159,27 @@ class AutoDiskLookup(Lookup):
         if self.disk_cache is not None:
             total_len += len(self.disk_cache) 
         return total_len
-        
+
+    def init_disk_cache(self):
+        if self.disk_cache is None:
+            self.disk_cache = self.DiskLookupClass(lookup_name=self.lookup_name,
+                                                   lookup_keys=self.lookup_keys,
+                                                   parent_component=self,
+                                                   config=self.config,
+                                                   path=self.path,
+                                                   **self.lookup_class_args
+                                                   )
+            self.disk_cache.init_cache()
+            # Do not warn about protected access to _get_estimate_row_size
+            # pylint: disable=protected-access
+            self.cache.get_estimate_row_size(force_now=True)
+            self.disk_cache._row_size = self.cache._row_size
+            self.disk_cache._done_get_estimate_row_size = self.cache._done_get_estimate_row_size
+
     def flush_to_disk(self):
         if self.cache is not None and len(self.cache) > 0:
             rows_before = len(self)
-            if self.disk_cache is None:
-                self.disk_cache = self.DiskLookupClass(lookup_name= self.lookup_name, 
-                                                       lookup_keys= self.lookup_keys, 
-                                                       parent_component= self, 
-                                                       config= self.config,
-                                                       path= self.path,
-                                                       **self.lookup_class_args
-                                                       )
-                self.disk_cache.init_cache()
-                # Do not warn about protected access to _get_estimate_row_size
-                # pylint: disable=protected-access
-                self.cache._check_estimate_row_size(force_now=True)
-                self.disk_cache._row_size = self.cache._row_size
-                self.disk_cache._done_get_estimate_row_size = self.cache._done_get_estimate_row_size
+            self.init_disk_cache()
             timer = Timer()
             self.log.info('Flushing {rows:,} rows to disk.'.format(rows= len(self.cache)))
             gc.collect()
@@ -199,46 +205,33 @@ class AutoDiskLookup(Lookup):
                     after=after_move_mb
                 )
             )
-            
-    def check_memory(self):
-        # Only check memory if we have rows in memory
-        if self.cache is not None and len(self.cache) > 0:
-            # Every X rows check memory limits
-            if (self.rows_cached - self.last_ram_check_at_row) >= self.ram_check_row_interval:                                
-                # Double check our cache size. Calls to cache_row might have overwritten existing rows                
-                self.rows_cached = len(self)
-                self.last_ram_check_at_row = self.rows_cached
-                
-                limit_reached = False
-                
-                if self.max_percent_ram_used is not None:
-                    if psutil.virtual_memory().percent > self.max_percent_ram_used:
-                        limit_reached = True
-                        self.log.warning(
-                            "{name}.fill_cache moving a segment to disk at due to "
-                            "system memory limit {pct} > {pct_limit}% with {rows:,} rows of data"
-                            .format(
-                                    name=self.lookup_name,
-                                    rows=self.rows_cached,
-                                    pct=psutil.virtual_memory().percent,
-                                    pct_limit=self.max_percent_ram_used,
-                            )
-                        )
-                process_mb = self.our_process.memory_info().rss/(1024**2)
-                if self.max_process_ram_usage_mb is not None:
-                    if process_mb > self.max_process_ram_usage_mb:
-                        # Set flag to clean out the cache built so far below
-                        limit_reached = True
-                        self.log.warning("{name}.fill_cache moving a segment to disk at due to process memory limit"
-                                         " {usg:,} > {usg_limit:,} KB with {rows:,} rows of data"
-                                         .format(name = self.lookup_name,
-                                                 rows = self.rows_cached,
-                                                 usg = process_mb,
-                                                 usg_limit = self.max_process_ram_usage_mb,
+
+    def memory_limit_reached(self) -> bool:
+        if self.max_percent_ram_used is not None:
+            if psutil.virtual_memory().percent > self.max_percent_ram_used:
+                self.log.warning(
+                    "{name} system memory limit reached {pct} > {pct_limit}% with {rows:,} rows of data"
+                        .format(
+                        name=self.lookup_name,
+                        rows=self.rows_cached,
+                        pct=psutil.virtual_memory().percent,
+                        pct_limit=self.max_percent_ram_used,
+                    )
+                )
+                return True
+        process_mb = self.our_process.memory_info().rss / (1024 ** 2)
+        if self.max_process_ram_usage_mb is not None:
+            if process_mb > self.max_process_ram_usage_mb:
+                self.log.warning("{name} process memory limit reached"
+                                 " {usg:,} > {usg_limit:,} KB with {rows:,} rows of data"
+                                 .format(name=self.lookup_name,
+                                         rows=self.rows_cached,
+                                         usg=process_mb,
+                                         usg_limit=self.max_process_ram_usage_mb,
                                          )
-                        )
-                if limit_reached:
-                    self.flush_to_disk()    
+                                 )
+                return True
+        return False
 
     def cache_row(self, row, allow_update= True):
         if self.cache_enabled:        
@@ -249,21 +242,39 @@ class AutoDiskLookup(Lookup):
             
             # Note: The memory check needs to be here and not in Table.fill_cache since rows can be added to cache 
             #       during the load and not just by fill_cache.
-            self.check_memory()
-            
-            # We need to make sure each row is in only once place
-            # Since disk_cache keeps a memory index, has_row should be fast
-            if self.disk_cache is not None and self.disk_cache.has_row(row):
-                self.disk_cache.cache_row(row, allow_update= allow_update)
+
+            # Python memory is hard to free... so read first rows into RAM and then use disk for all rows after
+
+            # Every X rows check memory limits
+            if (self.disk_cache is None
+                and (self.rows_cached - self.last_ram_check_at_row) >= self.ram_check_row_interval
+               ):
+                # Double check our cache size. Calls to cache_row might have overwritten existing rows
+                self.rows_cached = len(self)
+                self.last_ram_check_at_row = self.rows_cached
+                if self.memory_limit_reached():
+                    self.init_disk_cache()
+
+            # Now cache the row
+            if self.disk_cache is None:
+                self.cache.cache_row(row, allow_update=allow_update)
             else:
-                self.cache.cache_row(row, allow_update= allow_update)
-        
+                # We need to make sure each row is in only once place
+                lk_tuple = self.get_hashable_combined_key(row)
+                if lk_tuple in self.cache:
+                    # Move existing key date ranges to disk
+                    versions_collection = self.get_versions_collection(row)
+                    del self.cache[lk_tuple]
+                    self.disk_cache.cache[lk_tuple] = versions_collection
+
+                # Put add new row to disk as well
+                self.disk_cache.cache_row(row, allow_update= allow_update)
+
     def uncache_row(self, row):
         if self.cache is not None:
             self.cache.uncache_row(row)
         if self.disk_cache is not None:
             self.disk_cache.uncache_row(row)
-            
 
     def __iter__(self):
         """
@@ -279,17 +290,17 @@ class AutoDiskLookup(Lookup):
         if self.disk_cache is not None:
             for row in self.disk_cache:
                 yield row
-  
-    def find_in_cache(self, row, **kwargs):
-        """Find a matching row in the lookup based on the lookup index (keys)"""
+
+    def get_versions_collection(self, row) -> Union[Row, SortedDict]:
         if not self.cache_enabled:
             raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
         if self.cache is None:
             self.init_cache()
+
         try:
-            return self.cache.find_in_cache(row, **kwargs)
+            return self.cache.get_versions_collection(row)
         except NoResultFound:
             if self.disk_cache is not None:
-                return self.disk_cache.find_in_cache(row, **kwargs)
+                return self.disk_cache.get_versions_collection(row)
             else:
                 raise NoResultFound()

@@ -58,7 +58,7 @@ def get_size_summary(obj, print_summary=True):
     if print_summary:
         for cls, data in sorted(processed_classes.items(), key=sort_key):
             print('{} size = {data[size]:,} cnt= {data[cnt]:,} max_depth={data[max_depth]}'.format(cls,data=data))
-            print('\t ref_chain={}'.format(data.get('ref_chain',None)))
+            print('\t ref_chain={}'.format(data.get('ref_chain', None)))
             print()
         print('size={:,}'.format(sz))    
     return sz

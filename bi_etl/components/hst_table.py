@@ -9,8 +9,8 @@ import warnings
 from typing import Iterable, Union, Callable, List
 
 from bi_etl.statistics import Statistics
-from components.row.row_status import RowStatus
-from conversions import ensure_datetime
+from bi_etl.components.row.row_status import RowStatus
+from bi_etl.conversions import ensure_datetime
 from sqlalchemy.sql.expression import and_
 
 from bi_etl.components.table import Table
@@ -255,6 +255,7 @@ class HistoryTable(Table):
     def natural_key(self, value: list):
         self.__natural_key_override = True
         self.__natural_key = value
+        self.ensure_nk_lookup()
 
     def _get_nk_lookup_name(self):
         if self.__natural_key_override:
@@ -514,7 +515,7 @@ class HistoryTable(Table):
 
         if lookup.cache_enabled:
             try:
-                cache_hit = lookup.find_in_cache(source_row, effective_date)
+                cache_hit = lookup.find_in_cache(source_row, effective_date=effective_date)
                 stats['Found in cache'] += 1
                 stats.timer.stop()
                 if cache_hit:
@@ -626,6 +627,10 @@ class HistoryTable(Table):
         -------
         new_row
         """
+        if self.begin_date is None:
+            raise ValueError("begin_date column name not set")
+        if self.end_date is None:
+            raise ValueError("end_date column name not set")
         if source_row.get(self.begin_date, None) is None:
             if source_effective_date is None:
                 source_row[self.begin_date] = self.default_begin_date
@@ -716,7 +721,19 @@ class HistoryTable(Table):
             new_row[self.begin_date_column] = source_effective_date
             # check that we aren't inserting after all existing rows
             if new_row[self.end_date_column] < source_effective_date:
-                warnings.warn("The table had an existing key sequence that did not cover all dates.")
+                self.warnings_issued += 1
+                if self.warnings_issued < self.warnings_limit:
+                    self.log.warning("The table had an existing key sequence that did not cover all dates. "
+                                     "Natural Keys = {keys}.".format(
+                                        keys=self.get_nk_lookup().get_list_of_lookup_column_values(row)
+                                        )
+                                     )
+                    for row in self.get_pk_lookup().get_versions_collection(row):
+                        self.log.info("begin= {begin}\tend= {end}".format(
+                            begin= row[self.begin_date],
+                            end= row[self.end_date]
+                            ),
+                        )
                 new_row[self.end_date_column] = self.default_end_date
 
             # Retire the existing row (after clone so that the existing end_date is passed on to the new row)

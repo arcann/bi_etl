@@ -685,7 +685,7 @@ class SchedulerInterface(object):
         """
         params_dict = self.get_task_parameter_dict(etl_task.task_id)
         for param_name in params_dict:
-            etl_task.add_parameter(param_name, params_dict[param_name], local_only= True)
+            etl_task.set_parameter(param_name, params_dict[param_name], local_only= True)
 
     def get_jobs_by_root_id(self, root_task_id):
         query = self.session.query(ETL_Tasks).filter(ETL_Tasks.root_task_id == root_task_id)

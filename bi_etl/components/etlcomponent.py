@@ -75,8 +75,9 @@ class ETLComponent(Iterable):
         self.__close_called = False
         self.read_batch_size = 1000
         self._iterator_applied_filters = False
-        self.all_rows_same_columns = False
-        
+        self.warnings_issued = 0
+        self.warnings_limit = 100
+
         # self.log = logging.getLogger(__name__)
         self.log = logging.getLogger("{mod}.{cls}".format(mod = self.__class__.__module__, cls= self.__class__.__name__))
         bi_etl.utility.log_logging_level(self.log)

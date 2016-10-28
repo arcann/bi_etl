@@ -311,7 +311,7 @@ class TestTable(unittest.TestCase):
         with self.assertLogs(tbl.log, logging.ERROR) as log:
             try:
                 for i in range(rows_to_insert):
-                    row=tbl.Row()
+                    row = tbl.Row()
                     row['col1'] = i % int(rows_to_insert / 2)
                     row['col2'] = 'this is row {}'.format(i)
                     row['col3'] = i/1000.0

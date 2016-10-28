@@ -108,7 +108,7 @@ class ReadOnlyTable(ETLComponent):
         super(ReadOnlyTable, self).__init__(task= task,
                                             logical_name= table_name,
                                             )
-        self.all_rows_same_columns = True
+        
         self.__lookups = dict()
         # Default lookup class is AutoDiskLookup
         self.default_lookup_class = AutoDiskLookup
@@ -148,13 +148,10 @@ class ReadOnlyTable(ETLComponent):
             if not table_name_case_sensitive:
                 table_name = table_name.lower()
             self.table = sqlalchemy.schema.Table(table_name, database, autoload=True, quote=False)
-            
-            
-            
+
         if exclude_columns:
             self.exclude_columns(exclude_columns)
-        
-        
+
         self.custom_special_values = dict()
         
         # Should be the last call of every init            
@@ -264,7 +261,10 @@ class ReadOnlyTable(ETLComponent):
         self.database.remove(self.table)
         self.table = sqlalchemy.schema.Table(self.table_name, self.database, *self._columns, quote=False)
     
-    def connection(self):
+    def is_connected(self) -> bool:
+        return self.__connection is not None
+
+    def connection(self) -> sqlalchemy.engine.base.Connection:
         if self.__connection is None and self.table is not None:
             self.__connection = self.table.metadata.bind.connect()
         return self.__connection
@@ -1019,7 +1019,15 @@ class ReadOnlyTable(ETLComponent):
         """
         Get by the primary key.
         """
-        return self.get_by_lookup(ReadOnlyTable.PK_LOOKUP,source_row, stats_id= stats_id, parent_stats=parent_stats)
+        if not isinstance(source_row, Row):
+            if isinstance(source_row, list):
+                source_row = self.Row(zip(self.primary_key, source_row))
+            else:
+                source_row = self.Row(zip(self.primary_key, [source_row]))
+        return self.get_by_lookup(ReadOnlyTable.PK_LOOKUP,
+                                  source_row,
+                                  stats_id= stats_id,
+                                  parent_stats=parent_stats)
 
     def get_by_lookup(self, 
                       lookup_name: str,

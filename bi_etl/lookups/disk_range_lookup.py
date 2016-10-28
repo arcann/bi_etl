@@ -8,6 +8,7 @@ from bi_etl.lookups.disk_lookup import DiskLookup
 
 __all__ = ['DiskRangeLookup']
 
+
 class DiskRangeLookup(RangeLookup, DiskLookup):
     def __init__(self, lookup_name, lookup_keys, parent_component, begin_date, end_date, config=None, path=None):
         """

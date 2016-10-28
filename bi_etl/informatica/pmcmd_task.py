@@ -21,8 +21,8 @@ class PMCMD_Task(ETLTask):
             ##  For testing purposes - Shouldn't get here
             self.log.error("PMCMD_Task didn't get folder parameter. Assuming test run")
             folder = 'MASTER'
-            self.add_parameter('folder', folder)            
-            self.add_parameter('workflow', 'wf_TEST_Derek')
+            self.set_parameter('folder', folder)
+            self.set_parameter('workflow', 'wf_TEST_Derek')
         
         self.cmd = PMCMD(config=self.config, folder= folder)
 
@@ -37,6 +37,6 @@ class PMCMD_Task(ETLTask):
         
 if __name__ == '__main__':
     task = PMCMD_Task()
-    task.add_parameter('folder', 'MASTER')
-    task.add_parameter('workflow', 'wf_TEST_Derek')
+    task.set_parameter('folder', 'MASTER')
+    task.set_parameter('workflow', 'wf_TEST_Derek')
     task.run(no_mail = True)                

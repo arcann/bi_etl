@@ -77,7 +77,7 @@ class DiskLookup(Lookup):
         
     def _check_estimate_row_size(self, force_now=False):
         if force_now or not self._done_get_estimate_row_size:
-            row_cnt = min(len(self),1000)
+            row_cnt = min(len(self), 1000)
             total_row_sizes = 0
             row_num = 0
             for row in self:
