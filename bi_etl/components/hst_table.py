@@ -22,6 +22,7 @@ from bi_etl.timer import Timer
 __all__ = ['HistoryTable,', 'Hst_Table']
 
 
+# noinspection PyAbstractClass
 class HistoryTable(Table):
     """
     ETL target component for a table that stores history of updates. Also usable as a source. 
@@ -760,7 +761,6 @@ class HistoryTable(Table):
 
     def upsert(self,
                source_row: Union[Row, List[Row]],
-               source_effective_date: datetime = None,
                lookup_name: str = None,
                skip_update_check_on: list = None,
                do_not_update: list = None,
@@ -772,6 +772,7 @@ class HistoryTable(Table):
                target_excludes: list = None,
                stat_name: str = 'upsert',
                parent_stats: Statistics = None,
+               **kwargs
                ):
         """
         Update (if changed) or Insert a row in the table.
@@ -781,10 +782,11 @@ class HistoryTable(Table):
         ----------
         source_row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
             Row to upsert
-        source_effective_date: datetime
-            Effective datetime of records to upsert.
-            If None, get from the source_row column named the same as self.begin_date.
-            Otherwise, use the current datetime.
+        kwargs:
+            source_effective_date: datetime
+                Effective datetime of records to upsert.
+                If None, get from the source_row column named the same as self.begin_date.
+                Otherwise, use the current datetime.
         lookup_name: str
             The name of the lookup (see :meth:`define_lookup`) to use when searching for an existing row.
         skip_update_check_on: list
@@ -816,13 +818,13 @@ class HistoryTable(Table):
         stats.ensure_exists('apply_updates called')
         stats.ensure_exists('insert new called')
 
-        if source_effective_date is None:
+        if 'source_effective_date' not in kwargs:
             if self.begin_date in source_row:
                 source_effective_date = ensure_datetime(source_row[self.begin_date])
             else:
                 source_effective_date = datetime.now()
         else:
-            source_effective_date = ensure_datetime(source_effective_date)
+            source_effective_date = ensure_datetime(kwargs['source_effective_date'])
 
         if skip_update_check_on is None:
             skip_update_check_on = []

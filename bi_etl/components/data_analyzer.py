@@ -236,7 +236,7 @@ class DataAnalyzer(ETLComponent):
         
         stats['rows processed'] = self.rows_processed
         column_number = 0
-        for column_name in row.columns_in_order():
+        for column_name in row.columns_in_order:
             column_number += 1
             column_value = row[column_name]
             self.analyze_column(column_name=column_name,

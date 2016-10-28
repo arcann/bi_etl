@@ -4,24 +4,25 @@ Created on Sep 17, 2014
 @author: woodd
 """
 import codecs
+import math
+import os
+import subprocess
+import tempfile
+import textwrap
 import traceback
 import warnings
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from decimal import InvalidOperation
-from typing import Iterable, Union
+from typing import Iterable, Union, Callable, List
 
-import math
 import sqlalchemy
-from bi_etl.components.row.row_status import RowStatus
-from bi_etl.statistics import Statistics
-from sqlalchemy.sql.expression import bindparam
-
 from bi_etl import Timer
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.readonlytable import ReadOnlyTable, NoResultFound
 from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row import Row
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.conversions import nvl
 from bi_etl.conversions import replace_tilda
@@ -36,9 +37,7 @@ from bi_etl.statement_queue import StatementQueue
 from bi_etl.statistics import Statistics
 from bi_etl.utility import dict_to_str
 from bi_etl.utility import getIntegerPlaces
-from bi_etl.conversions import nvl
-from bi_etl.conversions import replace_tilda
-from bi_etl.utility import dict_to_str
+from sqlalchemy.sql.expression import bindparam
 
 
 class Table(ReadOnlyTable):
@@ -146,6 +145,8 @@ class Table(ReadOnlyTable):
          
     """    
     DEFAULT_BATCH_SIZE = 5000
+    # Replacement for float Not a Number (NaN) values
+    NAN_REPLACEMENT_VALUE = None
 
     def __init__(self,
                  task,
@@ -170,23 +171,23 @@ class Table(ReadOnlyTable):
         self.auto_generate_key = False
         self.last_update_date = None
         self.default_date_format = '%m/%d/%Y'
-        self.default_date_time_format='%m/%d/%Y %H:%M:%S'
+        self.default_date_time_format = '%m/%d/%Y %H:%M:%S'
         self.default_time_format = '%H:%M:%S'         
         self.force_ascii = False
         codecs.register_error('replace_tilda', replace_tilda)
         self.autocommit = False
         self.__batch_size = self.DEFAULT_BATCH_SIZE
         self.__transaction = None
+
+        self._logical_delete_update = None
         
         # Safe type mode is slower, but gives better error messages than the database
         # that will likely give a not-so helpful message or silently truncate a value.
-        self.safe_type_mode = True        
+        self.safe_type_mode = True
 
         # Init table "memory"
         self.max_keys = dict()
-        self.mapped_source_rows = dict()
-        self.mapped_source_transformations = dict()
-        
+
         # Make a self example source row
         self._example_row = self.Row()
         if self.columns is not None:
@@ -402,6 +403,21 @@ class Table(ReadOnlyTable):
                                          )
         # TODO: Sanity check primary key data types.
         # Lookups might fail if the types don't match (although build_row in safe_mode should fix it)
+
+    def _trace_data_type(self, target_name, t_type, target_column_value):
+        try:
+            self.log.debug("{} t_type={}".format(target_name, t_type))
+            self.log.debug("{} t_type.precision={}".format(target_name, t_type.precision))
+            self.log.debug("{} target_column_value={}"
+                           .format(target_name, target_column_value))
+            self.log.debug("{} getIntegerPlaces(target_column_value)={}"
+                           .format(target_name, getIntegerPlaces(target_column_value)))
+            self.log.debug("{} (t_type.precision - t_type.scale)={}"
+                           .format(target_name,
+                                   (nvl(t_type.precision, 0) - nvl(t_type.scale, 0))))
+        except AttributeError as e:
+            self.log.error(traceback.format_exc())
+            self.log.debug(repr(e))
     
     def build_row(self,
                   source_row: Row,
@@ -446,7 +462,9 @@ class Table(ReadOnlyTable):
             #####################
             # First make sure we have an instance of Row as a source 
             if not isinstance(source_row, Row):
-                source_row = Row(source_row, name=str(type(source_row)))                
+                # This will be slow if passed a lot of these non-Row objects
+                iteration_header = RowIterationHeader(logical_name='default')
+                source_row = Row(iteration_header, data=source_row)
             target_set = set(self.column_names)
             if target_excludes is not None:
                 target_set -= set(target_excludes)
@@ -475,11 +493,16 @@ class Table(ReadOnlyTable):
                                         # Passing ascii bytes to cx_Oracle is not working.
                                         # We need to pass a str value.
                                         # So we'll use encode with 'replace' to force ascii compatibility                                                                        
-                                        target_column_value = target_column_value.encode('ascii','replace_tilda').decode('ascii')
+                                        target_column_value = \
+                                            target_column_value.encode('ascii', 'replace_tilda').decode('ascii')
+                                        new_row[target_name] = target_column_value
+                                    # else we don't update the value
                                 elif isinstance(target_column_value, bytes):
                                     target_column_value = target_column_value.decode('ascii')
+                                    new_row[target_name] = target_column_value
                                 else:
                                     target_column_value = str(target_column_value)
+                                    new_row[target_name] = target_column_value
                                 #Note: t_type.length is None for CLOB fields
                                 try:
                                     if t_type.length is not None and len(target_column_value) > t_type.length:
@@ -491,10 +514,13 @@ class Table(ReadOnlyTable):
                             elif t_type.python_type == bytes:
                                 if isinstance(target_column_value, str):
                                     target_column_value = target_column_value.encode('utf-8')
+                                    new_row[target_name] = target_column_value
                                 elif isinstance(target_column_value, bytes):
                                     pass
+                                    # We don't update the value
                                 else:
                                     target_column_value = str(target_column_value).encode('utf-8')
+                                    new_row[target_name] = target_column_value
                                 # t_type.length is None for BLOB, LargeBinary fields.
                                 # This really might not be required since all
                                 # discovered types with python_type == bytes:
@@ -506,59 +532,56 @@ class Table(ReadOnlyTable):
                             elif t_type.python_type == int:
                                 if isinstance(target_column_value, str):
                                     # Note: str2int takes 590 ns vs 220 ns for int() but handles commas and signs.                                
-                                    target_column_value = str2int(target_column_value)                                
+                                    target_column_value = str2int(target_column_value)
+                                    new_row[target_name] = target_column_value
                             elif t_type.python_type == float:
                                 if isinstance(target_column_value, str):
                                     # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
-                                    # The thought is that ETL jobs that need the perfomance and can guarantee no commas 
+                                    # The thought is that ETL jobs that need the performance and can guarantee no commas
                                     # can explicitly use float
                                     target_column_value = str2float(target_column_value)
+                                    new_row[target_name] = target_column_value
                                 elif math.isnan(target_column_value):
-                                    target_column_value = None
+                                    target_column_value = self.NAN_REPLACEMENT_VALUE
+                                    new_row[target_name] = target_column_value
                             elif t_type.python_type == Decimal:
-                                if isinstance(target_column_value, str):      
+                                if isinstance(target_column_value, str):
                                     # If for performance reasons you don't want this conversion...
                                     #   DON'T send in a string!
                                     # str2decimal takes 765 ns vs 312 ns for Decimal() but handles commas and signs.
-                                    # The thought is that ETL jobs that need the performance and can guarantee no commas 
-                                    # can explicitly use float or Decimal
+                                    # The thought is that ETL jobs that need the performance and can
+                                    # guarantee no commas can explicitly use float or Decimal
                                     target_column_value = str2decimal(target_column_value)
-                                elif math.isnan(target_column_value):
-                                    target_column_value = None
-                                else:
-                                    # Testing trace output
-                                    #===============================================
-                                    # try:
-                                    #     self.log.debug("{} t_type={}".format(target_name, t_type))
-                                    #     self.log.debug("{} t_type.precision={}".format(target_name, t_type.precision))
-                                    #     self.log.debug("{} target_column_value={}".format(target_name, target_column_value))
-                                    #     self.log.debug("{} getIntegerPlaces(target_column_value)={}".format(target_name, getIntegerPlaces(target_column_value)))
-                                    #     self.log.debug("{} (t_type.precision - t_type.scale)={}".format(target_name, (nvl(t_type.precision,0) - nvl(t_type.scale,0))))
-                                    # except AttributeError as e:
-                                    #     self.log.error(traceback.format_exc())
-                                    #     self.log.debug(repr(e))
-                                    #===============================================
-                                    if t_type.precision is not None:
-                                        scale = nvl(t_type.scale, 0)
-                                        if getIntegerPlaces(target_column_value) > (t_type.precision - scale):
-                                            type_error = True
-                                            err_msg= "{} digits > {} = (prec {} - scale {}) limit".format(getIntegerPlaces(target_column_value),
-                                                                                             (t_type.precision - scale),
-                                                                                             t_type.precision,
-                                                                                             t_type.scale,
-                                                                                             )
+                                    new_row[target_name] = target_column_value
+                                elif isinstance(target_column_value, float):
+                                    if math.isnan(target_column_value):
+                                        target_column_value = self.NAN_REPLACEMENT_VALUE
+                                        new_row[target_name] = target_column_value
+                                if t_type.precision is not None:
+                                    scale = nvl(t_type.scale, 0)
+                                    if getIntegerPlaces(target_column_value) > (t_type.precision - scale):
+                                        type_error = True
+                                        err_msg = "{digits} digits > {t_digits} = " \
+                                                  "(prec {prec} - scale {scale}) limit"\
+                                            .format(digits=getIntegerPlaces(target_column_value),
+                                                    t_digits=(t_type.precision - scale),
+                                                    prec=t_type.precision,
+                                                    scale=t_type.scale,
+                                                    )
                             elif t_type.python_type == date:
                                 # If we already have a datetime, make it a date
                                 if isinstance(target_column_value, datetime):
                                     target_column_value = date(target_column_value.year, 
                                                                target_column_value.month, 
-                                                               target_column_value.day) 
+                                                               target_column_value.day)
+                                    new_row[target_name] = target_column_value
                                 # If we already have a date
                                 elif isinstance(target_column_value, date):
                                     pass
                                 else:                            
                                     target_column_value = str2date(target_column_value,
                                                                    dt_format= self.default_date_format)
+                                    new_row[target_name] = target_column_value
                             elif t_type.python_type == datetime:
                                 # If we already have a date or datetime value
                                 if isinstance(target_column_value, datetime) or isinstance(target_column_value, date):
@@ -566,9 +589,11 @@ class Table(ReadOnlyTable):
                                 elif isinstance(target_column_value, str):
                                     target_column_value = str2datetime(target_column_value,
                                                                        dt_format= self.default_date_time_format)
+                                    new_row[target_name] = target_column_value
                                 else:                            
                                     target_column_value = str2datetime(str(target_column_value),
                                                                        dt_format= self.default_date_time_format)
+                                    new_row[target_name] = target_column_value
                             elif t_type.python_type == time:                                
                                 # If we already have a datetime, make it a time
                                 if isinstance(target_column_value, datetime):
@@ -578,18 +603,21 @@ class Table(ReadOnlyTable):
                                                                target_column_value.microsecond,
                                                                target_column_value.tzinfo,
                                                                )
+                                    new_row[target_name] = target_column_value
                                 # If we already have a date or time value
                                 elif isinstance(target_column_value, time):
                                     pass
                                 else:                            
                                     target_column_value = str2time(target_column_value,
                                                                    dt_format= self.default_time_format)
+                                    new_row[target_name] = target_column_value
                             elif t_type.python_type == timedelta:
                                 # If we already have an interval value
                                 if isinstance(target_column_value, timedelta):
                                     pass
                                 else:                            
                                     target_column_value = timedelta(seconds=target_column_value)
+                                    new_row[target_name] = target_column_value
                             elif t_type.python_type == bool:
                                 if isinstance(target_column_value, bool):
                                     pass
@@ -602,6 +630,7 @@ class Table(ReadOnlyTable):
                                     else:
                                         type_error = True
                                         err_msg = "unexpected value (expected true/false, yes/no, y/n)"
+                                    new_row[target_name] = target_column_value
                             else:
                                 warnings.warn('Table.build_row has no handler for {} = {}'.format(t_type, type(t_type)))
                         except (ValueError, InvalidOperation) as e:
@@ -621,7 +650,8 @@ class Table(ReadOnlyTable):
                                 err_msg = err_msg
                             )
                             raise ValueError(msg)
-                    else:  # value is null
+                # Check again for nulls in case the conversion logic made it so
+                if target_column_value is None:
                         if not target_column_object.nullable:
                             msg = "{table}.{column} has is not nullable and this cannot accept value '{val}'" \
                                   " on row {row}".format(
@@ -631,7 +661,6 @@ class Table(ReadOnlyTable):
                                     row = new_row.str_formatted()
                                   )
                             raise ValueError(msg)
-                    new_row[target_name] = target_column_value
                     
                     #End if target_column_value is not None:
                 
@@ -755,6 +784,7 @@ class Table(ReadOnlyTable):
     @staticmethod
     def _bcp_format_value(value):
         if isinstance(value, datetime):
+            # noinspection PyTypeChecker,PyTypeChecker
             return ('{year:4d}-{month:02d}-{day:02d} {hour:02d}:{min:02d}:{sec:06.3f}'
                     .format(year=value.year,
                             month=value.month,
@@ -776,9 +806,9 @@ class Table(ReadOnlyTable):
             if self.__transaction.is_active:
                 self.__transaction.commit()
         # TODO: Remove this testing code
-        bcp_dir = r"c:\temp"
-        if bcp_dir:
-        #with tempfile.TemporaryDirectory() as bcp_dir:
+        #bcp_dir = r"c:\temp"
+        #if bcp_dir:
+        with tempfile.TemporaryDirectory() as bcp_dir:
             bcp_file_path = os.path.join(bcp_dir, "bcp_file")
             bcp_format_path = os.path.join(bcp_dir, "bcp.fmt")
             with open(bcp_format_path, "w", encoding="utf-8") as bcp_fmt:
@@ -807,7 +837,7 @@ class Table(ReadOnlyTable):
                     if col_num+1 == max_col:
                         term = "\\r\\0\\n\\0"
                     field_list.append(
-                        '<FIELD ID="{col_num}" xsi:type="NCharTerm" TERMINATOR="{term}" MAX_LENGTH="{size}"/>'\
+                        '<FIELD ID="{col_num}" xsi:type="NCharTerm" TERMINATOR="{term}" MAX_LENGTH="{size}"/>'
                         .format(col_num=col_num+1,
                                 size=size,
                                 term=term
@@ -932,8 +962,8 @@ class Table(ReadOnlyTable):
                         self.connection().execute(stmt, row)
                     except Exception as e:
                         if not isinstance(row, Row):
-                            row = Row(row)
-                        self.log.error("Error with row {row_num} stmt {stmv} stmt_values {vals}".format(
+                            row = self.Row(row)
+                        self.log.error("Error with row {row_num} stmt {stmt} stmt_values {vals}".format(
                             row_num=row_num,
                             stmt=stmt,
                             vals=row.str_formatted()
@@ -1192,7 +1222,6 @@ class Table(ReadOnlyTable):
         
         stats.timer.stop()
         
-
     # TODO: Add lookup parameter and change to allow set of be of that instead of keys
     def delete_not_in_set(self,
                           set_of_key_tuples: set,
@@ -1209,7 +1238,8 @@ class Table(ReadOnlyTable):
         Parameters
         ----------
         set_of_key_tuples
-            List of tuples comprising the primary key values. This list represents the rows that should *not* be deleted.
+            List of tuples comprising the primary key values.
+            This list represents the rows that should *not* be deleted.
         criteria
             Only rows matching criteria will be checked against the ``list_of_key_tuples`` for deletion. 
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
@@ -1238,7 +1268,8 @@ class Table(ReadOnlyTable):
             existing_key = self.get_primarykey_tuple(row)
             if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 progress_timer.reset()
-                self.log.info("delete_not_in_set current row={} key={} deletes_done = {}".format(stats['rows read'], existing_key, deletes_cnt))
+                self.log.info("delete_not_in_set current row={} key={} deletes_done = {}"
+                              .format(stats['rows read'], existing_key, deletes_cnt))
             if existing_key not in set_of_key_tuples:
                 stats['rows deleted'] += 1
                 
@@ -1302,7 +1333,8 @@ class Table(ReadOnlyTable):
         Parameters
         ----------
         set_of_key_tuples
-            List of tuples comprising the primary key values. This list represents the rows that should *not* be logically deleted.
+            List of tuples comprising the primary key values.
+            This list represents the rows that should *not* be logically deleted.
         lookup_name: str
             Name of the lookup to use
         criteria
@@ -1319,13 +1351,15 @@ class Table(ReadOnlyTable):
             Optional Statistics object to nest this steps statistics in.         
             Default is to place statistics in the ETLTask level statistics.
         """
-        logical_delete_update = Row(name='logically_deleted')
-        logical_delete_update[self.delete_flag] = self.delete_flag_yes
+        if self._logical_delete_update is None:
+            self._logical_delete_update = Row(RowIterationHeader(logical_name='logical_delete'))
+            self._logical_delete_update[self.delete_flag] = self.delete_flag_yes
+
         if criteria is None:
             # Default to not processing rows that are already deleted
             criteria = {self.delete_flag: self.delete_flag_no}
 
-        self.update_not_in_set(updates_to_make=logical_delete_update,
+        self.update_not_in_set(updates_to_make=self._logical_delete_update,
                                set_of_key_tuples=set_of_key_tuples,
                                lookup_name=lookup_name,
                                criteria=criteria,
@@ -1416,6 +1450,7 @@ class Table(ReadOnlyTable):
                 else:
                     created = False
                     id = 0
+                    table_name = None
                     while not created:
                         table_name = "tmp_" + str(datetime.now().toordinal()) + str(id)
                         try:
@@ -1458,9 +1493,10 @@ class Table(ReadOnlyTable):
                             ]
                 sets = ','.join(sets_list)
 
-                key_join_list = ["{target_tbl}.{column} = {updates_tbl}.{column}".format(column=column,
-                                                                                         target_tbl=self.table_name,
-                                                                                         updates_tbl=update_table_object.table_name,)
+                key_join_list = ["{target_tbl}.{column} = {updates_tbl}.{column}"
+                                     .format(column=column,
+                                             target_tbl=self.table_name,
+                                             updates_tbl=update_table_object.table_name,)
                                  for column in self.primary_key]
                 key_joins = ','.join(key_join_list)
 
@@ -1650,14 +1686,16 @@ class Table(ReadOnlyTable):
         updates_to_make:
             Updates to make to the rows matching the criteria
             Can also be used to pass the key_values, so you can pass a single 
-            :class:`~bi_etl.components.row.row_case_insensitive.Row` or ``dict`` to the call and have it automatically get the
-            filter values and updates from it. 
+            :class:`~bi_etl.components.row.row_case_insensitive.Row` or ``dict``
+            to the call and have it automatically get the filter values and updates from it.
         key_values:
             Optional. dict or list of key to apply as criteria
         source_excludes:
-            Optional. list of :class:`~bi_etl.components.row.row_case_insensitive.Row` source columns to exclude when mapping to this Table.
+            Optional. list of :class:`~bi_etl.components.row.row_case_insensitive.Row`
+            source columns to exclude when mapping to this Table.
         target_excludes:
-            Optional. list of Table columns to exclude when mapping from the source :class:`~bi_etl.components.row.row_case_insensitive.Row` (s)
+            Optional. list of Table columns to exclude when mapping from the source
+            :class:`~bi_etl.components.row.row_case_insensitive.Row` (s)
         stat_name:
             Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
         parent_stats:
@@ -1902,20 +1940,19 @@ class Table(ReadOnlyTable):
         self.source_keys_processed = set()
 
     def upsert(self,
-               source_row,
-               lookup_name = None,
-               skip_update_check_on = None,
-               do_not_update = None,
-               additional_update_values = None,
-               additional_insert_values = None,
-               update_callback = None,
-               insert_callback = None,
-               source_renames = None,
-               source_excludes = None,
-               target_excludes = None,
-               source_transformations = None,
-               stat_name = 'upsert',
-               parent_stats = None,
+               source_row: Union[Row, List[Row]],
+               lookup_name: str = None,
+               skip_update_check_on: list = None,
+               do_not_update: list = None,
+               additional_update_values: dict = None,
+               additional_insert_values: dict = None,
+               update_callback: Callable[[list, Row], None] = None,
+               insert_callback: Callable[[list, Row], None] = None,
+               source_excludes: list = None,
+               target_excludes: list = None,
+               stat_name: str = 'upsert',
+               parent_stats: Statistics = None,
+               **kwargs
                ):
         """
         Update (if changed) or Insert a row in the table.
@@ -1944,15 +1981,10 @@ class Table(ReadOnlyTable):
             Function to pass updated rows to. Function should not modify row.
         insert_callback: function
             Function to pass inserted rows to. Function should not modify row.
-        source_renames: dict
-            Renames to apply to the columns in row(s).
         source_excludes
             list of Row source columns to exclude when mapping to this Table.
         target_excludes
             list of Table columns to exclude when mapping from the source Row(s)
-        source_transformations
-            Container with (transform_col, transform) mappings.
-            See :doc:`source_transformations`
         stat_name
             Name of this step for the ETLTask statistics. Default = 'upsert'
         parent_stats
@@ -2142,7 +2174,7 @@ class Table(ReadOnlyTable):
         self._insert_pending_batch()
 
         if print_to_log:
-            self.log.debug("Committing")
+            self.log.debug("Committing {}".format(self.table_name))
         stats = self.get_unique_stats_entry(stat_name, parent_stats= parent_stats)
         # Start & stop appropriate timers for each
         stats['commit count'] += 1

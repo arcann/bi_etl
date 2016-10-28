@@ -6,6 +6,7 @@ Created on Mar 26, 2015
 import unittest
 from collections import OrderedDict
 
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from sqlalchemy.sql.schema import Column, Table, DEFAULT_NAMING_CONVENTION
 from sqlalchemy.engine.result import RowProxy
 from sqlalchemy.sql.sqltypes import Integer, String, Numeric
@@ -37,6 +38,7 @@ class TestRow(unittest.TestCase):
             'lower':     'beta',
             'UPPER':     1234.567,
         }
+        # Row1 will have a random (or unknown) column order based on the dict ordering
         self.source1_rows = [self.source1a, self.source1b]
         self.parent_component1 = DummyETLComponent(data=self.source1_rows)
         self.rows1 = [row for row in self.parent_component1]
@@ -44,17 +46,19 @@ class TestRow(unittest.TestCase):
         self.row1b = self.rows1[1]
 
         # Make a SQLAlchemy type of row (RowProxy)
+        self.columns = ['MixedCase', 'lower', 'UPPER']
+        # Row2 will have a known column order
         self.source2a = self._make_row_from_dict(self.source1a)
         self.source2b = self._make_row_from_dict(self.source1b)
         self.source2_rows = [self.source2a, self.source2b]
         self.sa_row_name = 'sa_row'
-        self.parent_component2 = DummyETLComponent(logical_name=self.sa_row_name, data=self.source2_rows)
+        iteration_header = RowIterationHeader(logical_name=self.sa_row_name, columns_in_order=self.columns)
+        self.parent_component2 = DummyETLComponent(iteration_header=iteration_header, data=self.source2_rows)
         self.rows2 = [row for row in self.parent_component2]
         self.row2a = self.rows2[0]
         self.row2b = self.rows2[1]
         
-        # Row3 will be our only row with a known order
-        self.columns = ['MixedCase', 'lower', 'UPPER']
+        # Row3 will have a known column order
         self.values3a = [1, 'two', 1.5]
         self.values3b = [2, 'beta', 1234.567]
         self.source3_rows = list()
@@ -71,7 +75,7 @@ class TestRow(unittest.TestCase):
         pass
 
     def test_as_dict(self):
-        d = self.row1a.as_dict()
+        d = self.row1a.as_dict
         for k in self.source1a:
             self.assertEquals(d[k], self.source1a[k],
                               'row1[{}] returned wrong value {} != {}'.format(k, d[k], self.source1a[k]))
@@ -404,12 +408,12 @@ class TestRow(unittest.TestCase):
     def test_from_pandas(self):
         try:
             import pandas
-            row4_parent = RowParent(logical_name='row4', primary_key=['MixedCase'])
-            pandas_series = pandas.Series(data=self.values, index=self.keys)
-            row4 = Row(pandas_series, parent=row4_parent)
-            for k in self.keys:
+            iteration_header = RowIterationHeader(logical_name='row4', primary_key=['MixedCase'])
+            pandas_series = pandas.Series(data=self.values3a, index=self.columns)
+            row4 = Row(iteration_header, pandas_series)
+            for k in self.columns:
                 self.assertIn(k, row4.column_set)
-                self.assertEqual(self.row1[k], row4[k])
+                self.assertEqual(self.row3a[k], row4[k])
 
         except ImportError:
             pass

@@ -26,19 +26,24 @@ class Row(object):
     __name_map_db = dict()
 
     def __init__(self,
-                 iteration_header: RowIterationHeader=None,
+                 iteration_header: RowIterationHeader,
                  data=None,
-                 status: RowStatus = None):
+                 status: RowStatus = None,
+                 allocate_space=True):
         # Whatever we store here we need to either store on disk for a lookup,
         # or have a way of retrieving in __setstate__
         super().__init__()
         # We need to accept None for iteration_header for shelve to be efficient
         self._data_values = list()
-        if iteration_header is not None:
+        if isinstance(iteration_header, int):
+            self.iteration_header = RowIterationHeader.get_by_id(iteration_header)
+        else:
             assert isinstance(iteration_header, RowIterationHeader), \
-                "First argument to Row needs to be RowIterationHeader type"
+                "First argument to Row needs to be RowIterationHeader type, got {}".format(type(iteration_header))
             self.iteration_header = iteration_header
-            self.iteration_header.add_row(self)
+        self.iteration_header.add_row(self)
+        if allocate_space:
+            self._extend_to_size(len(self.iteration_header.columns_in_order))
         self.status = status
 
         # Populate our data
@@ -63,30 +68,42 @@ class Row(object):
 
     def __reduce__(self):
         # TODO: Experiment with different formats for performance and compactness
+        # 91 bytes using pickle.HIGHEST_PROTOCOL, 86 bytes in test using default protocol
+        status_value = None
+        if self.status is not None:
+            status_value = self.status.value
+        return (self.__class__,
+                # A tuple of arguments for the callable object.
+                (self.iteration_header.iteration_id,
+                 self._data_values,
+                 status_value
+                 ),
+                )
+
+    def __reduce_v1__(self):
+        # TODO: Experiment with different formats for performance and compactness
+        # 114 bytes in test
         status_value = None
         if self.status is not None:
             status_value = self.status.value
         outgoing_dict = {
             's': status_value,
-            'h': self.iteration_header.iteration_id,
             'v': self._data_values,
         }
         return (self.__class__,
                 # A tuple of arguments for the callable object.
-                (),
+                (self.iteration_header.iteration_id,),
                 # State to be passed to setstate
                 outgoing_dict,
                 )
 
     # pylint: disable=attribute-defined-outside-init
-    def __setstate__(self, incoming_dict):
+    def __setstate_v1__(self, incoming_dict):
         self.__dict__ = incoming_dict
         if incoming_dict['s'] is not None:
             self.status = RowStatus(incoming_dict['s'])
         else:
             self.status = None
-
-        self.iteration_header = RowIterationHeader.get_by_id(incoming_dict['h'])
         # Restore column values
         self._data_values = incoming_dict['v']
 
@@ -106,8 +123,8 @@ class Row(object):
             self._raw_setitem(column_name, value)
 
     def update_from_values(self, values_list):
-        if len(self.columns_in_order) >= (len(self._data_values) + len(values_list)):
-            self._data_values.extend(values_list)
+        if len(self.columns_in_order) >= len(values_list):
+            self._data_values = values_list.copy()
         else:
             raise ValueError("Insufficient columns to store list of values in row.")
 
@@ -188,7 +205,7 @@ class Row(object):
         if self.iteration_header is not None and self.iteration_header.logical_name is not None:
             return self.iteration_header.logical_name
         else:
-            return dict_to_str(self)
+            return None
 
     def __repr__(self):
         return '{cls}(name={name},status={status},primary_key={pk},\n{content}'.format(
@@ -207,9 +224,7 @@ class Row(object):
                                                                 s=self.status
                                                                 )
         else:
-            cv = list()
-            for k in self.columns_in_order[:5]:
-                cv.append(self[k])
+            cv = [ self[k] for k in self.columns_in_order[:5] ]
             return "{name} cols[:5]={cv} status={s}".format(name=self.name,
                                                             cv=cv,
                                                             s=self.status
@@ -240,6 +255,7 @@ class Row(object):
             pass
         return default_value
 
+    @property
     def as_dict(self) -> dict:
         return dict(zip(self.columns_in_order, self._data_values))
 
@@ -261,8 +277,9 @@ class Row(object):
         return self.columns_in_order
 
     def _extend_to_size(self, desired_size):
-        if len(self._data_values) <= desired_size:
-            self._data_values.extend([None for _ in range(desired_size + 1 - len(self._data_values))])
+        current_length = len(self._data_values)
+        if current_length < desired_size:
+            self._data_values.extend([None for _ in range(desired_size - current_length)])
 
     def _raw_setitem(self, column_name, value):
         self.iteration_header = self.iteration_header.row_set_item(column_name, value, self)
@@ -302,23 +319,21 @@ class Row(object):
         Set the column value by zposition (zero based)
         Note: The first column position is 0 for this method
         """
-        assert 0 <= zposition < self.iteration_header.column_count(), IndexError(
-            "Position {} is invalid. Expected 0 to {}".format(zposition, self.iteration_header.column_count())
-        )
-        self._extend_to_size(zposition+1)
-        self._data_values[zposition] = value
+        if 0 <= zposition < self.iteration_header.column_count():
+            if len(self._data_values) <= zposition:
+                self._extend_to_size(zposition + 1)
+            self._data_values[zposition] = value
+        else:
+            raise IndexError(
+                "Position {} is invalid. Expected 0 to {}".format(zposition, self.iteration_header.column_count())
+            )
 
     def set_by_position(self, position, value):
         """
         Set the column value by position.
         Note: The first column position is 1 (not 0 like a python list).
         """
-        assert 0 < position <= self.iteration_header.column_count(), IndexError(
-            "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count())
-        )
-        self._extend_to_size(position)
-        # -1 because positions are 1 based not 0 based
-        self._data_values[position - 1] = value
+        self.set_by_zposition(position-1, value)
 
     def rename_column(self, old_name, new_name, ignore_missing = False):
         """
@@ -437,7 +452,7 @@ class Row(object):
         if doing_clone:
             sub_row = self.clone()
         else:
-            # Make a new header
+            # Make a new row with new header
             sub_row = self.iteration_header.row_subset(row=self,
                                                        exclude=exclude,
                                                        rename_map=rename_map,
@@ -604,3 +619,66 @@ class Row(object):
         self._data_values[position] = new_value
         return self
 
+if __name__ == "__main__":
+    from _datetime import datetime
+    import pickle
+    from timeit import timeit
+    iteration_header = RowIterationHeader()
+    row = Row(iteration_header,
+              data={'col1': 54321,
+                    'col2': 'Two',
+                    'col3': datetime(2012, 1, 3, 12, 25, 33),
+                    'col4': 'All good pickles',
+                    'col5': 123.23,
+                    })
+    s = pickle.dumps(row, pickle.HIGHEST_PROTOCOL)
+    print(len(s))
+    print(s)
+    row2 = pickle.loads(s)
+    print(row == row2)
+    print(row.compare_to(row2))
+    r = timeit("pickle.loads(pickle.dumps(row, pickle.HIGHEST_PROTOCOL))",
+"""
+import pickle;
+from bi_etl.components.row.row import Row;
+from bi_etl.components.row.row_iteration_header import RowIterationHeader;
+from _datetime import datetime
+iteration_header = RowIterationHeader()
+row = Row(iteration_header,
+          data={'col1': 54321,
+                'col2': 'Two',
+                'col3': datetime(2012, 1, 3, 12, 25, 33),
+                'col4': 'All good pickles',
+                'col5': 123.23,
+                })
+"""
+)
+    print(r)
+
+    print("V1--------")
+    Row.__reduce__ = Row.__reduce_v1__
+    Row.__setstate__ = Row.__setstate_v1__
+    s = pickle.dumps(row, pickle.HIGHEST_PROTOCOL)
+    print(len(s))
+    print(s)
+    row2 = pickle.loads(s)
+    print(row == row2)
+    #print(row.compare_to(row2))
+
+    r = timeit("pickle.loads(pickle.dumps(row, pickle.HIGHEST_PROTOCOL))",
+"""
+import pickle;
+from bi_etl.components.row.row import Row;
+from bi_etl.components.row.row_iteration_header import RowIterationHeader;
+from _datetime import datetime
+iteration_header = RowIterationHeader()
+row = Row(iteration_header,
+          data={'col1': 54321,
+                'col2': 'Two',
+                'col3': datetime(2012, 1, 3, 12, 25, 33),
+                'col4': 'All good pickles',
+                'col5': 123.23,
+                })
+"""
+)
+    print(r)

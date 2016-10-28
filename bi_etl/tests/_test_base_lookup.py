@@ -153,7 +153,7 @@ class _TestBase(unittest.TestCase):
         
         # Test lookup fail
         not_expected_keys = expected_keys.clone()
-        not_expected_keys[self.key3_1]=99
+        not_expected_keys[self.key3_1] = 99
         self.assertRaises(NoResultFound, lookup.find_in_cache, row=not_expected_keys)
         
         # Test lookup fail 2nd col

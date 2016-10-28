@@ -4,7 +4,9 @@ Created on Feb 27, 2015
 @author: woodd
 """
 from datetime import datetime
+from typing import Union
 
+from bi_etl.components.row.row import Row
 from sortedcontainers.sorteddict import SortedDict
 from sqlalchemy.sql.expression import bindparam
 
@@ -34,6 +36,10 @@ class RangeLookup(Lookup):
     def cache_row(self, row: Row, allow_update: bool = True):
         if self.cache_enabled:
             assert isinstance(row, Row), "cache_row requires Row and not {}".format(type(row))
+
+            if self.use_value_cache:
+                self._update_with_value_cache(row)
+
             lk_tuple = self.get_hashable_combined_key(row)
             if self.cache is None:
                 self.init_cache()                

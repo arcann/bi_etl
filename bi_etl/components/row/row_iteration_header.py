@@ -22,19 +22,15 @@ class RowIterationHeader(object):
         return RowIterationHeader.instance_dict[iteration_id]
 
     def __init__(self,
-                 all_rows_same_columns: bool,
                  logical_name: str = None,
                  primary_key: list = None,
                  parent: 'bi_etl.components.etlcomponent.ETLComponent' = None,
+                 columns_in_order=None,
                  ):
         # Note this is not thread safe. However, we aren't threading yet.
         RowIterationHeader.next_iteration_id += 1
         self.iteration_id = RowIterationHeader.next_iteration_id
         RowIterationHeader.instance_dict[self.iteration_id] = self
-        if all_rows_same_columns is None:
-            self.all_rows_same_columns = False
-        else:
-            self.all_rows_same_columns = all_rows_same_columns
         self.column_definition_locked = False
         self.row_count = 0
         self.logical_name = logical_name or id(self)
@@ -42,8 +38,12 @@ class RowIterationHeader(object):
         self.primary_key = primary_key
         self.parent = parent
         self._actions_to_next_headers = dict()
-        self._columns_in_order = list()
         self._columns_positions = dict()
+        if columns_in_order is not None:
+            self._columns_in_order = None
+            self.columns_in_order = columns_in_order
+        else:
+            self._columns_in_order = list()
         self.columns_frozen = False
         self._cached_column_set = None
         self._cached_positioned_column_set = None
@@ -67,8 +67,7 @@ class RowIterationHeader(object):
 
         """
         if action not in self._actions_to_next_headers:
-            new_header = RowIterationHeader(all_rows_same_columns=self.all_rows_same_columns,
-                                            logical_name=self.logical_name,
+            new_header = RowIterationHeader(logical_name=self.logical_name,
                                             primary_key=self.primary_key,
                                             parent=None
                                             )
@@ -98,6 +97,15 @@ class RowIterationHeader(object):
         A list of the columns of this row in the order they were defined.
         """
         return self._columns_in_order.copy()
+
+    @columns_in_order.setter
+    def columns_in_order(self, value):
+        if self._columns_in_order is not None:
+            if len(self._columns_in_order) > 0:
+                raise ValueError("Setting columns_in_order is only allowed on an empty RowIterationHeader")
+        self._columns_in_order = value
+        for position, column_name in enumerate(value):
+            self._columns_positions[column_name] = position
 
     @property
     def primary_key(self):
@@ -180,13 +188,13 @@ class RowIterationHeader(object):
             if self.columns_frozen or not allow_create:
                 raise self._key_error(column_name)
             else:
-                position = self.add_column(column_name)
+                position = self._add_column(column_name)
         return position
 
     def row_set_item(self, column_name: str, value, row: 'bi_etl.components.row.row.Row')-> 'RowIterationHeader':
         if column_name in self._columns_positions:
             position = self._columns_positions[column_name]
-            row.set_by_zposition(position, value)
+            row._data_values[position] = value
             new_header = self
         else:
             # Modification of columns required
@@ -194,7 +202,7 @@ class RowIterationHeader(object):
             new_header = self.get_next_header(action)
             new_header.add_row(row)
             if new_header._action_position is None:
-                new_header._action_position = new_header.add_column(column_name)
+                new_header._action_position = new_header._add_column(column_name)
 
             # Protected access is required here since we can't call setitem it calls this method.
             row._data_values.append(value)
@@ -372,11 +380,12 @@ class RowIterationHeader(object):
 
         action = tuple(action_list)
         new_iteration_header = self.get_next_header(action)
-        sub_row = row.__class__(iteration_header=new_iteration_header)
+        sub_row = row.__class__(iteration_header=new_iteration_header, allocate_space=False)
 
         if new_iteration_header._action_position is None:
             # Do the transformation for the first time
-            self.rename_columns(rename_map, no_new_header=True)
+            if rename_map is not None:
+                new_iteration_header.rename_columns(rename_map, no_new_header=True)
             old_positions_list = list()
             sub_pos = 0
             for parent_position, old_column_name in enumerate(self._columns_in_order):
@@ -385,19 +394,25 @@ class RowIterationHeader(object):
                 if old_column_name not in exclude:
                     if keep_only is None or new_column_name in keep_only:
                         old_positions_list.append(parent_position)
+                        new_iteration_header._columns_positions[new_column_name] = sub_pos
                         sub_pos += 1
                         remove_column = False
                 if remove_column:
                     del new_iteration_header._columns_in_order[sub_pos]
                     del new_iteration_header._columns_positions[new_column_name]
             new_iteration_header._action_position = old_positions_list
+            # These should already be None unless running in the debugger, since it might have called
+            # on the column_set or positioned_column_set properties.
+            self._cached_column_set = None
+            self._cached_positioned_column_set = None
         # Build the new row based on the _action_position details
         for old_pos in new_iteration_header._action_position:
             # Protected access is required here since we can't call setitem it calls this method.
+            # We append to what should be an empty list since we chose allocate_space = False
             sub_row._data_values.append(row._data_values[old_pos])
         return sub_row
 
-    def add_column(self, column_name: str) -> int:
+    def _add_column(self, column_name: str) -> int:
         position = len(self._columns_in_order)
         self._columns_in_order.append(column_name)
         self._columns_positions[column_name] = position

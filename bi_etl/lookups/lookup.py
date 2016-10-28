@@ -3,6 +3,8 @@ Created on Feb 26, 2015
 
 @author: woodd
 """
+import weakref
+from datetime import datetime
 import warnings
 import logging
 from typing import Union
@@ -19,7 +21,6 @@ from bi_etl.memory_size import get_size_gc
 from bi_etl.components.row.row import Row
 from bi_etl.exceptions import BeforeAllExisting
 from bi_etl.exceptions import AfterExisting
-
 
 __all__ = ['Lookup']
 
@@ -39,26 +40,16 @@ class Lookup(object):
         self._first_row_process_size = None
         self._row_count_to_get_estimate_row_size = 1000        
         self._done_get_estimate_row_size = False
-        self._cache_enabled = None
+        self.cache_enabled = True
+        self.use_value_cache = True
+        self._value_cache = dict()
         
     def __repr__(self):
         return "{cls}(lookup_name={name}, lookup_keys={keys})".format(cls= self.__class__.__name__, name=self.lookup_name, keys=self.lookup_keys)
     
     def _set_log_level(self, log_level):
         self.log.setLevel(log_level)
-        
-    @property 
-    def cache_enabled(self) -> bool:
-        if self._cache_enabled is None:
-            return True
-        else:
-            return self._cache_enabled
-        
-    @cache_enabled.setter      
-    def cache_enabled(self, new_value: bool):
-        assert isinstance(new_value, bool)
-        self._cache_enabled = new_value
-        
+
     def get_memory_size(self) -> int:
         if self._row_size is not None:
             return self._row_size * len(self)
@@ -103,6 +94,9 @@ class Lookup(object):
             return len(self.cache)
         else:
             return 0
+
+    def __contains__(self, item):
+        return self.cache.has_row(item)
 
     def init_cache(self) -> None:
         """
@@ -157,6 +151,10 @@ class Lookup(object):
         """        
         if self.cache_enabled:
             assert isinstance(row, Row), "cache_row requires Row and not {}".format(type(row))
+
+            if self.use_value_cache:
+                self._update_with_value_cache(row)
+
             lk_tuple = self.get_hashable_combined_key(row)
             if self.cache is None:
                 self.init_cache()
@@ -324,3 +322,45 @@ class Lookup(object):
                              )
             raise RuntimeError(msg)
 
+    def _update_with_value_cache(self, row):
+        for column_number, column_value in enumerate(row.values_in_order()):
+            if isinstance(column_value, str) or isinstance(column_value, datetime):
+                if column_value in self._value_cache:
+                    row.set_by_zposition(column_number, self._value_cache[column_value])
+                else:
+                    self._value_cache[column_value] = column_value
+
+
+def test():
+    from _datetime import datetime
+    from bi_etl.timer import Timer
+    from bi_etl.tests.dummy_etl_component import DummyETLComponent
+    from bi_etl.components.row.row_iteration_header import RowIterationHeader
+    from bi_etl.components.row.row import Row
+
+    iteration_header = RowIterationHeader()
+    data = list()
+    rows_to_use = 100000
+    for i in range(rows_to_use):
+        row = Row(iteration_header,
+                  data={'col1': i,
+                        'col2': 'Two',
+                        'col3': datetime(2012, 1, 3, 12, 25, 33),
+                        'col4': 'All good pickles',
+                        'col5': 123.23,
+                        'col6': 'This is a long value. It should be ok.',
+                        })
+        data.append(row)
+
+    parent_component = DummyETLComponent(data=data)
+    dc = Lookup("test", ['col1'], parent_component=parent_component)
+    dc.ram_check_row_interval = rows_to_use // 2
+    dc.max_process_ram_usage_mb = 1
+    start_time = Timer()
+    for row in parent_component:
+        dc.cache_row(row)
+    print(start_time.seconds_elapsed_formatted)
+
+
+if __name__ == "__main__":
+    test()

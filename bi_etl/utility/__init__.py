@@ -64,7 +64,7 @@ def dict_to_list(obj,
             result += entry_header
             try:
                 line_format = '{:' + type_formats[type(obj)] + '}'
-                result_add((line_format).format(obj))
+                result_add(line_format.format(obj))
             except Exception as e:
                 result_add(repr(e))
             if show_type:
@@ -119,7 +119,7 @@ def dict_to_list(obj,
                 result_add(indent)
                 result += entry_header
                 result_add('\n')
-            for k in obj.columns_in_order():
+            for k in obj.columns_in_order:
                 v = obj[k]
                 item_number += 1
                 if item_number > 1:

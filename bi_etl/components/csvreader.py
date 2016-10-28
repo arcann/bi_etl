@@ -151,7 +151,7 @@ class CSVReader(ETLComponent):
         
         self.__close_file = False
         
-        ## We have to check / open the file here to get the name for the logical name
+        # We have to check / open the file here to get the name for the logical name
         if isinstance(filedata, str):
             self.log.info("Opening file {}".format(filedata))
             self.file = open(filedata, 
@@ -171,25 +171,25 @@ class CSVReader(ETLComponent):
             except AttributeError:
                 logical_name = str(self.file)
         
-        ## Don't pass kwargs up. They should be set here at the end
+        # Don't pass kwargs up. They should be set here at the end
         super(CSVReader, self).__init__(task=task,
                                         logical_name= logical_name,
                                         )
         self.__reader = None
         
-        ## Begin csv module params        
-        self.dialect="excel"
-        self.delimiter=','
-        self.doublequote=True
-        self.escapechar=None
-        self.quotechar='"'
-        self.quoting=csv.QUOTE_MINIMAL
-        self.skipinitialspace=False
-        self.strict=False
+        # Begin csv module params        
+        self.dialect = "excel"
+        self.delimiter = ','
+        self.doublequote = True
+        self.escapechar = None
+        self.quotechar = '"'
+        self.quoting = csv.QUOTE_MINIMAL
+        self.skipinitialspace = False
+        self.strict = False
         self.large_field_support = False
-        ## End csv module params
+        # End csv module params
         self.header_row = 1
-        self.start_row = 1 ## Will be incremented if the header row is read
+        self.start_row = 1 # Will be incremented if the header row is read
         
         # column to catch long rows (more values than columns)
         self.restkey = 'extra data past last delimiter'
@@ -199,18 +199,19 @@ class CSVReader(ETLComponent):
         self.extra_part_msg_limit = 100
         self.extra_part_msg_cnt = 0
         
-        ## Should be the last call of every init
+        # Should be the last call of every init
         self.set_kwattrs(**kwargs)
 
     def __repr__(self):
-        return "{cls}(task={task},logical_name={logical_name},filedata={file},primary_key={primary_key},column_names={column_names})".format(
-            cls= self.__class__.__name__,
-            task= self.task,
-            logical_name= self.logical_name,
-            file= self.file,
-            primary_key= self.primary_key,
-            column_names= self.column_names,
-            )
+        return "{cls}(task={task},logical_name={logical_name},filedata={file},primary_key={primary_key}," \
+               "column_names={column_names})".format(
+                    cls= self.__class__.__name__,
+                    task= self.task,
+                    logical_name= self.logical_name,
+                    file= self.file,
+                    primary_key= self.primary_key,
+                    column_names= self.column_names,
+                    )
 
     @property
     def reader(self):
@@ -218,7 +219,7 @@ class CSVReader(ETLComponent):
         Build or get the csv.reader object.
         """
         if self.__reader is None:
-            ## Initialize the reader
+            # Initialize the reader
             self.__reader = csv.reader(self.file, 
                                        dialect=self.dialect,
                                        delimiter=self.delimiter,
@@ -230,7 +231,7 @@ class CSVReader(ETLComponent):
                                        strict=self.strict,
                                        )
             if self.large_field_support:
-                csv.field_size_limit(2147483647) ## largest value it will accept
+                csv.field_size_limit(2147483647)  # largest value it will accept
             
         return self.__reader
 
@@ -265,7 +266,7 @@ class CSVReader(ETLComponent):
                 progress_timer = Timer()                                
                 for _ in range(target_row - current_row):
                     next(self.reader, None)
-                    ## Increment self.rows_read although they aren't really processed, so we know where we were
+                    # Increment self.rows_read although they aren't really processed, so we know where we were
                     stats['rows read'] += 1
                     stats['lines read'] = self.line_num
                     if self.progress_frequency is not None: 
@@ -273,7 +274,7 @@ class CSVReader(ETLComponent):
                             self.log.info("Seek reached row {:,}".format(stats['rows read']))
                             progress_timer.reset()
                 self.log.info("Done seeking row {:,}".format(self.start_row))
-        return (saved_position, saved_line_num)
+        return saved_position, saved_line_num
         
     def __read_header_row(self):
         """
@@ -297,7 +298,7 @@ class CSVReader(ETLComponent):
         """
         try:            
             header_row = self.__read_header_row()            
-            ## Make sure to use setter here! It deals with duplicate names                
+            # Make sure to use setter here! It deals with duplicate names                
             self.column_names = header_row
             if self.trace_data:
                 self.log.debug("Column names read: {}".format(self.column_names))
@@ -309,7 +310,7 @@ class CSVReader(ETLComponent):
         len_column_names = len(self.column_names)
         try:
             self.seek_row(self.start_row)
-            this_iteration_header = self.generate_iteration_header(all_rows_same_columns=False)
+            this_iteration_header = self.generate_iteration_header()
             for row in self.reader:
                 if len(row) != 0:     
                     # Convert empty strings to None to be consistent with DB reads

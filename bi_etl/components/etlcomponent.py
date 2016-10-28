@@ -128,11 +128,11 @@ class ETLComponent(Iterable):
         else:
             return False
     
-    def log_progress(self, row, stats):
+    def log_progress(self, row: Row, stats):
         try:
             self.log.info(self.progress_message.format(row_number=stats['rows_read'],
                                                        logical_name=self.logical_name,
-                                                       **row.as_dict()
+                                                       **row.as_dict
                                                        )
                           )
         except (IndexError, ValueError, KeyError) as e:
@@ -264,7 +264,6 @@ class ETLComponent(Iterable):
     def iter_result(self,
                     result_list: object,
                     where_dict: dict = None,
-                    all_rows_same_columns = False,
                     progress_frequency: int = None,
                     stats_id: str = None,
                     parent_stats: Statistics = None) -> Iterable(Row):
@@ -289,7 +288,7 @@ class ETLComponent(Iterable):
             result_iter = self._fetch_many_iter(result_list)
         else:
             result_iter = result_list
-        this_iteration_header = self.generate_iteration_header(all_rows_same_columns=all_rows_same_columns)
+        this_iteration_header = self.generate_iteration_header()
 
         # noinspection PyTypeChecker
         for row in result_iter:
@@ -303,7 +302,7 @@ class ETLComponent(Iterable):
                     if not passed_filter:
                         continue
             if not isinstance(row, Row):
-                row = Row(data=row, iteration_header=this_iteration_header)
+                row = Row(this_iteration_header, data=row)
             # If we already have a Row object, we'll keep the same iteration header
 
             # Add to global read counter
@@ -368,7 +367,7 @@ class ETLComponent(Iterable):
                 warnings.warn("{o} used without calling close.  It's suggested to use 'with' to control lifespan.".format(o=self), stacklevel=2)
                 self.close()   
     
-    def __enter__(self):
+    def __enter__(self) -> 'ETLComponent':
         self.__enter_called = True
         return self   
         
@@ -429,22 +428,18 @@ class ETLComponent(Iterable):
     def statistics(self):
         return self._stats
 
-    def Row(self, data=None, logical_name=None, iteration_header=None, all_rows_same_columns=None):
+    def Row(self, data=None, logical_name=None, iteration_header=None):
         """
         Make a new empty row with this components structure.
         """
         if iteration_header is None:
-            iteration_header = self.generate_iteration_header(logical_name=logical_name,
-                                                              all_rows_same_columns=all_rows_same_columns)
+            iteration_header = self.generate_iteration_header(logical_name=logical_name)
         return Row(iteration_header=iteration_header, data=data)
 
-    def generate_iteration_header(self, logical_name=None, all_rows_same_columns=False):
+    def generate_iteration_header(self, logical_name=None):
         if logical_name is None:
             logical_name = self.row_name
-        if all_rows_same_columns is None:
-            all_rows_same_columns = self.all_rows_same_columns
         return RowIterationHeader(logical_name=logical_name,
                                   primary_key=self.primary_key,
-                                  all_rows_same_columns=all_rows_same_columns,
                                   parent=self)
 

@@ -20,9 +20,12 @@ class TestDiskLookup(_TestBase):
         super().setUp()
 
     def tearDown(self):
-        super().tearDown()        
-        self.temp_dir_mgr.cleanup()
-        
+        super().tearDown()
+        try:
+            self.temp_dir_mgr.cleanup()
+        except Exception:
+            pass
+
     def _post_test_cleanup(self, lookup):
         lookup.clear_cache()
         for file_name in os.listdir(self.temp_dir_mgr.name):

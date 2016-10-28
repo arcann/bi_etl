@@ -13,6 +13,7 @@ import sqlalchemy
 from bi_etl import Timer
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.row.row import Row
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.exceptions import NoResultFound, MultipleResultsFound
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
@@ -300,8 +301,8 @@ class ReadOnlyTable(ETLComponent):
             try:
                 self.log.debug('parameters={}'.format(dict_to_str(statement.parameters)))
             #pylint: disable=broad-except
-            except Exception:
-                pass            
+            except Exception as e:
+                self.log.debug(e)
             self.log.debug('multiparams={}'.format(multiparams))
             self.log.debug('params={}'.format(params))
             self.log.debug('-------------------------')
@@ -559,7 +560,6 @@ class ReadOnlyTable(ETLComponent):
                                           )
         return self.iter_result(result_rows_iter, 
                                 where_dict= where_dict,
-                                all_rows_same_columns = True,
                                 progress_frequency= progress_frequency,
                                 stats_id=stats_id, 
                                 parent_stats=parent_stats
@@ -662,6 +662,14 @@ class ReadOnlyTable(ETLComponent):
     @property
     def row_name(self):
         return str(self.table)
+
+    def generate_iteration_header(self, logical_name=None):
+        if logical_name is None:
+            logical_name = self.row_name
+        return RowIterationHeader(logical_name=logical_name,
+                                  primary_key=self.primary_key,
+                                  parent=self,
+                                  columns_in_order=self.column_names)
 
     def get_special_row(self,     
                         short_char,                   

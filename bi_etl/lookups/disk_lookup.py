@@ -11,6 +11,7 @@ import shelve
 import string
 import sys
 import tempfile
+import weakref
 
 import semidbm
 from bi_etl.lookups.lookup import Lookup
@@ -37,6 +38,8 @@ class DiskLookup(Lookup):
         self.dbm = None
         self.cache_dir_mgr = None
         self.cache_file_path = None
+        self.use_value_cache = False
+        self._finalizer = None
         
     def _set_path(self, path):
         if path is not None:
@@ -63,7 +66,8 @@ class DiskLookup(Lookup):
             self.cache = shelve.BsdDbShelf(self.dbm, 
                                            protocol=pickle.HIGHEST_PROTOCOL,
                                            writeback=False,)
-        
+            self._finalizer = weakref.finalize(self, self._cleanup)
+
     def __len__(self):
         if self.cache is not None:
             return len(self.dbm.keys())
@@ -103,7 +107,8 @@ class DiskLookup(Lookup):
         result = str(self.get_list_of_lookup_column_values(row))
         return result
 
-    def __del__(self):
+    def _cleanup(self):
+        print("Cleanup")
         self.clear_cache()            
 
     def clear_cache(self):
@@ -111,3 +116,35 @@ class DiskLookup(Lookup):
             self.cache.close()
             self.cache_dir_mgr.cleanup()
         self.cache = None
+
+
+def test():
+    from _datetime import datetime
+    from bi_etl.timer import Timer
+    from bi_etl.tests.dummy_etl_component import DummyETLComponent
+    from bi_etl.components.row.row_iteration_header import RowIterationHeader
+    from bi_etl.components.row.row import Row
+
+    iteration_header = RowIterationHeader()
+    data = list()
+    for i in range(10000):
+        row = Row(iteration_header,
+                  data={'col1': i,
+                        'col2': 'Two',
+                        'col3': datetime(2012, 1, 3, 12, 25, 33),
+                        'col4': 'All good pickles',
+                        'col5': 123.23,
+                        'col6': 'This is a long value. It should be ok.',
+                        })
+        data.append(row)
+
+    parent_component = DummyETLComponent(data=data)
+    dc = DiskLookup("test", ['col1'], parent_component=parent_component)
+    start_time = Timer()
+    for row in parent_component:
+        dc.cache_row(row)
+    print(start_time.seconds_elapsed_formatted)
+
+
+if __name__ == "__main__":
+    test()

@@ -136,7 +136,7 @@ class AutoDiskLookup(Lookup):
     def get_disk_size(self):
         disk_size = 0
         if self.cache is not None:
-            disk_size +=  self.cache.get_disk_size()
+            disk_size += self.cache.get_disk_size()
         if self.disk_cache is not None:
             disk_size += self.disk_cache.get_disk_size()
         return disk_size     
@@ -172,7 +172,7 @@ class AutoDiskLookup(Lookup):
             self.disk_cache.init_cache()
             # Do not warn about protected access to _get_estimate_row_size
             # pylint: disable=protected-access
-            self.cache.get_estimate_row_size(force_now=True)
+            self.cache._check_estimate_row_size(force_now=True)
             self.disk_cache._row_size = self.cache._row_size
             self.disk_cache._done_get_estimate_row_size = self.cache._done_get_estimate_row_size
 
@@ -212,10 +212,10 @@ class AutoDiskLookup(Lookup):
                 self.log.warning(
                     "{name} system memory limit reached {pct} > {pct_limit}% with {rows:,} rows of data"
                         .format(
-                        name=self.lookup_name,
-                        rows=self.rows_cached,
-                        pct=psutil.virtual_memory().percent,
-                        pct_limit=self.max_percent_ram_used,
+                            name=self.lookup_name,
+                            rows=self.rows_cached,
+                            pct=psutil.virtual_memory().percent,
+                            pct_limit=self.max_percent_ram_used,
                     )
                 )
                 return True
@@ -261,7 +261,7 @@ class AutoDiskLookup(Lookup):
             else:
                 # We need to make sure each row is in only once place
                 lk_tuple = self.get_hashable_combined_key(row)
-                if lk_tuple in self.cache:
+                if lk_tuple in self.cache.cache:
                     # Move existing key date ranges to disk
                     versions_collection = self.get_versions_collection(row)
                     del self.cache[lk_tuple]
@@ -304,3 +304,38 @@ class AutoDiskLookup(Lookup):
                 return self.disk_cache.get_versions_collection(row)
             else:
                 raise NoResultFound()
+
+
+def test():
+    from _datetime import datetime
+    from bi_etl.timer import Timer
+    from bi_etl.tests.dummy_etl_component import DummyETLComponent
+    from bi_etl.components.row.row_iteration_header import RowIterationHeader
+    from bi_etl.components.row.row import Row
+
+    iteration_header = RowIterationHeader()
+    data = list()
+    rows_to_use = 100000
+    for i in range(rows_to_use):
+        row = Row(iteration_header,
+                  data={'col1': i,
+                        'col2': 'Two',
+                        'col3': datetime(2012, 1, 3, 12, 25, 33),
+                        'col4': 'All good pickles',
+                        'col5': 123.23,
+                        'col6': 'This is a long value. It should be ok.',
+                        })
+        data.append(row)
+
+    parent_component = DummyETLComponent(data=data)
+    dc = AutoDiskLookup("test", ['col1'], parent_component=parent_component)
+    dc.ram_check_row_interval = int(rows_to_use * 0.5)
+    dc.max_process_ram_usage_mb = 1
+    start_time = Timer()
+    for row in parent_component:
+        dc.cache_row(row)
+    print(start_time.seconds_elapsed_formatted)
+
+
+if __name__ == "__main__":
+    test()
