@@ -84,6 +84,10 @@ class ReadOnlyTable(ETLComponent):
         The name of the primary key column(s). Only impacts trace messages.  Default=None.
         If not passed in, will use the database value, if any.
         (inherited from ETLComponent)
+
+    natural_key: list
+        The list of natural key columns (as Column objects).
+        Default is None
         
     progress_frequency: int
         How often (in seconds) to output progress messages. None for no progress messages.
@@ -96,6 +100,7 @@ class ReadOnlyTable(ETLComponent):
     
     """
     PK_LOOKUP = 'PK'
+    NK_LOOKUP = 'NK'
     
     def __init__(self,
                  task, 
@@ -149,6 +154,9 @@ class ReadOnlyTable(ETLComponent):
             if not table_name_case_sensitive:
                 table_name = table_name.lower()
             self.table = sqlalchemy.schema.Table(table_name, database, autoload=True, quote=False)
+
+        self.__natural_key_override = False
+        self.__natural_key = None
 
         if exclude_columns:
             self.exclude_columns(exclude_columns)
@@ -851,17 +859,71 @@ class ReadOnlyTable(ETLComponent):
     def get_lookup_keys(self, lookup_name):
         return self.get_lookup(lookup_name).lookup_keys
     
-    def get_primarykey_list(self, row):
+    def get_primary_key_value_list(self, row):
         self._check_pk_lookup()
         return self.__lookups[ReadOnlyTable.PK_LOOKUP].get_list_of_lookup_column_values(row)
 
-    def get_primarykey_tuple(self, row):
+    def get_primary_key_value_tuple(self, row):
         self._check_pk_lookup()
         return self.__lookups[ReadOnlyTable.PK_LOOKUP].get_hashable_combined_key(row)
     
     def get_lookup_tuple(self, lookup_name, row):
         return self.__lookups[lookup_name].get_hashable_combined_key(row)
-    
+
+    def build_nk(self):
+        self.log.error("Cannot determine natural key. Please set it explicitly using the natural_key attribute")
+        return None
+
+    @property
+    def natural_key(self) -> list:
+        """
+        Get this tables natural key
+        """
+        if self.__natural_key is None:
+            self.__natural_key = self.build_nk()
+        return self.__natural_key
+
+    @natural_key.setter
+    def natural_key(self, value: list):
+        self.__natural_key_override = True
+        self.__natural_key = value
+        self.ensure_nk_lookup()
+
+    def _get_nk_lookup_name(self):
+        if self.__natural_key_override:
+            return self.NK_LOOKUP
+        else:
+            return self.PK_LOOKUP
+
+    def get_nk_lookup_name(self):
+        self.ensure_nk_lookup()
+        return self._get_nk_lookup_name()
+
+    def ensure_nk_lookup(self):
+        nk_lookup_name = self._get_nk_lookup_name()
+        if nk_lookup_name not in self.lookups:
+            if self.natural_key:
+                self.define_lookup(nk_lookup_name, self.natural_key)
+
+    def get_nk_lookup(self) -> Lookup:
+        self.ensure_nk_lookup()
+        nk_lookup_name = self._get_nk_lookup_name()
+        return self.get_lookup(nk_lookup_name)
+
+    def get_natural_key_value_list(self, row):
+        if self.natural_key is None:
+            return self.get_primary_key_value_list(row)
+        else:
+            natural_key_values = list()
+
+            for k in self.natural_key:
+                k = self.get_column_name(k)
+                natural_key_values.append(row[k])
+            return natural_key_values
+
+    def get_natural_key_tuple(self, row):
+        return tuple(self.get_natural_key_value_list(row))
+
     def init_cache(self):
         """
         Initialize all lookup caches as empty.
@@ -933,7 +995,12 @@ class ReadOnlyTable(ETLComponent):
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """
-        self._check_pk_lookup()     
+        self._check_pk_lookup()
+
+        # If we have, or can build a natural key
+        if self.natural_key:
+            # Make sure to build the lookup so it can be filled
+            self.ensure_nk_lookup()
         
         assert isinstance(progress_frequency, int), "fill_cache progress_frequency expected to be int not {}".format(type(progress_frequency)) 
         self.log.info('{table}.fill_cache started'.format(table = self.table.name))

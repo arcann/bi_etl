@@ -9,6 +9,9 @@ import sqlalchemy
 
 
 #pylint: disable=abstract-method
+from sqlalchemy.exc import OperationalError
+
+
 class DatabaseMetadata(sqlalchemy.schema.MetaData):
     """
     A light wrapper over sqlalchemy.schema.MetaData
@@ -46,6 +49,22 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             cursor = dpapi_connection.cursor()
             cursor.callproc(procedure_name, args)
             results = list(cursor.fetchall())
+            cursor.close()
+            dpapi_connection.commit()
+        finally:
+            dpapi_connection.close()
+        return results
+
+    def execute_direct(self, sql, return_results=False):
+        log = logging.getLogger(__name__)
+        log.debug(sql)
+        dpapi_connection = self.bind.raw_connection()
+        try:
+            cursor = dpapi_connection.cursor()
+            cursor.execute(sql)
+            results = None
+            if return_results:
+                results = list(cursor.fetchall())
             cursor.close()
             dpapi_connection.commit()
         finally:

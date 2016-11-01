@@ -502,8 +502,6 @@ class ETLTask(object):
             if self.task_id is not None:
                 self.log.info('add_parameter to scheduler {} = {}'.format(param_name, param_value))
                 self.scheduler.add_task_paramter(self.task_id, param_name, param_value, commit=commit)
-            else:
-                self.log.warning('Parameter not stored in scheduler because we have no task_id')
         else:
             print("add_parameter local {}={}".format(param_name, param_value))
 

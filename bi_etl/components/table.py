@@ -1265,7 +1265,7 @@ class Table(ReadOnlyTable):
         progress_timer = Timer()
         for row in self.where(criteria, use_cache_as_source=use_cache_as_source, parent_stats=stats):
             stats['rows read'] += 1
-            existing_key = self.get_primarykey_tuple(row)
+            existing_key = self.get_primary_key_value_tuple(row)
             if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 progress_timer.reset()
                 self.log.info("delete_not_in_set current row={} key={} deletes_done = {}"
@@ -1433,7 +1433,7 @@ class Table(ReadOnlyTable):
         self.log.info("...getting source keys")                                
         set_of_source_keys = set()
         for row in source.where(column_list=source.primary_key, criteria= source_criteria, parent_stats= parent_stats):
-            set_of_source_keys.add( source.get_primarykey_tuple(row) )
+            set_of_source_keys.add(source.get_primary_key_value_tuple(row))
         
         self.log.info("...logically_delete_not_in_set of source keys")
         self.logically_delete_not_in_set(set_of_source_keys,
@@ -1884,7 +1884,7 @@ class Table(ReadOnlyTable):
         # Note, here we select only lookup columns from self
         for row in self.where(column_list= lookup.lookup_keys, criteria=criteria, parent_stats=stats):
             if lookup_name is None:
-                existing_key = self.get_primarykey_tuple(row)
+                existing_key = self.get_primary_key_value_tuple(row)
             else:
                 existing_key = self.get_lookup_tuple(lookup_name, row)
             
@@ -2085,7 +2085,7 @@ class Table(ReadOnlyTable):
             # Keep track of source records so we can check if target rows don't exist in source
             # Note: We use the target_row here since it has already been translated to match the target table
             # It's also important that it have the existing surrogate key (if any)
-            self.source_keys_processed.add(self.get_primarykey_tuple(target_row))
+            self.source_keys_processed.add(self.get_natural_key_tuple(target_row))
             
         stats.timer.stop()
         return target_row

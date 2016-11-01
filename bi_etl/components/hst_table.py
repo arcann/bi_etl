@@ -8,6 +8,7 @@ import traceback
 import warnings
 from typing import Iterable, Union, Callable, List
 
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.statistics import Statistics
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.conversions import ensure_datetime
@@ -174,8 +175,6 @@ class HistoryTable(Table):
         Optional.
          
     """
-    NK_LOOKUP = 'NK'
-
     def __init__(self,
                  task,
                  database,
@@ -199,14 +198,11 @@ class HistoryTable(Table):
         self.default_end_date = datetime(year=9999, month=1, day=1, hour=0, minute=0, second=0)
         self.inserts_use_default_begin_date = True
 
-        self.__natural_key_override = False
         self.default_lookup_class = AutoDiskRangeLookup
         # define_lookup will add the begin & end dates to the lookup args
         self.default_lookup_class_kwargs = dict()
         if self.task is not None:
             self.default_lookup_class_kwargs['config'] = self.task.config
-
-        self.__natural_key = None
 
         self.type_1_surrogate = None
 
@@ -242,53 +238,6 @@ class HistoryTable(Table):
                 if not self.is_date_key_column(col):
                     natural_key.append(col)
             return natural_key
-
-    @property
-    def natural_key(self) -> list:
-        """
-        Get this tables natural key
-        """
-        if self.__natural_key is None:
-            self.__natural_key = self.build_nk()
-        return self.__natural_key
-
-    @natural_key.setter
-    def natural_key(self, value: list):
-        self.__natural_key_override = True
-        self.__natural_key = value
-        self.ensure_nk_lookup()
-
-    def _get_nk_lookup_name(self):
-        if self.__natural_key_override:
-            return self.NK_LOOKUP
-        else:
-            return self.PK_LOOKUP
-
-    def get_nk_lookup_name(self):
-        self.ensure_nk_lookup()
-        return self._get_nk_lookup_name()
-
-    def ensure_nk_lookup(self):
-        nk_lookup_name = self._get_nk_lookup_name()
-        if nk_lookup_name not in self.lookups:
-            if self.natural_key:
-                self.define_lookup(nk_lookup_name, self.natural_key)
-
-    def get_nk_lookup(self) -> AutoDiskRangeLookup:
-        self.ensure_nk_lookup()
-        nk_lookup_name = self._get_nk_lookup_name()
-        return self.get_lookup(nk_lookup_name)
-
-    def get_natural_key_value_list(self, row):
-        natural_key_values = list()
-
-        for k in self.natural_key:
-            k = self.get_column_name(k)
-            natural_key_values.append(row[k])
-        return natural_key_values
-
-    def get_natural_key_tuple(self, row):
-        return tuple(self.get_natural_key_value_list(row))
 
     @property
     def begin_date(self):
@@ -425,11 +374,6 @@ class HistoryTable(Table):
                 order_by.remove(self.begin_date)
             # Add begin date as the last part of the order by
             order_by.append(self.begin_date)
-
-        # If we have, or can build a natural key
-        if self.natural_key:
-            # Make sure to build the lookup so it can be filled
-            self.ensure_nk_lookup()
 
         super().fill_cache(progress_frequency=progress_frequency,
                            progress_message=progress_message,
@@ -716,6 +660,7 @@ class HistoryTable(Table):
             super(Hst_Table, self).apply_updates(new_row,
                                                  changes_list=changes_list,
                                                  additional_update_values=additional_update_values,
+                                                 source_effective_date=source_effective_date,
                                                  parent_stats=parent_stats,
                                                  )
 
@@ -1125,6 +1070,7 @@ class HistoryTable(Table):
                                     lookup_name: str = None,
                                     criteria: Union[Iterable[str], str] = None,
                                     use_cache_as_source: bool = True,
+                                    source_effective_date=None,
                                     stat_name: str = 'logically_delete_not_in_set',
                                     progress_frequency: int = 10,
                                     parent_stats: Statistics = None):
@@ -1155,7 +1101,8 @@ class HistoryTable(Table):
         """
         if self.delete_flag is None:
             raise ValueError('delete_flag is not set')
-        logically_deleted = self.Row(logical_name='logically_deleted')
+        iteration_header = RowIterationHeader(logical_name='logically_deleted')
+        logically_deleted = Row(iteration_header=iteration_header)
         logically_deleted[self.delete_flag] = self.delete_flag_yes
         if self.last_update_date is not None:
             logically_deleted[self.last_update_date] = datetime.now()
@@ -1172,6 +1119,7 @@ class HistoryTable(Table):
                                lookup_name=lookup_name,
                                criteria=criteria,
                                use_cache_as_source= use_cache_as_source,
+                               source_effective_date=source_effective_date,
                                progress_frequency=progress_frequency,
                                stat_name=stat_name,
                                parent_stats=parent_stats)
@@ -1187,7 +1135,10 @@ class HistoryTable(Table):
         """
         Overridden to call logical delete.
         """
-        self.logically_delete_not_in_set(set_of_key_tuples=set_of_key_tuples, criteria=criteria, stat_name=stat_name,
+        self.logically_delete_not_in_set(set_of_key_tuples=set_of_key_tuples,
+                                         criteria=criteria,
+                                         source_effective_date=source_effective_date,
+                                         stat_name=stat_name,
                                          parent_stats=parent_stats)
 
     def logically_delete_not_processed(self,
@@ -1223,6 +1174,7 @@ class HistoryTable(Table):
             if any(True for _ in self.where(criteria=criteria)):
                 raise RuntimeError("{} called before any source rows were processed.".format(stat_name))
         self.logically_delete_not_in_set(set_of_key_tuples=self.source_keys_processed,
+                                         source_effective_date=source_effective_date,
                                          criteria=criteria,
                                          stat_name=stat_name,
                                          parent_stats=parent_stats)
@@ -1315,7 +1267,7 @@ class HistoryTable(Table):
             existing_key = lookup.get_hashable_combined_key(row)
             if existing_key not in set_of_key_tuples:
                 # First we need the entire existing row
-                target_row = self.get_by_lookup(lookup_name, row)
+                target_row = self.get_by_lookup_and_effective_date(lookup_name, row, effective_date=source_effective_date)
                 # Then we can apply the updates to it
                 self.apply_updates(target_row,
                                    changes_list=updates_to_make,
