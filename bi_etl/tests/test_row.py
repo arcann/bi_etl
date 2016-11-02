@@ -215,6 +215,7 @@ class TestRow(unittest.TestCase):
 
         class MockMeta(object):
             def __init__(self, tables=None):
+                self.keys = []
                 self.schema = None
                 self.tables = tables or []
                 self.naming_convention = DEFAULT_NAMING_CONVENTION

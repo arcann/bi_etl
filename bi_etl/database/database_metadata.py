@@ -24,7 +24,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         with self.bind.connect() as connection:
             return connection.execute(sql)
     
-    def execute_procedure(self, procedure_name, *args):
+    def execute_procedure(self, procedure_name, *args, return_results=False):
         """
         Execute a stored procedure 
         
@@ -34,13 +34,17 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             The procedure to run.
         args:
             The arguments to pass
+
+        return_results:
+            Needs to be a keyword param. Should we try and get result rows
+            from the procedure.
             
         Raises
         ------
         sqlalchemy.exc.DBAPIError:
             API error            
         sqlalchemy.exc.DatabaseError:
-            Maybe?            
+            Proxy for database error
         """
         log = logging.getLogger(__name__)
         log.debug("Calling procedure {} {}".format(procedure_name, args))
@@ -48,7 +52,9 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         try:
             cursor = dpapi_connection.cursor()
             cursor.callproc(procedure_name, args)
-            results = list(cursor.fetchall())
+            results = None
+            if return_results:
+                results = list(cursor.fetchall())
             cursor.close()
             dpapi_connection.commit()
         finally:

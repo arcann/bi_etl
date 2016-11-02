@@ -1393,10 +1393,10 @@ class HistoryTable(Table):
                 remove_redundant_versions = True
 
         if lookup_name is None:
-            if self.__natural_key is None:
-                lookup_object = self.get_pk_lookup()
-            else:
+            if self.natural_key is not None:
                 lookup_object = self.get_nk_lookup()
+            else:
+                lookup_object = self.get_pk_lookup()
         else:
             lookup_object = self.get_lookup(lookup_name)
 

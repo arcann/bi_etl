@@ -265,7 +265,8 @@ class AutoDiskLookup(Lookup):
                     # Move existing key date ranges to disk
                     versions_collection = self.get_versions_collection(row)
                     del self.cache.cache[lk_tuple]
-                    self.disk_cache.cache[lk_tuple] = versions_collection
+                    disk_lk_tuple = self.disk_cache.get_hashable_combined_key(row)
+                    self.disk_cache.cache[disk_lk_tuple] = versions_collection
 
                 # Put add new row to disk as well
                 self.disk_cache.cache_row(row, allow_update= allow_update)

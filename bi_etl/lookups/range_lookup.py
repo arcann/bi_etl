@@ -116,7 +116,7 @@ class RangeLookup(Lookup):
         Can raise NoResultFound if the key is not in the cache.
         Can raise BeforeAllExisting is the effective date provided is before all existing records.
         """
-        effective_date = kwargs['effective_date']
+        effective_date = kwargs.get('effective_date')
         if effective_date is None:
             effective_date = ensure_datetime(row[self.begin_date])
 

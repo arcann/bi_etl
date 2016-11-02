@@ -14,6 +14,7 @@ from bi_etl.lookups.autodisk_range_lookup import AutoDiskRangeLookup
 
 
 # pylint: disable=missing-docstring, protected-access
+from bi_etl.tests.dummy_etl_component import DummyETLComponent
 
 
 class TestAutodiskRangeLookup(_TestBaseRangeLookup):
@@ -22,40 +23,29 @@ class TestAutodiskRangeLookup(_TestBaseRangeLookup):
         self.TestClass = AutoDiskRangeLookup
         self.temp_dir_mgr = tempfile.TemporaryDirectory()
         self.test_class_args['path'] = self.temp_dir_mgr.name
+        self.parent_component = DummyETLComponent()
 
     def tearDown(self):
         super().tearDown()
 
-    def _make_row(self, row_key):
+    def _make_row(self,
+                  row_key,
+                  begin_date = datetime(2005, 8, 25, 18, 23, 44),
+                  end_date = datetime(9999, 1, 1, 0, 0, 0)
+                  ):
         source1 = {
             self.key1[0]:    row_key,
-            self.begin_date: datetime(2005, 8, 25, 18, 23, 44),
-            self.end_date:   datetime(9999, 1, 1, 0, 0, 0),
+            self.begin_date: begin_date,
+            self.end_date:   end_date,
             'strval':        'All good caches work perfectly {}'.format(row_key),
             'floatval':      1000000.15111 + row_key,
             'intval':        12345678900000 + row_key,
             'datetimeval':   datetime(2005, 8, row_key % 25 + 1, row_key % 24, 23, 44)
         }
-        return self.parent_component1.Row(source1)
+        return self.parent_component.Row(source1)
 
     def testMemoryLimit(self):
         lookup = self.TestClass('Test', self.key1, parent_component=self.parent_component1, **self.test_class_args)
-
-    def _makerow(self,
-                 row_key,
-                 begin_date = datetime(2005, 8, 25, 18, 23, 44),
-                 end_date = datetime(9999, 1, 1, 0, 0, 0)):
-        source1 = {
-                      self.key1[0]:    row_key,
-                      self.begin_date: begin_date,
-                      self.end_date:   end_date,
-                      'strval': 'All good caches work perfectly {}'.format(row_key),
-                      'floatval':      1000000.15111 + row_key,
-                      'intval':        12345678900000 + row_key,
-                      'datetimeval':   datetime(2005, 8, row_key % 25 + 1,
-                                                row_key % 24, 23, 44)
-                  }
-        return Row(source1, primary_key=self.key1)
 
     def testMemoryLimit(self):
         lookup = self.TestClass('Test',
@@ -75,7 +65,7 @@ class TestAutodiskRangeLookup(_TestBaseRangeLookup):
         for _ in range(rows_before_move):
             row_key += 1
             for begin_date, end_date in dates:
-                new_row = self._makerow(row_key, begin_date, end_date)
+                new_row = self._make_row(row_key, begin_date, end_date)
                 row_list.append(new_row)
                 lookup.cache_row(new_row)
         lookup.ram_check_row_interval = 1000
@@ -83,7 +73,7 @@ class TestAutodiskRangeLookup(_TestBaseRangeLookup):
         for _ in range(rows_after_move):
             row_key += 1
             for begin_date, end_date in dates:
-                new_row = self._makerow(row_key, begin_date, end_date)
+                new_row = self._make_row(row_key, begin_date, end_date)
                 row_list.append(new_row)
                 lookup.cache_row(new_row)
 
@@ -95,13 +85,13 @@ class TestAutodiskRangeLookup(_TestBaseRangeLookup):
 
         self.assertGreaterEqual(lookup.get_disk_size(), 1000, 'Disk usage not reported correctly')
 
-        new_row = self._makerow(1, datetime(2010, 1, 1, 0, 0, 0), datetime(2011, 12, 31, 23, 59, 59))
+        new_row = self._make_row(1, datetime(2010, 1, 1, 0, 0, 0), datetime(2011, 12, 31, 23, 59, 59))
         self.assertRaises(AfterExisting, lookup.find_in_cache, new_row)
 
-        new_row = self._makerow(1, datetime(1900, 1, 1, 0, 0, 0), datetime(2011, 12, 31, 23, 59, 59))
+        new_row = self._make_row(1, datetime(1900, 1, 1, 0, 0, 0), datetime(2011, 12, 31, 23, 59, 59))
         self.assertRaises(BeforeAllExisting, lookup.find_in_cache, new_row)
 
-        new_row = self._makerow(-1, datetime(2001, 1, 1, 0, 0, 0), datetime(2011, 12, 31, 23, 59, 59))
+        new_row = self._make_row(-1, datetime(2001, 1, 1, 0, 0, 0), datetime(2011, 12, 31, 23, 59, 59))
         self.assertRaises(NoResultFound, lookup.find_in_cache, new_row)
 
         self._post_test_cleanup(lookup)

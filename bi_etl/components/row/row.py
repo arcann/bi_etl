@@ -71,7 +71,10 @@ class Row(object):
         # 91 bytes using pickle.HIGHEST_PROTOCOL, 86 bytes in test using default protocol
         status_value = None
         if self.status is not None:
-            status_value = self.status.value
+            if isinstance(self.status, RowStatus):
+                status_value = self.status.value
+            else:
+                status_value = self.status
         return (self.__class__,
                 # A tuple of arguments for the callable object.
                 (self.iteration_header.iteration_id,
@@ -581,6 +584,13 @@ class Row(object):
                                                                  )
                                                 )
         return differences_list
+
+    def __eq__(self, other):
+        try:
+            diffs = self.compare_to(other)
+        except KeyError:
+            return False
+        return diffs == []
 
     def transform(self,
                   column_specifier,
