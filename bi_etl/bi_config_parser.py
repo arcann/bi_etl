@@ -62,8 +62,7 @@ class BIConfigParser(ConfigParser):
         """
         userDir = os.path.expanduser('~')
         expected_config_files = [
-            # These first two paths are for
-            # running as a windows service
+            # These first paths are for running as a windows service
             os.path.join(r"C:\bi_etl_config\config.ini"),
             os.path.join(r"D:\bi_etl_config\config.ini"),
             os.path.join(r"E:\bi_etl_config\config.ini"),
