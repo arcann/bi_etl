@@ -900,10 +900,11 @@ class ETLTask(object):
                     message_content = '\n'.join(message_list)
                     subject = "{envt} {etl} load failed".format(envt=envt, etl=self)
 
+                    #TODO: Define notifiers setup from config
                     notifiers_list = [Email(self.config, smtp_to)]
 
                     for notifier in notifiers_list:
-                        notifier.send(subject, message_content)
+                        notifier.send(message_content, subject=subject)
             self.log.info("{} FAILED.".format(self))
             if self.child_to_parent is not None:
                 self.child_to_parent.put(e)

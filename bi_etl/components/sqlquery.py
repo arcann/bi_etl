@@ -38,7 +38,7 @@ class SQLQuery(ETLComponent):
     def __str__(self):
         return repr(self)
 
-    def __iter__(self):
+    def _raw_rows(self):
         """
         Run the SQL as is with no parameters or substitutions.
         """
