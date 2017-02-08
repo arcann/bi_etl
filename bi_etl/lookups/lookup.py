@@ -26,6 +26,8 @@ __all__ = ['Lookup']
 
 
 class Lookup(object):
+    COLLECTION_INDEX = 0
+
     def __init__(self, lookup_name, lookup_keys, parent_component, config=None, **kwargs):
         self.lookup_name = lookup_name
         self.lookup_keys = lookup_keys
@@ -229,7 +231,7 @@ class Lookup(object):
         for row in deletes:
             self.uncache_row(row)
 
-    def get_versions_collection(self, row) -> Union[Row, SortedDict]:
+    def get_versions_collection(self, row) -> Union[dict, SortedDict]:
         """
         This method exists for compatibility with range caches
 
@@ -240,7 +242,7 @@ class Lookup(object):
 
         Returns
         -------
-        A single row or an SortedDict of rows
+        A dict or SortedDict of rows
         """
         if not self.cache_enabled:
             raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
@@ -249,7 +251,7 @@ class Lookup(object):
 
         lk_tuple = self.get_hashable_combined_key(row)
         try:
-            return self.cache[lk_tuple]
+            return {Lookup.COLLECTION_INDEX: self.cache[lk_tuple]}
         except KeyError as e:
             raise NoResultFound(e)
 
@@ -258,7 +260,8 @@ class Lookup(object):
         Find a matching row in the lookup based on the lookup index (keys)
         """
         assert len(kwargs) == 0, "lookup.find_in_cache got unexpected args {}".format(kwargs)
-        return self.get_versions_collection(row)
+        versions_collection = self.get_versions_collection(row)
+        return versions_collection[Lookup.COLLECTION_INDEX]
 
     def has_row(self, row):
         """

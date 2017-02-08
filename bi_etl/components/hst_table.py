@@ -674,7 +674,7 @@ class HistoryTable(Table):
                                         keys=self.get_nk_lookup().get_list_of_lookup_column_values(row)
                                         )
                                      )
-                    for row in self.get_pk_lookup().get_versions_collection(row):
+                    for row in self.get_pk_lookup().get_versions_collection(row).values():
                         self.log.info("begin= {begin}\tend= {end}".format(
                             begin= row[self.begin_date],
                             end= row[self.end_date]

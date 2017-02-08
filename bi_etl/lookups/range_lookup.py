@@ -94,7 +94,19 @@ class RangeLookup(Lookup):
                 for row in versions_collection.values():
                     yield row
 
-    def get_versions_collection(self, row) -> Union[Row, SortedDict]:
+    def get_versions_collection(self, row) -> Union[dict, SortedDict]:
+        """
+        This method exists for compatibility with range caches
+
+        Parameters
+        ----------
+        row
+            The row with keys to search row
+
+        Returns
+        -------
+        A dict or SortedDict of rows
+        """
         if not self.cache_enabled:
             raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
         if self.cache is None:
