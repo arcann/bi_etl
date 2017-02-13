@@ -890,7 +890,7 @@ class ETLTask(object):
                 if not smtp_to:
                     self.log.warning("SMTP distro_list option not found. No mail sent.")
                 else:
-                    envt = self.config.get_or_default('DATABASE', 'ENVT', default='Unknown_ENVT')
+                    environment = self.config.get_or_default('SMTP', 'environment', default='Unknown_ENVT')
                     message_list = list()
                     message_list.append(repr(e))
                     message_list.append("Task ID = {}".format(self.task_id))
@@ -898,7 +898,7 @@ class ETLTask(object):
                     if ui_url and self.task_id:
                         message_list.append("Run details are here: {}{}".format(ui_url, self.task_id))
                     message_content = '\n'.join(message_list)
-                    subject = "{envt} {etl} load failed".format(envt=envt, etl=self)
+                    subject = "{environment} {etl} load failed".format(envt=environment, etl=self)
 
                     #TODO: Define notifiers setup from config
                     notifiers_list = [Email(self.config, smtp_to)]

@@ -54,11 +54,11 @@ class Email(Notifier):
                     server.login(gateway_userid, gateway_password)
                 if isinstance(message, email.message.Message):
                     if subject is not None:
-                        message.subject = subject
+                        message['subject'] = subject
                 else:
                     message = MIMEText(message)
                     if subject is not None:
-                        message.subject = subject
+                        message['subject'] = subject
                 message['Sender'] = from_address
                 message['To'] = ','.join(to_addresses)
 
