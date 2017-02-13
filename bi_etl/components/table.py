@@ -1225,11 +1225,12 @@ class Table(ReadOnlyTable):
     # TODO: Add lookup parameter and change to allow set of be of that instead of keys
     def delete_not_in_set(self,
                           set_of_key_tuples: set,
+                          lookup_name: str = None,
                           criteria: Union[Iterable[str], str] = None,
                           use_cache_as_source: bool = True,
-                          stat_name='delete_not_in_set',
-                          progress_frequency = 10,
-                          parent_stats= None,
+                          stat_name: str = 'delete_not_in_set',
+                          progress_frequency: int = None,
+                          parent_stats: Statistics = None,
                           ):
         """
         WARNING: This does physical deletes !! See :meth:`logically_delete_in_set` for logical deletes.
@@ -1240,6 +1241,8 @@ class Table(ReadOnlyTable):
         set_of_key_tuples
             List of tuples comprising the primary key values.
             This list represents the rows that should *not* be deleted.
+        lookup_name: str
+            The name of the lookup to use to find key tuples.
         criteria
             Only rows matching criteria will be checked against the ``list_of_key_tuples`` for deletion. 
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
@@ -1261,11 +1264,25 @@ class Table(ReadOnlyTable):
         deletes_cnt = 0
         deleted_rows = list()
         self.begin()
+
+        if progress_frequency is None:
+            progress_frequency = self.progress_frequency
         
         progress_timer = Timer()
+
+        # Turn off read progress reports
+        saved_progress_frequency = self.progress_frequency
+        self.progress_frequency = None
+
+        if lookup_name is None:
+            lookup = self.get_nk_lookup()
+        else:
+            lookup = self.get_lookup(lookup_name)
+
         for row in self.where(criteria, use_cache_as_source=use_cache_as_source, parent_stats=stats):
             stats['rows read'] += 1
-            existing_key = self.get_primary_key_value_tuple(row)
+            existing_key = lookup.get_hashable_combined_key(row)
+
             if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 progress_timer.reset()
                 self.log.info("delete_not_in_set current row={} key={} deletes_done = {}"
@@ -1280,7 +1297,12 @@ class Table(ReadOnlyTable):
                             )
         
         for row in deleted_rows:
-            self.uncache_row(row)                
+            self.uncache_row(row)
+
+        stats.timer.stop()
+
+        # Restore saved progress_frequency
+        self.progress_frequency = saved_progress_frequency
 
     def delete_not_processed(self,
                              criteria: Union[Iterable[str], str] = None,
@@ -1863,6 +1885,7 @@ class Table(ReadOnlyTable):
             Default is to place statistics in the ETLTask level statistics.
         """
         stats = self.get_unique_stats_entry(stat_name, parent_stats= parent_stats)
+        stats['rows read'] = 0
         stats.timer.start()
         update_cnt = 0
         self.begin()
@@ -1877,16 +1900,14 @@ class Table(ReadOnlyTable):
         self.progress_frequency = None
         
         if lookup_name is None:
-            lookup = self.get_pk_lookup()
+            lookup = self.get_nk_lookup()
         else:                
             lookup = self.get_lookup(lookup_name)
         
         # Note, here we select only lookup columns from self
         for row in self.where(column_list= lookup.lookup_keys, criteria=criteria, parent_stats=stats):
-            if lookup_name is None:
-                existing_key = self.get_primary_key_value_tuple(row)
-            else:
-                existing_key = self.get_lookup_tuple(lookup_name, row)
+            stats['rows read'] += 1
+            existing_key = lookup.get_hashable_combined_key(row)
             
             if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 progress_timer.reset()
@@ -1898,6 +1919,8 @@ class Table(ReadOnlyTable):
                 # Then we can apply the updates to it
                 self.apply_updates(row= target_row, additional_update_values= updates_to_make, parent_stats= stats)
         stats.timer.stop()
+
+        # Restore saved progress_frequency
         self.progress_frequency = saved_progress_frequency 
 
     def update_not_processed(self,
