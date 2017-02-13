@@ -870,17 +870,11 @@ class ReadOnlyTable(ETLComponent):
     def get_lookup_tuple(self, lookup_name, row):
         return self.__lookups[lookup_name].get_hashable_combined_key(row)
 
-    def build_nk(self):
-        self.log.error("Cannot determine natural key. Please set it explicitly using the natural_key attribute")
-        return None
-
     @property
     def natural_key(self) -> list:
         """
         Get this tables natural key
         """
-        if self.__natural_key is None:
-            self.__natural_key = self.build_nk()
         return self.__natural_key
 
     @natural_key.setter
