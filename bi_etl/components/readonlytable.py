@@ -507,8 +507,7 @@ class ReadOnlyTable(ETLComponent):
 
         if use_cache_as_source:
             # Note in this case the outer call where / iter_result will process the criteria
-            if use_cache_as_source_requested:
-                self.log.debug("Using lookup {} as source for {}".format(pk_lookup, stats))               
+            self.log.debug("Using lookup {} as source for {}".format(pk_lookup, stats))
             self._iterator_applied_filters = False
             return pk_lookup
         else:

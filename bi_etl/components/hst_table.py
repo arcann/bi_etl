@@ -1250,6 +1250,15 @@ class HistoryTable(Table):
         stats.timer.start()
         self.begin()
 
+        if progress_frequency is None:
+            progress_frequency = self.progress_frequency
+
+        progress_timer = Timer()
+
+        # Turn off read progress reports
+        saved_progress_frequency = self.progress_frequency
+        self.progress_frequency = None
+
         if lookup_name is None:
             lookup_name = self.get_nk_lookup_name()
             lookup = self.get_nk_lookup()
@@ -1265,15 +1274,25 @@ class HistoryTable(Table):
                 pass
             stats['rows read'] += 1
             existing_key = lookup.get_hashable_combined_key(row)
+
+            if 0 < progress_frequency <= progress_timer.seconds_elapsed:
+                progress_timer.reset()
+                self.log.info("update_not_in_set current current row#={} row key={} updates done so far = {}".format(
+                    stats['rows read'], existing_key, stats['updates count']))
+
             if existing_key not in set_of_key_tuples:
+                stats['updates count'] += 1
+
                 # First we need the entire existing row
-                target_row = self.get_by_lookup_and_effective_date(lookup_name, row, effective_date=source_effective_date)
+                target_row = self.get_by_lookup_and_effective_date(lookup_name, row,
+                                                                   effective_date=source_effective_date)
+
                 # Then we can apply the updates to it
                 self.apply_updates(target_row,
                                    changes_list=updates_to_make,
                                    source_effective_date=source_effective_date,
                                    parent_stats=stats)
-                stats['updates count'] += 1
+
                 #
                 # self.log.debug("{} found row {}".format(stat_name, dict_to_str(row)))
                 # Testing commit
@@ -1286,6 +1305,9 @@ class HistoryTable(Table):
                 #
 
         stats.timer.stop()
+
+        # Restore saved progress_frequency
+        self.progress_frequency = saved_progress_frequency
 
     def update_not_processed(self,
                              update_row,

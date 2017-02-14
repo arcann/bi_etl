@@ -1261,7 +1261,6 @@ class Table(ReadOnlyTable):
         stats['rows read'] = 0
         stats['rows deleted'] = 0
         stats.timer.start()
-        deletes_cnt = 0
         deleted_rows = list()
         self.begin()
 
@@ -1286,7 +1285,7 @@ class Table(ReadOnlyTable):
             if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 progress_timer.reset()
                 self.log.info("delete_not_in_set current row={} key={} deletes_done = {}"
-                              .format(stats['rows read'], existing_key, deletes_cnt))
+                              .format(stats['rows read'], existing_key, stats['rows deleted']))
             if existing_key not in set_of_key_tuples:
                 stats['rows deleted'] += 1
                 
@@ -1886,8 +1885,8 @@ class Table(ReadOnlyTable):
         """
         stats = self.get_unique_stats_entry(stat_name, parent_stats= parent_stats)
         stats['rows read'] = 0
+        stats['updates count'] = 0
         stats.timer.start()
-        update_cnt = 0
         self.begin()
         
         if progress_frequency is None:
@@ -1906,16 +1905,22 @@ class Table(ReadOnlyTable):
         
         # Note, here we select only lookup columns from self
         for row in self.where(column_list= lookup.lookup_keys, criteria=criteria, parent_stats=stats):
+            if row.status == RowStatus.unknown:
+                pass
             stats['rows read'] += 1
             existing_key = lookup.get_hashable_combined_key(row)
             
             if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 progress_timer.reset()
-                self.log.info("update_not_in_set current row={} key={} updates done = {}".format(stats['rows read'], existing_key, update_cnt))    
+                self.log.info("update_not_in_set current current row#={} row key={} updates done so far = {}".format(
+                    stats['rows read'], existing_key, stats['updates count']))
                 
             if existing_key not in set_of_key_tuples:
+                stats['updates count'] += 1
+
                 # First we need the entire existing row
                 target_row = self.get_by_lookup(lookup_name, row)
+
                 # Then we can apply the updates to it
                 self.apply_updates(row= target_row, additional_update_values= updates_to_make, parent_stats= stats)
         stats.timer.stop()
