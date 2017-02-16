@@ -898,7 +898,7 @@ class ETLTask(object):
                     if ui_url and self.task_id:
                         message_list.append("Run details are here: {}{}".format(ui_url, self.task_id))
                     message_content = '\n'.join(message_list)
-                    subject = "{environment} {etl} load failed".format(envt=environment, etl=self)
+                    subject = "{environment} {etl} load failed".format(environment=environment, etl=self)
 
                     #TODO: Define notifiers setup from config
                     notifiers_list = [Email(self.config, smtp_to)]
