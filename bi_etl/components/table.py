@@ -1843,7 +1843,8 @@ class Table(ReadOnlyTable):
         for c in source_mapped_as_target_row:                
             v = source_mapped_as_target_row[c]
             stmt = stmt.values({c: v})
-            
+
+        self.begin()
         stats['direct_updates_sent_to_db'] += 1 
         result = self.execute(stmt)
         stats['direct_updates_applied_to_db'] += result.rowcount
@@ -2212,6 +2213,10 @@ class Table(ReadOnlyTable):
             if self.__transaction.is_active:
                 self.__transaction.commit()
                 self.begin()
+            else:
+                self.log.error('commit called when not in an active transaction')
+        else:
+            self.log.error('commit called when not in a transaction')
         stats.timer.stop()
     
     def rollback(self,
@@ -2237,4 +2242,8 @@ class Table(ReadOnlyTable):
             if self.__transaction.is_active:
                 self.__transaction.rollback()
                 self.begin()
+            else:
+                self.log.debug('rollback called when not in an active transaction')
+        else:
+            self.log.debug('rollback called when not in a transaction')
         stats.timer.stop()

@@ -314,7 +314,8 @@ class ReadOnlyTable(ETLComponent):
             self.log.debug('multiparams={}'.format(multiparams))
             self.log.debug('params={}'.format(params))
             self.log.debug('-------------------------')
-        return self.connection().execute(statement, *multiparams, **params)
+        connection = self.connection()
+        return connection.execute(statement, *multiparams, **params)
     
     def get_one(self, statement=None):
         """
@@ -482,7 +483,8 @@ class ReadOnlyTable(ETLComponent):
             elif not(criteria is None or isinstance(criteria, dict)):                
                 use_cache_as_source = False
                 if use_cache_as_source_requested:
-                    self.log.debug("Non dict criteria requires using database as source for {}".format(stats))
+                    self.log.debug("Non dict criteria requires using database as source for {} with {}".format(
+                        stats, criteria))
             else:
                 # Find the filled cache
                 try:                    
