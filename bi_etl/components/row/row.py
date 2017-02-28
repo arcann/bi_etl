@@ -169,9 +169,10 @@ class Row(object):
                                              .format(e1=e1, e2=e2, args=source_data)
                                              )
                 else:
+                    args = source_data.__str__()
                     raise ValueError("Row couldn't get set with {atype} {args}."
                                      " Error {e}."
-                                     .format(e=e, args=source_data, atype=type(args))
+                                     .format(e=e, args=args, atype=type(args))
                                      )
 
     def get_column_position(self, column_specifier):
@@ -629,7 +630,8 @@ class Row(object):
         self._data_values[position] = new_value
         return self
 
-if __name__ == "__main__":
+
+def main():
     from _datetime import datetime
     import pickle
     from timeit import timeit
@@ -648,21 +650,21 @@ if __name__ == "__main__":
     print(row == row2)
     print(row.compare_to(row2))
     r = timeit("pickle.loads(pickle.dumps(row, pickle.HIGHEST_PROTOCOL))",
-"""
-import pickle;
-from bi_etl.components.row.row import Row;
-from bi_etl.components.row.row_iteration_header import RowIterationHeader;
-from _datetime import datetime
-iteration_header = RowIterationHeader()
-row = Row(iteration_header,
-          data={'col1': 54321,
-                'col2': 'Two',
-                'col3': datetime(2012, 1, 3, 12, 25, 33),
-                'col4': 'All good pickles',
-                'col5': 123.23,
-                })
-"""
-)
+               """
+               import pickle;
+               from bi_etl.components.row.row import Row;
+               from bi_etl.components.row.row_iteration_header import RowIterationHeader;
+               from _datetime import datetime
+               iteration_header = RowIterationHeader()
+               row = Row(iteration_header,
+                         data={'col1': 54321,
+                               'col2': 'Two',
+                               'col3': datetime(2012, 1, 3, 12, 25, 33),
+                               'col4': 'All good pickles',
+                               'col5': 123.23,
+                               })
+               """
+               )
     print(r)
 
     print("V1--------")
@@ -673,22 +675,25 @@ row = Row(iteration_header,
     print(s)
     row2 = pickle.loads(s)
     print(row == row2)
-    #print(row.compare_to(row2))
+    # print(row.compare_to(row2))
 
     r = timeit("pickle.loads(pickle.dumps(row, pickle.HIGHEST_PROTOCOL))",
-"""
-import pickle;
-from bi_etl.components.row.row import Row;
-from bi_etl.components.row.row_iteration_header import RowIterationHeader;
-from _datetime import datetime
-iteration_header = RowIterationHeader()
-row = Row(iteration_header,
-          data={'col1': 54321,
-                'col2': 'Two',
-                'col3': datetime(2012, 1, 3, 12, 25, 33),
-                'col4': 'All good pickles',
-                'col5': 123.23,
-                })
-"""
-)
+               """
+               import pickle;
+               from bi_etl.components.row.row import Row;
+               from bi_etl.components.row.row_iteration_header import RowIterationHeader;
+               from _datetime import datetime
+               iteration_header = RowIterationHeader()
+               row = Row(iteration_header,
+                         data={'col1': 54321,
+                               'col2': 'Two',
+                               'col3': datetime(2012, 1, 3, 12, 25, 33),
+                               'col4': 'All good pickles',
+                               'col5': 123.23,
+                               })
+               """
+               )
     print(r)
+
+if __name__ == "__main__":
+    main()

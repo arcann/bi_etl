@@ -6,6 +6,7 @@ Created on Mar 26, 2015
 import unittest
 from collections import OrderedDict
 
+from bi_etl.tests.mock_metadata import MockTableMeta, MockDatabaseMeta
 from bi_etl.tests.test_row import TestRow
 from sqlalchemy.sql.schema import Column, Table, DEFAULT_NAMING_CONVENTION
 from sqlalchemy.engine.result import RowProxy
@@ -121,17 +122,8 @@ class TestRowCaseInsensitive(TestRow):
         # For upper case columns we can access it by any case
         self._test_transform_single_case('uPpEr')
 
-    def testDefaultName(self):
-        row1_name = self.row1a.name
-        self.assertIsInstance(row1_name, str)
-        for c in self.source1a:
-            self.assertIn(str(c).lower(), row1_name)
-    
     def _make_row_from_dict(self, row_dict):
-        class MockMeta(object):
-            def __init__(self, keys):
-                self.columns = keys   
-        metadata = MockMeta(list(row_dict.keys()))
+        metadata = MockTableMeta(list(row_dict.keys()))
 
         def proc1(value):
             return value
@@ -153,12 +145,8 @@ class TestRowCaseInsensitive(TestRow):
                         )
     
     def _make_row_from_list(self, row_list):
-        class MockMeta(object):
-            def __init__(self, keys):
-                self.columns = keys   
-        
         columns = [t[0] for t in row_list]
-        metadata = MockMeta(columns)
+        metadata = MockTableMeta(columns)
 
         def proc1(value):
             return value
@@ -179,29 +167,15 @@ class TestRowCaseInsensitive(TestRow):
                         keymap
                         )
             
-    def test_SA_init(self):        
-        self.assertEqual(self.row2a.name, 'my_row_name', "row.name didn't return correct value")
-        self.assertIn('my_row_name', str(self.row2a), "str(Row) didn't return row name")
-        
+    def test_SA_init(self):
         self.assertEqual( self.row2a['MixedCase'], self.source2a['MixedCase'] )
         self.assertEqual( self.row2a['lower'], self.source2a['lower'] )
         self.assertEqual( self.row2a['lower'.upper()], self.source2a['lower'] )
         self.assertEqual( self.row2a['UPPER'], self.source2a['UPPER'] )
         self.assertEqual( self.row2a['UPPER'.lower()], self.source2a['UPPER'] )
 
-        class MockMeta(object):
-            def __init__(self, tables= None):
-                self.schema = None
-                self.tables = tables or []
-                self.naming_convention = DEFAULT_NAMING_CONVENTION
-                self._fk_memos = []
-                
-            def _add_table(self, name, schema, table):
-                pass
+        metadata = MockDatabaseMeta()
 
-            def _remove_table(self, name, schema):
-                pass
-        metadata = MockMeta()
         my_table = Table("mytable", metadata,
                         Column('MixedCase', Integer, primary_key=True),
                         Column('lower', String(50)),
@@ -281,7 +255,8 @@ class TestRowCaseInsensitive(TestRow):
         test_row = self.row3a
         columns_in_order = test_row.columns_in_order
         expected_keys = [k.lower() for k in self.columns]
-        self.assertEqual(expected_keys, columns_in_order)
+        for expected_name, actual_name in zip(expected_keys, columns_in_order):
+            self.assertEqual(expected_name, actual_name.lower())
         
     def test_by_position(self):
         test_row = self.row3a

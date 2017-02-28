@@ -764,7 +764,7 @@ class HistoryTable(Table):
         stats.ensure_exists('insert new called')
 
         if 'source_effective_date' not in kwargs:
-            if self.begin_date in source_row:
+            if self.begin_date in source_row and source_row[self.begin_date] is not None:
                 source_effective_date = ensure_datetime(source_row[self.begin_date])
             else:
                 source_effective_date = datetime.now()

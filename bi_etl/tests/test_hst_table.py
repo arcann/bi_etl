@@ -33,7 +33,7 @@ from bi_etl.scheduler.task import ETLTask
 
 
 # pylint: disable=missing-docstring, protected-access
-from tests.dummy_etl_component import DummyETLComponent
+from bi_etl.tests.dummy_etl_component import DummyETLComponent
 
 
 class TestHstTable(unittest.TestCase):
@@ -357,6 +357,7 @@ class TestHstTable(unittest.TestCase):
                     )
         idx.create()
 
+
         idx = Index(tbl_name + '_idx2',
                     sa_table.c.sk1_col,
                     sa_table.c.source_begin_date,
@@ -370,7 +371,7 @@ class TestHstTable(unittest.TestCase):
         with Hst_Table(self.task,
                        self.mock_database,
                        table_name=tbl_name) as tbl:
-            ## Just here to help pydev know the datatype
+            # Just here to help pydev know the datatype
             assert isinstance(tbl, Hst_Table)
             tbl.begin_date = 'source_begin_date'
             tbl.end_date = 'source_end_date'
@@ -408,7 +409,7 @@ class TestHstTable(unittest.TestCase):
 
             tbl.commit()
 
-            ## Validate data
+            # Validate data
             last_int_value = -1
             for row in tbl.order_by(['nk_col1', 'nk_col2', tbl.begin_date]):
                 self.log.debug(row.values_in_order())
@@ -418,7 +419,7 @@ class TestHstTable(unittest.TestCase):
                 else:
                     self.assertEqual(last_int_value, row['nk_col1'], 'Order by did not work for new version row')
 
-                ## Check the row contents
+                # Check the row contents
                 i = row['nk_col1']
                 if i in range(upsert_start):
                     self.assertEqual(row['text_col'], 'this is row {}'.format(i))
@@ -428,17 +429,17 @@ class TestHstTable(unittest.TestCase):
                     self.assertIsNone(row['datetime_col'])
                 else:
                     if row[tbl.begin_date] == tbl.default_begin_date and i in range(rows_to_insert):
-                        ## original values
+                        # original values
                         self.assertEqual(row['text_col'], 'this is row {}'.format(i))
                         self.assertEqual(row['real_col'], i / 1000.0)
                         self.assertEqual(row['num_col'], i / 100000000.0)
                         self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
                         self.assertIsNone(row['datetime_col'])
                     else:
-                        ## new values                        
+                        # new values
                         self.assertEqual(row['text_col'], 'upsert row {}'.format(i))
-                        ## for the originally inserted rows the new version will have the original data for
-                        ## these fields that are not in the upsert
+                        # for the originally inserted rows the new version will have the original data for
+                        # these fields that are not in the upsert
                         if i in range(rows_to_insert):
                             self.assertEqual(row['real_col'], i / 1000.0)
                             self.assertEqual(row['num_col'], i / 100000000.0)

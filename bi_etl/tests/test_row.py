@@ -7,9 +7,11 @@ import unittest
 from collections import OrderedDict
 
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
-from sqlalchemy.sql.schema import Column, Table, DEFAULT_NAMING_CONVENTION
+from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.engine.result import RowProxy
 from sqlalchemy.sql.sqltypes import Integer, String, Numeric
+
+from bi_etl.tests.mock_metadata import MockTableMeta, MockDatabaseMeta
 from bi_etl.timer import Timer
 from bi_etl.components.row.row import Row
 from bi_etl.conversions import nullif
@@ -93,7 +95,7 @@ class TestRow(unittest.TestCase):
                              .format(k=k, v1=self.row1b[k], v2=self.row3b[k]))
 
     def test_init_iter_zip_b_columns(self):
-        self.assertEqual(tuple(self.row1b.column_set), tuple(self.row3b.column_set))
+        self.assertEqual(set(self.row1b.column_set), set(self.row3b.column_set))
         self.assertEqual(tuple(self.row3a.columns_in_order), tuple(self.row3b.columns_in_order))
             
     def test_column_count(self):
@@ -151,11 +153,7 @@ class TestRow(unittest.TestCase):
         self._test_transform_single_case_example('UPPER')
 
     def _make_row_from_dict(self, row_dict):
-        class MockMeta(object):
-            def __init__(self, keys):
-                self.keys = keys
-
-        metadata = MockMeta(list(row_dict.keys()))
+        metadata = MockTableMeta(list(row_dict.keys()))
 
         def proc1(value):
             return value
@@ -177,12 +175,8 @@ class TestRow(unittest.TestCase):
                         )
 
     def _make_row_from_list(self, row_list):
-        class MockMeta(object):
-            def __init__(self, keys):
-                self.keys = keys
-
         row_keys = [t[0] for t in row_list]
-        metadata = MockMeta(row_keys)
+        metadata = MockTableMeta(row_keys)
 
         def proc1(value):
             return value
@@ -213,21 +207,8 @@ class TestRow(unittest.TestCase):
         self.assertEqual(self.row2a['UPPER'], self.source2a['UPPER'])
         self._test_getter_fail(self.row2a, 'upper')
 
-        class MockMeta(object):
-            def __init__(self, tables=None):
-                self.keys = []
-                self.schema = None
-                self.tables = tables or []
-                self.naming_convention = DEFAULT_NAMING_CONVENTION
-                self._fk_memos = []
+        metadata = MockDatabaseMeta()
 
-            def _add_table(self, name, schema, table):
-                pass
-
-            def _remove_table(self, name, schema):
-                pass
-
-        metadata = MockMeta()
         mytable = Table("mytable", metadata,
                         Column('MixedCase', Integer, primary_key=True),
                         Column('lower', String(50)),
