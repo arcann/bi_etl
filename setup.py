@@ -34,7 +34,7 @@ tests_require = [
 ]
 
 setup(name='bi_etl',
-      version='0.3',
+      version='0.4',
       description='ETL (Extract Transform Load) framework geared towards BI database in particular.',
       long_description=README,
       classifiers=[
