@@ -9,6 +9,7 @@ from datetime import datetime
 from operator import attrgetter
 from typing import Iterable
 
+import functools
 import sqlalchemy
 from bi_etl import Timer
 from bi_etl.components.etlcomponent import ETLComponent
@@ -45,6 +46,10 @@ class ReadOnlyTable(ETLComponent):
 
     table_name : str
         The name of the table/view.
+
+    include_only_columns : list, optional
+        Optional. A list of specific columns to include when reading the table/view.
+        All other columns are excluded.
 
     exclude_columns : list, optional
         Optional. A list of columns to exclude when reading the table/view.
@@ -108,6 +113,7 @@ class ReadOnlyTable(ETLComponent):
                  table_name,
                  table_name_case_sensitive = False,
                  exclude_columns = None,
+                 include_only_columns = None,
                  **kwargs
                  ):
         # Don't pass kwargs up. They should be set here at the end
@@ -160,6 +166,9 @@ class ReadOnlyTable(ETLComponent):
 
         if exclude_columns:
             self.exclude_columns(exclude_columns)
+
+        if include_only_columns:
+            self.include_only_columns(include_only_columns)
 
         self.custom_special_values = dict()
         
@@ -269,7 +278,18 @@ class ReadOnlyTable(ETLComponent):
         # Remove the table definition so we can add it back below
         self.database.remove(self.table)
         self.table = sqlalchemy.schema.Table(self.table_name, self.database, *self._columns, quote=False)
-    
+
+    def include_only_columns(self, columns_to_include):
+        """
+        Include only specified columns in the table defintion.
+        Columns that are non included are removed them from all SQL statements.
+
+        columns_to_include : list
+            A list of columns to include when reading the table/view.
+        """
+        columns_to_exclude = set(self.column_names).difference(columns_to_include)
+        self.exclude_columns(columns_to_exclude)
+
     def is_connected(self) -> bool:
         return self.__connection is not None
 
@@ -669,6 +689,7 @@ class ReadOnlyTable(ETLComponent):
         return max_value        
 
     @property
+    @functools.lru_cache(maxsize=16)
     def row_name(self):
         return str(self.table)
 
@@ -957,6 +978,7 @@ class ReadOnlyTable(ETLComponent):
                    progress_frequency = 10,
                    progress_message = "{table} fill_cache current row # {row_number:,}",
                    criteria = None,
+                   column_list = None,
                    exclude_cols = None,
                    order_by = None,
                    assume_lookup_complete = None,
@@ -977,8 +999,10 @@ class ReadOnlyTable(ETLComponent):
         criteria : string or list of strings 
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+        column_list: list
+            Optional. Specific columns to include when filling the cache.
         exclude_cols: list
-            Columns to exclude when filling the cache
+            Optional. Columns to exclude when filling the cache
         order_by: list
             list of columns to sort by when filling the cache (helps range caches)
         assume_lookup_complete: boolean
@@ -1012,7 +1036,8 @@ class ReadOnlyTable(ETLComponent):
         
         self.init_cache()
         
-        for row in self.where(criteria=criteria, 
+        for row in self.where(criteria=criteria,
+                              column_list=column_list,
                               exclude_cols= exclude_cols, 
                               order_by=order_by, 
                               use_cache_as_source= False,
@@ -1075,7 +1100,7 @@ class ReadOnlyTable(ETLComponent):
                 disk_size += this_disk_size
             self.log.info('Note: RAM sizes do not add up as memory lookups share row objects')
             self.log.info('Total Lookups Size DISK={:,} bytes'.format(disk_size))
-            stats['rows_in_cache'] = len(self.__lookups[ReadOnlyTable.PK_LOOKUP])
+            stats['rows_in_cache'] = len(self.get_nk_lookup())
         
         self.cache_commit()
         stats.timer.stop()

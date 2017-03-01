@@ -1613,8 +1613,12 @@ class Table(ReadOnlyTable):
                     pending_update_statements.append_values_by_key(update_stmt_key, stmt_values)
                     row_dict.status = RowStatus.existing
             try:
+                db_stats = self.get_stats_entry('DB Update', parent_stats=stats)
+                db_stats['update statements sent to db'] += 1
+                db_stats.timer.start()
                 rows_applied = pending_update_statements.execute(self.connection())
-                stats['apply updates db applied'] += rows_applied
+                db_stats.timer.stop()
+                db_stats['applied rows'] += rows_applied
                 #len(self.pending_update_rows)
             except Exception as e:
                 # Retry one at a time
@@ -1678,11 +1682,19 @@ class Table(ReadOnlyTable):
         
         # Check that the row isn't pending an insert
         if row.status != RowStatus.insert:
+
+            # TODO: Support partial updates.
+            # We could save significant network transit times in some cases if we didn't send the whole row
+            # back as an update. However, we might also not want a different update statement for each combination
+            # of updated columns. Unfortunately, having code in update_pending_batch scan the combinations for the
+            # most efficient ways to group the updates would also likely be slow.
+
             row.status = RowStatus.update_whole
             self._add_pending_update(row, parent_stats= stats)
             if stats is not None:
                 stats['update called'] += 1
         else:
+            # The update to the pending row is all we need to do
             if stats is not None:
                 stats['updated pending insert'] += 1
         stats.timer.stop()         

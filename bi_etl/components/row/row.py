@@ -8,6 +8,8 @@ import warnings
 from decimal import Decimal
 from typing import Union, List, Iterable
 
+import functools
+
 from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.utility import dict_to_str
@@ -51,6 +53,7 @@ class Row(object):
             self.update(data)
 
     @staticmethod
+    @functools.lru_cache(maxsize=1000)
     def _get_name(input_name) -> str:
         if input_name in Row.__name_map_db:
             return Row.__name_map_db[input_name]

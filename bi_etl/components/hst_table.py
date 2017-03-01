@@ -210,7 +210,7 @@ class HistoryTable(Table):
         self.set_kwattrs(**kwargs)
 
     def __repr__(self):
-        return "Hst_Table({})".format(self.table.name)
+        return "HistoryTable({})".format(self.table.name)
 
     def is_date_key_column(self, column):
         if self.begin_date is None or self.end_date is None:
@@ -331,6 +331,7 @@ class HistoryTable(Table):
                    progress_frequency=10,
                    progress_message="{table} fill_cache current row # {row_number:,}",
                    criteria=None,
+                   column_list=None,
                    exclude_cols=None,
                    order_by=None,
                    assume_lookup_complete=None,
@@ -342,9 +343,10 @@ class HistoryTable(Table):
         
         Parameters
         ----------
+        column_list: list
+            Optional. Specific columns to include when filling the cache.
         exclude_cols: list
-            Columns to exclude from the cached rows.
-            Optional.
+            Optional. Columns to exclude from the cached rows.
         progress_frequency : int
             How often (in seconds) to output progress messages. Default 10. None for no progress messages.
             Optional.
@@ -378,6 +380,7 @@ class HistoryTable(Table):
         super().fill_cache(progress_frequency=progress_frequency,
                            progress_message=progress_message,
                            criteria=criteria,
+                           column_list=column_list,
                            exclude_cols=exclude_cols,
                            order_by=order_by,
                            assume_lookup_complete=assume_lookup_complete,
@@ -641,7 +644,7 @@ class HistoryTable(Table):
                     )
                 )
             # Apply updates to the row (use parent class routine to finish the work)
-            super(Hst_Table, self).apply_updates(row,
+            super(HistoryTable, self).apply_updates(row,
                                                  changes_list=changes_list,
                                                  stat_name=stat_name,
                                                  parent_stats=parent_stats

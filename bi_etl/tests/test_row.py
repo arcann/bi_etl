@@ -22,11 +22,11 @@ from bi_etl.tests.dummy_etl_component import DummyETLComponent
 
 class TestRow(unittest.TestCase):
     # Iteration counts tuned so that tests take less than a second
-    create_performance_iterations = 3 * 10 ** 4
+    create_performance_iterations = 5 * 10 ** 4
     get_performance_iterations = 10 ** 6
     set_existing_performance_iterations = 5 * 10 ** 5
-    set_new_performance_rows = 10 ** 3
-    set_new_performance_columns = 100
+    set_new_performance_rows = 5 * 10 ** 3
+    set_new_performance_columns = 50
 
     def setUp(self):
         self.longMessage = True
@@ -301,27 +301,43 @@ class TestRow(unittest.TestCase):
         self.assertEqual(test_row.get_by_position(2), self.values3a[2 - 1])  # -1 because positions are 1 based
         self.assertEqual(test_row.get_by_position(3), self.values3a[3 - 1])  # -1 because positions are 1 based
 
-    def _test_create_performance(self):
+    def _create_ordered_dict_rows(self, desired_row_count):
+        row_list = list()
+        for _ in range(desired_row_count):
+            row_list.append(OrderedDict(self.source1a))
+        return row_list
+
+    def _create_Row_rows(self, desired_row_count):
+        iteration_header = RowIterationHeader(columns_in_order=self.columns)
+        row_list = list()
+        for _ in range(desired_row_count):
+            row_list.append(Row(iteration_header, data=self.source1a))
+        return row_list
+
+    def test_performance_create(self):
         """
         Establish a baseline of init performance to make sure it doesn't get worse
         """
         timer = Timer(start_running=True)
-        row_lst = list()
-        for _ in range(self.create_performance_iterations):
-            row_lst.append(OrderedDict(self.source1a))
+        _ = self._create_ordered_dict_rows(self.create_performance_iterations)
         timer.stop()
         dict_seconds = timer.seconds_elapsed
-        del row_lst[:]
+
         timer.reset()
-        for _ in range(self.create_performance_iterations):
-            row_lst.append(Row(self.source1a))
+        _ = self._create_Row_rows(self.create_performance_iterations)
         timer.stop()
         row_seconds = timer.seconds_elapsed
-        print("create performance {:.2f} that of OrderedDict = {:f} per call".format(row_seconds / dict_seconds,
-                                                                                     row_seconds / self.create_performance_iterations))
-        self.assertLessEqual(row_seconds, dict_seconds * 2, "Row init did not meet performance goal")
 
-    def _test_get_performance(self):
+        calls = self.create_performance_iterations
+        print("create performance {:.2f} times that of OrderedDict {:f} µs vs {:f} µs per call".format(
+            row_seconds / dict_seconds,
+            1000000 * row_seconds / calls,
+            1000000 * dict_seconds / calls
+            )
+        )
+        self.assertLessEqual(row_seconds, dict_seconds * 15, "Row init did not meet performance goal")
+
+    def test_performance_get(self):
         """
         Establish a baseline of get performance to make sure it doesn't get worse.
         We expect the extra checks we do here to make Row slower than OrderedDict.
@@ -336,56 +352,88 @@ class TestRow(unittest.TestCase):
         test_row = self.row1a
         timer.reset()        
         for _ in range(self.get_performance_iterations):
+            # Note we don't want to cheat here by caching the results of the get
+            # in real world usage each get would be on a different row.
             _ = test_row['UPPER']
         timer.stop()
         row_seconds = timer.seconds_elapsed
 
-        print("get performance {:.2f} that of OrderedDict = {:f} per call".format(row_seconds / dict_seconds,
-                                                                                  row_seconds / self.get_performance_iterations))
-        self.assertLessEqual(row_seconds, dict_seconds * 8, "Row get did not meet performance goal")
+        calls = self.get_performance_iterations
+        print("get performance {:.2f} times that of OrderedDict {:f} µs vs {:f} µs per call".format(
+            row_seconds / dict_seconds,
+            1000000 * row_seconds / calls,
+            1000000 * dict_seconds / calls
+            )
+        )
+        self.assertLessEqual(row_seconds, dict_seconds * 15, "Row get did not meet performance goal")
 
-    def _test_set_existing_performance(self):
+    def test_performance_set_existing(self):
         """
         Establish a baseline of set existing value performance to make sure it doesn't get worse
         We expect the extra checks we do here to make Row slower than OrderedDict.
         """
+        row_list = self._create_ordered_dict_rows(self.set_existing_performance_iterations)
+
         timer = Timer(start_running=True)
-        od = OrderedDict(self.source1a)
-        for _ in range(self.set_existing_performance_iterations):
-            od['lower'] = 'new value'
+        for row in row_list:
+            row['lower'] = 'new value'
         timer.stop()
         dict_seconds = timer.seconds_elapsed
-        timer.reset()
-        for _ in range(self.set_existing_performance_iterations):
-            self.row1a['lower'] = 'new value'
-        timer.stop()
-        print("set existing performance {:.2f} that of OrderedDict  = {:f} per call".format(
-            timer.seconds_elapsed / dict_seconds, timer.seconds_elapsed / self.set_existing_performance_iterations))
-        self.assertLessEqual(timer.seconds_elapsed, dict_seconds * 2, "Row set did not meet performance goal")
 
-    def _test_set_new_performance(self):
+        # clean out the row list
+        del row_list[:]
+
+        row_list = self._create_Row_rows(self.set_existing_performance_iterations)
+        timer.reset()
+        for row in row_list:
+            row['lower'] = 'new value'
+        timer.stop()
+        row_seconds = timer.seconds_elapsed
+
+        calls = self.set_existing_performance_iterations
+        print("get performance {:.2f} times that of OrderedDict {:f} µs vs {:f} µs per call".format(
+            row_seconds / dict_seconds,
+            1000000 * row_seconds / calls,
+            1000000 * dict_seconds / calls
+            )
+        )
+        self.assertLessEqual(timer.seconds_elapsed, dict_seconds * 15, "Row set did not meet performance goal")
+
+    def test_performance_set_new(self):
         """
         Establish a baseline of set new value performance to make sure it doesn't get worse.
         We expect the extra checks we do here to make Row slower than OrderedDict.
         """
+        row_list = self._create_ordered_dict_rows(self.set_new_performance_rows)
+        name_value_map = list()
+        for i in range(self.set_new_performance_columns):
+            name_value_map.append(('new key {}'.format(i), 'new value {}'.format(i)))
+
         timer = Timer(start_running=True)
-        od = OrderedDict(self.source1a)
-        for _ in range(self.set_new_performance_rows):
-            od = OrderedDict(self.source1a)
-            for i in range(self.set_new_performance_columns):
-                od['new key {}'.format(i)] = 'new value {}'.format(i)
+        for row in row_list:
+            for name, value in name_value_map:
+                row[name] = value
         timer.stop()
         dict_seconds = timer.seconds_elapsed
+
+        # clean out the row list
+        del row_list[:]
+
+        row_list = self._create_Row_rows(self.set_new_performance_rows)
         timer.reset()
-        for _ in range(self.set_new_performance_rows):
-            row = self.parent_component1.Row()
-            for i in range(self.set_new_performance_columns):
-                row['new key {}'.format(i)] = 'new value {}'.format(i)
+        for row in row_list:
+            for name, value in name_value_map:
+                row[name] = value
         timer.stop()
-        print("set new performance {:.2f} that of OrderedDict  = {:f} per call".format(
-            timer.seconds_elapsed / dict_seconds,
-            timer.seconds_elapsed / (self.set_new_performance_rows * self.set_new_performance_columns)))
-        self.assertLessEqual(timer.seconds_elapsed, dict_seconds * 2, "Row set new did not meet performance goal")
+        row_seconds = timer.seconds_elapsed
+        calls = self.set_new_performance_rows * self.set_new_performance_columns
+        print("set new performance {:.2f} times that of OrderedDict {:f} µs vs {:f} µs per call".format(
+            row_seconds / dict_seconds,
+            1000000 * row_seconds / calls,
+            1000000 * dict_seconds / calls
+            )
+        )
+        self.assertLessEqual(timer.seconds_elapsed, dict_seconds * 15, "Row set new did not meet performance goal")
 
     def test_from_pandas(self):
         try:

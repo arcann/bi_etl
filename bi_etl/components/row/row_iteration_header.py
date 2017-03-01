@@ -6,6 +6,8 @@ Created on May 26, 2015
 from operator import attrgetter
 from typing import Union, List, Iterable
 
+import functools
+
 from bi_etl.components.row.cached_frozenset import get_cached_frozen_set
 from sqlalchemy.sql.schema import Column
 
@@ -80,6 +82,7 @@ class RowIterationHeader(object):
             self._actions_to_next_headers[action] = new_header
         return self._actions_to_next_headers[action]
 
+    @functools.lru_cache()
     def __repr__(self):
         return '{cls}(id={id},logical_name={logical_name},primary_key={pk}'.format(
             cls=self.__class__.__name__,
@@ -88,8 +91,9 @@ class RowIterationHeader(object):
             pk=self.primary_key,
         )
 
+    @functools.lru_cache()
     def __str__(self):
-        repr(self)
+        return repr(self)
 
     @property
     def columns_in_order(self):
@@ -181,6 +185,7 @@ class RowIterationHeader(object):
                                 )
                         )
 
+    @functools.lru_cache(maxsize=1000)
     def get_column_position(self, column_name, allow_create=False):
         try:
             position = self._columns_positions[column_name]
@@ -237,6 +242,7 @@ class RowIterationHeader(object):
             in which case you won't want to call this method again.
         """
         assert new_name not in self._columns_positions, "Target column name {} already exists".format(new_name)
+        self.get_column_position.cache_clear()
         try:
             position = self._columns_positions[old_name]
             # Modification of columns required
@@ -311,6 +317,7 @@ class RowIterationHeader(object):
             return self
         else:
             # Modification of columns required
+            self.get_column_position.cache_clear()
             action = tuple(['-:', column_name])
             new_header = self.get_next_header(action)
             new_header.add_row(row)
