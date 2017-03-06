@@ -82,7 +82,7 @@ class Connect(object):
     @staticmethod
     def get_sqlachemy_session(config, database_name, usersection = None):
         log = logging.getLogger(__name__)                
-        log.debug('Making session for {}, userid = {}'.format(database_name,usersection))
+        log.debug('Making session for {}, userid = {}'.format(database_name, usersection))
         engine = Connect.get_sqlachemy_engine(config, database_name, usersection)
         # create a configured "Session" class
         session_factory = sessionmaker(bind=engine, expire_on_commit=False)

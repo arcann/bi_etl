@@ -51,7 +51,9 @@ class BIConfigParser(ConfigParser):
         # pylint: disable=invalid-name
         r"""
         Read the config file from any of the following locations
+        (merging multiple files together if more than one exists.)
         * C:\bi_etl_config\config.ini
+        * D:\bi_etl_config\config.ini
         * E:\bi_etl_config\config.ini
         * ~/bi_etl_config\config.ini
         * ~/.BI_utils.ini

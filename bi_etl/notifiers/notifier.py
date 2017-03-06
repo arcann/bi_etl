@@ -12,3 +12,7 @@ class Notifier(object):
 
     def send(self, subject, message):
         pass
+
+
+class NotifierException(Exception):
+    pass
