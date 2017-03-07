@@ -3,6 +3,7 @@ Created on Apr 8, 2014
 
 @author: woodd
 """
+import getpass
 import inspect
 import logging
 import os.path
@@ -304,11 +305,15 @@ class BIConfigParser(ConfigParser):
                 password = keyring.get_password(key_ring_system, key_ring_userid)
             except ImportError:
                 msg = "Config password not provided, and keyring not installed. " \
-                      "When trying to get password for {}.{}".format(database_name, userid)
+                      "When trying to get password for {} {}".format(database_name, userid)
                 raise KeyError(msg)
 
             if password is None:
-                msg = "Both config.ini and Keyring did not have password for {}.{}".format(database_name, userid)
+                msg = "Both config.ini and Keyring did not have password for {} {} os_user={}".format(
+                    database_name,
+                    userid,
+                    getpass.getuser()
+                )
                 raise KeyError(msg)
 
         return userid, password
