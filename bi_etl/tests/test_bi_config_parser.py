@@ -51,8 +51,8 @@ class Test(unittest.TestCase):
         os.chdir(self.tempDir)
         os.mkdir(os.path.join(self.tempDir, 'my_folder'))
         self.tempFile = os.path.join(self.tempDir, '.BI_utils.ini')
-        with open(self.tempFile, 'w') as  tempFileh:
-            cp.write(tempFileh)
+        with open(self.tempFile, 'w') as temp_file_handle:
+            cp.write(temp_file_handle)
 
     def tearDown(self):
         self.log_folder.cleanup()

@@ -365,6 +365,8 @@ class BIConfigParser(ConfigParser):
     def setup_log_file(self):
         filename = self.get_log_file_name()
         if filename is not None:
+            if self.trace_logging_setup:
+                self.log.info('Logging filename = {}'.format(filename))
             # Setup file logging
             max_bytes = self.getByteSize_or_default('logging', 'log_file_max_size', '10M')
 
@@ -384,6 +386,9 @@ class BIConfigParser(ConfigParser):
             file_handler_level = self.get_or_default('logging', 'file_log_level', 'DEBUG').upper()
             file_handler.setLevel(file_handler_level)
             self.rootLogger.addHandler(file_handler)
+        else:
+            if self.trace_logging_setup:
+                self.log.info('No log filename define. File logging skipped.')
 
     def setup_log_levels(self):
         no_loggers_found = False
@@ -486,6 +491,9 @@ class BIConfigParser(ConfigParser):
 
         if use_log_file_setting:
             self.setup_log_file()
+        else:
+            if self.trace_logging_setup:
+                self.log.info('use_log_file_setting = False. setup_log_file not called.')
 
         self.setup_log_levels()
 
