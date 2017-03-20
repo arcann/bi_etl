@@ -29,13 +29,13 @@ class Connect(object):
     def get_sqlachemy_engine(config, database_name, usersection=None, **kwargs):
         log = logging.getLogger(__name__)
         
-        dialect = config.get_or_default(database_name,'dialect', default='oracle')
+        dialect = config.get(database_name, 'dialect', fallback='oracle')
         
         if dialect == 'oracle':
             default_dsn = database_name
         else:
             default_dsn = None
-        dsn = config.get_or_default(database_name,'dsn', default=default_dsn)
+        dsn = config.get(database_name, 'dsn', fallback=default_dsn)
         
         if not dialect.startswith('sqlite'): 
             (userid, password) = config.get_database_connection_tuple(database_name, usersection)
@@ -43,7 +43,7 @@ class Connect(object):
             userid = None
             password = None
         
-        dbname = config.get_or_default(database_name,'dbname', default=None)
+        dbname = config.get(database_name, 'dbname', fallback=None)
         
         # dialect://user:pass@dsn/dbname
         url = '{dialect}://'.format(dialect= dialect)        
@@ -65,18 +65,18 @@ class Connect(object):
         
         if dialect == 'oracle':
             if 'arraysize' not in kwargs: 
-                kwargs['arraysize'] = config.getint_or_default(database_name,'arraysize', default=5000)
+                kwargs['arraysize'] = config.getint(database_name, 'arraysize', fallback=5000)
                 log.debug('{} using arraysize={}'.format(database_name, kwargs['arraysize'] ))
         
         if 'encoding' not in kwargs:
-            encoding =config.get_or_None(database_name,'encoding')
+            encoding = config.get_or_None(database_name, 'encoding')
             if encoding:
                 kwargs['encoding'] = encoding
         if 'encoding' in kwargs:
             log.debug('{} using encoding={}'.format(database_name, kwargs['encoding'] ))
         engine = create_engine(url, **kwargs)
-        if config.getboolean_or_default(database_name,'fast_numeric', default=True): 
-            engine.dialect.colspecs[sqltypes.Numeric] =_FastNumeric    
+        if config.getboolean_or_default(database_name, 'fast_numeric', default=True):
+            engine.dialect.colspecs[sqltypes.Numeric] = _FastNumeric
         return engine
     
     @staticmethod
@@ -95,9 +95,7 @@ class Connect(object):
     def get_database_metadata(config, database_name, user = None, schema = None, **kwargs):
         log = logging.getLogger(__name__)
         engine = Connect.get_sqlachemy_engine(config, database_name, user, **kwargs)
-        if schema is None and config.has_option(database_name,'schema'):
-            schema = config.get(database_name,'schema')
+        if schema is None and config.has_option(database_name, 'schema'):
+            schema = config.get(database_name, 'schema')
             log.info("Using config file schema {}".format(schema))
         return DatabaseMetadata(bind=engine, schema=schema, quote_schema=False)
-    
-    

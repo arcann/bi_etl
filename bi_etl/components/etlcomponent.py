@@ -5,6 +5,7 @@ Created on Sep 25, 2014
 """
 import logging
 import warnings
+from bi_etl import ETLTask
 from operator import attrgetter
 from typing import Iterable
 
@@ -53,7 +54,7 @@ class ETLComponent(Iterable):
     DEFAULT_PROGRESS_MESSAGE = "{logical_name} current row # {row_number:,}"
 
     def __init__(self,
-                 task,
+                 task: ETLTask,
                  logical_name = None,
                  **kwargs
                  ):        

@@ -710,7 +710,7 @@ class Table(ReadOnlyTable):
         bcp_errors = os.path.join(temp_dir, "bcp.errors")
         bcp_output = os.path.join(temp_dir, "bcp.output")
 
-        cmd = [self.task.config.get_or_default('BCP', 'path', 'bcp'),
+        cmd = [self.task.config.get('BCP', 'path', fallback='bcp'),
                self.bcp_table_name,
                # in / out
                direction,
@@ -798,7 +798,18 @@ class Table(ReadOnlyTable):
         else:
             return str(value).replace('|', '/')
 
-    def bcp_insert_rows(self, rows_to_insert):
+    def _bcp_insert_rows(self, rows_to_insert):
+        """
+        NOT READY FOR USE! Currently the BCP deadlocks with locks held by SQLAlchemy.
+
+        Parameters
+        ----------
+        rows_to_insert
+
+        Returns
+        -------
+
+        """
         # Close connection to avoid locks
         # self.connection().close()
         if self.__transaction is not None:
@@ -908,7 +919,7 @@ class Table(ReadOnlyTable):
             bcp_stats = self.get_stats_entry(stat_name + ' bcp insert', parent_stats=stats)
             bcp_stats.print_start_stop_times = False
             bcp_stats.timer.start()
-            self.bcp_insert_rows(self.pending_insert_rows)
+            self._bcp_insert_rows(self.pending_insert_rows)
             del self.pending_insert_rows
             self.pending_insert_rows = list()
             bcp_stats.timer.stop()
@@ -1463,6 +1474,17 @@ class Table(ReadOnlyTable):
                                          parent_stats=parent_stats)
 
     def _update_via_bcp(self, update_rows):
+        """
+        NOT READY FOR USE!
+
+        Parameters
+        ----------
+        update_rows
+
+        Returns
+        -------
+
+        """
         for row in update_rows:
             if row.status not in [RowStatus.deleted, RowStatus.insert]:
                 update_stmt_key = row.column_set
@@ -1502,7 +1524,7 @@ class Table(ReadOnlyTable):
 
         for update_table_object, pending_rows in self._bcp_update_table_dict.values():
             update_table_object.truncate()
-            update_table_object.bcp_insert_rows(pending_rows)
+            update_table_object._bcp_insert_rows(pending_rows)
             database_type = type(self.connection().dialect).name
             if database_type == 'oracle':
                 raise NotImplementedError("Oracle MERGE not yet implemented")

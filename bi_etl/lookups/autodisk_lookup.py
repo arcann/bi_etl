@@ -57,9 +57,9 @@ class AutoDiskLookup(Lookup):
         # If not passed in config
         if self.max_percent_ram_used is None:
             if self.config is not None:
-                self.max_percent_ram_used = self.config.getfloat_or_default('Limits',
-                                                                            'disk_swap_at_percent_ram_used',
-                                                                            default= None)
+                self.max_percent_ram_used = self.config.getfloat('Limits',
+                                                                'disk_swap_at_percent_ram_used',
+                                                                fallback= None)
         # Finally default value
         if self.max_percent_ram_used is None:
             # Needs to be less than the default in bi_etl.components.table.Table.fill_cache
@@ -69,9 +69,9 @@ class AutoDiskLookup(Lookup):
         # If not passed in config
         if self.max_process_ram_usage_mb is None:
             if self.config is not None:
-                self.max_process_ram_usage_mb = self.config.getfloat_or_default('Limits',
-                                                                                'disk_swap_at_process_ram_usage_mb',
-                                                                                default= None)
+                self.max_process_ram_usage_mb = self.config.getfloat('Limits',
+                                                                     'disk_swap_at_process_ram_usage_mb',
+                                                                     fallback= None)
         # Finally default value
         if self.max_process_ram_usage_mb is None:
             self.max_process_ram_usage_mb = 2.5 * 1024**3
@@ -90,7 +90,7 @@ class AutoDiskLookup(Lookup):
             self.path = path
         else:
             if self.config is not None:
-                self.path = self.config.get_or_default('Cache', 'path', DiskLookup.DEFAULT_PATH)
+                self.path = self.config.get('Cache', 'path', fallback=DiskLookup.DEFAULT_PATH)
             else:
                 self.path = DiskLookup.DEFAULT_PATH
 

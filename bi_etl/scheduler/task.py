@@ -3,6 +3,8 @@ Created on Sep 15, 2014
 
 @author: woodd
 """
+from configparser import ConfigParser
+
 import errno
 import logging
 import traceback
@@ -388,7 +390,7 @@ class ETLTask(object):
         return self._mutually_exclusive_with_set
 
     @property
-    def config(self):
+    def config(self) -> ConfigParser:
         """
         Get the task configuration object. If it was not passed in, it will be read from the users
         folder.

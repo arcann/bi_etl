@@ -92,17 +92,17 @@ class Test(unittest.TestCase):
             self.fail(e)
 
         self.assertEqual(
-            config.get_or_default('section1', 'option', 'default'),
+            config.get('section1', 'option', fallback='default'),
             self.config_parser.get('section1', 'option'),
             "Config parser didn't return expected value"
         )
         self.assertEqual(
-            config.get_or_default('section1', 'option2', 'default'),
+            config.get('section1', 'option2', fallback='default'),
             'default',
             "Config parser didn't return expected default value"
         )
         self.assertEqual(
-            config.get_or_None('section1', 'option2'),
+            config.get('section1', 'option2', fallback=None),
             None,
             "Config parser didn't return expected default value"
         )

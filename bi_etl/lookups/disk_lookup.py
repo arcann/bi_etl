@@ -46,7 +46,7 @@ class DiskLookup(Lookup):
             self.path = path
         else:
             if self.config is not None:
-                self.path = self.config.get_or_default('Cache', 'path', DiskLookup.DEFAULT_PATH)
+                self.path = self.config.get('Cache', 'path', fallback=DiskLookup.DEFAULT_PATH)
             else:
                 self.path = DiskLookup.DEFAULT_PATH
             

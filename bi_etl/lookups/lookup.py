@@ -3,7 +3,10 @@ Created on Feb 26, 2015
 
 @author: woodd
 """
+from configparser import ConfigParser
+
 import weakref
+from bi_etl.components.etlcomponent import ETLComponent
 from datetime import datetime
 import warnings
 import logging
@@ -28,7 +31,12 @@ __all__ = ['Lookup']
 class Lookup(object):
     COLLECTION_INDEX = 0
 
-    def __init__(self, lookup_name, lookup_keys, parent_component, config=None, **kwargs):
+    def __init__(self,
+                 lookup_name: str,
+                 lookup_keys: list,
+                 parent_component: ETLComponent,
+                 config: ConfigParser = None,
+                 **kwargs):
         self.lookup_name = lookup_name
         self.lookup_keys = lookup_keys
         self.config = config

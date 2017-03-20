@@ -3,6 +3,8 @@ Created on May 20, 2015
 
 @author: woodd
 """
+from configparser import ConfigParser
+
 from datetime import datetime
 import getpass
 import importlib
@@ -67,6 +69,7 @@ copyreg.pickle(types.MethodType, _pickle_method, _unpickle_method)
 #pylint: disable=too-many-statements, too-many-branches, too-many-arguments, too-many-locals
 #pylint: disable=invalid-name
 
+
 class SchedulerInterface(object):
     """
     Light scheduler interface that only interacts with the database.
@@ -79,7 +82,7 @@ class SchedulerInterface(object):
 
     def __init__(self,
                  session= None,
-                 config= None,
+                 config: ConfigParser = None,
                  log= None,
                  log_name= None,
                  scheduler_id = None,
@@ -107,7 +110,7 @@ class SchedulerInterface(object):
         log_logging_level(self.log)
         
         self.etl_task_classes = SchedulerInterface.SHARED_etl_task_classes
-        base_module_str = self.config.get_or_None(self.CONFIG_SECTION,'base_module')        
+        base_module_str = self.config.get(self.CONFIG_SECTION, 'base_module', fallback=None)
         if base_module_str is None:
             self.base_modules = []
         else:
@@ -232,7 +235,7 @@ class SchedulerInterface(object):
         #      qualified_host_name=my_host_name
         #=======================================================================
         lowest_qualified_host_name = None
-        tries = self.config.get_or_default(self.CONFIG_SECTION,'qualified_host_name_tries',10)
+        tries = self.config.get(self.CONFIG_SECTION, 'qualified_host_name_tries', fallback=10)
         try:
             tries = int(tries)
         except TypeError:

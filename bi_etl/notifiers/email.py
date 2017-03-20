@@ -42,9 +42,9 @@ class Email(Notifier):
                     message['To'] = ','.join(to_addresses)
 
                 gateway = self.config.get('SMTP', 'gateway')
-                gateway_port = self.config.getint_or_default('SMTP', 'gateway_port', 0)
-                gateway_userid = self.config.get_or_default('SMTP', 'gateway_userid', None)
-                gateway_password = self.config.get_or_default('SMTP', 'gateway_password', None)
+                gateway_port = self.config.getint('SMTP', 'gateway_port', fallback=0)
+                gateway_userid = self.config.get('SMTP', 'gateway_userid', fallback=None)
+                gateway_password = self.config.get('SMTP', 'gateway_password', fallback=None)
                 if gateway_userid is not None and gateway_password is None:
                     try:
                         # noinspection PyUnresolvedReferences
@@ -57,12 +57,12 @@ class Email(Notifier):
                     except ImportError:
                         raise KeyError("Config SMTP gateway_password not provided, and keyring not installed. "
                                        "When trying to get password for {}.{}".format(gateway, gateway_userid))
-                use_ssl = self.config.getboolean_or_default('SMTP', 'use_ssl', False)
+                use_ssl = self.config.getboolean('SMTP', 'use_ssl', fallback=False)
                 if use_ssl:
                     server = smtplib.SMTP_SSL(gateway, port=gateway_port)
                 else:
                     server = smtplib.SMTP(gateway, port=gateway_port)
-                server.set_debuglevel(self.config.getboolean_or_default('SMTP', 'debug', False))
+                server.set_debuglevel(self.config.getboolean('SMTP', 'debug', fallback=False))
                 if gateway_userid is not None:
                     server.login(gateway_userid, gateway_password)
 

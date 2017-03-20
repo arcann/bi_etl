@@ -33,6 +33,7 @@ class StatementQueue(object):
             for stmtKey in self.statements.keys():
                 stmt = self.statements[stmtKey]
                 values = self.statement_values[stmtKey]
+                # TODO: Send to worker thread/process. Worker will need to update stats with mutex.
                 result = connection.execute(stmt, values)
                 rows_affected = result.rowcount
             self.statements.clear()

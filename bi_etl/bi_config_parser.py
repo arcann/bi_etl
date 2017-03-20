@@ -42,11 +42,12 @@ class BIConfigParser(ConfigParser):
         self.config_file_read = None
         self.rootLogger = logging.getLogger()
         self.configured_loggers = dict()
-        self.datefmt = self.get_or_None('logging', 'date_format')
-        self.trace_logging_setup = self.getboolean_or_default('logging',
-                                                              'trace_setup',
-                                                              False
-                                                              )
+        self.date_format = self.get('logging', 'date_format', fallback=None)
+        self.logging_setup = False
+        self.trace_logging_setup = self.getboolean('logging',
+                                                   'trace_setup',
+                                                   fallback=False
+                                                   )
 
     def read_config_ini(self):
         # pylint: disable=invalid-name
@@ -63,17 +64,17 @@ class BIConfigParser(ConfigParser):
         Where ~ is the users home directory.
 
         """
-        userDir = os.path.expanduser('~')
+        user_dir = os.path.expanduser('~')
         expected_config_files = [
             # These first paths are for running as a windows service
             os.path.join(r"C:\bi_etl_config\config.ini"),
             os.path.join(r"D:\bi_etl_config\config.ini"),
             os.path.join(r"E:\bi_etl_config\config.ini"),
             # If those don't work then look in the user directory
-            os.path.join(userDir, 'bi_etl_config', 'config.ini'),
+            os.path.join(user_dir, 'bi_etl_config', 'config.ini'),
             # Legacy names
-            os.path.join(userDir, '.BI_utils.ini'),
-            os.path.join(userDir, 'BI_utils.ini')
+            os.path.join(user_dir, '.BI_utils.ini'),
+            os.path.join(user_dir, 'BI_utils.ini')
         ]
         read_ok = self.read(expected_config_files)
         if read_ok is None or len(read_ok) == 0:
@@ -129,9 +130,9 @@ class BIConfigParser(ConfigParser):
             path = os.path.split(path)[0]
             if path == old_path:
                 raise FileNotFoundError('File not found: ' + config_file_name)
-        filepath = os.path.join(path, config_file_name)
-        self.log.info('Read config file (relative) {}'.format(filepath))
-        return self.read(filepath)
+        file_path = os.path.join(path, config_file_name)
+        self.log.info('Read config file (relative) {}'.format(file_path))
+        return self.read(file_path)
 
     def get_method_or_default(self, method, section, option, default):
         """
@@ -154,83 +155,7 @@ class BIConfigParser(ConfigParser):
                 option_value = method(section, option)
         return option_value
 
-    def get_or_default(self, section, option, default):
-        """
-        Get a configuration option or returns a default if that doesn't exist.
-
-        Parameters
-        ----------
-        section: str
-            The section to use.
-        option: str
-            The option value to get.
-        default: any
-            The default to return if the option or section is not found.
-        """
-        return self.get_method_or_default(method=self.get,
-                                          section=section,
-                                          option=option,
-                                          default=default
-                                          )
-
-    def getboolean_or_default(self, section, option, default):
-        """
-        Get a configuration option as a boolean or returns a default if that doesn't exist.
-
-        Parameters
-        ----------
-        section: str
-            The section to use.
-        option: str
-            The option value to get.
-        default: boolean
-            The default to return if the option or section is not found.
-        """
-        return self.get_method_or_default(method=self.getboolean,
-                                          section=section,
-                                          option=option,
-                                          default=default
-                                          )
-
-    def getint_or_default(self, section, option, default):
-        """
-        Get a configuration option as an int or returns a default if that doesn't exist.
-
-        Parameters
-        ----------
-        section: str
-            The section to use.
-        option: str
-            The option value to get.
-        default: int
-            The default to return if the option or section is not found.
-        """
-        return self.get_method_or_default(self.getint,
-                                          section=section,
-                                          option=option,
-                                          default=default
-                                          )
-
-    def getfloat_or_default(self, section, option, default):
-        """
-        Get a configuration option as a float or returns a default if that doesn't exist.
-
-        Parameters
-        ----------
-        section: str
-            The section to use.
-        option: str
-            The option value to get.
-        default: float
-            The default to return if the option or section is not found.
-        """
-        return self.get_method_or_default(self.getfloat,
-                                          section=section,
-                                          option=option,
-                                          default=default
-                                          )
-
-    def getByteSize_or_default(self, section: str, option: str, default: str) -> int:
+    def get_byte_size(self, section: str, option: str, fallback: str = None) -> int:
         """
         Get a configuration option as a byte size or returns a default if that doesn't exist.
         Both the option value and default will be parsed using :func:`~bi_etl.conversions.str2bytes_size`
@@ -241,28 +166,14 @@ class BIConfigParser(ConfigParser):
             The section to use.
         option: str
             The option value to get.
-        default: str
+        fallback: str
             The default to return if the option or section is not found.
         """
-        str_size = self.get_method_or_default(method=self.get,
-                                              section=section,
-                                              option=option,
-                                              default=default
-                                              )
+        str_size = self.get(section=section,
+                            option=option,
+                            fallback=fallback
+                            )
         return str2bytes_size(str_size)
-
-    def get_or_None(self, section, option):
-        """
-        Get a configuration option as or returns None if that doesn't exist.
-
-        Parameters
-        ----------
-        section: str
-            The section to use.
-        option: str
-            The option value to get.
-        """
-        return self.get_or_default(section, option, None)
 
     # noinspection PyPackageRequirements
     def get_database_connection_tuple(self, database_name, user_section=None):
@@ -290,7 +201,7 @@ class BIConfigParser(ConfigParser):
             else:
                 msg = "user_section not provided, and no default_user_id exists for {}".format(database_name)
                 raise KeyError(msg)
-        userid = self.get_or_default(user_section, 'userid', default=user_section)
+        user_id = self.get(user_section, 'userid', fallback=user_section)
         if self.has_section(user_section) and 'password' in self[user_section]:
             password = self.get(user_section, 'password', raw=True)
         else:
@@ -300,23 +211,23 @@ class BIConfigParser(ConfigParser):
                 key_ring_system = database_name
                 if self.has_section(database_name):
                     key_ring_system = self.get(database_name, 'key_ring_system', fallback=database_name)
-                key_ring_userid = self.get(user_section, 'key_ring_userid', fallback=userid)
+                key_ring_userid = self.get(user_section, 'key_ring_userid', fallback=user_id)
 
                 password = keyring.get_password(key_ring_system, key_ring_userid)
             except ImportError:
                 msg = "Config password not provided, and keyring not installed. " \
-                      "When trying to get password for {} {}".format(database_name, userid)
+                      "When trying to get password for {} {}".format(database_name, user_id)
                 raise KeyError(msg)
 
             if password is None:
                 msg = "Both config.ini and Keyring did not have password for {} {} os_user={}".format(
                     database_name,
-                    userid,
+                    user_id,
                     getpass.getuser()
                 )
                 raise KeyError(msg)
 
-        return userid, password
+        return user_id, password
 
     def get_log_file_name(self):
         """
@@ -368,9 +279,9 @@ class BIConfigParser(ConfigParser):
             if self.trace_logging_setup:
                 self.log.info('Logging filename = {}'.format(filename))
             # Setup file logging
-            max_bytes = self.getByteSize_or_default('logging', 'log_file_max_size', '10M')
+            max_bytes = self.get_byte_size('logging', 'log_file_max_size', fallback='10M')
 
-            backup_count = int(self.get_or_default('logging', 'log_files_to_keep', 0))
+            backup_count = int(self.get('logging', 'log_files_to_keep', fallback=0))
             file_handler = RotatingFileHandler(filename=filename,
                                                maxBytes=max_bytes,
                                                backupCount=backup_count,
@@ -378,12 +289,12 @@ class BIConfigParser(ConfigParser):
                                                )
 
             default_entry_format = '%(asctime)s - %(levelname)-8s - %(name)s: %(message)s'
-            log_file_entry_format = self.get_or_default('logging',
-                                                        'log_file_entry_format',
-                                                        default_entry_format)
-            log_file_entry_formater = logging.Formatter(log_file_entry_format, self.datefmt)
+            log_file_entry_format = self.get('logging',
+                                             'log_file_entry_format',
+                                             fallback=default_entry_format)
+            log_file_entry_formater = logging.Formatter(log_file_entry_format, self.date_format)
             file_handler.setFormatter(log_file_entry_formater)
-            file_handler_level = self.get_or_default('logging', 'file_log_level', 'DEBUG').upper()
+            file_handler_level = self.get('logging', 'file_log_level', fallback='DEBUG').upper()
             file_handler.setLevel(file_handler_level)
             self.rootLogger.addHandler(file_handler)
         else:
@@ -401,7 +312,7 @@ class BIConfigParser(ConfigParser):
                     logger = logging.getLogger(logger_class)
                 self.configured_loggers[logger_class] = logger
                 logger.propagate = True
-                desired_level_name = self.get_or_None('loggers', logger_class)
+                desired_level_name = self.get('loggers', logger_class, fallback=None)
                 if desired_level_name is None:
                     desired_level_name = 'INFO'
                 else:
@@ -446,6 +357,7 @@ class BIConfigParser(ConfigParser):
 
         Based on the [logging] and [loggers] sections of the configuration file.
         """
+        self.logging_setup = True
 
         # Reset the handlers
         self.rootLogger.handlers.clear()
@@ -462,7 +374,7 @@ class BIConfigParser(ConfigParser):
             print('Starting root logger handlers {}'.format(self.rootLogger.handlers))
 
         # Modify the root logger level to at least INFO for now
-        self.rootLogger.setLevel(self.get_or_default('logging', 'root_level', logging.INFO))
+        self.rootLogger.setLevel(self.get('logging', 'root_level', fallback=logging.INFO))
 
         if console_output is None:
             error_output = sys.stderr
@@ -479,13 +391,13 @@ class BIConfigParser(ConfigParser):
         self.rootLogger.addHandler(console_error_log)
 
         console_log = logging.StreamHandler(debug_output)
-        console_log.setLevel(self.get_or_default('logging', 'console_log_level', 'DEBUG').upper())
+        console_log.setLevel(self.get('logging', 'console_log_level', fallback='DEBUG').upper())
         console_log.addFilter(non_error)
         self.rootLogger.addHandler(console_log)
 
-        console_entry_format = self.get_or_None('logging', 'console_entry_format')
+        console_entry_format = self.get('logging', 'console_entry_format', fallback=None)
         if console_entry_format:
-            console_entry_formater = logging.Formatter(console_entry_format, self.datefmt)
+            console_entry_formater = logging.Formatter(console_entry_format, self.date_format)
             console_log.setFormatter(console_entry_formater)
             console_error_log.setFormatter(console_entry_formater)
 
