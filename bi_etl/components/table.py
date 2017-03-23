@@ -226,7 +226,7 @@ class Table(ReadOnlyTable):
         for update_table_object, pending_rows in self._bcp_update_table_dict:
             self.database.execute("DROP TABLE {}".format(update_table_object.table_name))
 
-    def __iter__(self) -> Iterable(Row):
+    def __iter__(self) -> Iterable[Row]:
         # Note: yield_per will break if the transaction is committed while we are looping
         for row in self.where(None):
             yield row

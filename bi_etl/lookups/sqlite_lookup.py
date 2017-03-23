@@ -63,7 +63,7 @@
 #         if path is not None:
 #             self.path = path
 #         else:
-#             self.path = self.parent_component.task.config.get_or_default('Cache','path','')
+#             self.path = self.parent_component.task.config.get('Cache','path', fallback='')
 # 
 #     
 #             

@@ -20,9 +20,9 @@ class ETL_Task_Status_CD(ETLTask):
         log.info('testing unicode logging support: ü µ σ 泽 \u2013')
                
         log.info("Connecting to database")
-        database_name = self.config.get('Scheduler','database')
-        schema = self.config.get_or_None('Scheduler','schema')
-        database = self.get_database(database_name,schema=schema)
+        database_name = self.config.get('Scheduler', 'database')
+        schema = self.config.get('Scheduler', 'schema', fallback=None)
+        database = self.get_database(database_name, schema=schema)
         
         with Table(self,
                    database,

@@ -267,7 +267,7 @@ class ETLComponent(Iterable):
                     where_dict: dict = None,
                     progress_frequency: int = None,
                     stats_id: str = None,
-                    parent_stats: Statistics = None) -> Iterable(Row):
+                    parent_stats: Statistics = None) -> Iterable[Row]:
         """
         yields
         ------
@@ -339,7 +339,7 @@ class ETLComponent(Iterable):
                 break            
         stats.timer.stop()
         
-    def __iter__(self)-> Iterable(Row):
+    def __iter__(self)-> Iterable[Row]:
         """
         Iterate over all rows.
         
@@ -352,7 +352,7 @@ class ETLComponent(Iterable):
         # So we use that on top of _raw_rows 
         return self.iter_result(self._raw_rows()) 
         
-    def where(self, criteria= None, order_by = None,  stats_id= None, parent_stats= None) -> Iterable(Row):
+    def where(self, criteria= None, order_by = None,  stats_id= None, parent_stats= None) -> Iterable[Row]:
         assert order_by is None, '{} does not support order_by'.format(self)
         return self.iter_result(self._raw_rows(), where_dict=criteria, stats_id=stats_id, parent_stats=parent_stats)
         

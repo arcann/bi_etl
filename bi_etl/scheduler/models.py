@@ -271,8 +271,8 @@ if __name__ == '__main__':
     config = bi_etl.bi_config_parser.BIConfigParser()
     config_file = config.read_config_ini()
     engine = Connect.get_sqlachemy_engine(config,
-                                          config.get('DBFileWatcher','database'),
-                                          config.get_or_None('DBFileWatcher','user')
+                                          config.get('DBFileWatcher', 'database'),
+                                          config.get('DBFileWatcher', 'user', fallback=None)
                                           )
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)

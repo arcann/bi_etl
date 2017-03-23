@@ -44,7 +44,7 @@ class PMCMD(object):
     def infa_home(self):
         if 'INFA_HOME' in os.environ: 
             return os.environ['INFA_HOME']
-        return self.config.get_or_None(self.CONFIG_INFORMATICA_COMMANDS,'INFA_HOME')
+        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'INFA_HOME', fallback=None)
     
     def setup_inf_path(self):
         userDir = os.path.expanduser('~')
@@ -61,48 +61,50 @@ class PMCMD(object):
         return os.path.join(self.informatica_bin_dir(),'pmcmd')
     
     def usersecuritydomain(self):
-        return self.config.get_or_None(self.CONFIG_INFORMATICA_COMMANDS,'USER_SECURITY_DOMAIN')
+        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'USER_SECURITY_DOMAIN', fallback=None)
 
     def user_id(self):
-        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS,'USER_ID')
+        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'USER_ID')
 
     def password(self):
-        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS,'PASSWORD')
+        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'PASSWORD')
 
     def set_password_in_env(self):
         os.environ['INFA_PM_PASSWORD'] = self.password()
         
     def repository(self):
-        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS,'REPOSITORY')
+        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'REPOSITORY')
     
     def service(self):
-        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS,'SERVICE')
+        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'SERVICE')
 
     def domain(self):
-        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS,'DOMAIN')
+        return self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'DOMAIN')
 
     def folder(self):
         if self._folder is None:
-            self._folder = self.config.get(self.CONFIG_INFORMATICA_COMMANDS,'DEFAULT_FOLDER')
+            self._folder = self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'DEFAULT_FOLDER')
         return self._folder 
     
     def parmfile(self):
         if self._parmfile is None:
-            self._parmfile = self.config.get_or_None(self.CONFIG_INFORMATICA_COMMANDS,'DEFAULT_PARMFILE')
+            self._parmfile = self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'DEFAULT_PARMFILE', fallback=None)
         return self._parmfile
     
     def localparamfile(self):
         if self._localparamfile is None:
-            self._localparamfile = self.config.get_or_None(self.CONFIG_INFORMATICA_COMMANDS,'DEFAULT_LOCALPARAMFILE')
+            self._localparamfile = self.config.get(self.CONFIG_INFORMATICA_COMMANDS,
+                                                   'DEFAULT_LOCALPARAMFILE',
+                                                   fallback=None)
         return self._localparamfile
     
     def osprofile(self):
         if self._osprofile is None:
-            self._osprofile = self.config.get_or_None(self.CONFIG_INFORMATICA_COMMANDS,'OSPROFILE')
+            self._osprofile = self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'OSPROFILE', fallback=None)
         return self._osprofile
     
     def run_via_cmd(self):
-        cfg = self.config.get_or_None(self.CONFIG_INFORMATICA_COMMANDS,'RUN_VIA_CMD')
+        cfg = self.config.get(self.CONFIG_INFORMATICA_COMMANDS, 'RUN_VIA_CMD', fallback=None)
         if cfg is None:
             return False
         elif cfg.upper()[0] == 'Y':

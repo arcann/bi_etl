@@ -574,7 +574,7 @@ class ReadOnlyTable(ETLComponent):
               use_cache_as_source= None,
               progress_frequency: int = None,
               stats_id= None,
-              parent_stats= None) -> Iterable(Row):
+              parent_stats= None) -> Iterable[Row]:
         if isinstance(criteria, dict):
             where_dict = criteria
         else:
@@ -594,7 +594,7 @@ class ReadOnlyTable(ETLComponent):
                                 parent_stats=parent_stats
                                 )
     
-    def order_by(self, order_by, stats_id= None, parent_stats= None) -> Iterable(Row):
+    def order_by(self, order_by, stats_id= None, parent_stats= None) -> Iterable[Row]:
         """
         Iterate over rows matching ``criteria``
         

@@ -35,8 +35,8 @@ from bi_etl.utility import log_logging_level, dict_to_str
 import fnmatch
 
 
-##################################
-## Register a way of pickling and unpickling class methods
+#################
+# Register a way of pickling and unpickling class methods
 def _pickle_method(method):
     func_name = method.__func__.__name__
     obj = method.__self__
@@ -63,7 +63,7 @@ try:
 except ImportError:
     import copy_reg as copyreg
 copyreg.pickle(types.MethodType, _pickle_method, _unpickle_method)
-##################################
+#################
 
 #pylint: disable=too-many-instance-attributes, too-many-public-methods
 #pylint: disable=too-many-statements, too-many-branches, too-many-arguments, too-many-locals
@@ -121,18 +121,18 @@ class SchedulerInterface(object):
         if SchedulerInterface.SCHEDULER_ETL_JOBS_PACKAGE not in self.base_modules: 
             self.base_modules.append(SchedulerInterface.SCHEDULER_ETL_JOBS_PACKAGE)
 
-        ###########################
-        ## Change the schema of the ETL task definition tables
+        ##############
+        # Change the schema of the ETL task definition tables
         metadata = ETL_Tasks.__base__.metadata  # @UndefinedVariable pylint: disable=no-member
 
-        ## Pickup schema name from config
-        schema = self.config.get_or_None(self.CONFIG_SECTION, 'schema')
+        # Pickup schema name from config
+        schema = self.config.get(self.CONFIG_SECTION, 'schema', fallback=None)
         self.schema = schema
         if self.schema is not None:
             self.log.info("Using etl_tasks tables in schema {}".format(schema))
 
-            ## We don't seem to need to change this.  In fact if we added a table dynamically we'd
-            ## probably want it to initially link in to the other public. tables
+            # We don't seem to need to change this.  In fact if we added a table dynamically we'd
+            # probably want it to initially link in to the other public. tables
             #metadata.schema = 'onr_dw2'
     
             for tbl_index in metadata.tables:
@@ -140,21 +140,21 @@ class SchedulerInterface(object):
                 tbl.schema = schema
                 tbl.fullname = tbl.fullname.replace('public',schema)
 
-            ## Change schema on Sequences
+            # Change schema on Sequences
             #pylint: disable=protected-access
             for seq_index in metadata._sequences:
                 seq = metadata._sequences[seq_index]
                 seq.schema = schema
-            ##
-            ## End  Change the schema
-            ###########################
+            #
+            # End  Change the schema
+            ##############
 
         if session is None:
             if self.config.has_option(self.CONFIG_SECTION,'database'):
                 self.log.debug("Making new session")
                 self.session = Connect.get_sqlachemy_session(self.config,
-                                                             self.config.get(self.CONFIG_SECTION,'database'),
-                                                             self.config.get_or_None(self.CONFIG_SECTION,'user') 
+                                                             self.config.get(self.CONFIG_SECTION, 'database'),
+                                                             self.config.get(self.CONFIG_SECTION, 'user', fallback=None)
                                                         )
             else:
                 self.log.debug("Missing database option in INI file. No session creation possible")
@@ -169,9 +169,9 @@ class SchedulerInterface(object):
             self.log.debug('scheduler_row not retried')
         else:
             if scheduler_id is None:
-                scheduler_host_name = self.config.get_or_None(self.CONFIG_SECTION,'host')
-                ##Pass null scheduler_host_name to get_scheduler_id_for_host,
-                ##it looks up in the config or defaults to local host
+                scheduler_host_name = self.config.get(self.CONFIG_SECTION, 'host', fallback=None)
+                #Pass null scheduler_host_name to get_scheduler_id_for_host,
+                #it looks up in the config or defaults to local host
                 self.scheduler_row = self._get_scheduler_row_for_host(qualified_host_name=scheduler_host_name, 
                                                                       allow_create= allow_create
                                                                       )
@@ -255,7 +255,7 @@ class SchedulerInterface(object):
     def _get_scheduler_row_for_host(self, qualified_host_name = None, allow_create = False):
         qualified_host_name = (qualified_host_name
                                or
-                               self.config.get_or_None(self.CONFIG_SECTION,'qualified_host_name')
+                               self.config.get(self.CONFIG_SECTION, 'qualified_host_name', fallback=None)
                                or
                                self._get_local_qualified_host_name()
                                )
@@ -269,9 +269,9 @@ class SchedulerInterface(object):
             if allow_create:
                 scheduler_row = ETL_Scheduler()
                 try:
-                    ## We make the assumption here that two schedulers won't be initializing for the first
-                    ## time at the same instant. If they do, they'd get the same ID and one would fail 
-                    ## on the commit below (PK error)
+                    # We make the assumption here that two schedulers won't be initializing for the first
+                    # time at the same instant. If they do, they'd get the same ID and one would fail 
+                    # on the commit below (PK error)
                     max_row = self.session.query(func.max(ETL_Scheduler.scheduler_id).label("max_id")).one()
                     max_id = max_row.max_id
                 except NoResultFound:
@@ -295,8 +295,8 @@ class SchedulerInterface(object):
             return None
 
     def get_next_task_id(self):
-        ## We have to query the sequence each time because this code might be running
-        ## on a different server or thread from others
+        # We have to query the sequence each time because this code might be running
+        # on a different server or thread from others
         next_id = self.session.execute(ETL_Tasks.task_id.default)
         return next_id
 
@@ -332,7 +332,7 @@ class SchedulerInterface(object):
         self.log.debug("--- Getting next task_id")
         task_rec.task_id = task_id = self.get_next_task_id()
         self.log.debug("--- New task_id={}".format(task_id))
-        ## We don't want self reference parent or root
+        # We don't want self reference parent or root
         if parent_task_id == task_id:
             parent_task_id = None
         if root_task_id == task_id:
@@ -340,7 +340,7 @@ class SchedulerInterface(object):
         task_rec.parent_task_id = parent_task_id
 
         parent_task = None
-        ## Check if we need to fill in the root_task_id by looking up the parent
+        # Check if we need to fill in the root_task_id by looking up the parent
         if parent_task_id is not None and root_task_id is None:
             parent_task = self.get_task_record(parent_task_id)
             if parent_task is None:
@@ -390,9 +390,9 @@ class SchedulerInterface(object):
         -------
         task_id: int
         """
-        ## Test that we got a class type
+        # Test that we got a class type
         if not isinstance(etl_task_class_type, type):
-            ## Turn name into a class type
+            # Turn name into a class type
             etl_task_class_type = self.find_etl_class_type(etl_task_class_type)
         return self.add_task_by_exact_name(
                                            module_name= etl_task_class_type.__module__,
@@ -449,9 +449,9 @@ class SchedulerInterface(object):
         """
         class_matches_by_type = dict()
         
-        ## Look for ETLTask inherited classes
+        # Look for ETLTask inherited classes
         for _, classObj in inspect.getmembers(module, inspect.isclass):
-            ## Check that the class is defined in our module and not imported
+            # Check that the class is defined in our module and not imported
             if classObj.__module__ == module.__name__:
                 baseclasses = inspect.getmro(classObj)
                 if ETLTask in baseclasses and str(classObj) != str(ETLTask):
@@ -492,12 +492,12 @@ class SchedulerInterface(object):
 
     def find_etl_classes(self, partial_module_name):
         if not SchedulerInterface.scan_etl_classes_performed:            
-            ## Since we don't have a class database, try and quickly import the module assuming it's fully qualified
-            ## TODO: Once classes and dependency hierarchy is stored in the database, scan that instead.
+            # Since we don't have a class database, try and quickly import the module assuming it's fully qualified
+            # TODO: Once classes and dependency hierarchy is stored in the database, scan that instead.
             try: 
-                ## We try to get the class simply to verify it exists
+                # We try to get the class simply to verify it exists
                 _ = self._get_class_from_qualified_name(partial_module_name)
-                return [partial_module_name] ## Caller wants the qualified name not the instance
+                return [partial_module_name] # Caller wants the qualified name not the instance
             except (ImportError, ValueError):
                 pass
             self.scan_etl_classes()
@@ -524,7 +524,7 @@ class SchedulerInterface(object):
         
     def get_etl_class_instance(self, qualified_name):
         if not SchedulerInterface.scan_etl_classes_performed:
-            ## Since we don't have a class database, try and quickly import the module assuming it's fully qualified
+            # Since we don't have a class database, try and quickly import the module assuming it's fully qualified
             etl_class = self._get_class_from_qualified_name(qualified_name)
             return etl_class
         return self.etl_task_classes[qualified_name]
@@ -566,7 +566,7 @@ class SchedulerInterface(object):
                                            )
 
     def get_task_record(self, task_id):
-        ## Make sure task_id is an integer
+        # Make sure task_id is an integer
         task_id = int(task_id)
         return self.session.query(ETL_Tasks).get(task_id)
 
@@ -629,7 +629,7 @@ class SchedulerInterface(object):
         if isinstance(parameters, list):
             for parameter_name, parameter_value in parameters:
                 self.add_task_paramter(task_rec, parameter_name, parameter_value, commit=commit)
-        else: ## assume it's a dict
+        else: # assume it's a dict
             for parameter_name in parameters:
                 parameter_value = parameters[parameter_name]
                 self.add_task_paramter(task_rec, parameter_name, parameter_value, commit=commit)

@@ -69,13 +69,13 @@ class Connect(object):
                 log.debug('{} using arraysize={}'.format(database_name, kwargs['arraysize'] ))
         
         if 'encoding' not in kwargs:
-            encoding = config.get_or_None(database_name, 'encoding')
+            encoding = config.get(database_name, 'encoding', fallback=None)
             if encoding:
                 kwargs['encoding'] = encoding
         if 'encoding' in kwargs:
             log.debug('{} using encoding={}'.format(database_name, kwargs['encoding'] ))
         engine = create_engine(url, **kwargs)
-        if config.getboolean_or_default(database_name, 'fast_numeric', default=True):
+        if config.getboolean(database_name, 'fast_numeric', fallback=True):
             engine.dialect.colspecs[sqltypes.Numeric] = _FastNumeric
         return engine
     

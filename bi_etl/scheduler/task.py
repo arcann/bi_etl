@@ -640,7 +640,7 @@ class ETLTask(object):
         return self.config.get(section=self.name, option=setting_name, vars=assignments)
 
     def get_setting_or_default(self, setting_name, default):
-        return self.config.get_or_default(section=self.name, option=setting_name, default=default)
+        return self.config.get(section=self.name, option=setting_name, fallback=default)
 
     def register_object(self, obj):
         """
@@ -888,15 +888,15 @@ class ETLTask(object):
             self.log.exception(e)
             self.log.error(utility.dict_to_str(e.__dict__))
             if not no_mail:
-                smtp_to = self.config.get_or_None('SMTP', 'distro_list')
+                smtp_to = self.config.get('SMTP', 'distro_list', fallback=None)
                 if not smtp_to:
                     self.log.warning("SMTP distro_list option not found. No mail sent.")
                 else:
-                    environment = self.config.get_or_default('SMTP', 'environment', default='Unknown_ENVT')
+                    environment = self.config.get('SMTP', 'environment', fallback='Unknown_ENVT')
                     message_list = list()
                     message_list.append(repr(e))
                     message_list.append("Task ID = {}".format(self.task_id))
-                    ui_url = self.config.get_or_None('Scheduler', 'base_ui_url')
+                    ui_url = self.config.get('Scheduler', 'base_ui_url', fallback=None)
                     if ui_url and self.task_id:
                         message_list.append("Run details are here: {}{}".format(ui_url, self.task_id))
                     message_content = '\n'.join(message_list)
