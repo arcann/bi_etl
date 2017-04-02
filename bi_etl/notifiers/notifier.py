@@ -1,13 +1,12 @@
 import logging
-
-from bi_etl.bi_config_parser import BIConfigParser
+from configparser import ConfigParser
 
 
 class Notifier(object):
-    def __init__(self, config: BIConfigParser, destination_definition: object):
+    def __init__(self, config: ConfigParser, destination_definition: object):
         self.log = logging.getLogger(__name__)
         self.config = config
-        assert(isinstance(config, BIConfigParser))
+        assert(isinstance(config, ConfigParser))
         self.destination_definition = destination_definition
 
     def send(self, subject, message):
