@@ -1,3 +1,0 @@
-SQLAlchemy
-cx_Oracle
-sortedcontainers
