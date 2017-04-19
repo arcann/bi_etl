@@ -49,40 +49,72 @@ class BIConfigParser(ConfigParser):
                                                    fallback=False
                                                    )
 
+    def merge_parent(self, directories, parent_file):
+        parent_config = ConfigParser(allow_no_value=True,
+                                     interpolation=ExtendedInterpolation())
+        file_paths = [os.path.join(directory, parent_file) for directory in directories]
+        files_read = parent_config.read(file_paths)
+        if files_read is not None and len(files_read) > 0:
+            for file in files_read:
+                if file in self.config_file_read:
+                    raise RecursionError("File {} is causing a loop in parent config reading".format(file))
+
+            self.config_file_read.extend(files_read)
+
+            for section in parent_config.sections():
+                if not self.has_section(section):
+                    self.add_section(section)
+                for option in parent_config.options(section):
+                    if not self.has_option(section, option):
+                        self[section][option] = parent_config[section][option]
+
+            # Check if we need to read another level of parent files
+            if parent_config.has_section('Config'):
+                for setting in parent_config['Config']:
+                    if setting.startswith('parent'):
+                        self.merge_parent(directories, parent_config['Config'][setting])
+
+    def read_parents(self, directories):
+        if self.has_section('Config'):
+            for setting in self['Config']:
+                if setting.startswith('parent'):
+                    self.merge_parent(directories, self['Config'][setting])
+
     def read_config_ini(self):
-        # pylint: disable=invalid-name
         r"""
         Read the config file from any of the following locations
-        (merging multiple files together if more than one exists.)
+        (merging multiple files together if more than one exists.)        
         * C:\bi_etl_config\config.ini
         * D:\bi_etl_config\config.ini
         * E:\bi_etl_config\config.ini
         * ~/bi_etl_config\config.ini
-        * ~/.BI_utils.ini
-        * ~/BI_utils.ini
+        * Current Directory
 
         Where ~ is the users home directory.
-
         """
         user_dir = os.path.expanduser('~')
         expected_config_files = [
-            # These first paths are for running as a windows service
-            os.path.join(r"C:\bi_etl_config\config.ini"),
-            os.path.join(r"D:\bi_etl_config\config.ini"),
-            os.path.join(r"E:\bi_etl_config\config.ini"),
+            # These static paths are for running as a windows service
+            os.path.join("C:", "bi_etl_config", "config.ini"),
+            os.path.join("D:", "bi_etl_config", "config.ini"),
+            os.path.join("E:", "bi_etl_config", "config.ini"),
             # If those don't work then look in the user directory
             os.path.join(user_dir, 'bi_etl_config', 'config.ini'),
-            # Legacy names
-            os.path.join(user_dir, '.BI_utils.ini'),
-            os.path.join(user_dir, 'BI_utils.ini')
+            # Finally use a file in the current directory (will override other settings)
+            "config.ini",
         ]
-        read_ok = self.read(expected_config_files)
-        if read_ok is None or len(read_ok) == 0:
+        files_read = self.read(expected_config_files)
+        if files_read is None or len(files_read) == 0:
             raise FileNotFoundError('None of the expected config files where found: {}'.format(expected_config_files))
 
-        self.config_file_read = read_ok
-        self.log.info('Read config file {}'.format(self.config_file_read))
-        return read_ok
+        self.config_file_read = files_read
+
+        read_dirs = [os.path.dirname(file) for file in files_read]
+
+        self.read_parents(read_dirs)
+
+        self.log.info('Read config file(s) {}'.format(self.config_file_read))
+        return self.config_file_read
 
     @staticmethod
     def get_package_root(obj=None):
@@ -132,7 +164,8 @@ class BIConfigParser(ConfigParser):
                 raise FileNotFoundError('File not found: ' + config_file_name)
         file_path = os.path.join(path, config_file_name)
         self.log.info('Read config file (relative) {}'.format(file_path))
-        return self.read(file_path)
+        self.config_file_read =  self.read(file_path)
+        return self.config_file_read
 
     def get_method_or_default(self, method, section, option, default):
         """
