@@ -6,7 +6,7 @@ Subpackages
 
 .. toctree::
 
-    bi_etl.components.row
+    bi_etl.components.row_package
 
 Submodules
 ----------
@@ -18,6 +18,7 @@ Submodules
    bi_etl.components.etlcomponent
    bi_etl.components.hst_table
    bi_etl.components.readonlytable
+   bi_etl.components.row_package
    bi_etl.components.sqlquery
    bi_etl.components.table
    bi_etl.components.xlsx_reader

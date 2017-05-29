@@ -1,6 +1,13 @@
 bi_etl.scheduler package
 ========================
 
+Subpackages
+-----------
+
+.. toctree::
+
+    bi_etl.scheduler.scheduler_etl_jobs
+
 Submodules
 ----------
 

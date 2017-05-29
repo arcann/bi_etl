@@ -17,7 +17,7 @@ from decimal import InvalidOperation
 from typing import Iterable, Union, Callable, List
 
 import sqlalchemy
-from bi_etl import Timer
+from bi_etl.timer import Timer
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.readonlytable import ReadOnlyTable, NoResultFound
 from bi_etl.components.row.column_difference import ColumnDifference
@@ -243,20 +243,20 @@ class Table(ReadOnlyTable):
             else:
                 self.__batch_size = 1
 
-    def autogenerate_sequence(self, row, seq_column, force_override= True):
+    def autogenerate_sequence(self, row, seq_column: str, force_override= True):
         # Make sure we have a column object
-        seq_column = self.get_column(seq_column)
+        seq_column_obj = self.get_column(seq_column)
         # If key value is not already set, or we are supposed to force override                    
-        if row.get(seq_column.name) is None or force_override:
+        if row.get(seq_column_obj.name) is None or force_override:
             # Get the database max
-            current_max = self.max_keys.get(seq_column)
+            current_max = self.max_keys.get(seq_column_obj)
             if current_max is None:
-                current_max = self.max(seq_column)
+                current_max = self.max(seq_column_obj)
                 # In case the database call returns None
                 if current_max is None:
                     current_max = 0
                     self.log.info("Initialize sequence for {} with value {:}".format(
-                        seq_column,
+                        seq_column_obj,
                         current_max + 1
                         )
                     )
@@ -266,14 +266,14 @@ class Table(ReadOnlyTable):
                 if current_max < 0:
                     current_max = 0
                     self.log.info("Initialize sequence for {} with value {:} (and not negative value)".format(
-                        seq_column,
+                        seq_column_obj,
                         current_max + 1
                         )
                     )
             current_max += 1
-            row[seq_column] = current_max
+            row[seq_column_obj] = current_max
             # self.log.debug("{} Value = {}  =  {}".format(seq_column, row[seq_column], current_max))
-            self.max_keys[seq_column] = current_max
+            self.max_keys[seq_column_obj] = current_max
             return current_max
     
     def autogenerate_key(self, row, force_override=True):
@@ -440,9 +440,8 @@ class Table(ReadOnlyTable):
             Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
         parent_stats
 
-        Returns
-        -------
-        Row
+        Returns:
+            row
         """
         build_row_stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
         build_row_stats.print_start_stop_times = False
@@ -2068,16 +2067,24 @@ class Table(ReadOnlyTable):
 
         stats['upsert source row count'] += 1
 
+        if self.auto_generate_key:
+            if source_excludes is None:
+                source_excludes = []
+            if self.primary_key not in source_excludes:
+                warnings.warn('Ignoring primary key value passed in since auto_generate_key is enabled')
+                source_excludes.extend(self.primary_key)
+
         # Check for existing row
         target_row = None
-        source_mapped_as_target_row = self.build_row(source_row= source_row,
-                                                     source_excludes = source_excludes,
-                                                     target_excludes = target_excludes,                                                     
-                                                     parent_stats= stats,
+        source_mapped_as_target_row = self.build_row(source_row=source_row,
+                                                     source_excludes=source_excludes,
+                                                     target_excludes=target_excludes,
+                                                     parent_stats=stats,
                                                      )
         
         if self.delete_flag is not None:
-            if self.delete_flag not in source_mapped_as_target_row or source_mapped_as_target_row[self.delete_flag] is None:
+            if self.delete_flag not in source_mapped_as_target_row \
+                    or source_mapped_as_target_row[self.delete_flag] is None:
                 source_mapped_as_target_row[self.delete_flag] = self.delete_flag_no
         
         try:

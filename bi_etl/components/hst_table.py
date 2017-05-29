@@ -20,7 +20,7 @@ from bi_etl.exceptions import AfterExisting, NoResultFound, BeforeAllExisting
 from bi_etl.lookups.autodisk_range_lookup import AutoDiskRangeLookup
 from bi_etl.timer import Timer
 
-__all__ = ['HistoryTable,', 'Hst_Table']
+__all__ = ['HistoryTable']
 
 
 # noinspection PyAbstractClass
@@ -760,11 +760,17 @@ class HistoryTable(Table):
             Default is to place statistics in the ETLTask level statistics.
                     
         """
-
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.ensure_exists('upsert source row count')
         stats.ensure_exists('apply_updates called')
         stats.ensure_exists('insert new called')
+
+        if self.auto_generate_key:
+            if source_excludes is None:
+                source_excludes = []
+            if self.primary_key not in source_excludes:
+                warnings.warn('Ignoring primary key value passed in since auto_generate_key is enabled')
+                source_excludes.extend(self.primary_key)
 
         if 'source_effective_date' not in kwargs:
             if self.begin_date in source_row and source_row[self.begin_date] is not None:
@@ -1360,6 +1366,7 @@ class HistoryTable(Table):
                                   filter_criteria=None,
                                   use_cache_as_source=True,
                                   repeat_until_clean=True,
+                                  max_begin_date_warnings: int = 100,
                                   max_end_date_warnings: int = 100,
                                   parent_stats=None,
                                   progress_message="{table} cleanup_spurious_versions "
@@ -1446,6 +1453,7 @@ class HistoryTable(Table):
         saved_read_progress = self.progress_frequency
         self.progress_frequency = None
 
+        begin_date_warnings = 0
         end_date_warnings = 0
 
         try:
@@ -1522,6 +1530,28 @@ class HistoryTable(Table):
                             # Reset second_prior_row
                             second_prior_row = None
                             second_prior_row_pk_values = None
+
+                            # Check first begin date
+                            if self.default_begin_date is not None:
+                                if row[self.begin_date] != self.default_begin_date:
+                                    begin_date_warnings += 1
+                                    if begin_date_warnings < max_begin_date_warnings:
+                                        self.log.warning(
+                                            "Correcting first version begin date for {} from {} to {}"
+                                                .format(prior_row_pk_values,
+                                                        prior_row[self.end_date],
+                                                        self.default_end_date)
+                                        )
+                                    elif begin_date_warnings == max_begin_date_warnings:
+                                        self.log.warning("Limit reached for 'Correcting begin date' messages.")
+                                    # If not correct update the prior row end date
+                                    super(Hst_Table, self).apply_updates(row,
+                                                                         additional_update_values={
+                                                                             self.begin_date: self.default_begin_date},
+                                                                         parent_stats=stats,
+                                                                         )
+
+                                    stats.add_to_stat('rows with bad date sequence', 1)
 
                             # Check final end date
                             if prior_row[self.end_date] != self.default_end_date:

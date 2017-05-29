@@ -1,11 +1,8 @@
-"""
-Created on Mar 26, 2015
-
-@author: woodd
-"""
 import os
 
 from setuptools import setup, find_packages
+
+import bi_etl.version
 
 here = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(here, 'README.md')) as f:
@@ -21,6 +18,9 @@ install_requires = [
     'pyodbc',
     'CaseInsensitiveDict',
     'pyramid',
+    # For Docs build
+    'sphinx',
+    'sphinx-autodoc-annotation',
     ]
 
 extras_require = {
@@ -34,7 +34,7 @@ tests_require = [
 ]
 
 setup(name='bi_etl',
-      version='0.5.2',
+      version=bi_etl.version.full_version,
       description='ETL (Extract Transform Load) framework geared towards BI database in particular.',
       long_description=README,
       classifiers=[

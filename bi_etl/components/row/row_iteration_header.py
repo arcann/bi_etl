@@ -196,7 +196,18 @@ class RowIterationHeader(object):
                 position = self._add_column(column_name)
         return position
 
-    def row_set_item(self, column_name: str, value, row: 'bi_etl.components.row.row.Row')-> 'RowIterationHeader':
+    def row_set_item(self, column_name: str, value, row)-> 'RowIterationHeader':
+        """
+        Set a column in a row and return a new row header (it might have changed if the column was new). 
+        
+        Parameters:        
+            column_name: column to set
+            value: new value
+            row (bi_etl.components.row.row.Row): row to find column on
+
+        Returns:        
+            Modified row header
+        """
         if column_name in self._columns_positions:
             position = self._columns_positions[column_name]
             row._data_values[position] = value
@@ -221,25 +232,24 @@ class RowIterationHeader(object):
         """
         Rename a column
 
-        Parameters
-        ----------
-        old_name: str
-            The name of the column to find and rename.
-
-        new_name: str
-            The new name to give the column.
-
-        ignore_missing: boolean
-            Ignore (don't raise error) if we don't have a column with the name in old_name.
-            Defaults to False
-
-        no_new_header:
-            Skip creating a new row header, modify in place.
-            ----------------------
-            BE CAREFUL USING THIS!
-            ----------------------
-            All new rows created with this header will immediately get the new name,
-            in which case you won't want to call this method again.
+        Parameters:
+            old_name: str
+                The name of the column to find and rename.
+    
+            new_name: str
+                The new name to give the column.
+    
+            ignore_missing: boolean
+                Ignore (don't raise error) if we don't have a column with the name in old_name.
+                Defaults to False
+    
+            no_new_header:
+                Skip creating a new row header, modify in place.
+                
+                ** BE CAREFUL USING THIS! **
+                
+                All new rows created with this header will immediately get the new name,
+                in which case you won't want to call this method again.
         """
         assert new_name not in self._columns_positions, "Target column name {} already exists".format(new_name)
         self.get_column_position.cache_clear()
@@ -276,23 +286,22 @@ class RowIterationHeader(object):
         """
         Rename many columns at once.
 
-        Parameters
-        ----------
-        rename_map
-            A dict or list of tuples to use to rename columns.
-            Note: a list of tuples is better to use if the renames need to happen in a certain order.
-
-        ignore_missing
-            Ignore (don't raise error) if we don't have a column with the name in old_name.
-            Defaults to False
-
-        no_new_header:
-            Skip creating a new row header, modify in place.
-            ----------------------
-            BE CAREFUL USING THIS!
-            ----------------------
-            All new rows created with this header will immediately get the new name,
-            in which case you won't want to call this method again.
+        Parameters:
+            rename_map
+                A dict or list of tuples to use to rename columns.
+                Note: a list of tuples is better to use if the renames need to happen in a certain order.
+    
+            ignore_missing
+                Ignore (don't raise error) if we don't have a column with the name in old_name.
+                Defaults to False
+    
+            no_new_header:
+                Skip creating a new row header, modify in place.
+                
+                ** BE CAREFUL USING THIS! **
+                
+                All new rows created with this header will immediately get the new name,
+                in which case you won't want to call this method again.
         """
         new_header = self
         if isinstance(rename_map, dict):

@@ -1,5 +1,15 @@
-bi_etl.utility module
-=====================
+bi_etl.utility package
+======================
+
+Submodules
+----------
+
+.. toctree::
+
+   bi_etl.utility.ask
+
+Module contents
+---------------
 
 .. automodule:: bi_etl.utility
     :members:
