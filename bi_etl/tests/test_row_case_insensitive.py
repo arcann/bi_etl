@@ -19,6 +19,50 @@ from bi_etl.conversions import nullif
 
 
 class TestRowCaseInsensitive(TestRow):
+    def setUp(self):
+        self.longMessage = True
+        self.source1a = {
+            'MixedCase': 1,
+            'lower':     'two',
+            'UPPER':     1.5,
+        }
+        self.source1b = {
+            'MixedCase': 2,
+            'lower':     'beta',
+            'UPPER':     1234.567,
+        }
+        # Row1 will have a random (or unknown) column order based on the dict ordering
+        self.source1_rows = [self.source1a, self.source1b]
+        self.parent_component1 = DummyETLComponent(data=self.source1_rows)
+        self.rows1 = [row for row in self.parent_component1]
+        self.row1a = self.rows1[0]
+        self.row1b = self.rows1[1]
+
+        # Make a SQLAlchemy type of row (RowProxy)
+        self.columns = ['MixedCase', 'lower', 'UPPER']
+        # Row2 will have a known column order
+        self.source2a = self._make_row_from_dict(self.source1a)
+        self.source2b = self._make_row_from_dict(self.source1b)
+        self.source2_rows = [self.source2a, self.source2b]
+        self.sa_row_name = 'sa_row'
+        iteration_header = RowIterationHeader(logical_name=self.sa_row_name, columns_in_order=self.columns)
+        self.parent_component2 = DummyETLComponent(iteration_header=iteration_header, data=self.source2_rows)
+        self.rows2 = [row for row in self.parent_component2]
+        self.row2a = self.rows2[0]
+        self.row2b = self.rows2[1]
+
+        # Row3 will have a known column order
+        self.values3a = [1, 'two', 1.5]
+        self.values3b = [2, 'beta', 1234.567]
+        self.source3_rows = list()
+        self.source3_rows.append(list(zip(self.columns, self.values3a)))
+        self.source3_rows.append(list(zip(self.columns, self.values3b)))
+        self.parent_component3 = DummyETLComponent(logical_name='row3',
+                                                   primary_key=['MixedCase'],
+                                                   data=self.source3_rows)
+        self.rows3 = [row for row in self.parent_component3]
+        self.row3a = self.rows3[0]
+        self.row3b = self.rows3[1]
 
     def test_getter_mixed_case(self):
         mixed_case_str = 'MixedCase'         

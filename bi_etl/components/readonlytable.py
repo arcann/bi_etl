@@ -4,6 +4,7 @@ Created on Sep 17, 2014
 @author: woodd
 """
 import traceback
+import typing
 import warnings
 from datetime import datetime
 from operator import attrgetter
@@ -11,7 +12,7 @@ from typing import Iterable
 
 import functools
 import sqlalchemy
-from bi_etl import Timer
+from bi_etl.timer import Timer
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
@@ -176,13 +177,16 @@ class ReadOnlyTable(ETLComponent):
         self.set_kwattrs(**kwargs) 
 
     def __repr__(self):
-        return "{cls}(task={task},logical_name={logical_name},primary_key={primary_key},delete_flag={delete_flag})".format(
-            cls= self.__class__.__name__,
-            task= self.task,
-            logical_name= self.logical_name,
-            primary_key= self.primary_key,
-            delete_flag= self.delete_flag,
-            )
+        return "{cls}(task={task}," \
+               "logical_name={logical_name}," \
+               "primary_key={primary_key}," \
+               "delete_flag={delete_flag})".format(
+                    cls= self.__class__.__name__,
+                    task= self.task,
+                    logical_name= self.logical_name,
+                    primary_key= self.primary_key,
+                    delete_flag= self.delete_flag,
+                )
         
     @property        
     def delete_flag(self):
@@ -263,7 +267,8 @@ class ReadOnlyTable(ETLComponent):
                 self._excluded_columns = set(columns_to_exclude)
             else:
                 self._excluded_columns.update(columns_to_exclude)
-                        
+
+        # noinspection PyTypeChecker
         for ex_name in self._excluded_columns:
             try:
                 exclude_column_obj = self.get_column(ex_name)                
@@ -271,7 +276,8 @@ class ReadOnlyTable(ETLComponent):
                     self.log.debug('Excluding column {}'.format(exclude_column_obj))
                     self._columns.remove(exclude_column_obj)
             except KeyError:
-                pass # Already not there
+                # Already not there
+                pass
         # Remove columns from the table
         for col in self._columns:
             col.table = None
@@ -296,6 +302,7 @@ class ReadOnlyTable(ETLComponent):
     def connection(self) -> sqlalchemy.engine.base.Connection:
         if self.__connection is None and self.table is not None:
             self.__connection = self.table.metadata.bind.connect()
+        # noinspection PyTypeChecker
         return self.__connection
     
     def close(self):
@@ -365,7 +372,7 @@ class ReadOnlyTable(ETLComponent):
             raise MultipleResultsFound([row1, row2])
         return self.Row(row1)
     
-    def select(self, column_list = None, exclude_cols = None):
+    def select(self, column_list: typing.Optional[list] = None, exclude_cols: typing.Optional[set] = None) -> sqlalchemy.sql.expression.Select:
         """
         Builds a select statement for this table. 
         
@@ -381,13 +388,15 @@ class ReadOnlyTable(ETLComponent):
                 return sqlalchemy.select(self.columns)
             else:
                 # Make sure all entries are column objects
-                if isinstance(exclude_cols,str):
+                if isinstance(exclude_cols, str):
                     exclude_cols = [exclude_cols]
-                exclude_cols = [self.get_column(c) for c in exclude_cols]
-                filtered_column_list = [c for c in self.columns if c not in exclude_cols]
+                # noinspection PyTypeChecker
+                exclude_col_objs = set([self.get_column(c) for c in exclude_cols])
+                filtered_column_list = [c for c in self.columns if c not in exclude_col_objs]
                 return sqlalchemy.select(filtered_column_list)
-        else:            
+        else:
             column_obj_list = list()
+            # noinspection PyTypeChecker
             for c in column_list:
                 if isinstance(c, str):
                     column_obj_list.append( self.get_column(c) )
@@ -512,7 +521,8 @@ class ReadOnlyTable(ETLComponent):
                     if not pk_lookup.cache_enabled:
                         use_cache_as_source = False
                         if use_cache_as_source_requested:
-                            self.log.debug("PK cache not filled. Looking for another lookup to use for {}".format(stats))
+                            self.log.debug("PK cache not filled. "
+                                           "Looking for another lookup to use for {}".format(stats))
                         for lookup_name in self.__lookups:
                             lookup = self.get_lookup(lookup_name)
                             if lookup.cache_enabled:
@@ -521,11 +531,13 @@ class ReadOnlyTable(ETLComponent):
                                 break
                         if not use_cache_as_source:
                             if use_cache_as_source_requested:    
-                                self.log.debug("Unable to find filled lookup. Requires using database as source for {}".format(stats))                    
+                                self.log.debug("Unable to find filled lookup. "
+                                               "Requires using database as source for {}".format(stats))
                 except KeyError:
                     use_cache_as_source = False
                     if use_cache_as_source_requested:
-                        self.log.debug("KeyError finding lookup. Requires using database as source for {}".format(stats))
+                        self.log.debug("KeyError finding lookup. "
+                                       "Requires using database as source for {}".format(stats))
 
         if use_cache_as_source:
             # Note in this case the outer call where / iter_result will process the criteria
@@ -626,7 +638,7 @@ class ReadOnlyTable(ETLComponent):
         """
         return self._columns
     
-    def get_column(self, column):
+    def get_column(self, column: typing.Union[str, Column]) -> Column:
         """
         Get the :class:`sqlalchemy.sql.expression.ColumnElement` object for a given column name.
         """
@@ -641,10 +653,8 @@ class ReadOnlyTable(ETLComponent):
                 if isinstance(index_entry, list):
                     # More than one column with that name. 
                     # Case sensitivity required
-                    try:
-                        return self.table.columns[column.name]
-                    except:
-                        raise KeyError('{} does not have a column named {} however multiple other case versions exist'.format(self.table_name, column))
+                    raise KeyError('{} does not have a column named {} '
+                                   'however multiple other case versions exist'.format(self.table_name, column))
                 else:
                     return index_entry
             else:                
@@ -724,8 +734,9 @@ class ReadOnlyTable(ETLComponent):
                     row[column.name] = long_char
                 if column.type.length is None:
                     row[column.name] = long_char
-                elif self.special_values_descriptive_min_length and column.type.length >= self.special_values_descriptive_min_length:
-                    row[column.name] = long_char
+                elif self.special_values_descriptive_min_length and column.type.length \
+                        >= self.special_values_descriptive_min_length:
+                            row[column.name] = long_char
                 else:                 
                     row[column.name] = short_char
             elif (   isinstance(target_type, sqltypes.DATE)
@@ -745,7 +756,8 @@ class ReadOnlyTable(ETLComponent):
         
     def get_missing_row(self):
         """
-        Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` with the Missing special values filled in for all columns.
+        Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` 
+        with the Missing special values filled in for all columns.
         
         =========== =========
         Type        Value
@@ -756,11 +768,12 @@ class ReadOnlyTable(ETLComponent):
         Date        9999-9-1
         =========== =========
         """                        
-        return self.get_special_row('?','Missing',-9999,datetime(9999,9,1))
+        return self.get_special_row('?', 'Missing', -9999, datetime(9999, 9, 1))
                 
     def get_invalid_row(self):
         """
-        Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` with the Invalid special values filled in for all columns.
+        Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` 
+        with the Invalid special values filled in for all columns.
         
         =========== =========
         Type        Value
@@ -776,7 +789,8 @@ class ReadOnlyTable(ETLComponent):
     
     def get_not_applicable_row(self):
         """
-        Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` with the Not Applicable special values filled in for all columns.
+        Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` 
+        with the Not Applicable special values filled in for all columns.
         
         =========== =========
         Type        Value
@@ -791,7 +805,8 @@ class ReadOnlyTable(ETLComponent):
     
     def get_various_row(self):
         """
-        Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` with the Various special values filled in for all columns.
+        Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` 
+        with the Various special values filled in for all columns.
         
         =========== =========
         Type        Value
@@ -950,7 +965,8 @@ class ReadOnlyTable(ETLComponent):
             
     def clear_cache(self):
         """
-        Clear all lookup caches. Sets to un-cached state (unknown state v.s. empty state which is what init_cache gives)
+        Clear all lookup caches. 
+        Sets to un-cached state (unknown state v.s. empty state which is what init_cache gives)
         """     
         self.cache_filled = False
         for lookup in self.__lookups.values():
@@ -975,7 +991,7 @@ class ReadOnlyTable(ETLComponent):
                 lookup.uncache_where(key_names= key_names, key_values_dict= key_values_dict)
 
     def fill_cache(self, 
-                   progress_frequency = 10,
+                   progress_frequency: float = 10,
                    progress_message = "{table} fill_cache current row # {row_number:,}",
                    criteria = None,
                    column_list = None,
@@ -998,7 +1014,7 @@ class ReadOnlyTable(ETLComponent):
             substitutions applied via :func:`format`.
         criteria : string or list of strings 
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
-            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+            https://goo.gl/JlY9us
         column_list: list
             Optional. Specific columns to include when filling the cache.
         exclude_cols: list
@@ -1006,7 +1022,8 @@ class ReadOnlyTable(ETLComponent):
         order_by: list
             list of columns to sort by when filling the cache (helps range caches)
         assume_lookup_complete: boolean
-            Should later lookup calls assume the cache is complete (and thus raise an Exception if a key combination is not found)? 
+            Should later lookup calls assume the cache is complete?
+            If so, lookups will raise an Exception if a key combination is not found. 
             Default to False if filtering criteria was used, otherwise defaults to True.
         row_limit: int
             limit on number of rows to cache.
@@ -1060,8 +1077,9 @@ class ReadOnlyTable(ETLComponent):
             # Actually cache the row now
             row.status = RowStatus.existing
             self.cache_row(row, allow_update= False)
-            
-            if 0 < progress_frequency <= progress_timer.seconds_elapsed:
+
+            # noinspection PyTypeChecker
+            if 0.0 < progress_frequency <= progress_timer.seconds_elapsed:
                 self.process_messages()
                 progress_timer.reset()
                 self.log.info(progress_message.format(
@@ -1095,7 +1113,13 @@ class ReadOnlyTable(ETLComponent):
             for lookup in self.__lookups.values():
                 this_ram_size = lookup.get_memory_size()
                 this_disk_size = lookup.get_disk_size()
-                self.log.info('Lookup {} Rows {:,} Size RAM= {:,} bytes DISK={:,} bytes'.format(lookup, len(lookup), this_ram_size, this_disk_size))
+                self.log.info('Lookup {} Rows {:,} Size RAM= {:,} bytes DISK={:,} bytes'.format(
+                    lookup,
+                    len(lookup),
+                    this_ram_size,
+                    this_disk_size
+                    )
+                )
                 ram_size += this_ram_size
                 disk_size += this_disk_size
             self.log.info('Note: RAM sizes do not add up as memory lookups share row objects')
@@ -1124,19 +1148,18 @@ class ReadOnlyTable(ETLComponent):
                                   stats_id= stats_id,
                                   parent_stats=parent_stats)
 
-    def get_by_lookup(self, 
+    def get_by_lookup(self,
                       lookup_name: str,
                       source_row: Row,
                       stats_id: str = 'get_by_lookup',
-                      parent_stats: Statistics = None,
-                      ):
+                      parent_stats: typing.Optional[Statistics] = None,
+                      ) -> Row:
         """
         Get by an alternate key.
         Returns a :class:`~bi_etl.components.row.row_case_insensitive.Row`
 
-        Throws
-        -------
-        NoResultFound
+        Throws:
+            NoResultFound
         """
         stats = self.get_stats_entry(stats_id, parent_stats=parent_stats)
         stats.print_start_stop_times = False

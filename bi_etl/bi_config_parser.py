@@ -117,18 +117,15 @@ class BIConfigParser(ConfigParser):
         return self.config_file_read
 
     @staticmethod
-    def get_package_root(obj=None):
+    def get_package_root(obj: object=None) -> str:
         """
         Get the root path of a package given an object (default is this module).
 
-        Parameters
-        ----------
-        obj: Object to inspect for package
-            Defaults to this module
+        Parameters:
+            obj: The object to inspect for package
+                 Defaults to this module
 
-        Returns
-        -------
-        root_path: str
+        Returns:
             The root path of the package
         """
         if obj is None:
@@ -164,29 +161,8 @@ class BIConfigParser(ConfigParser):
                 raise FileNotFoundError('File not found: ' + config_file_name)
         file_path = os.path.join(path, config_file_name)
         self.log.info('Read config file (relative) {}'.format(file_path))
-        self.config_file_read =  self.read(file_path)
+        self.config_file_read = self.read(file_path)
         return self.config_file_read
-
-    def get_method_or_default(self, method, section, option, default):
-        """
-        Get a configuration option using the supplied method (e.g. getint) or returns a default if that doesn't exist.
-
-        Parameters
-        ----------
-        method: method
-            A method of his config class to use (e.g. getint).
-        section: str
-            The section to use.
-        option: str
-            The option value to get.
-        default: any
-            The default to return if the option or section is not found.
-        """
-        option_value = default
-        if self.has_section(section) and option:
-            if self.has_option(section, option):
-                option_value = method(section, option)
-        return option_value
 
     def get_byte_size(self, section: str, option: str, fallback: str = None) -> int:
         """
@@ -289,7 +265,7 @@ class BIConfigParser(ConfigParser):
         """
         self.set('logging', 'log_file_name', log_file_name)
 
-    def set_dated_log_file_name(self, prefix, suffix, date_time_format='_%Y_%m_%d_at_%H_%M_%S'):
+    def set_dated_log_file_name(self, prefix='', suffix='', date_time_format='_%Y_%m_%d_at_%H_%M_%S'):
         """
         Sets the log file name in the config (memory copy only) using the current date and time.
         Specifically that is ``log_file_name`` in the ``logging`` section.
@@ -306,8 +282,9 @@ class BIConfigParser(ConfigParser):
         log_file_name = prefix + datetime.now().strftime(date_time_format) + suffix
         self.set_log_file_name(log_file_name)
 
-    def setup_log_file(self):
+    def add_log_file_handler(self):
         filename = self.get_log_file_name()
+        file_handler = None
         if filename is not None:
             if self.trace_logging_setup:
                 self.log.info('Logging filename = {}'.format(filename))
@@ -332,7 +309,8 @@ class BIConfigParser(ConfigParser):
             self.rootLogger.addHandler(file_handler)
         else:
             if self.trace_logging_setup:
-                self.log.info('No log filename define. File logging skipped.')
+                self.log.info('No log filename defined. File logging skipped.')
+        return file_handler
 
     def setup_log_levels(self):
         no_loggers_found = False
@@ -392,6 +370,11 @@ class BIConfigParser(ConfigParser):
         """
         self.logging_setup = True
 
+        # Close out any existing handlers
+        for handler in self.rootLogger.handlers:
+            handler.flush()
+            handler.close()
+
         # Reset the handlers
         self.rootLogger.handlers.clear()
 
@@ -435,7 +418,7 @@ class BIConfigParser(ConfigParser):
             console_error_log.setFormatter(console_entry_formater)
 
         if use_log_file_setting:
-            self.setup_log_file()
+            self.add_log_file_handler()
         else:
             if self.trace_logging_setup:
                 self.log.info('use_log_file_setting = False. setup_log_file not called.')

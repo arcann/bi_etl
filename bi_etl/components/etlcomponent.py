@@ -4,12 +4,12 @@ Created on Sep 25, 2014
 @author: woodd
 """
 import logging
+import typing
 import warnings
-from bi_etl import ETLTask
+from bi_etl.scheduler.task import ETLTask
 from operator import attrgetter
 from typing import Iterable
 
-import bi_etl
 from bi_etl.components.row.row import Row
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
@@ -81,7 +81,7 @@ class ETLComponent(Iterable):
 
         # self.log = logging.getLogger(__name__)
         self.log = logging.getLogger("{mod}.{cls}".format(mod = self.__class__.__module__, cls= self.__class__.__name__))
-        bi_etl.utility.log_logging_level(self.log)
+        self.task.log_logging_level()
         
         # Register this component with it's parent task        
         if task is not None:
@@ -114,10 +114,10 @@ class ETLComponent(Iterable):
     def debug_log(self, state=True):
         if state:
             self.log.setLevel(logging.DEBUG)
-            bi_etl.utility.log_logging_level(self.log)
+            self.task.log_logging_level()
         else:
             self.log.setLevel(logging.INFO)
-            bi_etl.utility.log_logging_level(self.log)
+            self.task.log_logging_level()
     
     def clear_statistics(self):
         pass
@@ -145,19 +145,20 @@ class ETLComponent(Iterable):
         """
         Override to provide a way to lookup column names as they are asked for.
         """
-        pass
+        self._column_names = []
     
     @property
-    def column_names(self):
+    def column_names(self) -> typing.List[str]:
         """
         Column names
         """
         if self._column_names is None:
             self._obtain_column_names()
+        # noinspection PyTypeChecker
         return self._column_names
 
     @column_names.setter
-    def column_names(self, value):
+    def column_names(self, value: typing.List[str]):
         self._column_names = list(value)
         # Ensure names are unique
         name_dict = dict()
@@ -188,7 +189,7 @@ class ETLComponent(Iterable):
                 self._column_names[instance_index] = new_name     
     
     @property
-    def primary_key(self):
+    def primary_key(self) -> typing.Union[typing.List[str], None]:
         try:
             if self._primary_key is not None and len(self._primary_key) > 0:
                 if isinstance(self._primary_key[0], Column):
@@ -200,7 +201,7 @@ class ETLComponent(Iterable):
             return None
 
     @primary_key.setter
-    def primary_key(self, value):
+    def primary_key(self, value: typing.List[str]):
         if value is None:
             self._primary_key = []
         else:            
@@ -210,7 +211,7 @@ class ETLComponent(Iterable):
             self._primary_key = value            
 
     @property
-    def trace_data(self):
+    def trace_data(self) -> bool:
         """
         boolean
             Should a debug message be printed with the parsed contents (as columns) of each row.
@@ -218,7 +219,7 @@ class ETLComponent(Iterable):
         return self.__trace_data
 
     @trace_data.setter
-    def trace_data(self, value):
+    def trace_data(self, value: bool):
         self.__trace_data = value
         # If we are tracing data, automatically set logging level to DEBUG
         if value:
@@ -233,11 +234,11 @@ class ETLComponent(Iterable):
         self.__progress_frequency = value
             
     @property
-    def row_name(self):
+    def row_name(self) -> str:
         return str(self)
 
     @property
-    def rows_read(self):
+    def rows_read(self) -> int:
         """
         int
             The number of rows read and returned.
@@ -316,6 +317,7 @@ class ETLComponent(Iterable):
                 if self.log_first_row:
                     self.log_progress(row, stats)
             elif progress_frequency is not None:
+                # noinspection PyTypeChecker
                 if 0 < progress_frequency < progress_timer.seconds_elapsed:
                     self.process_messages()
                     self.log_progress(row, stats)

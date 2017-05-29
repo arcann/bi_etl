@@ -11,7 +11,7 @@ from datetime import datetime
 
 class Timer(object):
 
-    def __init__(self, task_name = None, start_running = True):
+    def __init__(self, task_name: str = None, start_running: bool = True)-> None:
         self.task_name = task_name
         self.stored_time = 0
         self.start_time = None
@@ -50,16 +50,16 @@ class Timer(object):
         if self.task_name is None:
             return stats
         else:
-            return {self.task_name: stats}
+            return OrderedDict({self.task_name: stats})
 
-    def message(self, task_name = None) -> str:
+    def message(self, task_name: str = None) -> str:
         if not task_name:
             task_name = self.task_name or "Un-named task"
         if self.running:
             self.stop()
         return "{task} took {secs}".format(task = task_name, secs = self.seconds_elapsed)
 
-    def message_detailed(self, task_name = None) -> str:
+    def message_detailed(self, task_name: str = None) -> str:
         if not task_name:
             task_name = self.task_name or "Un-named task"
         if self.running:

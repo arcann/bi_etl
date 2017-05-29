@@ -5,8 +5,10 @@ Created on Sep 17, 2014
 """
 import csv
 import os
+import typing
 
-from bi_etl import Timer
+from bi_etl.timer import Timer
+from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.etlcomponent import ETLComponent
 import logging
 
@@ -26,128 +28,139 @@ class CSVReader(ETLComponent):
     
     Note optional, but important, parameter ``delimiter``.
     
-    Parameters
-    ----------
-    task: ETLTask
-        The  instance to register in (if not None)
+    **Valid values for `errors` parameter:**
+             
+    +--------------------+-----------------------------------------------------------+
+    | Value              | Meaning                                                   |
+    +====================+===========================================================+
+    | 'strict'           | raise a ValueError error (or a subclass)                  |
+    +--------------------+-----------------------------------------------------------+
+    | 'ignore'           | ignore the character and continue with the next           |
+    +--------------------+-----------------------------------------------------------+
+    | 'replace'          | replace with a suitable replacement character;            |
+    |                    | Python will use the official U+FFFD REPLACEMENT           |
+    |                    | CHARACTER for the builtin Unicode codecs on               |
+    |                    | decoding and '?' on encoding.                             |
+    +--------------------+-----------------------------------------------------------+
+    | 'surrogateescape'  | replace with private code points U+DCnn.                  |
+    +--------------------+-----------------------------------------------------------+               
     
-    filedata: str or file
-        The file to parse as delimited. If str then it's assumed to be a filename. 
-        Otherwise it's assumed to be a file object.
-
-    encoding: str
-        The encoding to use when opening the file 
-        (if it was a filename and not already opened)
-        Default is None which becomes the Python default encoding 
+    Args:
+        task: The  instance to register in (if not None)
         
-    errors: str
-        The error handling to use when opening the file 
-        (if it was a filename and not already opened)
-        Default is 'strict'
-        These string values are predefined:
-         'strict' - raise a ValueError error (or a subclass)
-         'ignore' - ignore the character and continue with the next
-         'replace' - replace with a suitable replacement character;
-                    Python will use the official U+FFFD REPLACEMENT
-                    CHARACTER for the builtin Unicode codecs on
-                    decoding and '?' on encoding.
-         'surrogateescape' - replace with private code points U+DCnn.
+        filedata: 
+            The file to parse as delimited. If str then it's assumed to be a filename. 
+            Otherwise it's assumed to be a file object.
+    
+        encoding: 
+            The encoding to use when opening the file, 
+            if it was a filename and not already opened.
+            Default is None which becomes the Python default encoding 
+            
+        errors: 
+            The error handling to use when opening the file 
+            (if it was a filename and not already opened)
+            Default is 'strict'
+            See above for valid errors values.            
+            
+        logical_name:
+            The logical name of this source. Used for log messages.  
+    
+    Attributes:
+        column_names: list
+            The names to use for columns
+            
+        primary_key: str
+            The name of the primary key column. Only impacts trace messages.  Default=None.
         
-    logical_name: str
-        The logical name of this source. Used for log messages.  
-    
-    Attributes
-    ----------
-    column_names: list
-        The names to use for columns
+        dialect: str or subclass of :class:`csv.Dialect`
+            Default "excel". The dialect value to pass to :mod:`csv`
         
-    primary_key: str
-        The name of the primary key column. Only impacts trace messages.  Default=None.
-    
-    dialect: str or subclass of :class:`csv.Dialect`
-        Default "excel". The dialect value to pass to :mod:`csv`
-    
-    delimiter: str
-        The delimiter used in the file. Default is ','.
-    
-    doublequote: boolean
-        Controls how instances of quotechar appearing inside a column should themselves be quoted. 
-        When True, the character is doubled. 
-        When False, the escapechar is used as a prefix to the quotechar. 
-        It defaults to True.
-    
-    escapechar: str
-        A one-character string used by the writer to escape the delimiter if quoting is set to 
-        QUOTE_NONE and the quotechar if doublequote is False. On reading, the escapechar removes
-        any special meaning from the following character. It defaults to None, which disables escaping.
-    
-    quotechar: str
-        A one-character string used to quote columns containing special characters, such as the delimiter
-        or quotechar, or which contain new-line characters. 
-        It defaults to '"'.
-    
-    quoting: 
-        Controls when quotes should be generated by the writer and recognised by the reader.
-        Can be either of the constants defined in this module.
-        * QUOTE_NONE 
-        * QUOTE_MINIMAL
-        Defaults to QUOTE_MINIMAL.
+        delimiter: str
+            The delimiter used in the file. Default is ','.
         
-        For more details see https://docs.python.org/3/library/csv.html#csv.QUOTE_ALL
-    
-    skipinitialspace: boolean
-        When True, whitespace immediately following the delimiter is ignored. The default is False.
-    
-    strict: boolean
-        When True, raise exception Error on bad CSV input. The default is False.
-
-    header_row: int
-        The row to parse for headers
-    
-    start_row: int
-        The first row to parse for data
+        doublequote: boolean
+            Controls how instances of quotechar appearing inside a column should themselves be quoted. 
+            When True, the character is doubled. 
+            When False, the escapechar is used as a prefix to the quotechar. 
+            It defaults to True.
         
-    log_first_row : boolean
-        Should we log progress on the the first row read. *Only applies if Table is used as a source.*
-        (inherited from ETLComponent)
+        escapechar: str
+            A one-character string used by the writer to escape the delimiter if quoting is set to 
+            QUOTE_NONE and the quotechar if doublequote is False. On reading, the escapechar removes
+            any special meaning from the following character. It defaults to None, which disables escaping.
         
-    max_rows : int, optional
-        The maximum number of rows to read. *Only applies if Table is used as a source.*
-        (inherited from ETLComponent)
+        quotechar: str
+            A one-character string used to quote columns containing special characters, such as the delimiter
+            or quotechar, or which contain new-line characters. 
+            It defaults to '"'.
         
-    primary_key: list
-        The name of the primary key column(s). Only impacts trace messages.  Default=None.
-        (inherited from ETLComponent)
+        quoting: 
+            Controls when quotes should be generated by the writer and recognised by the reader.
+            Can be either of the constants defined in this module.
+            * QUOTE_NONE 
+            * QUOTE_MINIMAL
+            Defaults to QUOTE_MINIMAL.
+            
+            For more details see https://docs.python.org/3/library/csv.html#csv.QUOTE_ALL
+        
+        skipinitialspace: boolean
+            When True, whitespace immediately following the delimiter is ignored. The default is False.
+        
+        strict: boolean
+            When True, raise exception Error on bad CSV input. The default is False.
     
-    progress_frequency: int
-        How often (in seconds) to output progress messages. None for no progress messages.
-        (inherited from ETLComponent)
-    
-    progress_message: str
-        The progress message to print. Default is ``"{logical_name} row # {row_number}"``. Note ``logical_name`` and ``row_number`` subs.
-        (inherited from ETLComponent)
+        header_row: int
+            The row to parse for headers
         
-    restkey: str
-        Column name to catch long rows (extra values).
+        start_row: int
+            The first row to parse for data
+            
+        log_first_row : boolean
+            Should we log progress on the the first row read. *Only applies if Table is used as a source.*
+            (inherited from ETLComponent)
+            
+        max_rows : int, optional
+            The maximum number of rows to read. *Only applies if Table is used as a source.*
+            (inherited from ETLComponent)
+            
+        primary_key: list
+            The name of the primary key column(s). Only impacts trace messages.  Default=None.
+            (inherited from ETLComponent)
         
-    restval: str
-        The value to put in columns that are in the column_names but 
-        not present in a given row (missing values).  
+        progress_frequency: int
+            How often (in seconds) to output progress messages. None for no progress messages.
+            (inherited from ETLComponent)
         
-    large_field_support: boolean
-        Enable support for csv columns bigger than 131,072 default limit.
-    
+        progress_message: str
+            The progress message to print. Default is ``"{logical_name} row # {row_number}"``. 
+            Note ``logical_name`` and ``row_number`` subs.
+            (inherited from ETLComponent)
+            
+        restkey: str
+            Column name to catch long rows (extra values).
+            
+        restval: str
+            The value to put in columns that are in the column_names but 
+            not present in a given row (missing values).  
+            
+        large_field_support: boolean
+            Enable support for csv columns bigger than 131,072 default limit.
     """
     def __init__(self,
-                 task,
-                 filedata,  
-                 encoding = None,
-                 errors = 'strict',
-                 logical_name = None,
+                 task: ETLTask,
+                 filedata: typing.Union[typing.TextIO, str],
+                 encoding: str = None,
+                 errors: str = 'strict',
+                 logical_name: str = None,
                  **kwargs
                  ):
         
-        self.log = logging.getLogger("{mod}.{cls}".format(mod = self.__class__.__module__, cls= self.__class__.__name__))
+        self.log = logging.getLogger("{mod}.{cls}".format(
+            mod = self.__class__.__module__,
+            cls= self.__class__.__name__
+            )
+        )
         
         self.__close_file = False
         
@@ -189,7 +202,7 @@ class CSVReader(ETLComponent):
         self.large_field_support = False
         # End csv module params
         self.header_row = 1
-        self.start_row = 1 # Will be incremented if the header row is read
+        self.start_row = 1  # Will be incremented if the header row is read
         
         # column to catch long rows (more values than columns)
         self.restkey = 'extra data past last delimiter'
@@ -214,22 +227,22 @@ class CSVReader(ETLComponent):
                     )
 
     @property
-    def reader(self):
+    def reader(self) -> csv.reader:
         """
         Build or get the csv.reader object.
         """
         if self.__reader is None:
             # Initialize the reader
-            self.__reader = csv.reader(self.file, 
-                                       dialect=self.dialect,
-                                       delimiter=self.delimiter,
-                                       doublequote=self.doublequote,
-                                       escapechar=self.escapechar,
-                                       quotechar=self.quotechar,
-                                       quoting=self.quoting,
-                                       skipinitialspace=self.skipinitialspace,
-                                       strict=self.strict,
-                                       )
+            self.__reader = csv.reader(self.file,
+                                            dialect=self.dialect,
+                                            delimiter=self.delimiter,
+                                            doublequote=self.doublequote,
+                                            escapechar=self.escapechar,
+                                            quotechar=self.quotechar,
+                                            quoting=self.quoting,
+                                            skipinitialspace=self.skipinitialspace,
+                                            strict=self.strict,
+                                            )
             if self.large_field_support:
                 csv.field_size_limit(2147483647)  # largest value it will accept
             
@@ -265,6 +278,7 @@ class CSVReader(ETLComponent):
                 stats.timer.start()
                 progress_timer = Timer()                                
                 for _ in range(target_row - current_row):
+                    # noinspection PyTypeChecker
                     next(self.reader, None)
                     # Increment self.rows_read although they aren't really processed, so we know where we were
                     stats['rows read'] += 1
@@ -284,7 +298,8 @@ class CSVReader(ETLComponent):
         (saved_position, saved_line_num) = self.seek_row(self.header_row)
         if self.start_row == self.header_row:
             self.start_row += 1
-        header_row =  next(self.reader, None)
+        # noinspection PyTypeChecker
+        header_row = next(self.reader, None)
         if saved_position is not None and saved_position > 0:
             new_position = self.file.tell()
             if new_position < saved_position:
@@ -311,6 +326,7 @@ class CSVReader(ETLComponent):
         try:
             self.seek_row(self.start_row)
             this_iteration_header = self.generate_iteration_header()
+            # noinspection PyTypeChecker
             for row in self.reader:
                 if len(row) != 0:     
                     # Convert empty strings to None to be consistent with DB reads

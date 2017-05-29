@@ -10,6 +10,7 @@ import logging
 import traceback
 import warnings
 from queue import Empty
+from typing import Union
 
 from CaseInsensitiveDict import CaseInsensitiveDict
 
@@ -398,8 +399,6 @@ class ETLTask(object):
         if self._config is None:
             self._config = BIConfigParser()
             self._config.read_config_ini()
-            self._config.set_dated_log_file_name(self.name, '.log')
-            self._config.setup_logging()
         return self._config
 
     @property
@@ -658,15 +657,24 @@ class ETLTask(object):
         return obj
 
     # pylint: disable=singleton-comparison
-    def debug_sql(self, mode=True):
-        if mode == True:
-            self.log.info('Setting sqlalchemy.engine to DEBUG')
-            logging.getLogger('sqlalchemy.engine').setLevel(logging.DEBUG)
-            logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.DEBUG)
-        elif mode == False:
-            self.log.info('Setting sqlalchemy.engine to ERROR')
-            logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
-            logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.ERROR)
+    def debug_sql(self, mode: Union[bool, int] = True):
+        """
+        Control the output of sqlalchemy engine
+
+        Parameters
+        ----------
+        mode
+            Boolean (debug if True, Error if false) or int logging level.
+        """
+        if isinstance(mode, bool):
+            if mode:
+                self.log.info('Setting sqlalchemy.engine to DEBUG')
+                logging.getLogger('sqlalchemy.engine').setLevel(logging.DEBUG)
+                logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.DEBUG)
+            else:
+                self.log.info('Setting sqlalchemy.engine to ERROR')
+                logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
+                logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.ERROR)
         else:
             self.log.info('Setting sqlalchemy.engine to {}'.format(mode))
             logging.getLogger('sqlalchemy.engine').setLevel(mode)
@@ -674,12 +682,17 @@ class ETLTask(object):
 
     def __thread_init(self):
         """
-        Base class pre-load initialization.  Runs on the execution server. Override init instead of this.
+        Base class pre-load initialization.  Runs on the execution server.
+        Override init instead of this.
         """
         queue_io.redirect_output_to(self.child_to_parent)
 
-        # Make sure config is loaded (side effect setups logging)
-        config = self.config  # @UnusedVariable pylint: disable=unused-variable
+        config = self.config
+        if not isinstance(config, BIConfigParser):
+            config = BIConfigParser(config)
+        config.set_dated_log_file_name(self.name, '.log')
+        config.setup_logging()
+
         self.log_logging_level()
         self.log.debug("externally_provided_scheduler = {}".format(self._externally_provided_scheduler))
 

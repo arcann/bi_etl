@@ -277,14 +277,17 @@ def dict_to_pairs(obj, prefix=None, delimit='.'):
 
 
 def log_logging_level(log):
-    levelNum = log.getEffectiveLevel()
-    if levelNum > logging.INFO:
-        ## If we aren't at INFO level or more detailed, then temporarily set it to INFO and restore it later
+    original_level = log.getEffectiveLevel()
+    if original_level > logging.INFO:
+        # If we aren't at INFO level or more detailed, then temporarily set it to INFO and restore it later
         log.setLevel(logging.INFO)
-    log.info('Logging level is {name} ({num})'.format(num=log.getEffectiveLevel(), name=logging.getLevelName(levelNum)))
-    if levelNum > logging.INFO:
-        ## Restore logging level
-        log.setLevel(levelNum)
+    log.info('Logging level is {name} ({num})'.format(
+        num=log.getEffectiveLevel(),
+        name=logging.getLevelName(original_level))
+    )
+    if original_level > logging.INFO:
+        # Restore logging level
+        log.setLevel(original_level)
 
 
 def getIntegerPlaces(theNumber):

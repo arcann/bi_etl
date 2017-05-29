@@ -1,12 +1,5 @@
 """
-Created on Sep 4, 2014
+Don't import anything here! 
 
-@author: woodd
+That would break the ability of setup.py to import bi_etl.version
 """
-
-## Imports to make this package's classes available here
-from .timer import Timer
-from bi_etl.scheduler.task import ETLTask, run_task
-
-
-
