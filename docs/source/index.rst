@@ -11,6 +11,49 @@ Python based ETL (Extract Transform Load) framework geared towards BI databases 
 The goal of the project is to create reusable objects with typical technical transformations
 used in loading dimension tables.
 
+*************************
+Guiding Design Principles
+*************************
+
+1. Don't Repeat Yourself (DRY).
+
+   The source or target of an ETL owns the metadata (list of columns and data types).
+   The ETL generally has no reason to define those again unless the ETL requires a change.
+   If a datatype must be changed, only that one column's new type should be specified.
+   If a column name must be changed, only the source & target column names that differ should be specified.
+
+2. Data Quality is King
+
+   Data quality is more important than performance.  Fail before truncating data contents even if that means
+   sacrificing some load performance.
+
+3. Give helpful error messages.
+
+4. Make it as easy as possible to create re-usable modules.
+
+5. SQL is a very powerful transformation language. The Transform Extract Load (TEL) model should be supported.
+
+****************
+Areas to Work on
+****************
+
+* Scheduling.
+
+  An event based job sequencing tool exists. It does not yet support time based triggers.
+
+  It was also designed for an environment where the web interface or event triggering server may
+  not be able to communicate directly to the ETL execution server. So all communication is done
+  via the database.
+
+* Performance.
+
+  There is a limit to how much performance is possible with Python.  Some tools offer C/C++ integration
+  however, the slowest CPU bound step is the Table.build_row module and that depends heavily on dynamic
+  data-type nature of Python.
+
+  Multi-threaded insert/updates appear to provide some good benefit on certain database platforms
+  (e.g. SQL Server)
+
 *******************
 Configuration Files
 *******************
