@@ -388,7 +388,7 @@ class Row(object):
 
     def remove_columns(self,
                        remove_list,
-                       ignore_missing = False):
+                       ignore_missing=False):
         """
         Remove columns from this row instance.
 
@@ -599,7 +599,6 @@ class Row(object):
     def transform(self,
                   column_specifier,
                   transform_function,
-                  raise_on_not_exist :bool =True,
                   *args,
                   **kwargs):
         """
@@ -612,14 +611,22 @@ class Row(object):
             The column name in the row to be transformed
         transform_function: func
             The transformation function to use. It must take the value to be transformed as it's first argument.
-        raise_on_not_exist:
-            Should this function raise an error if the column_specifier doesn't match an existing column.
-            Defaults to True
         args: list
             Positional arguments to pass to transform_function
         kwargs: dict
             Keyword arguments to pass to transform_function
+        raise_on_not_exist:
+            Should this function raise an error if the column_specifier doesn't match an existing column.
+            Must be passed as a keyword arg
+            Defaults to True
         """
+        # noinspection PyPep8Naming
+        RAISE_ON_NOT_EXIST_NAME = 'raise_on_not_exist'
+        raise_on_not_exist = True
+        if RAISE_ON_NOT_EXIST_NAME in kwargs:
+            raise_on_not_exist = kwargs[RAISE_ON_NOT_EXIST_NAME]
+            del kwargs[RAISE_ON_NOT_EXIST_NAME]
+
         try:
             column_name = self._get_name(column_specifier)
             position = self.iteration_header.get_column_position(column_name)

@@ -24,8 +24,8 @@ Guiding Design Principles
 
 2. Data Quality is King
 
-   Data quality is more important than performance.  Fail before truncating data contents even if that means
-   sacrificing some load performance.
+   Data quality is more important than performance.  For example, the process should fail before truncating data
+   contents (i.e. loading 6 characters into a 5 character field) even if that means sacrificing some load performance.
 
 3. Give helpful error messages.
 

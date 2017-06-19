@@ -11,7 +11,7 @@ See `this example <http://sphinxcontrib-napoleon.readthedocs.org/en/latest/examp
 Rst files
 ~~~~~~~~~
 
-These documenation files are reStructuredText formatted. They are processed into HTML using `Sphinx <http://www.sphinx-doc.org/en/stable/rest.html>`_.
+These documentation files are reStructuredText formatted. They are processed into HTML using `Sphinx <http://www.sphinx-doc.org/en/stable/rest.html>`_.
 
 
 Building the HTML Version
@@ -52,4 +52,3 @@ We use the following formats for the different reStructuredText header levels::
    
    Level 6
    +++++++
-   

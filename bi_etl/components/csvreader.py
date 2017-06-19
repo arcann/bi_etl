@@ -157,8 +157,8 @@ class CSVReader(ETLComponent):
                  ):
         
         self.log = logging.getLogger("{mod}.{cls}".format(
-            mod = self.__class__.__module__,
-            cls= self.__class__.__name__
+            mod=self.__class__.__module__,
+            cls=self.__class__.__name__
             )
         )
         

@@ -28,6 +28,8 @@ from sqlalchemy.sql.sqltypes import Time
 
 from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.components.hst_table import Hst_Table
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
+from bi_etl.components.row.row import Row
 from bi_etl.database.connect import Connect
 from bi_etl.scheduler.task import ETLTask
 
@@ -163,8 +165,9 @@ class TestHstTable(unittest.TestCase):
                 tbl.insert(row)
             tbl.commit()
 
+            update_row_header = RowIterationHeader()
             for i in range(upsert_start, upsert_end + 1):
-                row = tbl.Row()
+                row = Row(iteration_header=update_row_header)
                 row['int_col'] = i
                 row['text_col'] = 'upsert row {}'.format(i)
                 row['datetime_col'] = datetime(2001, 1, i, 12, 51, 43)
@@ -173,7 +176,7 @@ class TestHstTable(unittest.TestCase):
 
             tbl.commit()
 
-            ## Validate data
+            # Validate data
             rows_dict = dict()
             last_int_value = -1
             for row in tbl.order_by(['int_col', tbl.begin_date]):
@@ -185,7 +188,7 @@ class TestHstTable(unittest.TestCase):
                     self.assertEqual(last_int_value, row['int_col'], 'Order by did not work for new version row')
                 rows_dict[row['int_col']] = row
 
-                ## Check the row contents
+                # Check the row contents
                 i = row['int_col']
                 if i in range(upsert_start):
                     self.assertEqual(row['text_col'], 'this is row {}'.format(i))
@@ -195,17 +198,17 @@ class TestHstTable(unittest.TestCase):
                     self.assertIsNone(row['datetime_col'])
                 else:
                     if row[tbl.begin_date] == tbl.default_begin_date and i in range(rows_to_insert):
-                        ## original values
+                        # original values
                         self.assertEqual(row['text_col'], 'this is row {}'.format(i))
                         self.assertEqual(row['real_col'], i / 1000.0)
                         self.assertEqual(row['num_col'], i / 100000000.0)
                         self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
                         self.assertIsNone(row['datetime_col'])
                     else:
-                        ## new values                        
+                        # new values
                         self.assertEqual(row['text_col'], 'upsert row {}'.format(i))
-                        ## for the originally inserted rows the new version will have the original data for
-                        ## these fields that are not in the upsert
+                        # for the originally inserted rows the new version will have the original data for
+                        # these fields that are not in the upsert
                         if i in range(rows_to_insert):
                             self.assertEqual(row['real_col'], i / 1000.0)
                             self.assertEqual(row['num_col'], i / 100000000.0)
@@ -266,8 +269,9 @@ class TestHstTable(unittest.TestCase):
 
             tbl.fill_cache()
 
+            update_row_header = RowIterationHeader()
             for i in range(upsert_start, upsert_end + 1):
-                row = tbl.Row()
+                row = Row(iteration_header=update_row_header)
                 row['int_col'] = i
                 row['text_col'] = 'upsert row {}'.format(i)
                 row['datetime_col'] = datetime(2001, 1, i, 12, 51, 43)
@@ -276,7 +280,7 @@ class TestHstTable(unittest.TestCase):
 
             tbl.commit()
 
-            ## Validate data
+            # Validate data
             last_int_value = -1
             for row in tbl.order_by(['int_col', tbl.begin_date]):
                 self.log.debug(row.values_in_order())
@@ -286,7 +290,7 @@ class TestHstTable(unittest.TestCase):
                 else:
                     self.assertEqual(last_int_value, row['int_col'], 'Order by did not work for new version row')
 
-                ## Check the row contents
+                # Check the row contents
                 i = row['int_col']
                 if i in range(upsert_start):
                     self.assertEqual(row['text_col'], 'this is row {}'.format(i))
@@ -296,17 +300,17 @@ class TestHstTable(unittest.TestCase):
                     self.assertIsNone(row['datetime_col'])
                 else:
                     if row[tbl.begin_date] == tbl.default_begin_date and i in range(rows_to_insert):
-                        ## original values
+                        # original values
                         self.assertEqual(row['text_col'], 'this is row {}'.format(i))
                         self.assertEqual(row['real_col'], i / 1000.0)
                         self.assertEqual(row['num_col'], i / 100000000.0)
                         self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
                         self.assertIsNone(row['datetime_col'])
                     else:
-                        ## new values                        
+                        # new values
                         self.assertEqual(row['text_col'], 'upsert row {}'.format(i))
-                        ## for the originally inserted rows the new version will have the original data for
-                        ## these fields that are not in the upsert
+                        # for the originally inserted rows the new version will have the original data for
+                        # these fields that are not in the upsert
                         if i in range(rows_to_insert):
                             self.assertEqual(row['real_col'], i / 1000.0)
                             self.assertEqual(row['num_col'], i / 100000000.0)
@@ -357,7 +361,6 @@ class TestHstTable(unittest.TestCase):
                     )
         idx.create()
 
-
         idx = Index(tbl_name + '_idx2',
                     sa_table.c.sk1_col,
                     sa_table.c.source_begin_date,
@@ -387,6 +390,7 @@ class TestHstTable(unittest.TestCase):
 
             for i in range(rows_to_insert):
                 row = tbl.Row()
+                row.remove_columns([tbl.type_1_surrogate])
                 row['nk_col1'] = i
                 row['nk_col2'] = i + 100
                 row['text_col'] = 'this is row {}'.format(i)
@@ -398,14 +402,15 @@ class TestHstTable(unittest.TestCase):
 
             tbl.fill_cache()
 
+            update_row_header = RowIterationHeader()
             for i in range(upsert_start, upsert_end + 1):
-                row = tbl.Row()
+                row = Row(iteration_header=update_row_header)
                 row['nk_col1'] = i
                 row['nk_col2'] = i + 100
                 row['text_col'] = 'upsert row {}'.format(i)
                 row['datetime_col'] = datetime(2001, 1, i, 12, 51, 43)
 
-                tbl.upsert(row, lookup_name='NK')
+                tbl.upsert(row, lookup_name='NK', source_excludes=[tbl.type_1_surrogate, tbl.primary_key[0]])
 
             tbl.commit()
 

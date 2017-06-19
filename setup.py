@@ -29,7 +29,7 @@ extras_require = {
     }
 
 tests_require = [
-    'nose',
+    'pytest',
     'coverage',
 ]
 

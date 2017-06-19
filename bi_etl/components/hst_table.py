@@ -679,8 +679,8 @@ class HistoryTable(Table):
                                      )
                     for row in self.get_pk_lookup().get_versions_collection(row).values():
                         self.log.info("begin= {begin}\tend= {end}".format(
-                            begin= row[self.begin_date],
-                            end= row[self.end_date]
+                            begin=row[self.begin_date],
+                            end=row[self.end_date]
                             ),
                         )
                 new_row[self.end_date_column] = self.default_end_date

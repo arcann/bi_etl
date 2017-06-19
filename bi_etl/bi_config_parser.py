@@ -48,6 +48,10 @@ class BIConfigParser(ConfigParser):
                                                    'trace_setup',
                                                    fallback=False
                                                    )
+        # Make sure the current working dir is the bi_etl home dir (where config.ini can be found)
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        dir_path = os.path.dirname(dir_path)
+        os.chdir(dir_path)
 
     def merge_parent(self, directories, parent_file):
         parent_config = ConfigParser(allow_no_value=True,
@@ -95,13 +99,13 @@ class BIConfigParser(ConfigParser):
         user_dir = os.path.expanduser('~')
         expected_config_files = [
             # These static paths are for running as a windows service
-            os.path.join("C:", "bi_etl_config", "config.ini"),
-            os.path.join("D:", "bi_etl_config", "config.ini"),
-            os.path.join("E:", "bi_etl_config", "config.ini"),
+            os.path.join("C:\\", "bi_etl_config", "config.ini"),
+            os.path.join("D:\\", "bi_etl_config", "config.ini"),
+            os.path.join("E:\\", "bi_etl_config", "config.ini"),
             # If those don't work then look in the user directory
             os.path.join(user_dir, 'bi_etl_config', 'config.ini'),
             # Finally use a file in the current directory (will override other settings)
-            "config.ini",
+            os.path.join(os.getcwd(), "config.ini"),
         ]
         files_read = self.read(expected_config_files)
         if files_read is None or len(files_read) == 0:

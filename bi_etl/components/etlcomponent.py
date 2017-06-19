@@ -82,6 +82,7 @@ class ETLComponent(Iterable):
         # self.log = logging.getLogger(__name__)
         self.log = logging.getLogger("{mod}.{cls}".format(mod = self.__class__.__module__, cls= self.__class__.__name__))
         self.task.log_logging_level()
+        self.row_object = Row
         
         # Register this component with it's parent task        
         if task is not None:
@@ -96,10 +97,10 @@ class ETLComponent(Iterable):
     
     def __repr__(self):
         return "{cls}(task={task},logical_name={logical_name},primary_key={primary_key})".format(
-            cls= self.__class__.__name__,
-            task= self.task,
-            logical_name= self.logical_name,
-            primary_key= self.primary_key,
+            cls=self.__class__.__name__,
+            task=self.task,
+            logical_name=self.logical_name,
+            primary_key=self.primary_key,
             )
         
     def __str__(self):
@@ -303,8 +304,8 @@ class ETLComponent(Iterable):
                             break
                     if not passed_filter:
                         continue
-            if not isinstance(row, Row):
-                row = Row(this_iteration_header, data=row)
+            if not isinstance(row, self.row_object):
+                row = self.row_object(this_iteration_header, data=row)
             # If we already have a Row object, we'll keep the same iteration header
 
             # Add to global read counter
@@ -437,7 +438,7 @@ class ETLComponent(Iterable):
         """
         if iteration_header is None:
             iteration_header = self.generate_iteration_header(logical_name=logical_name)
-        return Row(iteration_header=iteration_header, data=data)
+        return self.row_object(iteration_header=iteration_header, data=data)
 
     def generate_iteration_header(self, logical_name=None):
         if logical_name is None:

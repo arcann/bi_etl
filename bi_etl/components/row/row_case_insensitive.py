@@ -24,12 +24,15 @@ class RowCaseInsensitive(Row):
     __name_map_db = dict()
 
     def __init__(self,
-                 iteration_header: RowIterationHeader = None,
+                 iteration_header: RowIterationHeader,
                  data=None,
-                 status: RowStatus = None):
+                 status: RowStatus = None,
+                 allocate_space=True):
         super().__init__(data=data,
                          iteration_header=iteration_header,
-                         status=status)
+                         status=status,
+                         allocate_space=allocate_space
+                         )
 
     @staticmethod
     def _get_name(input_name):

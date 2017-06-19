@@ -448,229 +448,215 @@ class Table(ReadOnlyTable):
         build_row_stats.timer.start()
         build_row_stats['calls'] += 1
 
-        # Check if we can skip this expensive logic by cloning the row
-        if (    hasattr(source_row, 'name')
-            and source_row.name == self.row_name
-            and source_row.column_set == self._example_row.column_set
-           ):
-            build_row_stats.timer.stop()            
-            return source_row.subset(exclude=source_excludes)
-        else: 
-            #####################
-            # Expensive row building is required
-            #####################
-            # First make sure we have an instance of Row as a source 
-            if not isinstance(source_row, Row):
-                # This will be slow if passed a lot of these non-Row objects
-                iteration_header = RowIterationHeader(logical_name='default')
-                source_row = Row(iteration_header, data=source_row)
-            target_set = set(self.column_names)
-            if target_excludes is not None:
-                target_set -= set(target_excludes)
-            new_row = source_row.subset(exclude=source_excludes, keep_only= target_set)
+        # First make sure we have an instance of Row as a source
+        if not isinstance(source_row, Row):
+            # This will be slow if passed a lot of these non-Row objects
+            iteration_header = RowIterationHeader(logical_name='default')
+            source_row = self.row_object(iteration_header, data=source_row)
+        target_set = set(self.column_names)
+        if target_excludes is not None:
+            target_set -= set(target_excludes)
+        new_row = source_row.subset(exclude=source_excludes, keep_only=target_set)
 
-            # Safe type mode is slower, but gives better error messages than the 
-            # database that will likely give a not-so helpful message or silently truncate a value.
-            if self.safe_type_mode:             
-                for target_name, target_column_value in new_row.items():
-                    target_column_object = self.get_column(target_name)
-                    if target_column_value is not None:
-                        # Normalize the column names to the target column names (case changes)
-                        # DW: Removed this for now since Row is not case sensitive
-                        #if target_name != target_column_object.name:
-                        #    new_row.rename_column(target_name, target_column_object.name, ignore_missing= False)
-                        #    target_name = target_column_object.name
-                        
-                        t_type = target_column_object.type
-                        type_error = False
-                        err_msg = None
-                    
-                        try:
-                            if t_type.python_type == str:
-                                if isinstance(target_column_value, str):
-                                    if self.force_ascii:
-                                        # Passing ascii bytes to cx_Oracle is not working.
-                                        # We need to pass a str value.
-                                        # So we'll use encode with 'replace' to force ascii compatibility                                                                        
-                                        target_column_value = \
-                                            target_column_value.encode('ascii', 'replace_tilda').decode('ascii')
-                                        new_row[target_name] = target_column_value
-                                    # else we don't update the value
-                                elif isinstance(target_column_value, bytes):
-                                    target_column_value = target_column_value.decode('ascii')
+        # Safe type mode is slower, but gives better error messages than the
+        # database that will likely give a not-so helpful message or silently truncate a value.
+        # Non safe type mode can also lead to a failure of the lookups since type differences
+        # will cause the lookup key to look different from the existing value.
+        if self.safe_type_mode:
+            for target_name, target_column_value in new_row.items():
+                target_column_object = self.get_column(target_name)
+                if target_column_value is not None:
+                    t_type = target_column_object.type
+                    type_error = False
+                    err_msg = None
+
+                    try:
+                        if t_type.python_type == str:
+                            if isinstance(target_column_value, str):
+                                if self.force_ascii:
+                                    # Passing ascii bytes to cx_Oracle is not working.
+                                    # We need to pass a str value.
+                                    # So we'll use encode with 'replace' to force ascii compatibility
+                                    target_column_value = \
+                                        target_column_value.encode('ascii', 'replace_tilda').decode('ascii')
                                     new_row[target_name] = target_column_value
-                                else:
-                                    target_column_value = str(target_column_value)
-                                    new_row[target_name] = target_column_value
-                                #Note: t_type.length is None for CLOB fields
-                                try:
-                                    if t_type.length is not None and len(target_column_value) > t_type.length:
-                                        type_error = True
-                                        err_msg = "length {} > {} limit".format(len(target_column_value), t_type.length)
-                                except TypeError:
-                                    # t_type.length is not a comparable type
-                                    pass
-                            elif t_type.python_type == bytes:
-                                if isinstance(target_column_value, str):
-                                    target_column_value = target_column_value.encode('utf-8')
-                                    new_row[target_name] = target_column_value
-                                elif isinstance(target_column_value, bytes):
-                                    pass
-                                    # We don't update the value
-                                else:
-                                    target_column_value = str(target_column_value).encode('utf-8')
-                                    new_row[target_name] = target_column_value
-                                # t_type.length is None for BLOB, LargeBinary fields.
-                                # This really might not be required since all
-                                # discovered types with python_type == bytes:
-                                # have no length
-                                if t_type.length is not None:
-                                    if len(target_column_value) > t_type.length:
-                                        type_error = True
-                                        err_msg = "{} > {}".format(len(target_column_value), t_type.length)
-                            elif t_type.python_type == int:
-                                if isinstance(target_column_value, str):
-                                    # Note: str2int takes 590 ns vs 220 ns for int() but handles commas and signs.                                
-                                    target_column_value = str2int(target_column_value)
-                                    new_row[target_name] = target_column_value
-                            elif t_type.python_type == float:
-                                if isinstance(target_column_value, str):
-                                    # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
-                                    # The thought is that ETL jobs that need the performance and can guarantee no commas
-                                    # can explicitly use float
-                                    target_column_value = str2float(target_column_value)
-                                    new_row[target_name] = target_column_value
-                                elif math.isnan(target_column_value):
+                                # else we don't update the value
+                            elif isinstance(target_column_value, bytes):
+                                target_column_value = target_column_value.decode('ascii')
+                                new_row[target_name] = target_column_value
+                            else:
+                                target_column_value = str(target_column_value)
+                                new_row[target_name] = target_column_value
+                            # Note: t_type.length is None for CLOB fields
+                            try:
+                                if t_type.length is not None and len(target_column_value) > t_type.length:
+                                    type_error = True
+                                    err_msg = "length {} > {} limit".format(len(target_column_value), t_type.length)
+                            except TypeError:
+                                # t_type.length is not a comparable type
+                                pass
+                        elif t_type.python_type == bytes:
+                            if isinstance(target_column_value, str):
+                                target_column_value = target_column_value.encode('utf-8')
+                                new_row[target_name] = target_column_value
+                            elif isinstance(target_column_value, bytes):
+                                pass
+                                # We don't update the value
+                            else:
+                                target_column_value = str(target_column_value).encode('utf-8')
+                                new_row[target_name] = target_column_value
+                            # t_type.length is None for BLOB, LargeBinary fields.
+                            # This really might not be required since all
+                            # discovered types with python_type == bytes:
+                            # have no length
+                            if t_type.length is not None:
+                                if len(target_column_value) > t_type.length:
+                                    type_error = True
+                                    err_msg = "{} > {}".format(len(target_column_value), t_type.length)
+                        elif t_type.python_type == int:
+                            if isinstance(target_column_value, str):
+                                # Note: str2int takes 590 ns vs 220 ns for int() but handles commas and signs.
+                                target_column_value = str2int(target_column_value)
+                                new_row[target_name] = target_column_value
+                        elif t_type.python_type == float:
+                            if isinstance(target_column_value, str):
+                                # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
+                                # The thought is that ETL jobs that need the performance and can guarantee no commas
+                                # can explicitly use float
+                                target_column_value = str2float(target_column_value)
+                                new_row[target_name] = target_column_value
+                            elif math.isnan(target_column_value):
+                                target_column_value = self.NAN_REPLACEMENT_VALUE
+                                new_row[target_name] = target_column_value
+                        elif t_type.python_type == Decimal:
+                            if isinstance(target_column_value, str):
+                                # If for performance reasons you don't want this conversion...
+                                #   DON'T send in a string!
+                                # str2decimal takes 765 ns vs 312 ns for Decimal() but handles commas and signs.
+                                # The thought is that ETL jobs that need the performance and can
+                                # guarantee no commas can explicitly use float or Decimal
+                                target_column_value = str2decimal(target_column_value)
+                                new_row[target_name] = target_column_value
+                            elif isinstance(target_column_value, float):
+                                if math.isnan(target_column_value):
                                     target_column_value = self.NAN_REPLACEMENT_VALUE
                                     new_row[target_name] = target_column_value
-                            elif t_type.python_type == Decimal:
-                                if isinstance(target_column_value, str):
-                                    # If for performance reasons you don't want this conversion...
-                                    #   DON'T send in a string!
-                                    # str2decimal takes 765 ns vs 312 ns for Decimal() but handles commas and signs.
-                                    # The thought is that ETL jobs that need the performance and can
-                                    # guarantee no commas can explicitly use float or Decimal
-                                    target_column_value = str2decimal(target_column_value)
-                                    new_row[target_name] = target_column_value
-                                elif isinstance(target_column_value, float):
-                                    if math.isnan(target_column_value):
-                                        target_column_value = self.NAN_REPLACEMENT_VALUE
-                                        new_row[target_name] = target_column_value
-                                if t_type.precision is not None:
-                                    scale = nvl(t_type.scale, 0)
-                                    if getIntegerPlaces(target_column_value) > (t_type.precision - scale):
-                                        type_error = True
-                                        err_msg = "{digits} digits > {t_digits} = " \
-                                                  "(prec {prec} - scale {scale}) limit"\
-                                            .format(digits=getIntegerPlaces(target_column_value),
-                                                    t_digits=(t_type.precision - scale),
-                                                    prec=t_type.precision,
-                                                    scale=t_type.scale,
-                                                    )
-                            elif t_type.python_type == date:
-                                # If we already have a datetime, make it a date
-                                if isinstance(target_column_value, datetime):
-                                    target_column_value = date(target_column_value.year, 
-                                                               target_column_value.month, 
-                                                               target_column_value.day)
-                                    new_row[target_name] = target_column_value
-                                # If we already have a date
-                                elif isinstance(target_column_value, date):
-                                    pass
-                                else:                            
-                                    target_column_value = str2date(target_column_value,
-                                                                   dt_format= self.default_date_format)
-                                    new_row[target_name] = target_column_value
-                            elif t_type.python_type == datetime:
-                                # If we already have a date or datetime value
-                                if isinstance(target_column_value, datetime) or isinstance(target_column_value, date):
-                                    pass
-                                elif isinstance(target_column_value, str):
-                                    target_column_value = str2datetime(target_column_value,
-                                                                       dt_format= self.default_date_time_format)
-                                    new_row[target_name] = target_column_value
-                                else:                            
-                                    target_column_value = str2datetime(str(target_column_value),
-                                                                       dt_format= self.default_date_time_format)
-                                    new_row[target_name] = target_column_value
-                            elif t_type.python_type == time:                                
-                                # If we already have a datetime, make it a time
-                                if isinstance(target_column_value, datetime):
-                                    target_column_value = time(target_column_value.hour, 
-                                                               target_column_value.minute, 
-                                                               target_column_value.second,
-                                                               target_column_value.microsecond,
-                                                               target_column_value.tzinfo,
-                                                               )
-                                    new_row[target_name] = target_column_value
-                                # If we already have a date or time value
-                                elif isinstance(target_column_value, time):
-                                    pass
-                                else:                            
-                                    target_column_value = str2time(target_column_value,
-                                                                   dt_format= self.default_time_format)
-                                    new_row[target_name] = target_column_value
-                            elif t_type.python_type == timedelta:
-                                # If we already have an interval value
-                                if isinstance(target_column_value, timedelta):
-                                    pass
-                                else:                            
-                                    target_column_value = timedelta(seconds=target_column_value)
-                                    new_row[target_name] = target_column_value
-                            elif t_type.python_type == bool:
-                                if isinstance(target_column_value, bool):
-                                    pass
-                                elif isinstance(target_column_value, str):
-                                    target_column_value = target_column_value.lower()
-                                    if target_column_value in ['true', 'yes', 'y']:
-                                        target_column_value = True
-                                    elif target_column_value in ['false', 'no', 'n']:
-                                        target_column_value = True
-                                    else:
-                                        type_error = True
-                                        err_msg = "unexpected value (expected true/false, yes/no, y/n)"
-                                    new_row[target_name] = target_column_value
+                            if t_type.precision is not None:
+                                scale = nvl(t_type.scale, 0)
+                                if getIntegerPlaces(target_column_value) > (t_type.precision - scale):
+                                    type_error = True
+                                    err_msg = "{digits} digits > {t_digits} = " \
+                                              "(prec {prec} - scale {scale}) limit"\
+                                        .format(digits=getIntegerPlaces(target_column_value),
+                                                t_digits=(t_type.precision - scale),
+                                                prec=t_type.precision,
+                                                scale=t_type.scale,
+                                                )
+                        elif t_type.python_type == date:
+                            # If we already have a datetime, make it a date
+                            if isinstance(target_column_value, datetime):
+                                target_column_value = date(target_column_value.year,
+                                                           target_column_value.month,
+                                                           target_column_value.day)
+                                new_row[target_name] = target_column_value
+                            # If we already have a date
+                            elif isinstance(target_column_value, date):
+                                pass
                             else:
-                                warnings.warn('Table.build_row has no handler for {} = {}'.format(t_type, type(t_type)))
-                        except (ValueError, InvalidOperation) as e:
-                            #self.log.error(traceback.format_exc())
-                            self.log.error(repr(e))
-                            err_msg = repr(e)
-                            type_error = True
-                                    
-                        if type_error:
-                            build_row_stats.timer.stop()
-                            msg = "{table}.{column} has type {type} which cannot accept value '{val}' {err_msg}"
-                            msg = msg.format(
-                                table = self,
-                                column = target_name,
-                                type = t_type,
-                                val = target_column_value,
-                                err_msg = err_msg
-                            )
-                            raise ValueError(msg)
-                # Check again for nulls in case the conversion logic made it so
+                                target_column_value = str2date(target_column_value,
+                                                               dt_format= self.default_date_format)
+                                new_row[target_name] = target_column_value
+                        elif t_type.python_type == datetime:
+                            # If we already have a date or datetime value
+                            if isinstance(target_column_value, datetime) or isinstance(target_column_value, date):
+                                pass
+                            elif isinstance(target_column_value, str):
+                                target_column_value = str2datetime(target_column_value,
+                                                                   dt_format= self.default_date_time_format)
+                                new_row[target_name] = target_column_value
+                            else:
+                                target_column_value = str2datetime(str(target_column_value),
+                                                                   dt_format= self.default_date_time_format)
+                                new_row[target_name] = target_column_value
+                        elif t_type.python_type == time:
+                            # If we already have a datetime, make it a time
+                            if isinstance(target_column_value, datetime):
+                                target_column_value = time(target_column_value.hour,
+                                                           target_column_value.minute,
+                                                           target_column_value.second,
+                                                           target_column_value.microsecond,
+                                                           target_column_value.tzinfo,
+                                                           )
+                                new_row[target_name] = target_column_value
+                            # If we already have a date or time value
+                            elif isinstance(target_column_value, time):
+                                pass
+                            else:
+                                target_column_value = str2time(target_column_value,
+                                                               dt_format= self.default_time_format)
+                                new_row[target_name] = target_column_value
+                        elif t_type.python_type == timedelta:
+                            # If we already have an interval value
+                            if isinstance(target_column_value, timedelta):
+                                pass
+                            else:
+                                target_column_value = timedelta(seconds=target_column_value)
+                                new_row[target_name] = target_column_value
+                        elif t_type.python_type == bool:
+                            if isinstance(target_column_value, bool):
+                                pass
+                            elif isinstance(target_column_value, str):
+                                target_column_value = target_column_value.lower()
+                                if target_column_value in ['true', 'yes', 'y']:
+                                    target_column_value = True
+                                elif target_column_value in ['false', 'no', 'n']:
+                                    target_column_value = True
+                                else:
+                                    type_error = True
+                                    err_msg = "unexpected value (expected true/false, yes/no, y/n)"
+                                new_row[target_name] = target_column_value
+                        else:
+                            warnings.warn('Table.build_row has no handler for {} = {}'.format(t_type, type(t_type)))
+                    except (ValueError, InvalidOperation) as e:
+                        # self.log.error(traceback.format_exc())
+                        self.log.error(repr(e))
+                        err_msg = repr(e)
+                        type_error = True
+
+                    if type_error:
+                        build_row_stats.timer.stop()
+                        msg = "{table}.{column} has type {type} which cannot accept value '{val}' {err_msg}"
+                        msg = msg.format(
+                            table=self,
+                            column=target_name,
+                            type=t_type,
+                            val=target_column_value,
+                            err_msg=err_msg
+                        )
+                        raise ValueError(msg)
+                # Check for nulls. Not as an ELSE because the conversion logic might have made the value null
                 if target_column_value is None:
-                        if not target_column_object.nullable:
+                    if not target_column_object.nullable:
+                        if not self.auto_generate_key and target_name in self.primary_key:
                             msg = "{table}.{column} has is not nullable and this cannot accept value '{val}'" \
                                   " on row {row}".format(
-                                    table = self,
-                                    column = target_name,
-                                    val = target_column_value,
-                                    row = new_row.str_formatted()
+                                    table=self,
+                                    column=target_name,
+                                    val=target_column_value,
+                                    row=new_row.str_formatted()
                                   )
                             raise ValueError(msg)
-                    
-                    #End if target_column_value is not None:
-                
-                # End for target_name, target_column_value in new_row.items():
-                
-            if additional_values:
-                for colName, value in additional_values.items():
-                    new_row[colName] = value        
-            
-            build_row_stats.timer.stop()
-            return new_row
+
+                # End if target_column_value is not None:
+
+            # End for target_name, target_column_value in new_row.items():
+
+        if additional_values:
+            for colName, value in additional_values.items():
+                new_row[colName] = value
+
+        build_row_stats.timer.stop()
+        return new_row
     
     #===========================================================================
     # def make_bind_name(self, prefix, column_name, limit=30):
@@ -1028,16 +1014,16 @@ class Table(ReadOnlyTable):
         if build_method == 'none':
             new_row = source_row
         elif build_method == 'clone':
-            new_row = source_row.clone()
+            new_row = source_row.subset(exclude=source_excludes,)
             if additional_insert_values:
                 for colName, value in additional_insert_values.items():
                     new_row[colName] = value
         else:
-            new_row = self.build_row(source_row= source_row,
-                                     additional_values= additional_insert_values,
-                                     source_excludes= source_excludes,
-                                     target_excludes= target_excludes,
-                                     parent_stats = stats,
+            new_row = self.build_row(source_row=source_row,
+                                     additional_values=additional_insert_values,
+                                     source_excludes=source_excludes,
+                                     target_excludes=target_excludes,
+                                     parent_stats=stats,
                                      )        
             
         self.autogenerate_key(new_row, force_override=False)        
@@ -1120,10 +1106,10 @@ class Table(ReadOnlyTable):
                 return None
         else:
             return self.insert_row(source_row, 
-                                   additional_insert_values= additional_insert_values, 
-                                   source_excludes= source_excludes,
-                                   target_excludes= target_excludes,
-                                   parent_stats= parent_stats,
+                                   additional_insert_values=additional_insert_values,
+                                   source_excludes=source_excludes,
+                                   target_excludes=target_excludes,
+                                   parent_stats=parent_stats,
                                    **kwargs
                                    )
 
