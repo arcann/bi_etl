@@ -31,6 +31,7 @@ class BIConfigParser(ConfigParser):
     Adds a read_config_ini function to read bi_etl_config\config.ini from C:\, E:\ or Home directory
     Adds a read_relative_config function to search from pwd up to file the config file
     """
+    CONFIG_ENV = 'BI_ETL_CONFIG'
 
     def __init__(self, *args, **kwargs):
         super().__init__(allow_no_value=True,
@@ -86,7 +87,9 @@ class BIConfigParser(ConfigParser):
 
     def read_config_ini(self):
         r"""
-        Read the config file from any of the following locations
+        If the BI_ETL_CONFIG environment variable is set, read the config file(s) as specified there (; delimited).
+
+        Otherwise, read the config file from any of the following locations
         (merging multiple files together if more than one exists.)        
         * C:\bi_etl_config\config.ini
         * D:\bi_etl_config\config.ini
@@ -96,17 +99,23 @@ class BIConfigParser(ConfigParser):
 
         Where ~ is the users home directory.
         """
-        user_dir = os.path.expanduser('~')
-        expected_config_files = [
-            # These static paths are for running as a windows service
-            os.path.join("C:\\", "bi_etl_config", "config.ini"),
-            os.path.join("D:\\", "bi_etl_config", "config.ini"),
-            os.path.join("E:\\", "bi_etl_config", "config.ini"),
-            # If those don't work then look in the user directory
-            os.path.join(user_dir, 'bi_etl_config', 'config.ini'),
-            # Finally use a file in the current directory (will override other settings)
-            os.path.join(os.getcwd(), "config.ini"),
-        ]
+
+        if BIConfigParser.CONFIG_ENV in os.environ:
+            config_env = os.environ[BIConfigParser.CONFIG_ENV]
+            config_env = os.path.expanduser(config_env)
+            expected_config_files = config_env.split(';')
+        else:
+            user_dir = os.path.expanduser('~')
+            expected_config_files = [
+                # These static paths are for running as a windows service
+                os.path.join("C:\\", "bi_etl_config", "config.ini"),
+                os.path.join("D:\\", "bi_etl_config", "config.ini"),
+                os.path.join("E:\\", "bi_etl_config", "config.ini"),
+                # If those don't work then look in the user directory
+                os.path.join(user_dir, 'bi_etl_config', 'config.ini'),
+                # Finally use a file in the current directory (will override other settings)
+                os.path.join(os.getcwd(), "config.ini"),
+            ]
         files_read = self.read(expected_config_files)
         if files_read is None or len(files_read) == 0:
             raise FileNotFoundError('None of the expected config files where found: {}'.format(expected_config_files))
