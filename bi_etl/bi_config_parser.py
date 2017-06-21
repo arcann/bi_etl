@@ -150,7 +150,7 @@ class BIConfigParser(ConfigParser):
         (root_path, _) = os.path.split(parent_path)
         return root_path
 
-    def read_relative_config(self, config_file_name, start_path=os.getcwd()):
+    def read_relative_config(self, config_file_name, start_path=None):
         """
         Search from start_path (default current directory) up to file the configuration file
 
@@ -167,6 +167,8 @@ class BIConfigParser(ConfigParser):
         files_read: list
             list of successfully read files.
         """
+        if start_path is None:
+            start_path = os.getcwd()
         # Recurse up directories looking for our config file
         path = start_path
         while not os.path.isfile(os.path.join(path, config_file_name)):

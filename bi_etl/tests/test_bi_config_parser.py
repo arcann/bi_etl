@@ -28,6 +28,7 @@ class Test(unittest.TestCase):
     def setUp(self):
         self.longMessage = True
 
+        self.generated_ini_file = '.BI_utils.ini'
         cp = configparser.ConfigParser()
         section = 'section1'
         cp.add_section(section)
@@ -43,21 +44,37 @@ class Test(unittest.TestCase):
         self.test_logger_name = 'test_logger_name'
         cp.add_section('loggers')
         cp.set('loggers', self.test_logger_name, 'DEBUG')
-
         self.config_parser = cp
-
         self.tempDir = tempfile.mkdtemp()
-        self.origDir = os.getcwd()
-        os.chdir(self.tempDir)
         os.mkdir(os.path.join(self.tempDir, 'my_folder'))
-        self.tempFile = os.path.join(self.tempDir, '.BI_utils.ini')
-        with open(self.tempFile, 'w') as temp_file_handle:
+        self.generated_ini_file_path = os.path.join(self.tempDir, self.generated_ini_file)
+        with open(self.generated_ini_file_path, 'w') as temp_file_handle:
             cp.write(temp_file_handle)
+
+        self.generated_child_ini_file = 'config.ini'
+        os.mkdir(os.path.join(self.tempDir, 'child'))
+        self.generated_child_ini_file_path = os.path.join(self.tempDir, 'child', self.generated_child_ini_file)
+        self.generated_parent_ini_file = 'shared_config.ini'
+        os.mkdir(os.path.join(self.tempDir, 'parent'))
+        self.generated_parent_ini_file_path = os.path.join(self.tempDir, self.generated_parent_ini_file)
+        child_cp = configparser.ConfigParser()
+        child_cp.add_section('Config')
+        child_cp['Config']['parent'] = self.generated_parent_ini_file_path
+        child_cp.add_section('Settings')
+        child_cp['Settings']['child'] = '1'
+        child_cp['Settings']['child_override'] = '2'
+        with open(self.generated_child_ini_file_path, 'w') as temp_file_handle:
+            child_cp.write(temp_file_handle)
+        parent_cp = configparser.ConfigParser()
+        parent_cp.add_section('Settings')
+        parent_cp['Settings']['parent'] = 'abc'
+        parent_cp['Settings']['child_override'] = '1'
+        with open(self.generated_parent_ini_file_path, 'w') as temp_file_handle:
+            parent_cp.write(temp_file_handle)
 
     def tearDown(self):
         self.log_folder.cleanup()
-        os.chdir(self.origDir)
-        os.remove(self.tempFile)
+        os.remove(self.generated_ini_file_path)
         try:
             shutil.rmtree(self.tempDir)
         except PermissionError:
@@ -72,6 +89,13 @@ class Test(unittest.TestCase):
             self.assertRaises(FileNotFoundError,
                               config.read_config_ini
                               )
+
+    def test_read_config_ini_NF2(self):
+        config = bi_etl.bi_config_parser.BIConfigParser()
+        self.assertRaises(FileNotFoundError,
+                          config.read_config_ini,
+                          'does_not_exist.ini',
+                          )
 
     def test_read_config_ini_OK(self):
         # This version will try and find the example config file.
@@ -88,9 +112,40 @@ class Test(unittest.TestCase):
             dir_path = os.path.dirname(dir_path)
             with mock.patch('os.getcwd', autospec=True) as getcwd:
                 getcwd.return_value = dir_path
-                # TODO: use Mock to patch os.getcwd to return dir_path without using chdir
-                #os.chdir(dir_path)
                 config.read_config_ini('example_config.ini')
+        except FileNotFoundError as e:
+            self.fail(e)
+
+    def test_read_child_config_ini_OK(self):
+        # This version will try and find the generated config file
+        # using the current working directory
+        # Will fail if it doesn't exist.
+        config = bi_etl.bi_config_parser.BIConfigParser()
+
+        try:
+            dir_path = os.path.dirname(self.generated_child_ini_file_path)
+            with mock.patch('os.getcwd', autospec=True) as getcwd:
+                getcwd.return_value = dir_path
+                config.read_config_ini('config.ini')
+            self.assertEquals(config['Settings']['child'], '1')
+            self.assertEquals(config['Settings']['child_override'], '2')
+            self.assertEquals(config['Settings']['parent'], 'abc')
+        except FileNotFoundError as e:
+            self.fail(e)
+
+    def test_read_child_config_ini_ENV_OK(self):
+        # This version will try and find the generated config file
+        # using the environment variable
+        # Will fail if it doesn't exist.
+        config = bi_etl.bi_config_parser.BIConfigParser()
+
+        try:
+            os.environ[config.CONFIG_ENV] = self.generated_child_ini_file_path
+            config.read_config_ini()
+            del os.environ[config.CONFIG_ENV]
+            self.assertEquals(config['Settings']['child'], '1')
+            self.assertEquals(config['Settings']['child_override'], '2')
+            self.assertEquals(config['Settings']['parent'], 'abc')
         except FileNotFoundError as e:
             self.fail(e)
 
@@ -98,7 +153,9 @@ class Test(unittest.TestCase):
         config = bi_etl.bi_config_parser.BIConfigParser()
 
         try:
-            config.read_relative_config('.BI_utils.ini', start_path=self.tempDir)
+            with mock.patch('os.getcwd', autospec=True) as getcwd:
+                getcwd.return_value = self.tempDir
+                config.read_relative_config(self.generated_ini_file, start_path=self.tempDir)
         except FileNotFoundError as e:
             self.fail(e)
 
