@@ -12,7 +12,7 @@ install_requires = [
     'SQLAlchemy',
     'semidbm',
     'sortedcontainers',
-    'psutil >= 2.0.0',
+    'psutil >= 5.2.2',
     'openpyxl',
     'psutil',
     'pyodbc',

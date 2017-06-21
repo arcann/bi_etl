@@ -1,4 +1,4 @@
-full_version = '0.5.3'
+full_version = '0.5.5'
 
 version_parts = full_version.split('.')
 

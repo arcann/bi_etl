@@ -15,8 +15,8 @@ import bi_etl.bi_config_parser
 
 # pylint: disable=missing-docstring, protected-access, redefined-builtin
 
-## Python 2 & 3 compatibility. If Python 3 FileNotFoundError exists, we'll use it
-## if not we'll make it.
+# Python 2 & 3 compatibility. If Python 3 FileNotFoundError exists, we'll use it
+# if not we'll make it.
 try:
     FileNotFoundError
 except NameError:
@@ -74,12 +74,23 @@ class Test(unittest.TestCase):
                               )
 
     def test_read_config_ini_OK(self):
-        # This version will try and find the file.  Will fail if it doesn't exist.
-        # It's assumed that the file has been setup before running unit tests
+        # This version will try and find the example config file.
+        # Will fail if it doesn't exist.
         config = bi_etl.bi_config_parser.BIConfigParser()
 
         try:
-            config.read_config_ini()
+            # Make sure the current working dir is the bi_etl home dir
+            # (where example_config.ini can be found)
+            dir_path = os.path.dirname(os.path.realpath(__file__))
+            # Parent dir
+            dir_path = os.path.dirname(dir_path)
+            # Parent dir again
+            dir_path = os.path.dirname(dir_path)
+            with mock.patch('os.getcwd', autospec=True) as getcwd:
+                getcwd.return_value = dir_path
+                # TODO: use Mock to patch os.getcwd to return dir_path without using chdir
+                #os.chdir(dir_path)
+                config.read_config_ini('example_config.ini')
         except FileNotFoundError as e:
             self.fail(e)
 

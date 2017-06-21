@@ -40,6 +40,8 @@ class BIConfigParser(ConfigParser):
                          **kwargs
                          )
         self.log = logging.getLogger(__name__)
+        if len(self.log.root.handlers) == 0:
+            logging.basicConfig(level=logging.DEBUG)
         self.config_file_read = None
         self.rootLogger = logging.getLogger()
         self.configured_loggers = dict()
@@ -100,6 +102,10 @@ class BIConfigParser(ConfigParser):
             config_env = os.environ[BIConfigParser.CONFIG_ENV]
             config_env = os.path.expanduser(config_env)
             expected_config_files = config_env.split(';')
+            self.log.info("Using {} specified config file(s) {}".format(
+                BIConfigParser.CONFIG_ENV,
+                expected_config_files
+            ))
         else:
             user_dir = os.path.expanduser('~')
             expected_config_files = [
