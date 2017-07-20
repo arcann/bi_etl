@@ -81,7 +81,8 @@ class ETLComponent(Iterable):
 
         # self.log = logging.getLogger(__name__)
         self.log = logging.getLogger("{mod}.{cls}".format(mod = self.__class__.__module__, cls= self.__class__.__name__))
-        self.task.log_logging_level()
+        if self.task is not None:
+            self.task.log_logging_level()
         self.row_object = Row
         
         # Register this component with it's parent task        
