@@ -309,6 +309,12 @@ class BIConfigParser(ConfigParser):
             max_bytes = self.get_byte_size('logging', 'log_file_max_size', fallback='10M')
 
             backup_count = int(self.get('logging', 'log_files_to_keep', fallback=0))
+
+            # Make sure the directory exists
+            dir_name = os.path.dirname(filename)
+            if dir_name != '':
+                os.makedirs(dir_name)
+
             file_handler = RotatingFileHandler(filename=filename,
                                                maxBytes=max_bytes,
                                                backupCount=backup_count,
