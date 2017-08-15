@@ -313,7 +313,8 @@ class BIConfigParser(ConfigParser):
             # Make sure the directory exists
             dir_name = os.path.dirname(filename)
             if dir_name != '':
-                os.makedirs(dir_name)
+                if not os.path.exists(dir_name):
+                    os.makedirs(dir_name)
 
             file_handler = RotatingFileHandler(filename=filename,
                                                maxBytes=max_bytes,
