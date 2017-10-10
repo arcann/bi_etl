@@ -55,8 +55,9 @@ class BIConfigParser(ConfigParser):
     def merge_parent(self, directories, parent_file):
         parent_config = ConfigParser(allow_no_value=True,
                                      interpolation=ExtendedInterpolation())
-        file_paths = [os.path.join(directory, parent_file) for directory in directories]
+        file_paths = [os.path.normpath(os.path.join(directory, parent_file)) for directory in directories]
         files_read = parent_config.read(file_paths)
+        read_dirs = [os.path.dirname(file) for file in files_read]
         if files_read is not None and len(files_read) > 0:
             for file in files_read:
                 if file in self.config_file_read:
@@ -75,7 +76,7 @@ class BIConfigParser(ConfigParser):
             if parent_config.has_section('Config'):
                 for setting in parent_config['Config']:
                     if setting.startswith('parent'):
-                        self.merge_parent(directories, parent_config['Config'][setting])
+                        self.merge_parent(read_dirs, parent_config['Config'][setting])
 
     def read_parents(self, directories):
         if self.has_section('Config'):
