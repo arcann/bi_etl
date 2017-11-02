@@ -203,7 +203,7 @@ class RangeLookup(Lookup):
                           ):
                         return row
                 # If we reach this point return the last row in an AfterExisting exception
-                raise AfterExisting(row)
+                raise AfterExisting(prior_row=row, effective_date=effective_date)
 
         elif len(rows) == 1:
             return self.parent_component.Row(rows[0])

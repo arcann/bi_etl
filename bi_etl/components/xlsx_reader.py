@@ -1,9 +1,9 @@
 """
 Created on Apr 2, 2015
-
-@author: woodd
 """
 import os
+
+from bi_etl.scheduler.task import ETLTask
 from openpyxl import load_workbook
 from bi_etl.components.etlcomponent import ETLComponent
 from datetime import datetime, time
@@ -69,13 +69,11 @@ class XLSXReader(ETLComponent):
         not present in a given row (missing values).     
     """
     def __init__(self,
-                 task,
-                 file_name,
-                 logical_name = None,
+                 task: ETLTask,
+                 file_name: str,
+                 logical_name: str=None,
                  **kwargs
                  ):
-        
-        
         self.file_name = file_name
         if logical_name is None:
             try: 
@@ -85,7 +83,7 @@ class XLSXReader(ETLComponent):
         
         # Don't pass kwargs up. They should be set here at the end
         super(XLSXReader, self).__init__(task=task,
-                                         logical_name= logical_name,
+                                         logical_name=logical_name,
                                         )
 
         self._column_names = None
@@ -195,14 +193,14 @@ class XLSXReader(ETLComponent):
     @staticmethod
     def _get_cell_value(cell):
         value = cell.value
-        if hasattr(value,'strip'):
+        if hasattr(value, 'strip'):
             value = value.strip()
             if value == '':
                 value = None
         elif isinstance(value, datetime):
             # Excel time values of 12:00:00 AM come in as 1899-12-30 instead
-            if value == datetime(1899,12,30):
-                value = time(12,0,0)        
+            if value == datetime(1899, 12, 30):
+                value = time(12, 0, 0)
         return value
     
     @staticmethod
@@ -212,7 +210,12 @@ class XLSXReader(ETLComponent):
         
     def read_header_row(self):
         # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
-        row = next(self.active_worksheet.get_squared_range(1,self.header_row,None,self.header_row))
+        row = next(self.active_worksheet.get_squared_range(1,
+                                                           self.header_row,
+                                                           None,
+                                                           self.header_row,
+                                                           )
+                   )
         return XLSXReader._get_cell_values(row) 
 
     def _raw_rows(self):

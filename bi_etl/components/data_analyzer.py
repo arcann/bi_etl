@@ -9,6 +9,7 @@ from decimal import Context, ROUND_HALF_EVEN
 
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.conversions import str2decimal, str2date
+from bi_etl.scheduler.task import ETLTask
 from bi_etl.utility import getIntegerPlaces
 from operator import itemgetter
 
@@ -52,16 +53,19 @@ class DataAnalyzer(ETLComponent):
                 return "{}({},{})".format(self.name, self.length, self.precision)
     
     def __init__(self,
-                 task = None,
-                 logical_name = 'DataAnalyzer',
+                 task: ETLTask=None,
+                 logical_name: str='DataAnalyzer',
                  **kwargs
                  ):
-        ## Don't pass kwargs up. They should be set here at the end
-        super(DataAnalyzer, self).__init__(task=task, logical_name=logical_name) 
+        # Don't pass kwargs up. They should be set here at the end
+        super(DataAnalyzer, self).__init__(task=task, logical_name=logical_name)
         self._init_storage()
         self.float_as_decimal = False
-        
-        ## Should be the last call of every init            
+        self.column_names_consistent = None
+        self.new_columns_after_first_row = None
+        self.row_column_name_set = set()
+
+        # Should be the last call of every init
         self.set_kwattrs(**kwargs)
         
     def _init_storage(self):
@@ -74,7 +78,7 @@ class DataAnalyzer(ETLComponent):
         self.column_present_count = dict()
         self.column_not_null = dict()        
         self.duplicate_column_names = dict()
-        ## Row level storage
+        # Row level storage
         self.row_column_name_set = set()
     
     def __iter__(self):
@@ -86,24 +90,30 @@ class DataAnalyzer(ETLComponent):
         
     def _type_from_value(self, value):
         if isinstance(value, str):            
-            ## Look for numbers in text
+            # Look for numbers in text
             try:
                 dec = str2decimal(value)
-                ## If the value has no fractional digits, return integer.
-                ## Note: We could use _isinteger() however that calls 1.0 an integer. 
-                ## Whereas a file with 1.0 values indicates possible fractional values
+                # If the value has no fractional digits, return integer.
+                # Note: We could use _isinteger() however that calls 1.0 an integer.
+                # Whereas a file with 1.0 values indicates possible fractional values
                 # Decimal('1.0').as_tuple().exponent returns -1
                 # or 
                 # Decimal('1.0')._exp returns -1
                 (_, digits, exponent) = dec.as_tuple() 
                 if exponent >= 0:
-                    return DataAnalyzer.DataType(name='Integer', length= len(digits) + exponent)                                  
+                    return DataAnalyzer.DataType(name='Integer',
+                                                 length=len(digits) + exponent,
+                                                 )
                 else:
-                    return DataAnalyzer.DataType(name='Decimal', length= max(len(digits),abs(exponent)), precision= abs(exponent))
+                    return DataAnalyzer.DataType(name='Decimal',
+                                                 length=max(len(digits),
+                                                            abs(exponent)),
+                                                 precision=abs(exponent),
+                                                 )
             except Exception:
                 pass
             
-            ## Look for date in text            
+            # Look for date in text
             if '-' in value:
                 for dt_format in ["%Y-%m-%d", "%m-%d-%Y", "%d-%m-%Y", 
                                   "%Y-%m-%d %H:%M", "%m-%d-%Y %H:%M", "%d-%m-%Y %H:%M",
@@ -137,15 +147,21 @@ class DataAnalyzer(ETLComponent):
             # Else it's an actual string
             return DataAnalyzer.DataType(name=type(value).__name__, length=len(value))
         elif isinstance(value, int):
-            return DataAnalyzer.DataType(name='Integer', length= getIntegerPlaces(value))
+            return DataAnalyzer.DataType(name='Integer', length=getIntegerPlaces(value))
         elif isinstance(value, float):
             if self.float_as_decimal:
                 dec = Context(prec=16, rounding=ROUND_HALF_EVEN).create_decimal_from_float(value).normalize()
                 (_, digits, exponent) = dec.as_tuple()
                 if exponent >= 0:
-                    return DataAnalyzer.DataType(name='Integer', length= len(digits) + exponent)                                  
+                    return DataAnalyzer.DataType(name='Integer',
+                                                 length=len(digits) + exponent,
+                                                 )
                 else:
-                    return DataAnalyzer.DataType(name='Decimal', length= max(len(digits),abs(exponent)), precision= abs(exponent))
+                    return DataAnalyzer.DataType(name='Decimal',
+                                                 length=max(len(digits),
+                                                            abs(exponent)
+                                                            ),
+                                                 precision=abs(exponent))
         
         return DataAnalyzer.DataType(name=type(value).__name__)
 
@@ -154,7 +170,7 @@ class DataAnalyzer(ETLComponent):
         self.rows_processed += 1
         
     def analyze_column(self, column_name, column_value, column_number=None):
-        self.column_present_count[column_name] = self.column_present_count.get(column_name,0) + 1
+        self.column_present_count[column_name] = self.column_present_count.get(column_name, 0) + 1
             
         # Process column names
         if column_number is not None:
@@ -170,7 +186,7 @@ class DataAnalyzer(ETLComponent):
         if column_name not in self.row_column_name_set:
             self.row_column_name_set.add(column_name)
         else:
-            self.duplicate_column_names.get(column_name,set()).add(column_number)                
+            self.duplicate_column_names.get(column_name, set()).add(column_number)
               
         # Process column_valid_values
         if column_name not in self.column_valid_values:
@@ -183,11 +199,11 @@ class DataAnalyzer(ETLComponent):
         except TypeError:  # unhashable type
             value = str(column_value)
         
-        self.column_valid_values[column_name][value] = self.column_valid_values[column_name].get(value,0) + 1
+        self.column_valid_values[column_name][value] = self.column_valid_values[column_name].get(value, 0) + 1
         
-        ## Process column_data_types
+        # Process column_data_types
         if column_value is not None:
-            self.column_not_null[column_name] = self.column_not_null.get(column_name,0) + 1
+            self.column_not_null[column_name] = self.column_not_null.get(column_name, 0) + 1
             
             existing_type = self.column_data_types.get(column_name)
             row_type = self._type_from_value(column_value)
@@ -195,20 +211,20 @@ class DataAnalyzer(ETLComponent):
             if existing_type is None:
                 new_type = row_type
             else:
-                if existing_type.name in ['str','unicode','bytes']:
+                if existing_type.name in ['str', 'unicode', 'bytes']:
                     new_type.length = max(row_type.length, existing_type.length)
                 elif existing_type.name == 'Date':
                     if row_type.name == 'Date':
                         new_type.length = max(row_type.length, existing_type.length)
                         if isinstance(existing_type.format, dict):
-                            ## Add one to the counter for this format
-                            new_type.format[row_type.format] = new_type.format.get(row_type.format,0) + 1
+                            # Add one to the counter for this format
+                            new_type.format[row_type.format] = new_type.format.get(row_type.format, 0) + 1
                         elif row_type.format != existing_type.format:
                             fmts = dict()
                             fmts[existing_type.format] = self.rows_processed - 1
                             fmts[row_type.format] = 1
                             new_type.format = fmts
-                    elif row_type.name in ['str','unicode','bytes']:
+                    elif row_type.name in ['str', 'unicode', 'bytes']:
                         new_type = row_type
                         new_type.length = max(row_type.length, existing_type.length)
                 elif existing_type.name == 'Integer':
@@ -232,8 +248,7 @@ class DataAnalyzer(ETLComponent):
         """
         stats = self.get_stats_entry(stats_id='analyze_row')
         stats.timer.start()
-                
-        
+
         stats['rows processed'] = self.rows_processed
         column_number = 0
         for column_name in row.columns_in_order:
@@ -276,37 +291,36 @@ class DataAnalyzer(ETLComponent):
         print("Columns:", file=out)
         column_dict = dict()
         col_cnt = 0
-        for c in self.column_names:
+        for col in self.column_names:
             col_cnt += 1
             
-            if c not in column_dict:
-                column_dict[c] = list()
-            column_dict[c].append(col_cnt)
+            if col not in column_dict:
+                column_dict[col] = list()
+            column_dict[col].append(col_cnt)
             
             msg = ""
-            not_present_on_rows = self.rows_processed - self.column_present_count.get(c,0)            
+            not_present_on_rows = self.rows_processed - self.column_present_count.get(col, 0)
             if not_present_on_rows > 0:
                 msg += " [Not present on {:,} rows]".format(not_present_on_rows) 
                     
-            most_common_value=None
-            vv = self.column_valid_values.get(c)                                            
+            most_common_value = None
+            vv = self.column_valid_values.get(col)
             if vv is not None:
-                vv_list = sorted(list(vv.items()), key=itemgetter(1), reverse= True)
+                vv_list = sorted(list(vv.items()), key=itemgetter(1), reverse=True)
                 if len(vv_list) >= 1:                                       
-                    most_common_value=vv_list[0]
-                    
-            
-            print(out_fmt.format(col=c, 
-                                 type=str(self.column_data_types.get(c)),
-                                 present=self.column_present_count.get(c,0),
-                                 not_present_on_rows = self.rows_processed - self.column_present_count.get(c,0),
-                                 non_null_rows=self.column_not_null.get(c,0),
-                                 cardinality=len(self.column_valid_values.get(c,list())),
+                    most_common_value = vv_list[0]
+
+            print(out_fmt.format(col=col,
+                                 type=str(self.column_data_types.get(col)),
+                                 present=self.column_present_count.get(col, 0),
+                                 not_present_on_rows=self.rows_processed - self.column_present_count.get(col, 0),
+                                 non_null_rows=self.column_not_null.get(col, 0),
+                                 cardinality=len(self.column_valid_values.get(col, list())),
                                  most_common_value=most_common_value,
                                  msg=msg,
-                                 )
-                  ,file=out
-                 )
+                                 ),
+                  file=out
+            )
 
         print("", file=out)
         if len(self.duplicate_column_names) > 0:            
@@ -317,15 +331,15 @@ class DataAnalyzer(ETLComponent):
         print("", file=out)
         print("Columns Valid Values:", file=out)
         col_cnt = 0            
-        for c in self.column_names:
+        for col in self.column_names:
             col_cnt += 1
             if col_cnt > 1:
                 print("", file=out)
-            vv = self.column_valid_values.get(c)                                            
+            vv = self.column_valid_values.get(col)
             if vv is not None:                
-                print("{} (col {}) cardinality {}:".format(c, col_cnt, len(vv)), file=out)
-                vv_list = sorted(list(vv.items()), key=itemgetter(1), reverse= True)
-                for (v,freq) in vv_list[:valid_value_limit]:
+                print("{} (col {}) cardinality {}:".format(col, col_cnt, len(vv)), file=out)
+                vv_list = sorted(list(vv.items()), key=itemgetter(1), reverse=True)
+                for (v, freq) in vv_list[:valid_value_limit]:
                     try:
                         print("\t{}\tFreq={}".format(v, freq), file=out)
                     except Exception as e:
@@ -334,7 +348,4 @@ class DataAnalyzer(ETLComponent):
                 if len(vv) > valid_value_limit:
                     print("\t--More values not printed--", file=out)
             else:
-                print("{} (col {}) had no data values".format(c, col_cnt), file=out)
-            
-        
-        
+                print("{} (col {}) had no data values".format(col, col_cnt), file=out)

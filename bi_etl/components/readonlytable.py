@@ -12,6 +12,8 @@ from typing import Iterable
 
 import functools
 import sqlalchemy
+from bi_etl.database import DatabaseMetadata
+from bi_etl.scheduler.task import ETLTask
 from bi_etl.timer import Timer
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.row.row import Row
@@ -27,6 +29,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.sql.schema import Column
 
 __all__ = ['ReadOnlyTable']
+
 
 # Pylint does not like references to self.table.columns aka self.columns
 # pylint: disable=unsupported-membership-test, unsubscriptable-object, not-an-iterable
@@ -107,43 +110,43 @@ class ReadOnlyTable(ETLComponent):
     """
     PK_LOOKUP = 'PK'
     NK_LOOKUP = 'NK'
-    
+
     def __init__(self,
-                 task, 
-                 database, 
-                 table_name,
-                 table_name_case_sensitive = False,
-                 exclude_columns = None,
-                 include_only_columns = None,
+                 task: ETLTask,
+                 database: DatabaseMetadata,
+                 table_name: str,
+                 table_name_case_sensitive: bool = False,
+                 exclude_columns: list = None,
+                 include_only_columns: list = None,
                  **kwargs
                  ):
         # Don't pass kwargs up. They should be set here at the end
-        super(ReadOnlyTable, self).__init__(task= task,
-                                            logical_name= table_name,
+        super(ReadOnlyTable, self).__init__(task=task,
+                                            logical_name=table_name,
                                             )
-        
+
         self.__lookups = dict()
         # Default lookup class is AutoDiskLookup
         self.default_lookup_class = AutoDiskLookup
         self.default_lookup_class_kwargs = dict()
         if self.task is not None:
-            self.default_lookup_class_kwargs['config'] = self.task.config        
-        
+            self.default_lookup_class_kwargs['config'] = self.task.config
+
         self.trace_sql = False
-        
+
         self.cache_filled = False
         self.cache_clean = False
         self.always_fallback_to_db = True
         self.maintain_cache_during_load = True
-        
+
         self.__compile_cache = {}
         self.__delete_flag = None
         self.delete_flag_yes = 'Y'
-        self.delete_flag_no = 'N'     
+        self.delete_flag_no = 'N'
 
         self.special_values_descriptive_columns = set()
         self.special_values_descriptive_min_length = 14  # Long enough to hold 'Not Applicable'
-        
+
         self.database = database
         self.__connection = None
         self._table = None
@@ -172,47 +175,48 @@ class ReadOnlyTable(ETLComponent):
             self.include_only_columns(include_only_columns)
 
         self.custom_special_values = dict()
-        
+
         # Should be the last call of every init            
-        self.set_kwattrs(**kwargs) 
+        self.set_kwattrs(**kwargs)
 
     def __repr__(self):
-        return "{cls}(task={task}," \
-               "logical_name={logical_name}," \
-               "primary_key={primary_key}," \
-               "delete_flag={delete_flag})".format(
-                    cls= self.__class__.__name__,
-                    task= self.task,
-                    logical_name= self.logical_name,
-                    primary_key= self.primary_key,
-                    delete_flag= self.delete_flag,
-                )
-        
-    @property        
+        template = "{cls}(task={task}," \
+            "logical_name={logical_name}," \
+            "primary_key={primary_key}," \
+            "delete_flag={delete_flag})"
+        return template.format(
+            cls=self.__class__.__name__,
+            task=self.task,
+            logical_name=self.logical_name,
+            primary_key=self.primary_key,
+            delete_flag=self.delete_flag,
+        )
+
+    @property
     def delete_flag(self):
         return self.__delete_flag
-    
+
     @delete_flag.setter
     def delete_flag(self, value):
         self.__delete_flag = value
         if self.__delete_flag is not None:
             self.custom_special_values[self.delete_flag] = self.delete_flag_no
 
-    @property        
+    @property
     def table_name(self):
         """
         The table name
         """
         return self._table_name
-            
-    @property        
+
+    @property
     def table(self):
         return self._table
-    
+
     @table.setter
     def table(self, new_table_object):
         self._table = new_table_object
-        self._columns = list(self._table.columns)            
+        self._columns = list(self._table.columns)
         self.column_names = list(map(attrgetter('name'), self._columns))
         self._column_name_index = dict()
         for column in self._columns:
@@ -225,13 +229,13 @@ class ReadOnlyTable(ETLComponent):
                     new_list = list()
                     new_list.append(existing_entry)
                     new_list.append(column)
-                    self._column_name_index[index_version_of_column_name] = new_list                    
+                    self._column_name_index[index_version_of_column_name] = new_list
                 self._column_name_index[index_version_of_column_name] = column
-            else: # New entry
-                self._column_name_index[index_version_of_column_name] = column  
+            else:  # New entry
+                self._column_name_index[index_version_of_column_name] = column
         self.logical_name = self._table_name = new_table_object.name
         # Get the primary key from the table
-        self.primary_key = list(self._table.primary_key)        
+        self.primary_key = list(self._table.primary_key)
 
     def exclude_columns(self, columns_to_exclude):
         """
@@ -240,8 +244,8 @@ class ReadOnlyTable(ETLComponent):
         columns_to_exclude : list
             A list of columns to exclude when reading the table/view.
         """
-        
-        #=======================================================================
+
+        # =======================================================================
         # Implementation notes:
         # This method accesses protected _columns in the table and removes them.
         # 
@@ -251,7 +255,7 @@ class ReadOnlyTable(ETLComponent):
         #     def append_column(self, c):
         #         self._columns[c.key] = c
         #         c.table = self
-        #===================================================================
+        # ===================================================================
         # for ex_name in columns_to_exclude:                
         #     if ex_name in self.columns:
         #         exclude_column_obj = self.columns[ex_name]
@@ -260,10 +264,10 @@ class ReadOnlyTable(ETLComponent):
         #         self.table._columns.remove(exclude_column_obj)
         # self._columns = list(self.table.columns)
         # self.column_names = list(map(attrgetter('name'), self._columns))
-        #=======================================================================
+        # =======================================================================
         if columns_to_exclude is not None:
             # This method builds a new Table object with the non-excluded columns.
-            if self._excluded_columns is None:             
+            if self._excluded_columns is None:
                 self._excluded_columns = set(columns_to_exclude)
             else:
                 self._excluded_columns.update(columns_to_exclude)
@@ -271,7 +275,7 @@ class ReadOnlyTable(ETLComponent):
         # noinspection PyTypeChecker
         for ex_name in self._excluded_columns:
             try:
-                exclude_column_obj = self.get_column(ex_name)                
+                exclude_column_obj = self.get_column(ex_name)
                 if exclude_column_obj in self._columns:
                     self.log.debug('Excluding column {}'.format(exclude_column_obj))
                     self._columns.remove(exclude_column_obj)
@@ -287,7 +291,7 @@ class ReadOnlyTable(ETLComponent):
 
     def include_only_columns(self, columns_to_include):
         """
-        Include only specified columns in the table defintion.
+        Include only specified columns in the table definition.
         Columns that are non included are removed them from all SQL statements.
 
         columns_to_include : list
@@ -304,7 +308,7 @@ class ReadOnlyTable(ETLComponent):
             self.__connection = self.table.metadata.bind.connect()
         # noinspection PyTypeChecker
         return self.__connection
-    
+
     def close(self):
         for lookup in self.__lookups.values():
             lookup.add_size_to_stats()
@@ -318,32 +322,32 @@ class ReadOnlyTable(ETLComponent):
         except AttributeError:
             pass
         super(ReadOnlyTable, self).close()
-        
+
     def __del__(self):
         # Close the database connection
         if self.__connection is not None:
             self.__connection.close()
-        
+
     def __exit__(self, exit_type, exit_value, exit_traceback):  # @ReservedAssignment
         # Close the database connection
-        self.close()    
+        self.close()
 
-    def execute(self, statement, *multiparams, **params):
+    def execute(self, statement, *list_params, **params):
         # compiled_cache created huge memory usage. It seems like each lookup created it's own entry
-        #execution_options(compiled_cache=self.__compile_cache)
+        # execution_options(compiled_cache=self.__compile_cache)
         if self.trace_sql:
             self.log.debug('SQL={}'.format(statement))
             try:
                 self.log.debug('parameters={}'.format(dict_to_str(statement.parameters)))
-            #pylint: disable=broad-except
+            # pylint: disable=broad-except
             except Exception as e:
                 self.log.debug(e)
-            self.log.debug('multiparams={}'.format(multiparams))
+            self.log.debug('list_params={}'.format(list_params))
             self.log.debug('params={}'.format(params))
             self.log.debug('-------------------------')
         connection = self.connection()
-        return connection.execute(statement, *multiparams, **params)
-    
+        return connection.execute(statement, *list_params, **params)
+
     def get_one(self, statement=None):
         """
         Gets one row from the statement.
@@ -371,8 +375,9 @@ class ReadOnlyTable(ETLComponent):
         if row2 is not None:
             raise MultipleResultsFound([row1, row2])
         return self.Row(row1)
-    
-    def select(self, column_list: typing.Optional[list] = None, exclude_cols: typing.Optional[set] = None) -> sqlalchemy.sql.expression.Select:
+
+    def select(self, column_list: typing.Optional[list] = None,
+               exclude_cols: typing.Optional[set] = None) -> sqlalchemy.sql.expression.Select:
         """
         Builds a select statement for this table. 
         
@@ -382,7 +387,7 @@ class ReadOnlyTable(ETLComponent):
                     
         """
         if exclude_cols is not None and column_list is not None:
-            raise ValueError("select can't accept both column_list and exclude_cols") 
+            raise ValueError("select can't accept both column_list and exclude_cols")
         if column_list is None:
             if exclude_cols is None:
                 return sqlalchemy.select(self.columns)
@@ -399,16 +404,16 @@ class ReadOnlyTable(ETLComponent):
             # noinspection PyTypeChecker
             for c in column_list:
                 if isinstance(c, str):
-                    column_obj_list.append( self.get_column(c) )
+                    column_obj_list.append(self.get_column(c))
                 else:
                     column_obj_list.append(c)
             return sqlalchemy.select(column_obj_list)
-    
-    def _generate_key_values_dict(self, key_names=None, key_values= None, lookup_name= None, other_values_dict=None):
-        
+
+    def _generate_key_values_dict(self, key_names=None, key_values=None, lookup_name=None, other_values_dict=None):
+
         if key_names is not None and lookup_name is not None:
             raise ValueError('Both key_names and lookup_name provided. Please use one or the other')
-        
+
         # Get key names from key_names or lookup
         if key_names is None:
             if lookup_name is not None:
@@ -419,13 +424,13 @@ class ReadOnlyTable(ETLComponent):
         else:
             # Handle case where we have a single key name item and not a list or dict
             if isinstance(key_names, str):
-                key_names = [ key_names ]
-        
-        # Handle case where we have a single key value item and not a list
-        if isinstance(key_values,str):
-            key_values = [key_values]         
+                key_names = [key_names]
 
-        key_values_dict = dict()                
+        # Handle case where we have a single key value item and not a list
+        if isinstance(key_values, str):
+            key_values = [key_values]
+
+        key_values_dict = dict()
         if isinstance(key_values, dict):
             for key_name in key_names:
                 if key_name in key_values:
@@ -433,7 +438,7 @@ class ReadOnlyTable(ETLComponent):
                 elif other_values_dict is not None and key_name in other_values_dict:
                     key_values_dict[key_name] = other_values_dict[key_name]
                 else:
-                    raise ValueError('No key value provided for {}'.format(key_name))                     
+                    raise ValueError('No key value provided for {}'.format(key_name))
         elif key_values is None:
             if other_values_dict is None:
                 raise ValueError('No key values provided')
@@ -450,28 +455,30 @@ class ReadOnlyTable(ETLComponent):
             for key_name, key_value in zip(key_names, key_values):
                 key_values_dict[key_name] = key_value
         return key_values_dict
-    
+
     # We add the following args at this level
     #   criteria: so they can be passed down to the database
     #   use_cache_as_source: to we can use the cache instead of the database
     #   stats_id, parent_stats: So we can capture SQL execution time in the right place.
-    #pylint: disable=arguments-differ
     def _raw_rows(self,
-                  criteria: list = None,
+                  criteria_list: list = None,
+                  criteria_dict: dict = None,
                   order_by: list = None,
                   column_list: list = None,
                   exclude_cols: list = None,
                   use_cache_as_source: bool = None,
                   stats_id: str = None,
-                  parent_stats: Statistics= None):
+                  parent_stats: Statistics = None):
         """
         Iterate over rows matching ``criteria``
         
         Parameters
         ----------
-        criteria : string or list of strings 
+        criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+        criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
         order_by: string or list of strings
             Each value should represent a column to order by.
         exclude_cols: list
@@ -487,12 +494,12 @@ class ReadOnlyTable(ETLComponent):
         Yields
         ------
         row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
-            Row object with contents of a table/view row that matches ``criteria``
+            Row object with contents of a table/view row that matches ``criteria_list`` and ``criteria_dict``
         """
         if stats_id is None:
             stats_id = self.default_stats_id
-        stats = self.get_stats_entry(stats_id=stats_id, parent_stats= parent_stats)
-        
+        stats = self.get_stats_entry(stats_id=stats_id, parent_stats=parent_stats)
+
         if use_cache_as_source is None:
             use_cache_as_source = True
             use_cache_as_source_requested = False
@@ -501,22 +508,22 @@ class ReadOnlyTable(ETLComponent):
 
         pk_lookup = None
         if use_cache_as_source:
-            if not(self.cache_filled and self.cache_clean):
+            if not (self.cache_filled and self.cache_clean):
                 use_cache_as_source = False
                 if use_cache_as_source_requested:
-                    self.log.debug("Cache not filled requires using database as source for {}".format(stats))        
+                    self.log.debug("Cache not filled requires using database as source for {}".format(stats))
             elif order_by is not None:
                 use_cache_as_source = False
-                if use_cache_as_source_requested:                    
+                if use_cache_as_source_requested:
                     self.log.warning("where had to use DB source to honor order_by (and possibly criteria)")
-            elif not(criteria is None or isinstance(criteria, dict)):                
+            elif criteria_list is not None:
                 use_cache_as_source = False
                 if use_cache_as_source_requested:
                     self.log.debug("Non dict criteria requires using database as source for {} with {}".format(
-                        stats, criteria))
+                        stats, criteria_list))
             else:
                 # Find the filled cache
-                try:                    
+                try:
                     pk_lookup = self.get_pk_lookup()
                     if not pk_lookup.cache_enabled:
                         use_cache_as_source = False
@@ -530,7 +537,7 @@ class ReadOnlyTable(ETLComponent):
                                 pk_lookup = lookup
                                 break
                         if not use_cache_as_source:
-                            if use_cache_as_source_requested:    
+                            if use_cache_as_source_requested:
                                 self.log.debug("Unable to find filled lookup. "
                                                "Requires using database as source for {}".format(stats))
                 except KeyError:
@@ -547,15 +554,15 @@ class ReadOnlyTable(ETLComponent):
         else:
             self.log.debug("Using database as source for {}".format(stats))
             self._iterator_applied_filters = True
-            stmt = self.select(column_list= column_list, 
-                               exclude_cols= exclude_cols,
+            stmt = self.select(column_list=column_list,
+                               exclude_cols=exclude_cols,
                                )
-            if criteria is not None:
-                if isinstance(criteria, dict):
-                    for col, value in criteria.items():
-                        stmt = stmt.where(self.get_column(col) == value)
-                elif isinstance(criteria, list):
-                    for c in criteria:
+            if criteria_dict is not None:
+                for col, value in criteria_dict.items():
+                    stmt = stmt.where(self.get_column(col) == value)
+            if criteria_list is not None:
+                if isinstance(criteria_list, list):
+                    for c in criteria_list:
                         if isinstance(c, str):
                             stmt = stmt.where(text(c))
                         elif isinstance(c, dict):
@@ -563,52 +570,79 @@ class ReadOnlyTable(ETLComponent):
                                 stmt = stmt.where(self.get_column(col) == value)
                         else:
                             stmt = stmt.where(c)
-                elif isinstance(criteria, str):
-                    stmt = stmt.where(text(criteria))
+                elif isinstance(criteria_list, str):
+                    stmt = stmt.where(text(criteria_list))
                 else:
-                    stmt = stmt.where(criteria)
+                    stmt = stmt.where(criteria_list)
             if order_by is not None:
-                if isinstance(order_by, list):                
+                if isinstance(order_by, list):
                     stmt = stmt.order_by(*order_by)
                 else:
                     stmt = stmt.order_by(order_by)
             self.log.debug(stmt)
-            stats.timer.start() 
+            stats.timer.start()
             select_result = self.execute(stmt)
             stats.timer.stop()
             return select_result
-    
+
     def where(self,
-              criteria= None,
-              order_by = None,
-              column_list = None,
-              exclude_cols = None,
-              use_cache_as_source= None,
+              criteria_list: list = None,
+              criteria_dict: dict = None,
+              order_by: list = None,
+              column_list: typing.List[typing.Union[Column, str]] = None,
+              exclude_cols: typing.List[typing.Union[Column, str]] = None,
+              use_cache_as_source: bool = None,
               progress_frequency: int = None,
-              stats_id= None,
-              parent_stats= None) -> Iterable[Row]:
-        if isinstance(criteria, dict):
-            where_dict = criteria
-        else:
-            where_dict = None
-        result_rows_iter = self._raw_rows(criteria= criteria,
-                                          order_by= order_by,
-                                          column_list= column_list,
-                                          exclude_cols= exclude_cols,
-                                          use_cache_as_source= use_cache_as_source,
-                                          stats_id= stats_id,
-                                          parent_stats= parent_stats,
+              stats_id: str = None,
+              parent_stats: Statistics = None,
+              ) -> Iterable[Row]:
+        """
+
+        Parameters
+        ----------
+        criteria_list:
+            Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
+            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+        criteria_dict:
+            Dict keys should be columns, values are set using = or in
+        order_by:
+            List of sort keys
+        column_list:
+            List of columns (str or Column)
+        exclude_cols
+        use_cache_as_source
+        progress_frequency
+        stats_id
+        parent_stats
+
+        Returns
+        -------
+        rows
+
+        """
+        result_rows_iter = self._raw_rows(criteria_list=criteria_list,
+                                          criteria_dict=criteria_dict,
+                                          order_by=order_by,
+                                          column_list=column_list,
+                                          exclude_cols=exclude_cols,
+                                          use_cache_as_source=use_cache_as_source,
+                                          stats_id=stats_id,
+                                          parent_stats=parent_stats,
                                           )
-        return self.iter_result(result_rows_iter, 
-                                where_dict= where_dict,
-                                progress_frequency= progress_frequency,
-                                stats_id=stats_id, 
+        return self.iter_result(result_rows_iter,
+                                criteria_dict=criteria_dict,
+                                progress_frequency=progress_frequency,
+                                stats_id=stats_id,
                                 parent_stats=parent_stats
                                 )
-    
-    def order_by(self, order_by, stats_id= None, parent_stats= None) -> Iterable[Row]:
+
+    def order_by(self,
+                 order_by: list,
+                 stats_id: str = None,
+                 parent_stats: Statistics = None,
+                 ) -> Iterable[Row]:
         """
-        Iterate over rows matching ``criteria``
+        Iterate over all rows in order provided.
         
         Parameters
         ----------
@@ -625,9 +659,9 @@ class ReadOnlyTable(ETLComponent):
         row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
             :class:`~bi_etl.components.row.row_case_insensitive.Row` object with contents of a table/view row
         """
-        return self.where(order_by= order_by,
-                          stats_id= stats_id,
-                          parent_stats= parent_stats
+        return self.where(order_by=order_by,
+                          stats_id=stats_id,
+                          parent_stats=parent_stats
                           )
 
     @property
@@ -637,7 +671,7 @@ class ReadOnlyTable(ETLComponent):
         
         """
         return self._columns
-    
+
     def get_column(self, column: typing.Union[str, Column]) -> Column:
         """
         Get the :class:`sqlalchemy.sql.expression.ColumnElement` object for a given column name.
@@ -657,8 +691,9 @@ class ReadOnlyTable(ETLComponent):
                                    'however multiple other case versions exist'.format(self.table_name, column))
                 else:
                     return index_entry
-            else:                
-                raise KeyError('{} does not have a column named {} or {}'.format(self.table_name, column, column.lower()))
+            else:
+                raise KeyError(
+                    '{} does not have a column named {} or {}'.format(self.table_name, column, column.lower()))
 
     def get_column_name(self, column):
         """
@@ -668,7 +703,7 @@ class ReadOnlyTable(ETLComponent):
             return column.name
         else:
             return self.table.columns[column].name
-        
+
     def max(self, column, where=None):
         """
         Query the table/view to get the maximum value of a given column. 
@@ -696,7 +731,7 @@ class ReadOnlyTable(ETLComponent):
                 stmt = stmt.where(where)
         max_row = self.get_one(stmt)
         max_value = max_row['max_1']
-        return max_value        
+        return max_value
 
     @property
     @functools.lru_cache(maxsize=16)
@@ -711,8 +746,8 @@ class ReadOnlyTable(ETLComponent):
                                   parent=self,
                                   columns_in_order=self.column_names)
 
-    def get_special_row(self,     
-                        short_char,                   
+    def get_special_row(self,
+                        short_char,
                         long_char,
                         int_value,
                         date_value,
@@ -722,8 +757,16 @@ class ReadOnlyTable(ETLComponent):
             target_type = column.type
             if self.custom_special_values and column.name in self.custom_special_values:
                 custom_value = self.custom_special_values[column.name]
+                if custom_value == '[short_char]':
+                    custom_value = short_char
+                elif custom_value == '[long_char]':
+                    custom_value = long_char
+                elif custom_value == '[int_value]':
+                    custom_value = int_value
+                elif custom_value == '[date_value]':
+                    custom_value = date_value
                 # Note: We test for setitem because dict like containers have it but str doesn't have it.
-                if hasattr(custom_value,'__setitem__'):
+                if hasattr(custom_value, '__setitem__'):
                     row[column.name] = custom_value[short_char]
                 else:
                     row[column.name] = custom_value
@@ -736,24 +779,24 @@ class ReadOnlyTable(ETLComponent):
                     row[column.name] = long_char
                 elif self.special_values_descriptive_min_length and column.type.length \
                         >= self.special_values_descriptive_min_length:
-                            row[column.name] = long_char
-                else:                 
+                    row[column.name] = long_char
+                else:
                     row[column.name] = short_char
-            elif (   isinstance(target_type, sqltypes.DATE)
-                or isinstance(target_type, sqltypes.DATETIME)
-                or isinstance(target_type, sqlalchemy.types.DateTime)
-               ): 
+            elif (isinstance(target_type, sqltypes.DATE)
+                  or isinstance(target_type, sqltypes.DATETIME)
+                  or isinstance(target_type, sqlalchemy.types.DateTime)
+                  ):
                 row[column.name] = date_value
             elif (isinstance(target_type, sqltypes.INTEGER)
                   or isinstance(target_type, sqltypes.Numeric)
                   ):
                 row[column.name] = int_value
-            elif (   isinstance(target_type, sqltypes.FLOAT)
+            elif (isinstance(target_type, sqltypes.FLOAT)
                   or isinstance(target_type, sqltypes.Numeric)
                   ):
                 row[column.name] = float(int_value)
         return row
-        
+
     def get_missing_row(self):
         """
         Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` 
@@ -767,9 +810,9 @@ class ReadOnlyTable(ETLComponent):
         Long Text   'Missing'
         Date        9999-9-1
         =========== =========
-        """                        
+        """
         return self.get_special_row('?', 'Missing', -9999, datetime(9999, 9, 1))
-                
+
     def get_invalid_row(self):
         """
         Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` 
@@ -786,7 +829,7 @@ class ReadOnlyTable(ETLComponent):
         
         """
         return self.get_special_row('!', 'Invalid', -8888, datetime(9999, 8, 1))
-    
+
     def get_not_applicable_row(self):
         """
         Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` 
@@ -802,7 +845,7 @@ class ReadOnlyTable(ETLComponent):
         =========== =========          
         """
         return self.get_special_row('~', 'Not Applicable', -7777, datetime(9999, 7, 1))
-    
+
     def get_various_row(self):
         """
         Get a :class:`~bi_etl.components.row.row_case_insensitive.Row` 
@@ -818,12 +861,12 @@ class ReadOnlyTable(ETLComponent):
         =========== =========
         """
         return self.get_special_row('*', 'Various', -6666, datetime(9999, 6, 1))
-    
-    def define_lookup(self, 
+
+    def define_lookup(self,
                       lookup_name: str,
                       lookup_keys: list,
-                      lookup_class= None,
-                      lookup_class_kwargs= None,
+                      lookup_class=None,
+                      lookup_class_kwargs=None,
                       ):
         """
         Define a new lookup.
@@ -843,13 +886,13 @@ class ReadOnlyTable(ETLComponent):
             Optional dict of additional parameters to pass to lookup constructor. Defaults to empty dict.
         """
         if not self.__lookups:
-            self.__lookups = dict()            
+            self.__lookups = dict()
         if lookup_name in self.__lookups:
             self.log.warning("{} define_lookup is overriding the {} lookup with {}".format(
                 self,
                 lookup_name,
                 lookup_keys
-                )
+            )
             )
         if lookup_class is None:
             lookup_class = self.default_lookup_class
@@ -859,9 +902,9 @@ class ReadOnlyTable(ETLComponent):
         for key in lookup_keys:
             self.get_column_name(key)
 
-        lookup = lookup_class(lookup_name="{}.{}".format(self.logical_name, lookup_name), 
-                              lookup_keys=lookup_keys, 
-                              parent_component= self,  
+        lookup = lookup_class(lookup_name="{}.{}".format(self.logical_name, lookup_name),
+                              lookup_keys=lookup_keys,
+                              parent_component=self,
                               **lookup_class_kwargs
                               )
         self.__lookups[lookup_name] = lookup
@@ -873,29 +916,29 @@ class ReadOnlyTable(ETLComponent):
         # Check that we have setup the PK lookup.
         # Late binding so that it will take overrides to the default lookup class
         if ReadOnlyTable.PK_LOOKUP not in self.__lookups:
-            if self.primary_key:    
+            if self.primary_key:
                 self.define_lookup(ReadOnlyTable.PK_LOOKUP, self.primary_key)
 
     @property
     def lookups(self):
         return self.__lookups
-    
+
     def get_lookup(self, lookup_name):
         self._check_pk_lookup()
-        
+
         if lookup_name is None:
             lookup_name = ReadOnlyTable.PK_LOOKUP
         try:
             return self.__lookups[lookup_name]
         except KeyError:
             raise KeyError("{} does not contain a lookup named {}".format(self, lookup_name))
-        
+
     def get_pk_lookup(self):
         return self.get_lookup(ReadOnlyTable.PK_LOOKUP)
 
     def get_lookup_keys(self, lookup_name):
         return self.get_lookup(lookup_name).lookup_keys
-    
+
     def get_primary_key_value_list(self, row):
         self._check_pk_lookup()
         return self.__lookups[ReadOnlyTable.PK_LOOKUP].get_list_of_lookup_column_values(row)
@@ -903,7 +946,7 @@ class ReadOnlyTable(ETLComponent):
     def get_primary_key_value_tuple(self, row):
         self._check_pk_lookup()
         return self.__lookups[ReadOnlyTable.PK_LOOKUP].get_hashable_combined_key(row)
-    
+
     def get_lookup_tuple(self, lookup_name, row):
         return self.__lookups[lookup_name].get_hashable_combined_key(row)
 
@@ -958,48 +1001,49 @@ class ReadOnlyTable(ETLComponent):
     def init_cache(self):
         """
         Initialize all lookup caches as empty.
-        """     
+        """
         self.cache_filled = False
         for lookup in self.__lookups.values():
             lookup.init_cache()
-            
+
     def clear_cache(self):
         """
         Clear all lookup caches. 
         Sets to un-cached state (unknown state v.s. empty state which is what init_cache gives)
-        """     
+        """
         self.cache_filled = False
         for lookup in self.__lookups.values():
             lookup.clear_cache()
-    
-    def cache_row(self, row, allow_update= False):
+
+    def cache_row(self, row, allow_update=False):
         for lookup in self.__lookups.values():
             if lookup.cache_enabled:
                 lookup.cache_row(row, allow_update)
-                    
+
     def cache_commit(self):
         for lookup in self.__lookups.values():
             lookup.commit()
-                    
+
     def uncache_row(self, row):
         for lookup in self.__lookups.values():
             lookup.uncache_row(row)
-                
-    def uncache_where(self, key_names, key_values_dict):        
+
+    def uncache_where(self, key_names, key_values_dict):
         if self.__lookups:
             for lookup in self.__lookups.values():
-                lookup.uncache_where(key_names= key_names, key_values_dict= key_values_dict)
+                lookup.uncache_where(key_names=key_names, key_values_dict=key_values_dict)
 
-    def fill_cache(self, 
+    def fill_cache(self,
                    progress_frequency: float = 10,
-                   progress_message = "{table} fill_cache current row # {row_number:,}",
-                   criteria = None,
-                   column_list = None,
-                   exclude_cols = None,
-                   order_by = None,
-                   assume_lookup_complete = None,
-                   row_limit = None,
-                   parent_stats= None,
+                   progress_message="{table} fill_cache current row # {row_number:,}",
+                   criteria_list: list = None,
+                   criteria_dict: dict = None,
+                   column_list: list = None,
+                   exclude_cols: list = None,
+                   order_by: list = None,
+                   assume_lookup_complete: bool=None,
+                   row_limit: int=None,
+                   parent_stats: Statistics=None,
                    ):
         """
         Fill all lookup caches from the table.
@@ -1012,11 +1056,13 @@ class ReadOnlyTable(ETLComponent):
             The progress message to print. 
             Default is ``"{table} fill_cache current row # {row_number:,}"``. Note ``logical_name`` and ``row_number``
             substitutions applied via :func:`format`.
-        criteria : string or list of strings 
+        criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        column_list: list
-            Optional. Specific columns to include when filling the cache.
+        criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
+        column_list:
+            List of columns to include
         exclude_cols: list
             Optional. Columns to exclude when filling the cache
         order_by: list
@@ -1037,65 +1083,69 @@ class ReadOnlyTable(ETLComponent):
         if self.natural_key:
             # Make sure to build the lookup so it can be filled
             self.ensure_nk_lookup()
-        
-        assert isinstance(progress_frequency, int), "fill_cache progress_frequency expected to be int not {}".format(type(progress_frequency)) 
-        self.log.info('{table}.fill_cache started'.format(table = self.table.name))
-        stats = self.get_unique_stats_entry('fill_cache', parent_stats= parent_stats)
-        stats.timer.start()        
+
+        assert isinstance(progress_frequency, int), "fill_cache progress_frequency expected to be int not {}".format(
+            type(progress_frequency))
+        self.log.info('{table}.fill_cache started'.format(table=self.table.name))
+        stats = self.get_unique_stats_entry('fill_cache', parent_stats=parent_stats)
+        stats.timer.start()
 
         self.clear_cache()
         progress_timer = Timer()
         # Temporarily turn off read progress messages
         saved_read_progress = self.progress_frequency
-        self.progress_frequency = None        
+        self.progress_frequency = None
         rows_read = 0
         limit_reached = False
-        
+
         self.init_cache()
-        
-        for row in self.where(criteria=criteria,
-                              column_list=column_list,
-                              exclude_cols= exclude_cols, 
-                              order_by=order_by, 
-                              use_cache_as_source= False,
-                              parent_stats=stats
-                              ):
+
+        for row in self.where(
+                criteria_list=criteria_list,
+                criteria_dict=criteria_dict,
+                column_list=column_list,
+                exclude_cols=exclude_cols,
+                order_by=order_by,
+                use_cache_as_source=False,
+                parent_stats=stats
+        ):
             rows_read += 1
             if row_limit is not None and rows_read >= row_limit:
                 limit_reached = True
-                self.log.warning("{table}.fill_cache aborted at limit {rows:,} rows of data".format(table = self.table.name,
-                                                                                               rows = rows_read
-                                                                                               )
-                              )
-                
-                self.log.warning("{table} proceeding without using cache lookup".format(table = self.table.name))
-                
+                self.log.warning(
+                    "{table}.fill_cache aborted at limit {rows:,} rows of data".format(table=self.table.name,
+                                                                                       rows=rows_read
+                                                                                       )
+                    )
+
+                self.log.warning("{table} proceeding without using cache lookup".format(table=self.table.name))
+
                 # We'll operate in partially cached mode
                 self.cache_filled = False
                 self.cache_clean = False
                 break
             # Actually cache the row now
             row.status = RowStatus.existing
-            self.cache_row(row, allow_update= False)
+            self.cache_row(row, allow_update=False)
 
             # noinspection PyTypeChecker
             if 0.0 < progress_frequency <= progress_timer.seconds_elapsed:
                 self.process_messages()
                 progress_timer.reset()
                 self.log.info(progress_message.format(
-                                                      row_number= rows_read,
-                                                      table = self.table,
-                                                      )
-                             )
+                    row_number=rows_read,
+                    table=self.table,
+                )
+                )
         if not limit_reached:
             self.cache_filled = True
             self.cache_clean = True
             # Set the table always_fallback_to_db value based on if criteria
             # were used to load the cache and the assume_lookup_complete parameter
-            if criteria is not None:
+            if criteria_list is not None or criteria_dict is not None:
                 # If criteria is used we'll default to not assuming the lookup is complete
                 if assume_lookup_complete is None:
-                    assume_lookup_complete = False 
+                    assume_lookup_complete = False
             else:
                 # If criteria is NOT used we'll default to assuming the lookup is complete
                 if assume_lookup_complete is None:
@@ -1103,9 +1153,9 @@ class ReadOnlyTable(ETLComponent):
             self.always_fallback_to_db = not assume_lookup_complete
 
             self.log.info("{table}.fill_cache cached {rows:,} rows of data".format(
-                table = self.table.name,
-                rows =rows_read
-                )
+                table=self.table.name,
+                rows=rows_read
+            )
             )
             self.log.info('Lookups will always_fallback_to_db = {}'.format(self.always_fallback_to_db))
             ram_size = 0
@@ -1118,14 +1168,14 @@ class ReadOnlyTable(ETLComponent):
                     len(lookup),
                     this_ram_size,
                     this_disk_size
-                    )
+                )
                 )
                 ram_size += this_ram_size
                 disk_size += this_disk_size
             self.log.info('Note: RAM sizes do not add up as memory lookups share row objects')
             self.log.info('Total Lookups Size DISK={:,} bytes'.format(disk_size))
             stats['rows_in_cache'] = len(self.get_nk_lookup())
-        
+
         self.cache_commit()
         stats.timer.stop()
         # Restore read progress messages
@@ -1133,8 +1183,8 @@ class ReadOnlyTable(ETLComponent):
 
     def get_by_key(self,
                    source_row: Row,
-                   stats_id: str= 'get_by_key',
-                   parent_stats: Statistics = None,) -> Row:
+                   stats_id: str = 'get_by_key',
+                   parent_stats: Statistics = None, ) -> Row:
         """
         Get by the primary key.
         """
@@ -1145,7 +1195,7 @@ class ReadOnlyTable(ETLComponent):
                 source_row = self.Row(zip(self.primary_key, [source_row]))
         return self.get_by_lookup(ReadOnlyTable.PK_LOOKUP,
                                   source_row,
-                                  stats_id= stats_id,
+                                  stats_id=stats_id,
                                   parent_stats=parent_stats)
 
     def get_by_lookup(self,
@@ -1164,9 +1214,9 @@ class ReadOnlyTable(ETLComponent):
         stats = self.get_stats_entry(stats_id, parent_stats=parent_stats)
         stats.print_start_stop_times = False
         stats.timer.start()
-        
+
         self._check_pk_lookup()
-        
+
         if lookup_name is None:
             lookup_name = ReadOnlyTable.PK_LOOKUP
 
@@ -1183,25 +1233,25 @@ class ReadOnlyTable(ETLComponent):
                 stats['Not in cache'] += 1
                 if self.cache_clean and not self.always_fallback_to_db:
                     #  Don't pass onto SQL if the lookup cache has initialized but the value isn't there
-                    stats.timer.stop()                    
+                    stats.timer.stop()
                     raise e
-                # Otherwise we'll continue to the DB query below
+                    # Otherwise we'll continue to the DB query below
             except (KeyError, ValueError):
                 # Lookup not cached. Allow database lookup to proceed, but give warning since we thought it was cached
                 warnings.warn("WARNING: {tbl} caching is enabled, but lookup {lkp} returned error {e}".format(
                     tbl=self,
-                    lkp= lookup_name,
-                    e= traceback.format_exc()
-                    )
+                    lkp=lookup_name,
+                    e=traceback.format_exc()
+                )
                 )
 
         # Do a lookup on the database 
         try:
-            stats['DB lookup performed'] += 1        
+            stats['DB lookup performed'] += 1
             row = lookup.find_in_remote_table(source_row)
             row.status = RowStatus.existing
             if self.maintain_cache_during_load and lookup.cache_enabled:
-                self.cache_row(row, allow_update=False)        
+                self.cache_row(row, allow_update=False)
             stats['DB lookup found row'] += 1
         finally:
             stats.timer.stop()

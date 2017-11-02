@@ -9,6 +9,7 @@ from datetime import date
 from datetime import datetime
 from datetime import time
 from decimal import Decimal, InvalidOperation
+from typing import Union
 
 Transformation = namedtuple(typename='Transformation', field_names=['column', 'conversion'])
 
@@ -181,7 +182,7 @@ def change_tz(source_datetime, from_tzone, to_tzone):
         return result_datetime    
 
 
-def ensure_datetime(dt):
+def ensure_datetime(dt: Union[datetime, date]) -> datetime:
     """
     Takes a date or a datetime as input, outputs a datetime
     """
@@ -191,6 +192,19 @@ def ensure_datetime(dt):
         return datetime(dt.year, dt.month, dt.day)
     else:
         raise ValueError('expected datetime, got {}'.format(dt))
+
+
+def ensure_datetime_dict(d: dict, key: str):
+    """
+    Takes a date or a datetime as input, outputs a datetime
+    """
+    dt = d[key]
+    if isinstance(dt, datetime):
+        return
+    elif isinstance(dt, date):
+        d[key] = datetime(dt.year, dt.month, dt.day)
+    else:
+        raise ValueError('expected datetime for {key}, got {dt}'.format(key=key, dt=dt))
 
 
 def nvl(value, default):

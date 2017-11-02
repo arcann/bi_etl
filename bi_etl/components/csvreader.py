@@ -1,7 +1,6 @@
 """
 Created on Sep 17, 2014
 
-@author: woodd
 """
 import csv
 import os
@@ -171,7 +170,7 @@ class CSVReader(ETLComponent):
                              mode='rt',
                              newline='', 
                              encoding=encoding, 
-                             errors= errors
+                             errors=errors
                              )
             self.__close_file = True            
         else:
@@ -186,7 +185,7 @@ class CSVReader(ETLComponent):
         
         # Don't pass kwargs up. They should be set here at the end
         super(CSVReader, self).__init__(task=task,
-                                        logical_name= logical_name,
+                                        logical_name=logical_name,
                                         )
         self.__reader = None
         
@@ -218,12 +217,12 @@ class CSVReader(ETLComponent):
     def __repr__(self):
         return "{cls}(task={task},logical_name={logical_name},filedata={file},primary_key={primary_key}," \
                "column_names={column_names})".format(
-                    cls= self.__class__.__name__,
-                    task= self.task,
-                    logical_name= self.logical_name,
-                    file= self.file,
-                    primary_key= self.primary_key,
-                    column_names= self.column_names,
+                    cls=self.__class__.__name__,
+                    task=self.task,
+                    logical_name=self.logical_name,
+                    file=self.file,
+                    primary_key=self.primary_key,
+                    column_names=self.column_names,
                     )
 
     @property
@@ -233,16 +232,17 @@ class CSVReader(ETLComponent):
         """
         if self.__reader is None:
             # Initialize the reader
-            self.__reader = csv.reader(self.file,
-                                            dialect=self.dialect,
-                                            delimiter=self.delimiter,
-                                            doublequote=self.doublequote,
-                                            escapechar=self.escapechar,
-                                            quotechar=self.quotechar,
-                                            quoting=self.quoting,
-                                            skipinitialspace=self.skipinitialspace,
-                                            strict=self.strict,
-                                            )
+            self.__reader = csv.reader(
+                self.file,
+                dialect=self.dialect,
+                delimiter=self.delimiter,
+                doublequote=self.doublequote,
+                escapechar=self.escapechar,
+                quotechar=self.quotechar,
+                quoting=self.quoting,
+                skipinitialspace=self.skipinitialspace,
+                strict=self.strict,
+                )
             if self.large_field_support:
                 csv.field_size_limit(2147483647)  # largest value it will accept
             
@@ -320,7 +320,6 @@ class CSVReader(ETLComponent):
         except StopIteration:
             pass
     
-    #pylint: disable=too-many-nested-blocks
     def _raw_rows(self):
         len_column_names = len(self.column_names)
         try:

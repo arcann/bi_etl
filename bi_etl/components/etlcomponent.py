@@ -55,7 +55,7 @@ class ETLComponent(Iterable):
 
     def __init__(self,
                  task: ETLTask,
-                 logical_name = None,
+                 logical_name: str=None,
                  **kwargs
                  ):        
         self.default_stats_id = 'read'
@@ -80,7 +80,7 @@ class ETLComponent(Iterable):
         self.warnings_limit = 100
 
         # self.log = logging.getLogger(__name__)
-        self.log = logging.getLogger("{mod}.{cls}".format(mod = self.__class__.__module__, cls= self.__class__.__name__))
+        self.log = logging.getLogger("{mod}.{cls}".format(mod=self.__class__.__module__, cls=self.__class__.__name__))
         if self.task is not None:
             self.task.log_logging_level()
         self.row_object = Row
@@ -191,7 +191,7 @@ class ETLComponent(Iterable):
                 self._column_names[instance_index] = new_name     
     
     @property
-    def primary_key(self) -> typing.Union[typing.List[str], None]:
+    def primary_key(self) -> typing.Union[typing.List[str], Iterable[str], None]:
         try:
             if self._primary_key is not None and len(self._primary_key) > 0:
                 if isinstance(self._primary_key[0], Column):
@@ -203,7 +203,7 @@ class ETLComponent(Iterable):
             return None
 
     @primary_key.setter
-    def primary_key(self, value: typing.List[str]):
+    def primary_key(self, value: typing.Union[typing.List[str], Iterable[str]]):
         if value is None:
             self._primary_key = []
         else:            
@@ -267,7 +267,7 @@ class ETLComponent(Iterable):
                 
     def iter_result(self,
                     result_list: object,
-                    where_dict: dict = None,
+                    criteria_dict: dict = None,
                     progress_frequency: int = None,
                     stats_id: str = None,
                     parent_stats: Statistics = None) -> Iterable[Row]:
@@ -297,9 +297,9 @@ class ETLComponent(Iterable):
         # noinspection PyTypeChecker
         for row in result_iter:
             if not self._iterator_applied_filters:
-                if where_dict is not None:
+                if criteria_dict is not None:
                     passed_filter = True
-                    for col, value in where_dict.items():
+                    for col, value in criteria_dict.items():
                         if row[col] != value:
                             passed_filter = False
                             break
@@ -356,9 +356,44 @@ class ETLComponent(Iterable):
         # So we use that on top of _raw_rows 
         return self.iter_result(self._raw_rows()) 
         
-    def where(self, criteria= None, order_by = None,  stats_id= None, parent_stats= None) -> Iterable[Row]:
+    def where(self,
+              criteria_list: list = None,
+              criteria_dict: dict = None,
+              order_by: list = None,
+              column_list: typing.List[typing.Union[Column, str]] = None,
+              exclude_cols: typing.List[typing.Union[Column, str]] = None,
+              use_cache_as_source: bool = None,
+              progress_frequency: int = None,
+              stats_id: str = None,
+              parent_stats: Statistics = None,
+              ) -> Iterable[Row]:
+        """
+
+        Parameters
+        ----------
+        criteria_list:
+            Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
+            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+        criteria_dict:
+            Dict keys should be columns, values are set using = or in
+        order_by:
+            List of sort keys
+        column_list:
+            List of columns (str or Column)
+        exclude_cols
+        use_cache_as_source
+        progress_frequency
+        stats_id
+        parent_stats
+
+        Returns
+        -------
+        rows
+
+        """
         assert order_by is None, '{} does not support order_by'.format(self)
-        return self.iter_result(self._raw_rows(), where_dict=criteria, stats_id=stats_id, parent_stats=parent_stats)
+        assert criteria_list is None, '{} does not support criteria_list'.format(self)
+        return self.iter_result(self._raw_rows(), criteria_dict=criteria_dict, stats_id=stats_id, parent_stats=parent_stats)
         
     def close(self):
         self.__close_called = True
@@ -402,7 +437,7 @@ class ETLComponent(Iterable):
         name = '{}.{}'.format(parent_stats.name, stats_id) 
         
         if stats_id not in parent_stats:
-            stats = Statistics(name=name, print_start_stop_times= print_start_stop_times)
+            stats = Statistics(name=name, print_start_stop_times=print_start_stop_times)
             parent_stats[stats_id] = stats
         else:
             stats = parent_stats[stats_id]
@@ -421,11 +456,11 @@ class ETLComponent(Iterable):
         stats_entry.name = name
         parent_stats[stats_id] = stats_entry
         
-    def get_unique_stats_entry(self, stats_id, parent_stats=None, print_start_stop_times= None):
-        new_stats = Statistics(print_start_stop_times= print_start_stop_times)
-        self.add_stats_entry(stats_id= stats_id, 
-                             stats_entry= new_stats, 
-                             parent_stats= parent_stats
+    def get_unique_stats_entry(self, stats_id, parent_stats=None, print_start_stop_times=None):
+        new_stats = Statistics(print_start_stop_times=print_start_stop_times)
+        self.add_stats_entry(stats_id=stats_id,
+                             stats_entry=new_stats,
+                             parent_stats=parent_stats
                              )
         return new_stats 
         

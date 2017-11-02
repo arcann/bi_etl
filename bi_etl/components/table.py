@@ -14,7 +14,7 @@ import warnings
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from decimal import InvalidOperation
-from typing import Iterable, Union, Callable, List
+from typing import Iterable, Callable, List, Union
 
 import sqlalchemy
 from bi_etl.timer import Timer
@@ -280,22 +280,23 @@ class Table(ReadOnlyTable):
         if self.auto_generate_key:
             
             if len(self.primary_key) > 1:
-                raise AssertionError("Can't auto generate a compound key with table {} pk={}".format(self,
-                                                                                                 self.primary_key)
-                                 )
+                raise AssertionError(
+                    "Can't auto generate a compound key with table {self.} pk={self.primary_key}".format(self=self)
+                )
             key = list(self.primary_key)[0]
             return self.autogenerate_sequence(row, seq_column= key, force_override= force_override)
             
-    def sanity_check_source_mapping(self, 
-                             source_definition,
-                             source_name = None,
-                             source_excludes = None,
-                             target_excludes = None,
-                             ignore_source_not_in_target = None,
-                             ignore_target_not_in_source = None,
-                             raise_on_source_not_in_target = None,
-                             raise_on_target_not_in_source = None,
-                             ):
+    def sanity_check_source_mapping(
+            self,
+            source_definition,
+            source_name = None,
+            source_excludes = None,
+            target_excludes = None,
+            ignore_source_not_in_target = None,
+            ignore_target_not_in_source = None,
+            raise_on_source_not_in_target = None,
+            raise_on_target_not_in_source = None,
+            ):
         
         self.sanity_check_done = True
         
@@ -440,7 +441,8 @@ class Table(ReadOnlyTable):
             Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
         parent_stats
 
-        Returns:
+        Returns
+        -------
             row
         """
         build_row_stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
@@ -885,9 +887,9 @@ class Table(ReadOnlyTable):
                               stat_name = 'insert',
                               parent_stats= None):
         # Need to delete pending first in case we are doing delete & insert pairs
-        self._delete_pending_batch(parent_stats= parent_stats)
+        self._delete_pending_batch(parent_stats=parent_stats)
         # Need to update pending first in case we are doing update & insert pairs
-        self._update_pending_batch(parent_stats= parent_stats)
+        self._update_pending_batch(parent_stats=parent_stats)
 
         if len(self.pending_insert_rows) == 0:
             return
@@ -1214,7 +1216,7 @@ class Table(ReadOnlyTable):
                 full_row = self.get_by_lookup(lookup_name, key_values_dict, parent_stats= stats)
                 self.uncache_row(full_row)
             else:
-                self.uncache_where(key_names= key_values_dict.keys(), key_values_dict= key_values_dict)
+                self.uncache_where(key_names=key_values_dict.keys(), key_values_dict=key_values_dict)
         
         stats.timer.stop()
         
@@ -1222,7 +1224,8 @@ class Table(ReadOnlyTable):
     def delete_not_in_set(self,
                           set_of_key_tuples: set,
                           lookup_name: str = None,
-                          criteria: Union[Iterable[str], str] = None,
+                          criteria_list: list = None,
+                          criteria_dict: dict = None,
                           use_cache_as_source: bool = True,
                           stat_name: str = 'delete_not_in_set',
                           progress_frequency: int = None,
@@ -1239,10 +1242,11 @@ class Table(ReadOnlyTable):
             This list represents the rows that should *not* be deleted.
         lookup_name: str
             The name of the lookup to use to find key tuples.
-        criteria
-            Only rows matching criteria will be checked against the ``list_of_key_tuples`` for deletion. 
+        criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
-            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+            https://goo.gl/JlY9us
+        criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
         stat_name: string
@@ -1274,7 +1278,10 @@ class Table(ReadOnlyTable):
         else:
             lookup = self.get_lookup(lookup_name)
 
-        for row in self.where(criteria, use_cache_as_source=use_cache_as_source, parent_stats=stats):
+        for row in self.where(criteria_list=criteria_list,
+                              criteria_dict=criteria_dict,
+                              use_cache_as_source=use_cache_as_source,
+                              parent_stats=stats):
             stats['rows read'] += 1
             existing_key = lookup.get_hashable_combined_key(row)
 
@@ -1300,10 +1307,11 @@ class Table(ReadOnlyTable):
         self.progress_frequency = saved_progress_frequency
 
     def delete_not_processed(self,
-                             criteria: Union[Iterable[str], str] = None,
+                             criteria_list: list = None,
+                             criteria_dict: dict = None,
                              use_cache_as_source: bool = True,
                              stat_name: str ='delete_not_processed',
-                             parent_stats= None
+                             parent_stats: Statistics = None
                              ):
         """
         WARNING: This does physical deletes !! See :meth:`logically_delete_not_processed` for logical deletes.
@@ -1312,10 +1320,11 @@ class Table(ReadOnlyTable):
         
         Parameters
         ----------
-        criteria
-            Only rows matching criteria will be checked against the ``list_of_key_tuples`` for deletion. 
+        criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
-            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+            https://goo.gl/JlY9us
+        criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
         stat_name: string
@@ -1328,10 +1337,11 @@ class Table(ReadOnlyTable):
         if self.source_keys_processed is None or len(self.source_keys_processed) == 0:
             # We don't want to logically delete all the rows
             # But that's only an issue if there are target rows
-            if any(True for _ in self.where(criteria=criteria)):
+            if any(True for _ in self.where(criteria_list=criteria_list, criteria_dict=criteria_dict,)):
                 raise RuntimeError("{} called before any source rows were processed.".format(stat_name))
-        self.delete_not_in_set(set_of_key_tuples= self.source_keys_processed,
-                               criteria= criteria,
+        self.delete_not_in_set(set_of_key_tuples=self.source_keys_processed,
+                               criteria_list=criteria_list,
+                               criteria_dict=criteria_dict,
                                stat_name= stat_name,
                                parent_stats= parent_stats)
         self.source_keys_processed = set()
@@ -1339,7 +1349,8 @@ class Table(ReadOnlyTable):
     def logically_delete_not_in_set(self,
                                     set_of_key_tuples: set,
                                     lookup_name: str = None,
-                                    criteria: Union[Iterable[str], str] = None,
+                                    criteria_list: list = None,
+                                    criteria_dict: dict = None,
                                     use_cache_as_source: bool = True,
                                     stat_name: str = 'logically_delete_not_in_set',
                                     progress_frequency: int = 10,
@@ -1354,10 +1365,11 @@ class Table(ReadOnlyTable):
             This list represents the rows that should *not* be logically deleted.
         lookup_name: str
             Name of the lookup to use
-        criteria
-            Only rows matching criteria will be checked against the ``list_of_key_tuples`` for deletion. 
+        criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
-            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+            https://goo.gl/JlY9us
+        criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
         stat_name: string
@@ -1372,20 +1384,22 @@ class Table(ReadOnlyTable):
             self._logical_delete_update = Row(RowIterationHeader(logical_name='logical_delete'))
             self._logical_delete_update[self.delete_flag] = self.delete_flag_yes
 
-        if criteria is None:
+        if criteria_dict is None:
             # Default to not processing rows that are already deleted
-            criteria = {self.delete_flag: self.delete_flag_no}
+            criteria_dict = {self.delete_flag: self.delete_flag_no}
 
         self.update_not_in_set(updates_to_make=self._logical_delete_update,
                                set_of_key_tuples=set_of_key_tuples,
                                lookup_name=lookup_name,
-                               criteria=criteria,
+                               criteria_list=criteria_list,
+                               criteria_dict=criteria_dict,
                                progress_frequency=progress_frequency,
                                stat_name=stat_name,
                                parent_stats=parent_stats)
         
     def logically_delete_not_processed(self,
-                                       criteria: Union[Iterable[str], str] = None,
+                                       criteria_list: list = None,
+                                       criteria_dict: dict = None,
                                        use_cache_as_source: bool = True,
                                        parent_stats= None
                                        ):
@@ -1394,10 +1408,11 @@ class Table(ReadOnlyTable):
         
         Parameters
         ----------
-        criteria
-            Only rows matching criteria will be checked against the ``list_of_key_tuples`` for logical deletion. 
+        criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
-            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+            https://goo.gl/JlY9us
+        criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
         parent_stats: bi_etl.statistics.Statistics
@@ -1411,15 +1426,18 @@ class Table(ReadOnlyTable):
             logically_delete_not_processed called before any source rows were processed.
             """
         self.logically_delete_not_in_set(set_of_key_tuples=self.source_keys_processed,
-                                         criteria=criteria,
+                                         criteria_list=criteria_list,
+                                         criteria_dict=criteria_dict,
                                          stat_name='logically_delete_not_processed',
                                          parent_stats=parent_stats)
         self.source_keys_processed = set()
         
     def logically_delete_not_in_source(self,
                                        source: ReadOnlyTable,
-                                       source_criteria: Union[Iterable[str], str] = None,
-                                       target_criteria: Union[Iterable[str], str] = None,
+                                       source_criteria_list: list = None,
+                                       source_criteria_dict: dict = None,
+                                       target_criteria_list: list = None,
+                                       target_criteria_dict: dict = None,
                                        use_cache_as_source: bool = True,
                                        parent_stats: Statistics = None):
         """
@@ -1431,14 +1449,16 @@ class Table(ReadOnlyTable):
         ----------
         source:
             The source to read to get the source keys.
-        source_criteria
-            Only source rows matching criteria will added to the list of keys not to logically delete. 
+        source_criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
-            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
-        target_criteria
-            Only target rows matching criteria will be checked against the source keys for logical deletion. 
+            https://goo.gl/JlY9us
+        source_criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
+        target_criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
-            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+            https://goo.gl/JlY9us
+        target_criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
         parent_stats:
@@ -1449,12 +1469,16 @@ class Table(ReadOnlyTable):
         self.log.info("Processing deletes")
         self.log.info("...getting source keys")                                
         set_of_source_keys = set()
-        for row in source.where(column_list=source.primary_key, criteria= source_criteria, parent_stats= parent_stats):
+        for row in source.where(column_list=source.primary_key,
+                                criteria_list=source_criteria_list,
+                                criteria_dict=source_criteria_dict,
+                                parent_stats= parent_stats):
             set_of_source_keys.add(source.get_primary_key_value_tuple(row))
         
         self.log.info("...logically_delete_not_in_set of source keys")
         self.logically_delete_not_in_set(set_of_source_keys,
-                                         criteria=target_criteria,
+                                         criteria_list=target_criteria_list,
+                                         criteria_dict=target_criteria_dict,
                                          use_cache_as_source=use_cache_as_source,
                                          parent_stats=parent_stats)
 
@@ -1491,9 +1515,9 @@ class Table(ReadOnlyTable):
                         except (sqlalchemy.exc.OperationalError, sqlalchemy.exc.InvalidRequestError):
                             id += 1
 
-                    update_table_object = Table(task = self.task,
-                                                table_name = table_name,
-                                                database = self.database,
+                    update_table_object = Table(task=self.task,
+                                                table_name=table_name,
+                                                database=self.database,
                                                 )
                     update_table_object.close()
                     if self.__transaction is not None:
@@ -1521,11 +1545,12 @@ class Table(ReadOnlyTable):
                             ]
                 sets = ','.join(sets_list)
 
-                key_join_list = ["{target_tbl}.{column} = {updates_tbl}.{column}"
-                                     .format(column=column,
-                                             target_tbl=self.table_name,
-                                             updates_tbl=update_table_object.table_name,)
-                                 for column in self.primary_key]
+                key_join_list = ["{target_tbl}.{column} = {updates_tbl}.{column}".format(
+                                    column=column,
+                                    target_tbl=self.table_name,
+                                    updates_tbl=update_table_object.table_name,)
+                                 for column in self.primary_key
+                                ]
                 key_joins = ','.join(key_join_list)
 
                 sql = """\
@@ -1587,14 +1612,12 @@ class Table(ReadOnlyTable):
                         update_stmt = self._update_stmt()
                         for key_column in self.primary_key:
                             key = self.get_column(key_column)
-                            #bind_name = self.make_bind_name('k',key.name)
                             bind_name = key.name
                             # Note SQLAlchemy takes care of converting to positional “qmark” bind parameters as needed
                             update_stmt = update_stmt.where(key == bindparam(bind_name, type_= key.type))
                         for c in row_dict.columns:
                             # Since we know we aren't updating the key, don't send the keys in the values clause
                             if c not in self.primary_key:
-                                #bind_name = self.make_bind_name('c',c)
                                 col_obj = self.get_column(c)
                                 bind_name = col_obj.name
                                 update_stmt = update_stmt.values( { c: bindparam(bind_name, type_= col_obj.type) } )
@@ -1604,15 +1627,12 @@ class Table(ReadOnlyTable):
                     stmt_values = dict()
                     for key_column in self.primary_key:
                         key = self.get_column(key_column)
-                        #bind_name = self.make_bind_name('k',key.name)
                         bind_name = key.name
                         stmt_values[bind_name] = row_dict[key_column]
 
                     for c in row_dict.columns:
                         # Since we know we aren't updating the key, don't send the keys in the values clause
                         if c not in self.primary_key:
-                            #bind_name = self.make_bind_name('c',c)
-                            #bind_name = c
                             col_obj = self.get_column(c)
                             bind_name = col_obj.name
                             stmt_values[bind_name] = row_dict[c]
@@ -1653,22 +1673,24 @@ class Table(ReadOnlyTable):
             self._update_pending_batch(parent_stats= parent_stats)
     
     def apply_updates(self,
-                      row,
-                      changes_list= None,
-                      additional_update_values= None,
-                      source_effective_date=None,
-                      stat_name='update',
-                      parent_stats= None):
+                      row: Row,
+                      changes_list: list=None,
+                      additional_update_values: Union[dict, Row]=None,
+                      stat_name: str='update',
+                      parent_stats: Statistics=None):
         """
         This method should only be called with a row that has already been transformed into the correct datatypes
         and column names.
         
-        The update values can either already be in row or be in the changes_list.
+        The update values can be in any of the following parameters
+            - row (also used for PK)
+            - changes_list
+            - additional_update_values
         """
         assert self.primary_key, "apply_updates called for table with no primary key"
         assert row.status != RowStatus.deleted, "apply_updates called for deleted row {}".format(row)
             
-        stats = self.get_stats_entry(stat_name, parent_stats= parent_stats)
+        stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.timer.start()
         
         # Set the last update date
@@ -1697,7 +1719,7 @@ class Table(ReadOnlyTable):
             # most efficient ways to group the updates would also likely be slow.
 
             row.status = RowStatus.update_whole
-            self._add_pending_update(row, parent_stats= stats)
+            self._add_pending_update(row, parent_stats=stats)
             if stats is not None:
                 stats['update called'] += 1
         else:
@@ -1707,7 +1729,6 @@ class Table(ReadOnlyTable):
         stats.timer.stop()         
     
     def _update_stmt(self):
-        #pylint: disable=no-value-for-parameter
         return self.table.update().execution_options(autocommit=self.autocommit)
     
     def update_where_pk(self,
@@ -1875,7 +1896,8 @@ class Table(ReadOnlyTable):
                           updates_to_make,
                           set_of_key_tuples: set,
                           lookup_name: str = None,
-                          criteria: Union[Iterable[str], str] = None,
+                          criteria_list: list = None,
+                          criteria_dict: dict = None,
                           progress_frequency: int = None,
                           stat_name: str = 'update_not_in_set',
                           parent_stats: Statistics = None,
@@ -1924,7 +1946,10 @@ class Table(ReadOnlyTable):
             lookup = self.get_lookup(lookup_name)
         
         # Note, here we select only lookup columns from self
-        for row in self.where(column_list= lookup.lookup_keys, criteria=criteria, parent_stats=stats):
+        for row in self.where(column_list=lookup.lookup_keys,
+                              criteria_list=criteria_list,
+                              criteria_dict=criteria_dict,
+                              parent_stats=stats):
             if row.status == RowStatus.unknown:
                 pass
             stats['rows read'] += 1
@@ -1942,7 +1967,9 @@ class Table(ReadOnlyTable):
                 target_row = self.get_by_lookup(lookup_name, row)
 
                 # Then we can apply the updates to it
-                self.apply_updates(row= target_row, additional_update_values= updates_to_make, parent_stats= stats)
+                self.apply_updates(row=target_row,
+                                   additional_update_values=updates_to_make,
+                                   parent_stats=stats)
         stats.timer.stop()
 
         # Restore saved progress_frequency
@@ -1950,10 +1977,11 @@ class Table(ReadOnlyTable):
 
     def update_not_processed(self,
                              update_row,
-                             lookup_name = None,
-                             criteria = None,
-                             stat_name='update_not_processed',
-                             parent_stats= None):
+                             lookup_name: str = None,
+                             criteria_list: list = None,
+                             criteria_dict: dict = None,
+                             stat_name: str='update_not_processed',
+                             parent_stats: Statistics = None):
         """
         Applies update to rows matching criteria that are not in the Table memory of rows passed to :meth:`upsert`.  
         
@@ -1961,10 +1989,11 @@ class Table(ReadOnlyTable):
         ----------
         update_row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
             :class:`~bi_etl.components.row.row_case_insensitive.Row` or dict of updates to make
-        criteria
-            Only rows matching criteria will be checked against the ``list_of_key_tuples`` for update. 
+        criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
-            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+            https://goo.gl/JlY9us
+        criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
         lookup_name: str
             Optional lookup name those key values are from.
         stat_name: str
@@ -1977,12 +2006,16 @@ class Table(ReadOnlyTable):
         if self.source_keys_processed is None or len(self.source_keys_processed) == 0:
             # We don't want to logically delete all the rows
             # But that's only an issue if there are target rows
-            if any(True for _ in self.where(criteria=criteria)):
+            if any(True for _ in self.where(
+                    criteria_list=criteria_list,
+                    criteria_dict=criteria_dict,
+            )):
                 raise RuntimeError("{} called before any source rows were processed.".format(stat_name))
         self.update_not_in_set(updates_to_make=update_row,
                                set_of_key_tuples=self.source_keys_processed,
                                lookup_name=lookup_name,
-                               criteria=criteria,
+                               criteria_list=criteria_list,
+                               criteria_dict=criteria_dict,
                                stat_name=stat_name,
                                parent_stats=parent_stats)
         self.source_keys_processed = set()

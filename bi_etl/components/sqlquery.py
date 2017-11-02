@@ -4,6 +4,8 @@ Created on Sep 17, 2014
 @author: woodd
 """
 from bi_etl.components.etlcomponent import ETLComponent
+from bi_etl.database import DatabaseMetadata
+from bi_etl.scheduler.task import ETLTask
 
 
 class SQLQuery(ETLComponent):
@@ -15,15 +17,15 @@ class SQLQuery(ETLComponent):
     
     """
     def __init__(self,
-                 task,
-                 database,
-                 sql,
-                 logical_name = None,
+                 task: ETLTask,
+                 database: DatabaseMetadata,
+                 sql: str,
+                 logical_name: str=None,
                  **kwargs
                  ):
         # Don't pass kwargs up. They should be set here at the end
         super(SQLQuery, self).__init__(task=task,
-                                       logical_name= logical_name
+                                       logical_name=logical_name
                                        )
         
         self.engine = database.bind
@@ -33,7 +35,7 @@ class SQLQuery(ETLComponent):
         self.set_kwattrs(**kwargs) 
 
     def __repr__(self):
-        return "SQLQuery({})".format( self.logical_name or id(self))
+        return "SQLQuery({})".format(self.logical_name or id(self))
     
     def __str__(self):
         return repr(self)
@@ -57,7 +59,7 @@ class SQLQuery(ETLComponent):
         stats = self.get_stats_entry(stats_id=self.default_stats_id)
         stats.timer.start()
         select_result = self.engine.execute(self.sql, **parameters)
-        return self.iter_result(select_result, parent_stats= stats)
+        return self.iter_result(select_result, parent_stats=stats)
 
     def run_substitute(self, *args, **kwargs):
         """
@@ -68,4 +70,4 @@ class SQLQuery(ETLComponent):
         stats.timer.start()
         select = self.sql.format(*args, **kwargs)
         select_result = self.engine.execute(select)
-        return self.iter_result(select_result, parent_stats= stats)
+        return self.iter_result(select_result, parent_stats=stats)
