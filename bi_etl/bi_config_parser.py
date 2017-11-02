@@ -76,7 +76,15 @@ class BIConfigParser(ConfigParser):
             if parent_config.has_section('Config'):
                 for setting in parent_config['Config']:
                     if setting.startswith('parent'):
-                        self.merge_parent(read_dirs, parent_config['Config'][setting])
+                        file_name = parent_config['Config'][setting]
+                        alread_read = False
+                        for directory in read_dirs:
+                            file_path = os.path.normpath(os.path.join(directory, file_name))
+                            for read_file in self.config_file_read:
+                                if file_path == read_file:
+                                    alread_read = True
+                        if not alread_read:
+                            self.merge_parent(read_dirs, file_name)
 
     def read_parents(self, directories):
         if self.has_section('Config'):
