@@ -327,7 +327,7 @@ class Lookup(object):
             return self.parent_component.Row(data=rows[0])
         else:
             msg = "{lookup_name} find_in_remote_table {row} matched multiple records {rows}"
-            msg = msg.format(lookup_name = self.lookup_name,
+            msg = msg.format(lookup_name=self.lookup_name,
                              row=row,
                              rows=rows
                              )

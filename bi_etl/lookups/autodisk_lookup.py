@@ -269,7 +269,7 @@ class AutoDiskLookup(Lookup):
                     self.disk_cache.cache[disk_lk_tuple] = versions_collection
 
                 # Put add new row to disk as well
-                self.disk_cache.cache_row(row, allow_update= allow_update)
+                self.disk_cache.cache_row(row, allow_update=allow_update)
 
     def uncache_row(self, row):
         if self.cache is not None:
@@ -279,13 +279,9 @@ class AutoDiskLookup(Lookup):
 
     def __iter__(self):
         """
-        The rows will come out in any order.
+        The rows will come out in any order.  DO NOT MODIFY cache during the loop
         """
         if self.cache is not None:
-
-            #TODO: Turn off the flush to disk during this operation so that we don't change the dict
-            # Also needs to work with uncache_row 
-            
             for row in self.cache:
                 yield row
         if self.disk_cache is not None:

@@ -26,32 +26,33 @@ class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
     to that segment would need to go to both places.
 
     """
+
     def __init__(self, lookup_name, lookup_keys, parent_component, begin_date, end_date, config=None, path=None):
         """
         Optional parameter path controls where the data is persisted
         """
-        RangeLookup.__init__(self, 
-                             lookup_name= lookup_name, 
-                             lookup_keys= lookup_keys, 
-                             parent_component= parent_component,
-                             begin_date= begin_date, 
-                             end_date= end_date, 
-                             config= config, 
+        RangeLookup.__init__(self,
+                             lookup_name=lookup_name,
+                             lookup_keys=lookup_keys,
+                             parent_component=parent_component,
+                             begin_date=begin_date,
+                             end_date=end_date,
+                             config=config,
                              )
-        AutoDiskLookup.__init__(self, 
-                             lookup_name= lookup_name, 
-                             lookup_keys= lookup_keys, 
-                             parent_component= parent_component,
-                             config= config,
-                             path= path,
-                             begin_date= begin_date,
-                             end_date= end_date, 
-                             )
+        AutoDiskLookup.__init__(self,
+                                lookup_name=lookup_name,
+                                lookup_keys=lookup_keys,
+                                parent_component=parent_component,
+                                config=config,
+                                path=path,
+                                begin_date=begin_date,
+                                end_date=end_date,
+                                )
         self.MemoryLookupClass = RangeLookup
         self.DiskLookupClass = DiskRangeLookup
-        
-    def cache_row(self, row, allow_update = True):
+
+    def cache_row(self, row, allow_update=True):
         AutoDiskLookup.cache_row(self, row, allow_update=allow_update)
-        
+
     def find_in_cache(self, row, **kwargs):
         return RangeLookup.find_in_cache(self, row=row, **kwargs)

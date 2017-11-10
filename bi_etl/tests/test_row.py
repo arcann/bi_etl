@@ -375,7 +375,7 @@ class TestRow(unittest.TestCase):
             1000000 * dict_seconds / calls
             )
         )
-        self.assertLessEqual(row_seconds, dict_seconds * 20, "Row get did not meet performance goal")
+        self.assertLessEqual(row_seconds, dict_seconds * 25, "Row get did not meet performance goal")
 
     @pytest.mark.xfail
     def test_performance_set_existing(self):

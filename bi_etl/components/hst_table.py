@@ -8,6 +8,7 @@ import traceback
 import warnings
 from typing import Union, Callable, List
 
+from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
@@ -183,7 +184,7 @@ class HistoryTable(Table):
                  table_name: str,
                  table_name_case_sensitive: bool = False,
                  exclude_columns: list = None,
-                 source_effective_date: datetime = None,
+                 default_effective_date: datetime = None,
                  **kwargs
                  ):
         # Don't pass kwargs up to super. They should be set here at the end
@@ -193,15 +194,13 @@ class HistoryTable(Table):
                          table_name_case_sensitive=table_name_case_sensitive,
                          exclude_columns=exclude_columns,
                          )
-        self.__source_effective_date = None
-        if source_effective_date is None:
-            self.source_effective_date = datetime.now()
+        self.__default_effective_date = None
+        if default_effective_date is None:
+            self.default_effective_date = datetime.now()
         else:
-            self.source_effective_date = source_effective_date
-        self.__begin_date = None
-        self.begin_date_column = None
-        self.__end_date = None
-        self.end_date_column = None
+            self.default_effective_date = default_effective_date
+        self.__begin_date_column = None
+        self.__end_date_column = None
         self.__default_begin_date = None
         self.default_begin_date = datetime(year=1900, month=1, day=1, hour=0, minute=0, second=0)
         self.__default_end_date = None
@@ -223,12 +222,12 @@ class HistoryTable(Table):
         return "HistoryTable({})".format(self.table.name)
 
     @property
-    def source_effective_date(self):
-        return self.__source_effective_date
+    def default_effective_date(self):
+        return self.__default_effective_date
 
-    @source_effective_date.setter
-    def source_effective_date(self, value):
-        self.__source_effective_date = ensure_datetime(value)
+    @default_effective_date.setter
+    def default_effective_date(self, value):
+        self.__default_effective_date = ensure_datetime(value)
 
     @property
     def default_begin_date(self):
@@ -247,14 +246,14 @@ class HistoryTable(Table):
         self.__default_end_date = ensure_datetime(value)
 
     def is_date_key_column(self, column):
-        if self.begin_date is None or self.end_date is None:
+        if self.begin_date_column is None or self.end_date_column is None:
             raise AssertionError('begin_date or end_date not defined')
         return (self.get_column_name(column) == self.begin_date_column
                 or self.get_column_name(column) == self.end_date_column
                 )
 
     def build_nk(self):
-        if len(self.primary_key) == 1:
+        if len(list(self.primary_key)) == 1:
             #
             # TODO: For scd type2 dimension tables the primary_key will be the surrogate key.  
             # So this won't generate the actual natural key.
@@ -275,44 +274,38 @@ class HistoryTable(Table):
             return natural_key
 
     @property
-    def begin_date(self):
-        return self.__begin_date
+    def begin_date_column(self) -> str:
+        return self.__begin_date_column
 
-    @begin_date.setter
-    def begin_date(self, value):
+    @begin_date_column.setter
+    def begin_date_column(self, value: str):
         try:
             # Remove the old name from custom_special_values
-            if self.__begin_date in self.custom_special_values:
-                del self.custom_special_values[self.__begin_date]
+            if self.__begin_date_column in self.custom_special_values:
+                del self.custom_special_values[self.__begin_date_column]
         except AttributeError:
             # __begin_date doesn't exist yet
             pass
-        self.__begin_date = value
-        if self.__begin_date is not None:
-            self.custom_special_values[self.begin_date] = self.default_begin_date
-        begin_date_column_object = self.get_column(self.begin_date)
-        self.begin_date_column = begin_date_column_object.name
-        assert begin_date_column_object.type.python_type == datetime, "Begin date is not datetime compatible"
+        self.__begin_date_column = value
+        if self.__begin_date_column is not None:
+            self.custom_special_values[self.__begin_date_column] = self.default_begin_date
 
     @property
-    def end_date(self):
-        return self.__end_date
+    def end_date_column(self) -> str:
+        return self.__end_date_column
 
-    @end_date.setter
-    def end_date(self, value):
+    @end_date_column.setter
+    def end_date_column(self, value: str):
         try:
             # Remove the old name from custom_special_values
-            if self.__end_date in self.custom_special_values:
-                del self.custom_special_values[self.__end_date]
+            if self.__end_date_column in self.custom_special_values:
+                del self.custom_special_values[self.__end_date_column]
         except AttributeError:
             # __end_date doesn't exist yet
             pass
-        self.__end_date = value
-        if self.__end_date is not None:
-            self.custom_special_values[self.end_date] = self.default_end_date
-        end_date_column_object = self.get_column(self.end_date)
-        self.end_date_column = end_date_column_object.name
-        assert end_date_column_object.type.python_type == datetime, "End date is not datetime compatible"
+        self.__end_date_column = value
+        if self.__end_date_column is not None:
+            self.custom_special_values[self.end_date_column] = self.default_end_date
 
     def define_lookup(self,
                       lookup_name,
@@ -342,9 +335,9 @@ class HistoryTable(Table):
             lookup_class_kwargs = self.default_lookup_class_kwargs
         # Add default begin_date and end_date arguments to the lookup class
         if 'begin_date' not in lookup_class_kwargs:
-            lookup_class_kwargs['begin_date'] = self.begin_date
+            lookup_class_kwargs['begin_date'] = self.begin_date_column
         if 'end_date' not in lookup_class_kwargs:
-            lookup_class_kwargs['end_date'] = self.end_date
+            lookup_class_kwargs['end_date'] = self.end_date_column
 
         # Remove both the begin_date and end_date from the lookup columns 
         # (they are used in the range part)
@@ -410,10 +403,10 @@ class HistoryTable(Table):
         if order_by is '-PK-':
             order_by = list(self.get_pk_lookup().lookup_keys)
             # Make sure begin date is not already in the order_by
-            if self.begin_date in order_by:
-                order_by.remove(self.begin_date)
+            if self.begin_date_column in order_by:
+                order_by.remove(self.begin_date_column)
             # Add begin date as the last part of the order by
-            order_by.append(self.begin_date)
+            order_by.append(self.begin_date_column)
 
         super().fill_cache(progress_frequency=progress_frequency,
                            progress_message=progress_message,
@@ -426,40 +419,6 @@ class HistoryTable(Table):
                            row_limit=row_limit,
                            parent_stats=parent_stats,
                            )
-
-    def get_by_lookup(self, lookup_name, source_row, stats_id='get_by_lookup', parent_stats=None):
-        """
-        Get by an alternate key. Returns a row.
-        
-        Parameters
-        ----------
-        lookup_name: str
-            Name passed into :meth:`define_lookup`
-        source_row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
-            Row to get lookup keys from (including effective date)
-        stats_id: str
-            Statistics name to use
-        parent_stats: bi_etl.statistics.Statistics
-            Optional Statistics object to nest this steps statistics in.
-            Default is to place statistics in the ETLTask level statistics.
-        
-        Raises
-        ------
-        NoResultFound:
-            If key doesn't exist.
-        BeforeAllExisting:
-            If the effective date provided is before all existing records.
-        """
-        if self.begin_date in source_row:
-            effective_date = source_row[self.begin_date]
-        else:
-            effective_date = self.source_effective_date
-        return self.get_by_lookup_and_effective_date(lookup_name=lookup_name,
-                                                     source_row=source_row,
-                                                     effective_date=effective_date,
-                                                     stats_id=stats_id,
-                                                     parent_stats=parent_stats,
-                                                     )
 
     def get_by_lookup_and_effective_date(self,
                                          lookup_name,
@@ -547,6 +506,40 @@ class HistoryTable(Table):
             stats.timer.stop()
         return row
 
+    def get_by_lookup(self, lookup_name, source_row, stats_id='get_by_lookup', parent_stats=None):
+        """
+        Get by an alternate key. Returns a row.
+
+        Parameters
+        ----------
+        lookup_name: str
+            Name passed into :meth:`define_lookup`
+        source_row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
+            Row to get lookup keys from (including effective date)
+        stats_id: str
+            Statistics name to use
+        parent_stats: bi_etl.statistics.Statistics
+            Optional Statistics object to nest this steps statistics in.
+            Default is to place statistics in the ETLTask level statistics.
+
+        Raises
+        ------
+        NoResultFound:
+            If key doesn't exist.
+        BeforeAllExisting:
+            If the effective date provided is before all existing records.
+        """
+        if self.begin_date_column in source_row:
+            effective_date = source_row[self.begin_date_column]
+        else:
+            effective_date = self.default_effective_date
+        return self.get_by_lookup_and_effective_date(lookup_name=lookup_name,
+                                                     source_row=source_row,
+                                                     effective_date=effective_date,
+                                                     stats_id=stats_id,
+                                                     parent_stats=parent_stats,
+                                                     )
+
     def sanity_check_source_mapping(self,
                                     source_definition,
                                     source_name=None,
@@ -561,14 +554,14 @@ class HistoryTable(Table):
         if target_excludes is None:
             target_excludes = list()
         # include update begin or end dates like normal columns
-        if self.begin_date not in target_excludes:
-            target_excludes.append(self.begin_date)
-        if self.end_date not in target_excludes:
-            target_excludes.append(self.end_date)
+        if self.begin_date_column not in target_excludes:
+            target_excludes.append(self.begin_date_column)
+        if self.end_date_column not in target_excludes:
+            target_excludes.append(self.end_date_column)
         if self.type_1_surrogate and self.type_1_surrogate not in target_excludes:
             target_excludes.append(self.type_1_surrogate)
 
-        super(Hst_Table, self).sanity_check_source_mapping(
+        super().sanity_check_source_mapping(
             source_definition=source_definition,
             source_name=None,
             source_excludes=source_excludes,
@@ -611,18 +604,15 @@ class HistoryTable(Table):
         -------
         new_row
         """
-        if self.begin_date is None:
+        if self.begin_date_column is None:
             raise ValueError("begin_date column name not set")
-        if self.end_date is None:
+        if self.end_date_column is None:
             raise ValueError("end_date column name not set")
-        if source_row.get(self.begin_date, None) is None:
-            if self.source_effective_date is None:
-                source_row[self.begin_date] = self.default_begin_date
-            else:
-                source_row[self.begin_date] = self.source_effective_date
+        if source_row.get(self.begin_date_column, None) is None:
+            source_row[self.begin_date_column] = self.default_begin_date
 
-        if source_row.get(self.end_date, None) is None:
-            source_row[self.end_date] = self.default_end_date
+        if source_row.get(self.end_date_column, None) is None:
+            source_row[self.end_date_column] = self.default_end_date
 
         if source_row[self.begin_date_column] > source_row[self.end_date_column]:
             raise ValueError("Begin date {} greater than end date {} for row {}".format(
@@ -635,12 +625,12 @@ class HistoryTable(Table):
         if (self.type_1_surrogate is not None
             and self.auto_generate_key
             and source_row.get(self.type_1_surrogate, None) is None
-           ):
-            if source_row[self.begin_date] == self.default_begin_date:
+            ):
+            if source_row[self.begin_date_column] == self.default_begin_date:
                 self.autogenerate_sequence(source_row, seq_column=self.type_1_surrogate, force_override=False)
             else:
                 msg = 'Insert cannot maintain type1 surrogate keys for anything except new values. Please use upsert.'
-                raise AssertionError(msg)
+                warnings.warn(msg)
 
         return super().insert_row(
             source_row,
@@ -653,12 +643,37 @@ class HistoryTable(Table):
 
     def apply_updates(self,
                       row,
-                      changes_list: list = None,
+                      changes_list: List[ColumnDifference] = None,
                       additional_update_values: Union[dict, Row] = None,
                       stat_name: str = 'update',
-                      parent_stats: Statistics = None):
+                      parent_stats: Statistics = None,
+                      **kwargs
+                      ):
+        """
+        This method should only be called with a row that has already been transformed into the correct datatypes
+        and column names.
 
-        source_effective_date = self.source_effective_date
+        The update values can be in any of the following parameters
+           - row (also used for PK)
+           - changes_list
+           - additional_update_values
+
+        Parameters
+        ----------
+        row:
+            The row to update with (needs to have at least PK values)
+        changes_list:
+            A list of ColumnDifference objects to apply to the row
+        additional_update_values:
+            A Row or dict of additional values to apply to the main row
+        stat_name:
+            Name of this step for the ETLTask statistics. Default = 'update'
+        parent_stats:
+        kwargs:
+            effective_date: datetime
+                The effective date to use for the update
+        """
+        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
         ensure_datetime_dict(row, self.begin_date_column)
         ensure_datetime_dict(row, self.end_date_column)
         if row[self.begin_date_column] > row[self.end_date_column]:
@@ -668,7 +683,7 @@ class HistoryTable(Table):
                 row.str_formatted(),
             ))
         # Check for special case that the target already has that exact begin date
-        if row[self.begin_date_column] == source_effective_date:
+        if row[self.begin_date_column] == effective_date:
             # In which case, we simply update it in place
             if self.trace_data:
                 self.log.debug(
@@ -696,26 +711,29 @@ class HistoryTable(Table):
             # Apply updates to the new row (use parent class routine to finish the work)
             # It won't send update since new_row.status = RowStatus.insert
             # The row actually gets inserted at the end of this method
-            super(Hst_Table, self).apply_updates(new_row,
-                                                 changes_list=changes_list,
-                                                 additional_update_values=additional_update_values,
-                                                 parent_stats=parent_stats,
-                                                 )
+            super().apply_updates(new_row,
+                                  changes_list=changes_list,
+                                  additional_update_values=additional_update_values,
+                                  parent_stats=parent_stats,
+                                  )
 
-            new_row[self.begin_date_column] = source_effective_date
+            new_row[self.begin_date_column] = effective_date
             # check that we aren't inserting after all existing rows
-            if new_row[self.end_date_column] < source_effective_date:
+            if new_row[self.end_date_column] < effective_date:
                 self.warnings_issued += 1
                 if self.warnings_issued < self.warnings_limit:
-                    self.log.warning("The table had an existing key sequence that did not cover all dates. "
-                                     "Natural Keys = {keys}.".format(
-                            keys=self.get_nk_lookup().get_list_of_lookup_column_values(row)
-                        )
+                    self.log.warning("The table had an existing key sequence that did not cover all dates.\n"
+                                     " End = {end} is less than eff date {eff}\n"
+                                     " Natural Keys = {keys}.".format(
+                        end=new_row[self.end_date_column],
+                        eff=effective_date,
+                        keys=self.get_nk_lookup().get_list_of_lookup_column_values(row)
                     )
-                    for row in self.get_pk_lookup().get_versions_collection(row).values():
-                        self.log.info("begin= {begin}\tend= {end}".format(
-                            begin=row[self.begin_date],
-                            end=row[self.end_date]
+                    )
+                    for row in self.get_nk_lookup().get_versions_collection(row).values():
+                        self.log.info(" begin= {begin}\tend= {end}".format(
+                            begin=row[self.begin_date_column],
+                            end=row[self.end_date_column]
                         ),
                         )
                 new_row[self.end_date_column] = self.default_end_date
@@ -723,17 +741,17 @@ class HistoryTable(Table):
             # Retire the existing row (after clone so that the existing end_date is passed on to the new row)
             # Note: The parent class apply_updates will check to only send update statement if the row is in the
             #       database, otherwise it will update the record that's pending insert                                       
-            row[self.end_date_column] = source_effective_date - timedelta(seconds=1)
+            row[self.end_date_column] = effective_date - timedelta(seconds=1)
             if self.trace_data:
                 self.log.debug("retiring row with begin effective {begin} with new end date of {end}".format(
                     begin=row[self.begin_date_column],
                     end=row[self.end_date_column],
                 )
                 )
-            super(Hst_Table, self).apply_updates(row,
-                                                 stat_name=stat_name,
-                                                 parent_stats=parent_stats
-                                                 )
+            super().apply_updates(row,
+                                  stat_name=stat_name,
+                                  parent_stats=parent_stats
+                                  )
 
             # Add the new row
             self.insert_row(new_row,
@@ -750,7 +768,7 @@ class HistoryTable(Table):
                additional_update_values: dict = None,
                additional_insert_values: dict = None,
                update_callback: Callable[[list, Row], None] = None,
-               insert_callback: Callable[[list, Row], None] = None,
+               insert_callback: Callable[[Row], None] = None,
                source_excludes: list = None,
                target_excludes: list = None,
                stat_name: str = 'upsert',
@@ -760,7 +778,7 @@ class HistoryTable(Table):
         """
         Update (if changed) or Insert a row in the table.
         Returns the row found/inserted, with the auto-generated key (if that feature is enabled)
-        
+
         Parameters
         ----------
         source_row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
@@ -784,12 +802,21 @@ class HistoryTable(Table):
         target_excludes: list
             list of Table columns to exclude when mapping from the source row
         stat_name: string
-            Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
+            Name of this step for the ETLTask statistics. Default = 'upsert'
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
-                    
+        kwargs:
+            effective_date: datetime
+                The effective date to use for the update
         """
+        effective_date = kwargs.get('effective_date')
+        if effective_date is None:
+            if self.begin_date_column in source_row and source_row[self.begin_date_column] is not None:
+                effective_date = ensure_datetime(source_row[self.begin_date_column])
+            else:
+                effective_date = self.default_effective_date
+
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.ensure_exists('upsert source row count')
         stats.ensure_exists('apply_updates called')
@@ -802,27 +829,22 @@ class HistoryTable(Table):
                 warnings.warn('Ignoring primary key value passed in since auto_generate_key is enabled')
                 source_excludes.extend(self.primary_key)
 
-        if self.begin_date in source_row and source_row[self.begin_date] is not None:
-            source_effective_date = ensure_datetime(source_row[self.begin_date])
-        else:
-            source_effective_date = self.source_effective_date
-
         if skip_update_check_on is None:
             skip_update_check_on = []
 
         # Don't check in begin or end dates for differences
-        if self.begin_date not in skip_update_check_on:
-            skip_update_check_on.append(self.begin_date)
-        if self.end_date not in skip_update_check_on:
-            skip_update_check_on.append(self.end_date)
+        if self.begin_date_column not in skip_update_check_on:
+            skip_update_check_on.append(self.begin_date_column)
+        if self.end_date_column not in skip_update_check_on:
+            skip_update_check_on.append(self.end_date_column)
 
         if target_excludes is None:
             target_excludes = list()
         # Don't update begin or end dates like normal columns
-        if self.begin_date not in target_excludes:
-            target_excludes.append(self.begin_date)
-        if self.end_date not in target_excludes:
-            target_excludes.append(self.end_date)
+        if self.begin_date_column not in target_excludes:
+            target_excludes.append(self.begin_date_column)
+        if self.end_date_column not in target_excludes:
+            target_excludes.append(self.end_date_column)
 
         stats.timer.start()
         self.begin()
@@ -868,11 +890,11 @@ class HistoryTable(Table):
             if self.trace_data:
                 # lookup_keys is used only for data trace
                 lookup_keys = self.get_lookup(lookup_name).get_list_of_lookup_column_values(source_mapped_as_target_row)
-                lookup_keys.append(source_effective_date)
+                lookup_keys.append(effective_date)
 
             existing_row = self.get_by_lookup_and_effective_date(lookup_name,
                                                                  source_row=source_mapped_as_target_row,
-                                                                 effective_date=source_effective_date,
+                                                                 effective_date=effective_date,
                                                                  parent_stats=stats
                                                                  )
 
@@ -921,7 +943,7 @@ class HistoryTable(Table):
             if self.inserts_use_default_begin_date:
                 new_row[self.begin_date_column] = self.default_begin_date
             else:
-                new_row[self.begin_date_column] = source_effective_date
+                new_row[self.begin_date_column] = effective_date
 
             # Set end date to 1 second before existing records begin date
             first_begin = e.first_existing_row[self.begin_date_column]
@@ -939,9 +961,11 @@ class HistoryTable(Table):
                 new_row[self.get_column_name(self.last_update_date)] = datetime.now()
 
             if self.trace_data:
-                self.log.debug("Inserting record effective {} before existing history".format(source_effective_date))
+                self.log.debug("Inserting record effective {} before existing history".format(effective_date))
             stats['insert before existing called'] += 1
             self.insert_row(new_row, build_method='none', parent_stats=stats)
+            if insert_callback:
+                insert_callback(new_row)
             target_row = new_row
 
         except NoResultFound:
@@ -953,7 +977,7 @@ class HistoryTable(Table):
             if self.inserts_use_default_begin_date:
                 new_row[self.begin_date_column] = self.default_begin_date
             else:
-                new_row[self.begin_date_column] = source_effective_date
+                new_row[self.begin_date_column] = effective_date
 
             new_row[self.end_date_column] = self.default_end_date
 
@@ -971,6 +995,10 @@ class HistoryTable(Table):
                 self.log.debug("{key} not found, inserting as new".format(key=lookup_keys))
             stats['insert new called'] += 1
             self.insert_row(new_row, build_method='none', parent_stats=stats)
+
+            if insert_callback:
+                insert_callback(new_row)
+
             # debugging commit
             # self.commit(parent_stats= stats);
 
@@ -979,11 +1007,13 @@ class HistoryTable(Table):
 
         return target_row
 
-    def upsert_by_pk(self,
-                     source_row: Row,
-                     stat_name='upsert_by_pk',
-                     parent_stats=None,
-                     ):
+    def upsert_by_pk(
+            self,
+            source_row: Row,
+            stat_name='upsert_by_pk',
+            parent_stats=None,
+            **kwargs
+    ):
         """
         Used by upsert_special_values_rows to find and update rows by the full PK.
         Not expected to be useful outside of that.
@@ -997,19 +1027,33 @@ class HistoryTable(Table):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
+        kwargs:
+            effective_date:
+                The effective date to use for this operation.
         """
+        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.timer.start()
         self.begin()
+
+        source_row = self.build_row(source_row)
+
+        if self.track_source_rows:
+            # Keep track of source records so we can check if target rows don't exist in source
+
+            self.source_keys_processed.add(self.get_natural_key_tuple(source_row))
 
         try:
             existing_row = self.get_by_key(source_row)
             changes_list = existing_row.compare_to(source_row)
             if len(changes_list) > 0:
-                self.apply_updates(existing_row,
-                                   changes_list=changes_list,
-                                   stat_name=stat_name,
-                                   parent_stats=stats)
+                self.apply_updates(
+                    existing_row,
+                    effective_date=effective_date,
+                    changes_list=changes_list,
+                    stat_name=stat_name,
+                    parent_stats=stats,
+                )
         except NoResultFound:
             self.insert_row(source_row)
         stats.timer.stop()
@@ -1058,10 +1102,11 @@ class HistoryTable(Table):
         # if the row is not pending insert, issue delete to database
         if row_to_be_deleted.status != RowStatus.insert:
             # Delete the row in the database
-            super(Hst_Table, self).delete(key_values=row_to_be_deleted,
-                                          maintain_cache=False,
-                                          parent_stats=stats,
-                                          )
+            super().delete(
+                key_values=row_to_be_deleted,
+                maintain_cache=False,
+                parent_stats=stats,
+            )
         row_to_be_deleted.status = RowStatus.deleted
 
         # remove the row from the cache, if that is selected.  Otherwise the caller will need to do that.
@@ -1077,10 +1122,11 @@ class HistoryTable(Table):
                 # No prior row. If inserts_use_default_begin_date then we need to update the following row
                 if self.inserts_use_default_begin_date:
                     first_existing_row = e.first_existing_row
-                    first_existing_row[self.begin_date] = row_to_be_deleted[self.begin_date]
-                    super(Hst_Table, self).apply_updates(row=first_existing_row,
-                                                         parent_stats=stats
-                                                         )
+                    first_existing_row[self.begin_date_column] = row_to_be_deleted[self.begin_date_column]
+                    super().apply_updates(
+                        row=first_existing_row,
+                        parent_stats=stats
+                    )
                 # Nothing more to do exit this method
                 return
             except AfterExisting as e:
@@ -1091,11 +1137,12 @@ class HistoryTable(Table):
                 prior_row = None
 
         if prior_row is not None:
-            prior_row[self.end_date] = row_to_be_deleted[self.end_date]
+            prior_row[self.end_date_column] = row_to_be_deleted[self.end_date_column]
             # Apply updates to the row (use parent class routine to finish the work)
-            super(Hst_Table, self).apply_updates(row=prior_row,
-                                                 parent_stats=stats
-                                                 )
+            super().apply_updates(
+                row=prior_row,
+                parent_stats=stats
+            )
         stats.timer.stop()
 
     def logically_delete_not_in_set(self,
@@ -1106,7 +1153,9 @@ class HistoryTable(Table):
                                     use_cache_as_source: bool = True,
                                     stat_name: str = 'logically_delete_not_in_set',
                                     progress_frequency: int = 10,
-                                    parent_stats: Statistics = None):
+                                    parent_stats: Statistics = None,
+                                    **kwargs
+                                    ):
         """
         Logically deletes rows matching criteria that are not in the list_of_key_tuples pass in.
         
@@ -1130,9 +1179,12 @@ class HistoryTable(Table):
             How often (in seconds) to output progress messages. Default = 10.  None for no progress messages.
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
-            Default is to place statistics in the ETLTask level statistics.         
-        
+            Default is to place statistics in the ETLTask level statistics.
+        kwargs:
+            effective_date:
+                The effective date to use for this operation.
         """
+        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
         if self.delete_flag is None:
             raise ValueError('delete_flag is not set')
         iteration_header = RowIterationHeader(logical_name='logically_deleted')
@@ -1148,26 +1200,31 @@ class HistoryTable(Table):
             # Add rule to avoid processing rows that are already deleted
             criteria_dict[self.delete_flag] = self.delete_flag_no
 
-        self.update_not_in_set(updates_to_make=logically_deleted,
-                               set_of_key_tuples=set_of_key_tuples,
-                               lookup_name=lookup_name,
-                               criteria_list=criteria_list,
-                               criteria_dict=criteria_dict,
-                               use_cache_as_source=use_cache_as_source,
-                               progress_frequency=progress_frequency,
-                               stat_name=stat_name,
-                               parent_stats=parent_stats)
+        self.update_not_in_set(
+            updates_to_make=logically_deleted,
+            effective_date=effective_date,
+            set_of_key_tuples=set_of_key_tuples,
+            lookup_name=lookup_name,
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            use_cache_as_source=use_cache_as_source,
+            progress_frequency=progress_frequency,
+            stat_name=stat_name,
+            parent_stats=parent_stats,
+        )
 
-    def delete_not_in_set(self,
-                          set_of_key_tuples: set,
-                          lookup_name: str = None,
-                          criteria_list: list = None,
-                          criteria_dict: dict = None,
-                          use_cache_as_source: bool = True,
-                          stat_name: str = 'delete_not_in_set',
-                          progress_frequency: int = None,
-                          parent_stats: Statistics = None,
-                          ):
+    def delete_not_in_set(
+            self,
+            set_of_key_tuples: set,
+            lookup_name: str = None,
+            criteria_list: list = None,
+            criteria_dict: dict = None,
+            use_cache_as_source: bool = True,
+            stat_name: str = 'delete_not_in_set',
+            progress_frequency: int = None,
+            parent_stats: Statistics = None,
+            **kwargs
+    ):
         """
         Overridden to call logical delete.
 
@@ -1194,8 +1251,13 @@ class HistoryTable(Table):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
+        kwargs:
+            effective_date: datetime
+                The effective date to use for the update
         """
+        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
         self.logically_delete_not_in_set(set_of_key_tuples=set_of_key_tuples,
+                                         effective_date=effective_date,
                                          lookup_name=lookup_name,
                                          criteria_list=criteria_list,
                                          criteria_dict=criteria_dict,
@@ -1204,13 +1266,15 @@ class HistoryTable(Table):
                                          parent_stats=parent_stats,
                                          )
 
-    def logically_delete_not_processed(self,
-                                       criteria_list: list = None,
-                                       criteria_dict: dict = None,
-                                       use_cache_as_source: bool = True,
-                                       stat_name='logically_delete_not_processed',
-                                       parent_stats: Statistics = None
-                                       ):
+    def logically_delete_not_processed(
+            self,
+            criteria_list: list = None,
+            criteria_dict: dict = None,
+            use_cache_as_source: bool = True,
+            stat_name='logically_delete_not_processed',
+            parent_stats: Statistics = None,
+            **kwargs
+    ):
         """
         Logically deletes rows matching criteria that are not in the Table memory of rows passed to :meth:`upsert`.  
         
@@ -1228,28 +1292,35 @@ class HistoryTable(Table):
             Default is to place statistics in the ETLTask level statistics.
         stat_name: string
             Name of this step for the ETLTask statistics. Default = 'logically_delete_not_processed'
+        kwargs:
+            effective_date:
+                The effective date to use for this operation.
         """
+        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
         assert self.track_source_rows, "logically_delete_not_processed can't be used if we don't track source rows"
         if self.source_keys_processed is None or len(self.source_keys_processed) == 0:
             # We don't want to logically delete all the rows
             # But that's only an issue if there are target rows
             if any(True for _ in self.where(criteria_list=criteria_list, criteria_dict=criteria_dict, )):
                 raise RuntimeError("{} called before any source rows were processed.".format(stat_name))
-        self.logically_delete_not_in_set(set_of_key_tuples=self.source_keys_processed,
-                                         criteria_list=criteria_list,
-                                         criteria_dict=criteria_dict,
-                                         use_cache_as_source=use_cache_as_source,
-                                         stat_name=stat_name,
-                                         parent_stats=parent_stats,
-                                         )
+        self.logically_delete_not_in_set(
+            set_of_key_tuples=self.source_keys_processed,
+            effective_date=effective_date,
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            use_cache_as_source=use_cache_as_source,
+            stat_name=stat_name,
+            parent_stats=parent_stats,
+        )
         self.source_keys_processed = set()
 
     def delete_not_processed(self,
                              criteria_list: list = None,
                              criteria_dict: dict = None,
                              use_cache_as_source: bool = True,
-                             stat_name: str ='delete_not_processed',
-                             parent_stats: Statistics = None
+                             stat_name: str = 'delete_not_processed',
+                             parent_stats: Statistics = None,
+                             **kwargs
                              ):
         """
         Overridden to call logical delete.
@@ -1271,23 +1342,26 @@ class HistoryTable(Table):
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """
+        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
         self.logically_delete_not_processed(criteria_list=criteria_list,
                                             criteria_dict=criteria_dict,
                                             parent_stats=parent_stats,
+                                            effective_date=effective_date,
                                             )
 
-    def update_not_in_set(self,
-                          updates_to_make: Union[dict, Row],
-                          set_of_key_tuples: set,
-                          lookup_name: str = None,
-                          criteria_list: list = None,
-                          criteria_dict: dict = None,
-                          use_cache_as_source: bool = True,
-                          source_effective_date: datetime = None,
-                          progress_frequency: int = None,
-                          stat_name: str = 'update_not_in_set',
-                          parent_stats: Statistics = None,
-                          ):
+    def update_not_in_set(
+            self,
+            updates_to_make: Union[dict, Row],
+            set_of_key_tuples: set,
+            lookup_name: str = None,
+            criteria_list: list = None,
+            criteria_dict: dict = None,
+            use_cache_as_source: bool = True,
+            progress_frequency: int = None,
+            stat_name: str = 'update_not_in_set',
+            parent_stats: Statistics = None,
+            **kwargs
+    ):
         """
         Applies update to rows matching criteria that are not in the list_of_key_tuples pass in.
         
@@ -1306,8 +1380,6 @@ class HistoryTable(Table):
             Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
-        source_effective_date: datetime
-            The effective date to use for updates. Defaults to now().
         stat_name: string
             Name of this step for the ETLTask statistics. Default = 'delete_not_in_set'    
         progress_frequency: int
@@ -1315,19 +1387,19 @@ class HistoryTable(Table):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.         
-        
+        kwargs:
+            effective_date: datetime
+                The effective date to use for the update
         """
-        if source_effective_date is None:
-            source_effective_date = datetime.now()
-
+        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
         if criteria_list is None:
             criteria_list = []
 
         criteria_list.extend(
             [
                 self.get_column(self.delete_flag) == self.delete_flag_no,
-                self.get_column(self.begin_date) <= source_effective_date,
-                self.get_column(self.end_date) >= source_effective_date,
+                self.get_column(self.begin_date_column) <= effective_date,
+                self.get_column(self.end_date_column) >= effective_date,
             ]
         )
         stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
@@ -1373,7 +1445,7 @@ class HistoryTable(Table):
 
                 # First we need the entire existing row
                 target_row = self.get_by_lookup_and_effective_date(lookup_name, row,
-                                                                   effective_date=source_effective_date)
+                                                                   effective_date=effective_date)
 
                 # Then we can apply the updates to it
                 self.apply_updates(target_row,
@@ -1396,15 +1468,16 @@ class HistoryTable(Table):
         # Restore saved progress_frequency
         self.progress_frequency = saved_progress_frequency
 
-    def update_not_processed(self,
-                             update_row,
-                             source_effective_date=None,
-                             criteria_list: list = None,
-                             criteria_dict: dict = None,
-                             use_cache_as_source: bool = True,
-                             stat_name: str = 'update_not_processed',
-                             parent_stats: Statistics = None,
-                             ):
+    def update_not_processed(
+            self,
+            update_row,
+            criteria_list: list = None,
+            criteria_dict: dict = None,
+            use_cache_as_source: bool = True,
+            stat_name: str = 'update_not_processed',
+            parent_stats: Statistics = None,
+            **kwargs
+    ):
         """
         Applies update to rows matching criteria that are not in the Table memory of rows passed to :meth:`upsert`.  
         
@@ -1412,8 +1485,6 @@ class HistoryTable(Table):
         ----------
         update_row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
             Row or dict of updates to make
-        source_effective_date: date
-            Effective date of records to update
         criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
@@ -1426,17 +1497,22 @@ class HistoryTable(Table):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
+         kwargs:
+            effective_date: datetime
+                The effective date to use for the update
         """
+        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
         assert self.track_source_rows, "update_not_processed can't be used if we don't track source rows"
 
-        # noinspection PyTypeChecker
-        self.update_not_in_set(updates_to_make=update_row,
-                               set_of_key_tuples=self.source_keys_processed,
-                               criteria_list=criteria_list,
-                               criteria_dict=criteria_dict,
-                               use_cache_as_source=use_cache_as_source,
-                               stat_name=stat_name,
-                               parent_stats=parent_stats)
+        self.update_not_in_set(
+            updates_to_make=update_row,
+            effective_date=effective_date,
+            set_of_key_tuples=self.source_keys_processed,
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            use_cache_as_source=use_cache_as_source,
+            stat_name=stat_name,
+            parent_stats=parent_stats)
         self.source_keys_processed = set()
 
     def cleanup_spurious_versions(self,
@@ -1521,11 +1597,11 @@ class HistoryTable(Table):
             exclude_from_compare = list()
 
         # Don't check in begin or end dates for differences
-        if self.begin_date not in exclude_from_compare:
-            exclude_from_compare.append(self.begin_date)
+        if self.begin_date_column not in exclude_from_compare:
+            exclude_from_compare.append(self.begin_date_column)
 
-        if self.end_date not in exclude_from_compare:
-            exclude_from_compare.append(self.end_date)
+        if self.end_date_column not in exclude_from_compare:
+            exclude_from_compare.append(self.end_date_column)
 
         if self.last_update_date not in exclude_from_compare:
             exclude_from_compare.append(self.last_update_date)
@@ -1575,10 +1651,10 @@ class HistoryTable(Table):
                     self._update_pending_batch(parent_stats=stats)
                     order_by = list(lookup_object.lookup_keys)
                     # Make sure begin date is not already in the order_by
-                    if self.begin_date in order_by:
-                        order_by.remove(self.begin_date)
+                    if self.begin_date_column in order_by:
+                        order_by.remove(self.begin_date_column)
                     # Add begin date as the last part of the order by
-                    order_by.append(self.begin_date)
+                    order_by.append(self.begin_date_column)
 
                     self.log.debug("ordering by {}".format(order_by))
                     iterator = self.where(
@@ -1623,73 +1699,79 @@ class HistoryTable(Table):
 
                             # Check first begin date
                             if self.default_begin_date is not None:
-                                if row[self.begin_date] != self.default_begin_date:
+                                if row[self.begin_date_column] != self.default_begin_date:
                                     begin_date_warnings += 1
                                     if begin_date_warnings < max_begin_date_warnings:
                                         self.log.warning(
                                             "Correcting first version begin date for {} from {} to {}"
                                                 .format(prior_row_pk_values,
-                                                        prior_row[self.end_date],
+                                                        prior_row[self.end_date_column],
                                                         self.default_end_date)
                                         )
                                     elif begin_date_warnings == max_begin_date_warnings:
                                         self.log.warning("Limit reached for 'Correcting begin date' messages.")
                                     # If not correct update the prior row end date
-                                    super(Hst_Table, self).apply_updates(row,
-                                                                         additional_update_values={
-                                                                             self.begin_date: self.default_begin_date},
-                                                                         parent_stats=stats,
-                                                                         )
+                                    super().apply_updates(
+                                        row,
+                                        additional_update_values={
+                                            self.begin_date_column: self.default_begin_date
+                                        },
+                                        parent_stats=stats,
+                                    )
 
                                     stats.add_to_stat('rows with bad date sequence', 1)
 
                             # Check final end date
-                            if prior_row[self.end_date] != self.default_end_date:
+                            if prior_row[self.end_date_column] != self.default_end_date:
                                 end_date_warnings += 1
                                 if end_date_warnings < max_end_date_warnings:
                                     self.log.warning(
                                         "Correcting final version end date for {} from {} to {}"
                                             .format(prior_row_pk_values,
-                                                    prior_row[self.end_date],
+                                                    prior_row[self.end_date_column],
                                                     self.default_end_date)
                                     )
                                 elif end_date_warnings == max_end_date_warnings:
                                     self.log.warning("Limit reached for 'Correcting end date' messages.")
                                 # If not correct update the prior row end date
-                                super(Hst_Table, self).apply_updates(prior_row,
-                                                                     additional_update_values={
-                                                                         self.end_date: self.default_end_date},
-                                                                     parent_stats=stats,
-                                                                     )
+                                super().apply_updates(
+                                    prior_row,
+                                    additional_update_values={
+                                        self.end_date_column: self.default_end_date
+                                    },
+                                    parent_stats=stats,
+                                )
 
                                 stats.add_to_stat('rows with bad date sequence', 1)
 
                         else:  # Only do checks if the last row and this have the same natural key
 
                             # Check that rows are coming in order
-                            if row[self.begin_date] < prior_row[self.begin_date]:
+                            if row[self.begin_date_column] < prior_row[self.begin_date_column]:
                                 raise RuntimeError(
                                     "rows not in begin date order!\nrow={}\nprior_row={}".format(repr(row),
                                                                                                  repr(prior_row)))
 
                             # Check that end dates are correct
-                            correct_prior_end_date = row[self.begin_date] - timedelta(seconds=1)
-                            if prior_row[self.end_date] != correct_prior_end_date:
+                            correct_prior_end_date = row[self.begin_date_column] - timedelta(seconds=1)
+                            if prior_row[self.end_date_column] != correct_prior_end_date:
                                 # If not correct update the prior row end date
                                 end_date_warnings += 1
                                 if end_date_warnings < max_end_date_warnings:
                                     self.log.warning("Correcting end date for {} from {} to {}".format(
                                         prior_row_pk_values,
-                                        prior_row[self.end_date],
+                                        prior_row[self.end_date_column],
                                         correct_prior_end_date
                                     ))
                                 elif end_date_warnings == max_end_date_warnings:
                                     self.log.warning("Limit reached for 'Correcting end date' messages.")
-                                super(Hst_Table, self).apply_updates(prior_row,
-                                                                     additional_update_values={
-                                                                         self.end_date: correct_prior_end_date},
-                                                                     parent_stats=stats,
-                                                                     )
+                                super().apply_updates(
+                                    prior_row,
+                                    additional_update_values={
+                                        self.end_date_column: correct_prior_end_date
+                                    },
+                                    parent_stats=stats,
+                                )
                                 stats.add_to_stat('rows with bad date sequence', 1)
 
                             # Delete the last row if it's a delete, and this following one is not
@@ -1781,34 +1863,27 @@ class HistoryTable(Table):
     def upsert_special_values_rows(self,
                                    stat_name: str = 'upsert_special_values_rows',
                                    parent_stats: Statistics = None):
-        self.log.info("Checking special values rows for {}".format(self))
-        stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
-        stats['calls'] += 1
-        stats.timer.start()
-        save_auto_gen = self.auto_generate_key
-        saved_source_effective_date = self.source_effective_date
-        self.auto_generate_key = False
-        # By using the default begin date here we should force a type 1 update since 
+        """
+        Send all special values rows to upsert to ensure they exist and are current.
+        Rows come from :meth:`get_missing_row`, :meth:`get_invalid_row`, :meth:`get_not_applicable_row`, :meth:`get_various_row`
+
+        Parameters
+        ----------
+        stat_name: str
+            Name of this step for the ETLTask statistics. Default = 'upsert_special_values_rows'
+        parent_stats: bi_etl.statistics.Statistics
+            Optional Statistics object to nest this steps statistics in.
+            Default is to place statistics in the ETLTask level statistics.
+        """
+
+        # By using the default begin date here we should force a type 1 update since
         # the existing record, if any, would have the same begin date.
         # If the existing record does not have that begin date, this will fail since 
         # we turned off auto_generate_key.
-        self.source_effective_date = self.default_begin_date
+        self.custom_special_values[self.begin_date_column] = self.default_begin_date
+        self.custom_special_values[self.end_date_column] = self.default_end_date
 
-        self.custom_special_values[self.begin_date] = self.default_begin_date
-        self.custom_special_values[self.end_date] = self.default_end_date
-
-        self.upsert_by_pk(self.get_missing_row(), parent_stats=stats)
-        self.upsert_by_pk(self.get_invalid_row(), parent_stats=stats)
-        self.upsert_by_pk(self.get_not_applicable_row(), parent_stats=stats)
-        self.upsert_by_pk(self.get_various_row(), parent_stats=stats)
-
-        self.commit(parent_stats=stats)
-
-        self.source_effective_date = saved_source_effective_date
-        self.auto_generate_key = save_auto_gen
-
-        stats.timer.stop()
-
-
-# Support legacy name references
-Hst_Table = HistoryTable
+        super().upsert_special_values_rows(
+            stat_name=stat_name,
+            parent_stats=parent_stats,
+        )

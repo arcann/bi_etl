@@ -191,26 +191,26 @@ class ETLComponent(Iterable):
                 self._column_names[instance_index] = new_name     
     
     @property
-    def primary_key(self) -> typing.Union[typing.List[str], Iterable[str], None]:
+    def primary_key(self) -> list:
         try:
             if self._primary_key is not None and len(self._primary_key) > 0:
                 if isinstance(self._primary_key[0], Column):
                     self._primary_key = list(map(attrgetter('name'), self._primary_key))
                 return self._primary_key
             else:
-                return None
+                return []
         except AttributeError:
-            return None
+            return []
 
     @primary_key.setter
-    def primary_key(self, value: typing.Union[typing.List[str], Iterable[str]]):
+    def primary_key(self, value: Iterable[str]):
         if value is None:
             self._primary_key = []
         else:            
             if isinstance(value, str):
                 value = [value]
             assert hasattr(value, '__iter__'), "Row primary_key must be iterable or string"
-            self._primary_key = value            
+            self._primary_key = list(value)
 
     @property
     def trace_data(self) -> bool:

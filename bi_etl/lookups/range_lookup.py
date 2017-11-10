@@ -63,6 +63,7 @@ class RangeLookup(Lookup):
                 self._len += 1
             
             versions_collection[effective_date] = row
+            # TODO: Move above into if versions_collection is None so it's done only once
             self.cache[lk_tuple] = versions_collection
             
             # Capture memory usage snapshots

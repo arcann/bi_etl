@@ -1,13 +1,12 @@
 """
 Created on Jan 27, 2016
-
-@author: woodd
 """
 from datetime import datetime
 import logging
 import unittest
 
 import sqlalchemy
+from bi_etl.components.hst_table import HistoryTable
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.schema import Index
 from sqlalchemy.sql.sqltypes import BLOB
@@ -27,7 +26,6 @@ from sqlalchemy.sql.sqltypes import TEXT
 from sqlalchemy.sql.sqltypes import Time
 
 from bi_etl.bi_config_parser import BIConfigParser
-from bi_etl.components.hst_table import Hst_Table
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row import Row
 from bi_etl.database.connect import Connect
@@ -85,11 +83,12 @@ class TestHstTable(unittest.TestCase):
         rows_to_insert = 10
         source_compontent = DummyETLComponent()
 
-        with Hst_Table(self.task,
-                       self.mock_database,
-                       table_name=tbl_name) as tbl:
-            tbl.begin_date = 'source_begin_date'
-            tbl.end_date = 'source_end_date'
+        with HistoryTable(
+                self.task,
+                self.mock_database,
+                table_name=tbl_name) as tbl:
+            tbl.begin_date_column = 'source_begin_date'
+            tbl.end_date_column = 'source_end_date'
             for i in range(rows_to_insert):
                 row = source_compontent.Row()
                 row['int_col'] = i
@@ -149,11 +148,12 @@ class TestHstTable(unittest.TestCase):
         rows_to_insert = 10
         upsert_start = 5
         upsert_end = 15
-        with Hst_Table(self.task,
-                       self.mock_database,
-                       table_name=tbl_name) as tbl:
-            tbl.begin_date = 'source_begin_date'
-            tbl.end_date = 'source_end_date'
+        with HistoryTable(
+                self.task,
+                self.mock_database,
+                table_name=tbl_name) as tbl:
+            tbl.begin_date_column = 'source_begin_date'
+            tbl.end_date_column = 'source_end_date'
             tbl.trace_data = True
             for i in range(rows_to_insert):
                 row = tbl.Row()
@@ -179,9 +179,9 @@ class TestHstTable(unittest.TestCase):
             # Validate data
             rows_dict = dict()
             last_int_value = -1
-            for row in tbl.order_by(['int_col', tbl.begin_date]):
+            for row in tbl.order_by(['int_col', tbl.begin_date_column]):
                 self.log.debug(row.values_in_order())
-                if row[tbl.begin_date] == tbl.default_begin_date:
+                if row[tbl.begin_date_column] == tbl.default_begin_date:
                     self.assertEqual(last_int_value + 1, row['int_col'], 'Order by did not work')
                     last_int_value = row['int_col']
                 else:
@@ -197,7 +197,7 @@ class TestHstTable(unittest.TestCase):
                     self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
                     self.assertIsNone(row['datetime_col'])
                 else:
-                    if row[tbl.begin_date] == tbl.default_begin_date and i in range(rows_to_insert):
+                    if row[tbl.begin_date_column] == tbl.default_begin_date and i in range(rows_to_insert):
                         # original values
                         self.assertEqual(row['text_col'], 'this is row {}'.format(i))
                         self.assertEqual(row['real_col'], i / 1000.0)
@@ -251,11 +251,12 @@ class TestHstTable(unittest.TestCase):
         rows_to_insert = 10
         upsert_start = 5
         upsert_end = 15
-        with Hst_Table(self.task,
-                       self.mock_database,
-                       table_name=tbl_name) as tbl:
-            tbl.begin_date = 'source_begin_date'
-            tbl.end_date = 'source_end_date'
+        with HistoryTable(
+                self.task,
+                self.mock_database,
+                table_name=tbl_name) as tbl:
+            tbl.begin_date_column = 'source_begin_date'
+            tbl.end_date_column = 'source_end_date'
             tbl.trace_data = True
             for i in range(rows_to_insert):
                 row = tbl.Row()
@@ -282,9 +283,9 @@ class TestHstTable(unittest.TestCase):
 
             # Validate data
             last_int_value = -1
-            for row in tbl.order_by(['int_col', tbl.begin_date]):
+            for row in tbl.order_by(['int_col', tbl.begin_date_column]):
                 self.log.debug(row.values_in_order())
-                if row[tbl.begin_date] == tbl.default_begin_date:
+                if row[tbl.begin_date_column] == tbl.default_begin_date:
                     self.assertEqual(last_int_value + 1, row['int_col'], 'Order by did not work')
                     last_int_value = row['int_col']
                 else:
@@ -299,7 +300,7 @@ class TestHstTable(unittest.TestCase):
                     self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
                     self.assertIsNone(row['datetime_col'])
                 else:
-                    if row[tbl.begin_date] == tbl.default_begin_date and i in range(rows_to_insert):
+                    if row[tbl.begin_date_column] == tbl.default_begin_date and i in range(rows_to_insert):
                         # original values
                         self.assertEqual(row['text_col'], 'this is row {}'.format(i))
                         self.assertEqual(row['real_col'], i / 1000.0)
@@ -371,13 +372,12 @@ class TestHstTable(unittest.TestCase):
         rows_to_insert = 10
         upsert_start = 5
         upsert_end = 15
-        with Hst_Table(self.task,
-                       self.mock_database,
-                       table_name=tbl_name) as tbl:
-            # Just here to help pydev know the datatype
-            assert isinstance(tbl, Hst_Table)
-            tbl.begin_date = 'source_begin_date'
-            tbl.end_date = 'source_end_date'
+        with HistoryTable(
+                self.task,
+                self.mock_database,
+                table_name=tbl_name) as tbl:
+            tbl.begin_date_column = 'source_begin_date'
+            tbl.end_date_column = 'source_end_date'
             tbl.auto_generate_key = True
             tbl.type_1_surrogate = 'sk1_col'
             tbl.trace_data = True
@@ -416,9 +416,9 @@ class TestHstTable(unittest.TestCase):
 
             # Validate data
             last_int_value = -1
-            for row in tbl.order_by(['nk_col1', 'nk_col2', tbl.begin_date]):
+            for row in tbl.order_by(['nk_col1', 'nk_col2', tbl.begin_date_column]):
                 self.log.debug(row.values_in_order())
-                if row[tbl.begin_date] == tbl.default_begin_date:
+                if row[tbl.begin_date_column] == tbl.default_begin_date:
                     self.assertEqual(last_int_value + 1, row['nk_col1'], 'Order by did not work')
                     last_int_value = row['nk_col1']
                 else:
@@ -433,7 +433,7 @@ class TestHstTable(unittest.TestCase):
                     self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
                     self.assertIsNone(row['datetime_col'])
                 else:
-                    if row[tbl.begin_date] == tbl.default_begin_date and i in range(rows_to_insert):
+                    if row[tbl.begin_date_column] == tbl.default_begin_date and i in range(rows_to_insert):
                         # original values
                         self.assertEqual(row['text_col'], 'this is row {}'.format(i))
                         self.assertEqual(row['real_col'], i / 1000.0)
