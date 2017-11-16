@@ -431,7 +431,7 @@ class ReadOnlyTable(ETLComponent):
             key_values = [key_values]
 
         key_values_dict = dict()
-        if isinstance(key_values, dict):
+        if isinstance(key_values, typing.MutableMapping):
             for key_name in key_names:
                 if key_name in key_values:
                     key_values_dict[key_name] = key_values[key_name]

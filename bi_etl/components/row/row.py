@@ -4,6 +4,7 @@ Created on Sep 17, 2014
 
 @author: woodd
 """
+import typing
 import warnings
 from decimal import Decimal
 from typing import Union, List, Iterable
@@ -17,7 +18,7 @@ from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from sqlalchemy.sql.schema import Column
 
 
-class Row(object):
+class Row(typing.MutableMapping):
     """
     Replacement for core SQL Alchemy, CSV or other dictionary based rows.
     Handles column names that are SQL Alchemy column objects.
