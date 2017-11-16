@@ -924,6 +924,7 @@ class HistoryTable(Table):
             if len(changes_list) > 0:
                 stats['apply_updates called'] += 1
                 self.apply_updates(existing_row,
+                                   effective_date=effective_date,
                                    changes_list=changes_list + delayed_changes,
                                    additional_update_values=additional_update_values,
                                    parent_stats=stats)
@@ -1585,16 +1586,17 @@ class HistoryTable(Table):
             else:
                 remove_redundant_versions = True
 
+        if exclude_from_compare is None:
+            exclude_from_compare = list()
+
         if lookup_name is None:
             if self.natural_key is not None:
                 lookup_object = self.get_nk_lookup()
+                exclude_from_compare.extend(self.primary_key)
             else:
                 lookup_object = self.get_pk_lookup()
         else:
             lookup_object = self.get_lookup(lookup_name)
-
-        if exclude_from_compare is None:
-            exclude_from_compare = list()
 
         # Don't check in begin or end dates for differences
         if self.begin_date_column not in exclude_from_compare:
@@ -1644,7 +1646,6 @@ class HistoryTable(Table):
                     row_stat_name = 'rows read from cache'
                     del_remove_from_cache = False
                 else:
-
                     del_remove_from_cache = True
                     # Apply any pending updates and deletes
                     self._delete_pending_batch(parent_stats=stats)
@@ -1705,8 +1706,8 @@ class HistoryTable(Table):
                                         self.log.warning(
                                             "Correcting first version begin date for {} from {} to {}"
                                                 .format(prior_row_pk_values,
-                                                        prior_row[self.end_date_column],
-                                                        self.default_end_date)
+                                                        prior_row[self.begin_date_column],
+                                                        self.default_begin_date)
                                         )
                                     elif begin_date_warnings == max_begin_date_warnings:
                                         self.log.warning("Limit reached for 'Correcting begin date' messages.")
