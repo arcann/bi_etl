@@ -565,7 +565,7 @@ class ReadOnlyTable(ETLComponent):
                     for c in criteria_list:
                         if isinstance(c, str):
                             stmt = stmt.where(text(c))
-                        elif isinstance(c, dict):
+                        elif isinstance(c, typing.Mapping):
                             for col, value in c.items():
                                 stmt = stmt.where(self.get_column(col) == value)
                         else:

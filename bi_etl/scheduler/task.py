@@ -10,7 +10,7 @@ import logging
 import traceback
 import warnings
 from queue import Empty
-from typing import Union
+import typing
 
 from CaseInsensitiveDict import CaseInsensitiveDict
 
@@ -279,7 +279,8 @@ class ETLTask(object):
     @property
     def root_task(self):
         if self.root_task_id is not None:
-            if type(self.scheduler).__name__ == 'Scheduler':
+            from bi_etl.scheduler.scheduler import Scheduler
+            if isinstance(self.scheduler, Scheduler):
                 # pylint: disable=no-member
                 return self.scheduler.get_task_by_id(self.root_task_id)
             else:
@@ -551,7 +552,7 @@ class ETLTask(object):
         #### which is equivalent to
         #     add_parameters(**parms)
         for arg in args:
-            if isinstance(arg, dict):
+            if isinstance(arg, typing.Mapping):
                 for param_name, param_value in arg.items():
                     self.set_parameter(param_name, param_value, local_only=local_only, commit=commit)
             elif hasattr(arg, '__getitem__'):
@@ -657,7 +658,7 @@ class ETLTask(object):
         return obj
 
     # pylint: disable=singleton-comparison
-    def debug_sql(self, mode: Union[bool, int] = True):
+    def debug_sql(self, mode: typing.Union[bool, int] = True):
         """
         Control the output of sqlalchemy engine
 
@@ -1008,9 +1009,7 @@ def run_task(task_name,
     ----------
     task_name: str
         The task name to run. Must match the name or at least *ending* of the name of a module under **etl_jobs**.
-    class_name: str
-        The class name within the module. Defaults to None which means it expects to find one ETLTask based class there.
-    arameters: list or dict
+    parameters: list or dict
         Parameters for the task. Passed to method :meth:`bi_etl.scheduler.task.ETLTask.add_parameters`.
     config: bi_etl.bi_config_parser.BIConfigParser 
         The configuration to use (defaults to reading it from :doc:`config_ini`).

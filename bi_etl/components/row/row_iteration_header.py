@@ -3,6 +3,7 @@ Created on May 26, 2015
 
 @author: woodd
 """
+import typing
 from operator import attrgetter
 from typing import Union, List, Iterable
 
@@ -53,7 +54,7 @@ class RowIterationHeader(object):
         self.action_id = None
         self.action_count = 0
 
-    def get_next_header(self, action: Union[str, tuple], start_empty: bool = False) -> 'RowIterationHeader':
+    def get_next_header(self, action: tuple, start_empty: bool = False) -> 'RowIterationHeader':
         """
         Get the next header after performing a manipulation on the set of columns.
 
@@ -289,9 +290,9 @@ class RowIterationHeader(object):
         Parameters:
             rename_map
                 A dict or list of tuples to use to rename columns.
-                Note: a list of tuples is better to use if the renames need to happen in a certain order.
+                Note a list of tuples is better to use if the renames need to happen in a certain order.
     
-            ignore_missing
+            ignore_missing:
                 Ignore (don't raise error) if we don't have a column with the name in old_name.
                 Defaults to False
     
@@ -304,7 +305,7 @@ class RowIterationHeader(object):
                 in which case you won't want to call this method again.
         """
         new_header = self
-        if isinstance(rename_map, dict):
+        if isinstance(rename_map, typing.Mapping):
             for k in rename_map.keys():
                 new_header = new_header.rename_column(k, rename_map[k],
                                                       ignore_missing=ignore_missing,
@@ -355,6 +356,8 @@ class RowIterationHeader(object):
 
         Parameters
         ----------
+        row:
+            The row to subset
         exclude:
             A list of column names (before renames) to exclude from the subset.
             Optional. Defaults to no excludes.
@@ -375,19 +378,19 @@ class RowIterationHeader(object):
             The second item in the list will be the index of that item in the old list.
             etc
         """
-        action_list = ['s:']
+        action_list = [tuple('s')]
 
         if exclude is not None:
             action_list.append(tuple(exclude))
         else:
-            action_list.append(None)
+            action_list.append(tuple())
 
         if keep_only is not None:
             action_list.append(tuple(keep_only))
         else:
-            action_list.append(None)
+            action_list.append(tuple())
 
-        if isinstance(rename_map, dict):
+        if isinstance(rename_map, typing.Mapping):
             for k in rename_map.keys():
                 action_list.append(tuple([k, rename_map[k]]))
         elif rename_map is not None:  # assume it's a list of tuples
