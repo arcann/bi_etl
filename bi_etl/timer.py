@@ -92,6 +92,9 @@ class Timer(object):
                     secs=self.seconds_elapsed_formatted
                     )
 
+    def print(self):
+        print(self.message_detailed)
+
     def start(self)-> None:
         if not self.running:
             self.start_time = datetime.now()
