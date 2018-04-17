@@ -14,45 +14,64 @@ class Test(unittest.TestCase):
     _multiprocess_can_split_ = True
 
     def test_nested_stats(self):
-        s = Statistics()
+        s = Statistics('root')
         s['Val1'] = 1
-        s['Val2'] = Statistics()
-        s['Val2']['Release'] = datetime(1997,12,13)
+        s['Val2'] = Statistics('Val2 id to be dropped')
+        s['Val2']['Release'] = datetime(1997, 12, 13)
         s['Val2']['Version'] = 1.5
         s['Val3'] = 1 
         
-        statsStr = Statistics.format_statistics(s)
-        self.assertIn('1\n', statsStr)
-        self.assertIn('1.500\n', statsStr)
-        self.assertIn('1997-12-13', statsStr)
-        version = Statistics.finditem(s, 'Version')
+        stats_str = Statistics.format_statistics(s)
+        self.assertIn('1\n', stats_str)
+        self.assertIn('1.500\n', stats_str)
+        self.assertIn('1997-12-13', stats_str)
+        version = Statistics.find_item(s, 'Version')
         self.assertAlmostEqual(version, 1.5, 2)
-        val3 = Statistics.finditem(s, 'Val3')
+        val3 = Statistics.find_item(s, 'Val3')
         self.assertEqual(val3, 1)
 
-    def test_stats_in_list(self):        
-        s1 = Statistics()
+    def test_nested_stats2(self):
+        s = Statistics('root')
+        s['Val1'] = 1
+        s_val2 = Statistics('Val2', parent=s)
+        s_val2['Release'] = datetime(1997, 12, 13)
+        s_val2['Version'] = 1.5
+        s['Val3'] = 1
+
+        stats_str = Statistics.format_statistics(s)
+        self.assertIn('1\n', stats_str)
+        self.assertIn('1.500\n', stats_str)
+        self.assertIn('1997-12-13', stats_str)
+        version = Statistics.find_item(s, 'Version')
+        self.assertAlmostEqual(version, 1.5, 2)
+        val3 = Statistics.find_item(s, 'Val3')
+        self.assertEqual(val3, 1)
+
+    def test_stats_in_list(self):
+        s1 = Statistics('root')
         s1['Val1'] = 1
-        s1['Val2'] = Statistics()
-        s1['Val2']['Release'] = datetime(1997,12,13)
-        s1['Val2']['Version'] = 1.5
+        s_val2 = Statistics('Val2', parent=s1)
+        s_val2['Release'] = datetime(1997, 12, 13)
+        s_val2['Version'] = 1.5
         s1['Val3'] = 1
-        s2 = Statistics()
+
+        s2 = Statistics('second')
         s2.timer.start()
         time.sleep(0.2)
         s2.timer.stop()
+
         lst = [s1, s2]
         
-        statsStr = Statistics.format_statistics(lst)
-        self.assertIn('1\n', statsStr)
-        self.assertIn('1.500\n', statsStr)
-        self.assertIn('1997-12-13', statsStr)
-        version = Statistics.finditem(lst, 'Version')
+        stats_str = Statistics.format_statistics(lst)
+        self.assertIn('1\n', stats_str)
+        self.assertIn('1.500\n', stats_str)
+        self.assertIn('1997-12-13', stats_str)
+        version = Statistics.find_item(lst, 'Version')
         self.assertAlmostEqual(version, 1.5, 2)
-        val3 = Statistics.finditem(lst, 'Val3')
+        val3 = Statistics.find_item(lst, 'Val3')
         self.assertEqual(val3, 1)
         self.assertGreaterEqual(s2['seconds elapsed'], 0.1)
-    
+
+
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.test_list']
     unittest.main()

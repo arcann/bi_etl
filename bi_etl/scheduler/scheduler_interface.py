@@ -43,6 +43,7 @@ def _pickle_method(method):
     cls = method.__self__.__class__
     return _unpickle_method, (func_name, obj, cls)
 
+
 def _unpickle_method(func_name, obj, cls):
     funct = None
     for cls in cls.mro():
@@ -57,17 +58,20 @@ def _unpickle_method(func_name, obj, cls):
     else:
         raise RuntimeError('function {} not found'.format(func_name))
 
-#pylint: disable=wrong-import-position, import-error
+
+# pylint: disable=wrong-import-position, import-error
 try:
     import copyreg
 except ImportError:
     import copy_reg as copyreg
 copyreg.pickle(types.MethodType, _pickle_method, _unpickle_method)
+
+
 #################
 
-#pylint: disable=too-many-instance-attributes, too-many-public-methods
-#pylint: disable=too-many-statements, too-many-branches, too-many-arguments, too-many-locals
-#pylint: disable=invalid-name
+# pylint: disable=too-many-instance-attributes, too-many-public-methods
+# pylint: disable=too-many-statements, too-many-branches, too-many-arguments, too-many-locals
+# pylint: disable=invalid-name
 
 
 class SchedulerInterface(object):
@@ -78,15 +82,15 @@ class SchedulerInterface(object):
     CONFIG_SECTION = 'Scheduler'
     scan_etl_classes_performed = False
     SHARED_etl_task_classes = dict()
-    SCHEDULER_ETL_JOBS_PACKAGE='bi_etl.scheduler.scheduler_etl_jobs'
+    SCHEDULER_ETL_JOBS_PACKAGE = 'bi_etl.scheduler.scheduler_etl_jobs'
 
     def __init__(self,
-                 session= None,
+                 session=None,
                  config: ConfigParser = None,
-                 log= None,
-                 log_name= None,
-                 scheduler_id = None,
-                 allow_create= False
+                 log=None,
+                 log_name=None,
+                 scheduler_id=None,
+                 allow_create=False
                  ):
 
         if config is None:
@@ -108,7 +112,7 @@ class SchedulerInterface(object):
             else:
                 self.log = log
         log_logging_level(self.log)
-        
+
         self.etl_task_classes = SchedulerInterface.SHARED_etl_task_classes
         base_module_str = self.config.get(self.CONFIG_SECTION, 'base_module', fallback=None)
         if base_module_str is None:
@@ -118,7 +122,7 @@ class SchedulerInterface(object):
                 self.base_modules = [s.strip() for s in base_module_str.split(',')]
             else:
                 self.base_modules = [base_module_str]
-        if SchedulerInterface.SCHEDULER_ETL_JOBS_PACKAGE not in self.base_modules: 
+        if SchedulerInterface.SCHEDULER_ETL_JOBS_PACKAGE not in self.base_modules:
             self.base_modules.append(SchedulerInterface.SCHEDULER_ETL_JOBS_PACKAGE)
 
         ##############
@@ -133,15 +137,15 @@ class SchedulerInterface(object):
 
             # We don't seem to need to change this.  In fact if we added a table dynamically we'd
             # probably want it to initially link in to the other public. tables
-            #metadata.schema = 'onr_dw2'
-    
+            # metadata.schema = 'onr_dw2'
+
             for tbl_index in metadata.tables:
                 tbl = metadata.tables[tbl_index]
                 tbl.schema = schema
-                tbl.fullname = tbl.fullname.replace('public',schema)
+                tbl.fullname = tbl.fullname.replace('public', schema)
 
             # Change schema on Sequences
-            #pylint: disable=protected-access
+            # pylint: disable=protected-access
             for seq_index in metadata._sequences:
                 seq = metadata._sequences[seq_index]
                 seq.schema = schema
@@ -150,12 +154,12 @@ class SchedulerInterface(object):
             ##############
 
         if session is None:
-            if self.config.has_option(self.CONFIG_SECTION,'database'):
+            if self.config.has_option(self.CONFIG_SECTION, 'database'):
                 self.log.debug("Making new session")
                 self.session = Connect.get_sqlachemy_session(self.config,
                                                              self.config.get(self.CONFIG_SECTION, 'database'),
                                                              self.config.get(self.CONFIG_SECTION, 'user', fallback=None)
-                                                        )
+                                                             )
             else:
                 self.log.debug("Missing database option in INI file. No session creation possible")
                 self.session = None
@@ -170,26 +174,25 @@ class SchedulerInterface(object):
         else:
             if scheduler_id is None:
                 scheduler_host_name = self.config.get(self.CONFIG_SECTION, 'host', fallback=None)
-                #Pass null scheduler_host_name to get_scheduler_id_for_host,
-                #it looks up in the config or defaults to local host
-                self.scheduler_row = self._get_scheduler_row_for_host(qualified_host_name=scheduler_host_name, 
-                                                                      allow_create= allow_create
+                # Pass null scheduler_host_name to get_scheduler_id_for_host,
+                # it looks up in the config or defaults to local host
+                self.scheduler_row = self._get_scheduler_row_for_host(qualified_host_name=scheduler_host_name,
+                                                                      allow_create=allow_create
                                                                       )
             else:
                 self.log.info('Using assigned scheduler ID {}.'.format(scheduler_id))
                 self.scheduler_row = self.get_scheduler_row_for_id(scheduler_id)
-    
+
             if self.scheduler_row is None:
                 msg = """
                       Scheduler not found by name (ini Scheduler section : host setting).'
                       Defaulting to scheduler ID 1, if that exists.
                       """
-                self.log.warning( textwrap.dedent(msg) )
+                self.log.warning(textwrap.dedent(msg))
                 self.scheduler_row = self.get_scheduler_row_for_id(1)
-    
+
             self.scheduler_id = self.scheduler_row.scheduler_id
             self.log.info("scheduler_id = {}".format(self.scheduler_id))
-
 
     @property
     def ETL_Tasks(self):
@@ -222,7 +225,7 @@ class SchedulerInterface(object):
         """
         Gets the qualified host name of the current server (not the scheduler server)
         """
-        #=======================================================================
+        # =======================================================================
         # socket.getfqdn can return different values for each call if the host has multiple aliases.
         # In our case it alternated between values, however it seems like it could be more random than that.
         # So we'll get it ten times and pick the lowest value (as a way of trying to be consistent).
@@ -233,7 +236,7 @@ class SchedulerInterface(object):
         #
         #     [Scheduler]
         #      qualified_host_name=my_host_name
-        #=======================================================================
+        # =======================================================================
         lowest_qualified_host_name = None
         tries = self.config.get(self.CONFIG_SECTION, 'qualified_host_name_tries', fallback=10)
         try:
@@ -252,7 +255,7 @@ class SchedulerInterface(object):
         scheduler_row = query.one()
         return scheduler_row
 
-    def _get_scheduler_row_for_host(self, qualified_host_name = None, allow_create = False):
+    def _get_scheduler_row_for_host(self, qualified_host_name: str = None, allow_create: bool = False):
         qualified_host_name = (qualified_host_name
                                or
                                self.config.get(self.CONFIG_SECTION, 'qualified_host_name', fallback=None)
@@ -285,8 +288,8 @@ class SchedulerInterface(object):
             else:
                 return None
 
-    def get_scheduler_id_for_host(self, qualified_host_name = None, allow_create = False):
-        scheduler_row = self._get_scheduler_row_for_host(qualified_host_name=qualified_host_name, 
+    def get_scheduler_id_for_host(self, qualified_host_name=None, allow_create=False):
+        scheduler_row = self._get_scheduler_row_for_host(qualified_host_name=qualified_host_name,
                                                          allow_create=allow_create
                                                          )
         if scheduler_row:
@@ -301,25 +304,25 @@ class SchedulerInterface(object):
         return next_id
 
     def add_task_by_exact_name(
-                               self,
-                               module_name,
-                               class_name = None,
-                               display_name = None,
-                               parent_task_id= None,
-                               root_task_id= None,
-                               scheduler_id= None,
-                               parameters=None,
-                               submit_by_user_id=None,
-                               commit=True,
-                               ):
+            self,
+            module_name,
+            class_name=None,
+            display_name=None,
+            parent_task_id=None,
+            root_task_id=None,
+            scheduler_id=None,
+            parameters=None,
+            submit_by_user_id=None,
+            commit=True,
+    ):
         """
         Add a task to the scheduler using a module name
         """
-        msg="add_task_by_exact_name module_name={module_name}, class_name={class_name} parent_task_id={parent_task_id} root_task_id={root_task_id}"
-        self.log.debug(msg.format(module_name= module_name,
-                                  class_name= class_name,
-                                  parent_task_id= parent_task_id,
-                                  root_task_id= root_task_id,
+        msg = "add_task_by_exact_name module_name={module_name}, class_name={class_name} parent_task_id={parent_task_id} root_task_id={root_task_id}"
+        self.log.debug(msg.format(module_name=module_name,
+                                  class_name=class_name,
+                                  parent_task_id=parent_task_id,
+                                  root_task_id=root_task_id,
                                   )
                        )
         task_rec = ETL_Tasks()
@@ -373,16 +376,16 @@ class SchedulerInterface(object):
         return task_id
 
     def add_task_by_class(
-                          self,
-                          etl_task_class_type,
-                          display_name = None,
-                          parent_task_id= None,
-                          root_task_id= None,
-                          scheduler_id= None,
-                          parameters=None,
-                          submit_by_user_id=None,
-                          commit=True,
-                          ):
+            self,
+            etl_task_class_type,
+            display_name=None,
+            parent_task_id=None,
+            root_task_id=None,
+            scheduler_id=None,
+            parameters=None,
+            submit_by_user_id=None,
+            commit=True,
+    ):
         """
         Add a task to the scheduler using an instance of the task class type.
 
@@ -395,36 +398,35 @@ class SchedulerInterface(object):
             # Turn name into a class type
             etl_task_class_type = self.find_etl_class_type(etl_task_class_type)
         return self.add_task_by_exact_name(
-                                           module_name= etl_task_class_type.__module__,
-                                           class_name= etl_task_class_type.__name__,
-                                           display_name = display_name,
-                                           parent_task_id=  parent_task_id,
-                                           root_task_id= root_task_id,
-                                           scheduler_id= scheduler_id,
-                                           parameters= parameters,
-                                           submit_by_user_id= submit_by_user_id,
-                                           commit= commit,
-                                           )
+            module_name=etl_task_class_type.__module__,
+            class_name=etl_task_class_type.__name__,
+            display_name=display_name,
+            parent_task_id=parent_task_id,
+            root_task_id=root_task_id,
+            scheduler_id=scheduler_id,
+            parameters=parameters,
+            submit_by_user_id=submit_by_user_id,
+            commit=commit,
+        )
 
-    
-    
     def scan_etl_classes(self):
         SchedulerInterface.scan_etl_classes_performed = True
         self.etl_task_classes.clear()
         self.log.debug('scan_etl_classes: base_modules={}'.format(self.base_modules))
-        
+
         for base_module in self.base_modules:
-            base_module_spec = importlib.util.find_spec(base_module)            
-            self._scan_etl_classes_in_base( base_module_spec )
-    
+            base_module_spec = importlib.util.find_spec(base_module)
+            self._scan_etl_classes_in_base(base_module_spec)
+
     def _scan_etl_classes_in_base(self, base_module_spec):
         path = base_module_spec.submodule_search_locations
         prefix = base_module_spec.name + '.'
         self.log.debug('_scan_etl_classes_in_base: scanning path={}'.format(path))
         self.log.debug('_scan_etl_classes_in_base: using prefix={}'.format(prefix))
-        for (module_finder, name, ispkg) in pkgutil.walk_packages(path= path,
-                                                                  prefix= prefix,
-                                                                  onerror= lambda pkg: self.log.debug('Error importing package {}'.format(pkg))
+        for (module_finder, name, ispkg) in pkgutil.walk_packages(path=path,
+                                                                  prefix=prefix,
+                                                                  onerror=lambda pkg: self.log.debug(
+                                                                      'Error importing package {}'.format(pkg))
                                                                   ):
             if not ispkg:
                 module = None
@@ -432,23 +434,23 @@ class SchedulerInterface(object):
                     self.log.debug('_scan_etl_classes_in_base: Loading module {}'.format(name))
                     module_loader = module_finder.find_spec(name).loader
                     module = module_loader.load_module(name)
-                except (Exception,SystemExit) as e: #pylint: disable=broad-except
+                except (Exception, SystemExit) as e:  # pylint: disable=broad-except
                     self.log.debug('_scan_etl_classes_in_base: Skipping {} due to {}'.format(name, e))
                 if module is not None:
                     try:
                         self.log.debug('_scan_etl_classes_in_base: Checking for matching class(es) in {}'.format(name))
                         task_class_dict = self._find_etl_classes_in_module(module)
                         if task_class_dict is not None:
-                            self.etl_task_classes.update(task_class_dict)                                
+                            self.etl_task_classes.update(task_class_dict)
                     except ValueError as e:
                         self.log.debug('_scan_etl_classes_in_base: Skipping {} due to {}'.format(name, e))
-    
+
     def _find_etl_classes_in_module(self, module):
         """
         Returns a dictionary of the ETLTask instances defined in a given module
         """
         class_matches_by_type = dict()
-        
+
         # Look for ETLTask inherited classes
         for _, classObj in inspect.getmembers(module, inspect.isclass):
             # Check that the class is defined in our module and not imported
@@ -457,11 +459,11 @@ class SchedulerInterface(object):
                 if ETLTask in baseclasses and str(classObj) != str(ETLTask):
                     inst = classObj()
                     qualified_name = inst.name
-                    self.log.info('_find_etl_classes_in_module found {}'.format(qualified_name))                        
+                    self.log.info('_find_etl_classes_in_module found {}'.format(qualified_name))
                     class_matches_by_type[qualified_name] = classObj
-        
-        return class_matches_by_type    
-    
+
+        return class_matches_by_type
+
     def _find_etl_class_in_module(self, module, class_name=None):
         class_matches_by_type = self._find_etl_classes_in_module(module)
         task_class = None
@@ -477,11 +479,12 @@ class SchedulerInterface(object):
                     task_class = class_matches_by_type[name]
                     self.log.debug("_find_etl_class_in_module found class by name {}={}".format(task_class, class_name))
         if task_class is None:
-            msg = "Module {} doesn't contain a single ETLTask class, could not choose class from {}".format(module, class_matches_by_type)
+            msg = "Module {} doesn't contain a single ETLTask class, could not choose class from {}".format(module,
+                                                                                                            class_matches_by_type)
             self.log.debug(msg)
             raise ValueError(msg)
         return task_class
-    
+
     def _get_class_from_qualified_name(self, qualified_name):
         parts = qualified_name.split('.')
         module_part = '.'.join(parts[:-1])
@@ -491,62 +494,63 @@ class SchedulerInterface(object):
         return etl_class
 
     def find_etl_classes(self, partial_module_name):
-        if not SchedulerInterface.scan_etl_classes_performed:            
+        if not SchedulerInterface.scan_etl_classes_performed:
             # Since we don't have a class database, try and quickly import the module assuming it's fully qualified
             # TODO: Once classes and dependency hierarchy is stored in the database, scan that instead.
-            try: 
+            try:
                 # We try to get the class simply to verify it exists
                 _ = self._get_class_from_qualified_name(partial_module_name)
-                return [partial_module_name] # Caller wants the qualified name not the instance
+                return [partial_module_name]  # Caller wants the qualified name not the instance
             except (ImportError, ValueError):
                 pass
             self.scan_etl_classes()
-        
+
         if not isinstance(partial_module_name, str):
             partial_module_name = str(partial_module_name)
-        
+
         matches = list()
         for etl_class in self.etl_task_classes:
             if (fnmatch.fnmatch(etl_class, partial_module_name)
-                or fnmatch.fnmatch(etl_class, '*.' + partial_module_name + '.*')
-                or fnmatch.fnmatch(etl_class, '*.' + partial_module_name)
-                or fnmatch.fnmatch(etl_class, partial_module_name + '.*')
-                ):
+                    or fnmatch.fnmatch(etl_class, '*.' + partial_module_name + '.*')
+                    or fnmatch.fnmatch(etl_class, '*.' + partial_module_name)
+                    or fnmatch.fnmatch(etl_class, partial_module_name + '.*')
+            ):
                 matches.append(etl_class)
-        return matches    
+        return matches
 
     def find_etl_class_name(self, partial_module_name):
         matches = self.find_etl_classes(partial_module_name)
         if len(matches) == 1:
             return matches[0]
         else:
-            raise ValueError('partial_module_name {} matched {} and not a single record'.format(partial_module_name, matches))
-        
+            raise ValueError(
+                'partial_module_name {} matched {} and not a single record'.format(partial_module_name, matches))
+
     def get_etl_class_instance(self, qualified_name):
         if not SchedulerInterface.scan_etl_classes_performed:
             # Since we don't have a class database, try and quickly import the module assuming it's fully qualified
             etl_class = self._get_class_from_qualified_name(qualified_name)
             return etl_class
         return self.etl_task_classes[qualified_name]
-    
+
     def find_etl_class_instance(self, partial_module_name):
         class_name = self.find_etl_class_name(partial_module_name)
-        return self.get_etl_class_instance(class_name)        
-    
+        return self.get_etl_class_instance(class_name)
+
     def find_etl_class_type(self, partial_module_name):
         class_name = self.find_etl_class_name(partial_module_name)
         return self.get_etl_class_instance(class_name).__class__
 
     def add_task_by_partial_name(self,
-                         partial_module_name,
-                         display_name = None,
-                         parent_task_id= None,
-                         root_task_id= None,
-                         scheduler_id= None,
-                         parameters=None,
-                         submit_by_user_id=None,
-                         commit=True,
-                         ):
+                                 partial_module_name,
+                                 display_name=None,
+                                 parent_task_id=None,
+                                 root_task_id=None,
+                                 scheduler_id=None,
+                                 parameters=None,
+                                 submit_by_user_id=None,
+                                 commit=True,
+                                 ):
         """
         Add a task to the scheduler using the module_name (partial) and optionally class_name
 
@@ -556,12 +560,12 @@ class SchedulerInterface(object):
         """
         etl_task_class_name = self.find_etl_class_name(partial_module_name)
         return self.add_task_by_exact_name(etl_task_class_name,
-                                           display_name= display_name,
+                                           display_name=display_name,
                                            parent_task_id=parent_task_id,
                                            root_task_id=root_task_id,
                                            scheduler_id=scheduler_id,
                                            parameters=parameters,
-                                           submit_by_user_id= submit_by_user_id,
+                                           submit_by_user_id=submit_by_user_id,
                                            commit=commit,
                                            )
 
@@ -580,7 +584,7 @@ class SchedulerInterface(object):
         """
         return self.get_task_record(task_id).Status
 
-    def wait_for_task(self, task_id, check_interval = 1, max_wait = None):
+    def wait_for_task(self, task_id, check_interval=1, max_wait=None):
         """
         Waits for a task to finish.
 
@@ -604,7 +608,8 @@ class SchedulerInterface(object):
         while not self.get_task_status(task_id).is_finished():
             if max_wait:
                 if timer.seconds_elapsed > max_wait:
-                    raise TimeoutError('wait_for_task wait time {} exceeded max_wait {}'.format(timer.seconds_elapsed, max_wait))
+                    raise TimeoutError(
+                        'wait_for_task wait time {} exceeded max_wait {}'.format(timer.seconds_elapsed, max_wait))
             time.sleep(check_interval)
         return self.get_task_status(task_id)
 
@@ -615,7 +620,7 @@ class SchedulerInterface(object):
             task_rec = task
         else:
             raise ValueError("add_task_paramter task parameter must be int or ETL_Tasks")
-        task_rec.parameters.append( ETL_Task_Params(parameter_name, pickle.dumps(parameter_value) ) )
+        task_rec.parameters.append(ETL_Task_Params(parameter_name, pickle.dumps(parameter_value)))
         if commit:
             self.session.commit()
 
@@ -629,7 +634,7 @@ class SchedulerInterface(object):
         if isinstance(parameters, list):
             for parameter_name, parameter_value in parameters:
                 self.add_task_paramter(task_rec, parameter_name, parameter_value, commit=commit)
-        else: # assume it's a dict
+        else:  # assume it's a dict
             for parameter_name in parameters:
                 parameter_value = parameters[parameter_name]
                 self.add_task_paramter(task_rec, parameter_name, parameter_value, commit=commit)
@@ -688,7 +693,7 @@ class SchedulerInterface(object):
         """
         params_dict = self.get_task_parameter_dict(etl_task.task_id)
         for param_name in params_dict:
-            etl_task.set_parameter(param_name, params_dict[param_name], local_only= True)
+            etl_task.set_parameter(param_name, params_dict[param_name], local_only=True)
 
     def get_jobs_by_root_id(self, root_task_id):
         query = self.session.query(ETL_Tasks).filter(ETL_Tasks.root_task_id == root_task_id)
@@ -706,7 +711,7 @@ class SchedulerInterface(object):
     def get_heartbeat_age_timedelta(self):
         last_heartbeat = self.get_heartbeat_time()
         if last_heartbeat is None:
-            return None 
+            return None
         else:
             return (datetime.now() - last_heartbeat)
 
@@ -715,4 +720,4 @@ class SchedulerInterface(object):
         self.session.flush()
 
     def __reduce__(self):
-        return (SchedulerInterface, () )
+        return (SchedulerInterface, ())

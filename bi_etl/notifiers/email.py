@@ -1,28 +1,27 @@
 import email
+import re
 import smtplib
+from configparser import ConfigParser
 from email.mime.text import MIMEText
 
 from bi_etl.notifiers.notifier import Notifier, NotifierException
 
 
 class Email(Notifier):
-    def __init__(self, config, destination_definition):
+    def __init__(self, config: ConfigParser, config_section: str):
         super().__init__(config=config,
-                         destination_definition=destination_definition)
+                         config_section=config_section)
 
     def send(self, message, subject=None, throw_exception=False):
-        # Send e-mail via SMTP
-        if len(self.destination_definition) > 0:
+        smtp_to = self.config.get(self.config_section, 'distro_list', fallback=None)
+        if not smtp_to:
+            self.log.warning("{} distro_list option not found. No mail sent.".format(self.config_section))
+        else:
             to_addresses = list()
-            if isinstance(self.destination_definition, str):
-                for addr in self.destination_definition.split(','):
-                    addr = addr.strip()
-                    self.log.info('Adding {} to send list'.format(addr))
-                    to_addresses.append(addr)
-            else:
-                for addr in self.destination_definition:
-                    addr = addr.strip()
-                    to_addresses.append(addr)
+            for addr in re.split(r'[,;\n]', smtp_to):
+                addr = addr.strip()
+                self.log.info('Adding {} to send list'.format(addr))
+                to_addresses.append(addr)
 
             server = None
             try:
@@ -80,7 +79,10 @@ class Email(Notifier):
                 if throw_exception:
                     raise NotifierException(e)
             except smtplib.SMTPSenderRefused as e:
-                self.log.critical("The server didn't accept the from_addr.\n{}".format(e))
+                self.log.critical("The server didn't accept the from_addr {}.\n{}".format(
+                    message.get('Sender', None),
+                    e
+                ))
                 if throw_exception:
                     raise NotifierException(e)
             except smtplib.SMTPDataError as e:

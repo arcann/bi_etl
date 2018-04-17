@@ -112,11 +112,11 @@ class Test(unittest.TestCase):
             dir_path = os.path.dirname(dir_path)
             with mock.patch('os.getcwd', autospec=True) as getcwd:
                 getcwd.return_value = dir_path
-                config.read_config_ini('example_config.ini')
+                config.read_config_ini(file_name='example_config.ini')
         except FileNotFoundError as e:
             self.fail(e)
 
-    def test_read_child_config_ini_OK(self):
+    def test_read_child_config_ini_ok(self):
         # This version will try and find the generated config file
         # using the current working directory
         # Will fail if it doesn't exist.
@@ -126,14 +126,14 @@ class Test(unittest.TestCase):
             dir_path = os.path.dirname(self.generated_child_ini_file_path)
             with mock.patch('os.getcwd', autospec=True) as getcwd:
                 getcwd.return_value = dir_path
-                config.read_config_ini('config.ini')
+                config.read_config_ini(file_name='config.ini')
             self.assertEquals(config['Settings']['child'], '1')
             self.assertEquals(config['Settings']['child_override'], '2')
             self.assertEquals(config['Settings']['parent'], 'abc')
         except FileNotFoundError as e:
             self.fail(e)
 
-    def test_read_child_config_ini_ENV_OK(self):
+    def test_read_child_config_ini_env_ok(self):
         # This version will try and find the generated config file
         # using the environment variable
         # Will fail if it doesn't exist.

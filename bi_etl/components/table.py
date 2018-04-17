@@ -6,18 +6,20 @@ Created on Sep 17, 2014
 import codecs
 import math
 import os
-import subprocess
 import tempfile
 import textwrap
 import traceback
 import warnings
-from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from decimal import InvalidOperation
-from typing import Iterable, Callable, List, Union
+from enum import IntEnum, unique
 
 import sqlalchemy
-from bi_etl.timer import Timer
+import subprocess
+from datetime import datetime, date, time, timedelta
+from sqlalchemy.sql.expression import bindparam
+from typing import Iterable, Callable, List, Union
+
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.readonlytable import ReadOnlyTable, NoResultFound
 from bi_etl.components.row.column_difference import ColumnDifference
@@ -35,9 +37,9 @@ from bi_etl.conversions import str2time
 from bi_etl.exceptions import ColumnMappingError
 from bi_etl.statement_queue import StatementQueue
 from bi_etl.statistics import Statistics
+from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
 from bi_etl.utility import getIntegerPlaces
-from sqlalchemy.sql.expression import bindparam
 
 
 class Table(ReadOnlyTable):
@@ -148,6 +150,15 @@ class Table(ReadOnlyTable):
     # Replacement for float Not a Number (NaN) values
     NAN_REPLACEMENT_VALUE = None
 
+    @unique
+    class RowBuildMethod(IntEnum):
+        """
+        Methods of building a Row instance from source data
+        """
+        none = 0
+        clone = 1
+        safe = 3
+
     def __init__(self,
                  task,
                  database,
@@ -164,6 +175,7 @@ class Table(ReadOnlyTable):
                                     exclude_columns=exclude_columns,
                                     )
         self.load_via_bcp = False
+        self.track_update_columns = True
         self.bcp_table_name = 'dbo.' + self.table.name
         self.bcp_update_table_name = self.table_name + '_UPD'
         self._bcp_update_table_dict = dict()
@@ -215,6 +227,8 @@ class Table(ReadOnlyTable):
         self.ignore_target_not_in_source = False
         self.raise_on_source_not_in_target = False
         self.raise_on_target_not_in_source = False
+
+        self._coerce_methods_built = False
 
         # Should be the last call of every init            
         self.set_kwattrs(**kwargs)
@@ -420,7 +434,543 @@ class Table(ReadOnlyTable):
             self.log.error(traceback.format_exc())
             self.log.debug(repr(e))
 
-    def column_coerce_type(self, target_column_object, target_column_value):
+    def _generate_null_check(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        target_name = target_column_object.name
+        code = ''
+        if not target_column_object.nullable:
+            if not self.auto_generate_key and target_name in self.primary_key:
+                # Check for nulls. Not as an ELSE because the conversion logic might have made the value null
+                code = textwrap.dedent("""\
+                # base indent            
+                    if target_column_value is None:                                            
+                        msg = "{table}.{column} has is not nullable and this cannot accept value '{{val}}'".format(
+                            val=target_column_value,
+                        )
+                        raise ValueError(msg)                    
+                """).format(table=self,
+                            column=target_name,
+                           )
+        return code
+
+    @staticmethod
+    def _get_coerce_method_name(target_column_object: 'sqlalchemy.sql.expression.ColumnElement') -> str:
+        return "_coerce_{}".format(target_column_object.name)
+
+    def _make_generic_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+        code += str(self._generate_null_check(target_column_object))
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _make_str_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        target_name = target_column_object.name
+        t_type = target_column_object.type
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+        code += textwrap.dedent("""\
+        # base indent
+            if isinstance(target_column_value, str):
+        """)
+        if self.force_ascii:
+            # Passing ascii bytes to cx_Oracle is not working.
+            # We need to pass a str value.
+            # So we'll use encode with 'replace' to force ascii compatibility
+            code += textwrap.dedent("""\
+            # base indent                
+                    target_column_value = \
+                        target_column_value.encode('ascii', 'replace_tilda').decode('ascii')
+            """)
+        else:
+            code += textwrap.dedent("""\
+            # base indent                
+                    pass
+            """)
+        code += textwrap.dedent("""\
+        # base indent            
+            elif isinstance(target_column_value, bytes):
+                target_column_value = target_column_value.decode('ascii')
+            elif target_column_value is None:
+                return None
+            else:
+                target_column_value = str(target_column_value)
+            """)
+        # Note: t_type.length is None for CLOB fields
+        if t_type.length is not None:
+            try:
+                if t_type.length > 0:
+                    code += textwrap.dedent("""\
+                    # base indent
+                        if len(target_column_value) > {len}:
+                            msg = "{table}.{column} has type {type} which cannot accept value '{{val}}' because length {{val_len}} > {len} limit (_make_str_coerce)"
+                            msg = msg.format(                                
+                                val=target_column_value,
+                                val_len=len(target_column_value),
+                            )
+                            raise ValueError(msg)                        
+                        """).format(len=t_type.length,
+                                    table=self,
+                                    column=target_name,
+                                    type=str(t_type).replace('"', "'"),
+                                    )
+            except TypeError:
+                # t_type.length is not a comparable type
+                pass
+        code += str(self._generate_null_check(target_column_object))
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _make_bytes_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        target_name = target_column_object.name
+        t_type = target_column_object.type
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+        code += textwrap.dedent("""\
+        # base indent            
+            if isinstance(target_column_value, bytes):
+                pass
+            elif isinstance(target_column_value, str):
+                target_column_value = target_column_value.encode('utf-8')
+            elif target_column_value is None:
+                return None
+            else:
+                target_column_value = str(target_column_value).encode('utf-8')
+            """).format()
+        # t_type.length is None for BLOB, LargeBinary fields.
+        # This really might not be required since all
+        # discovered types with python_type == bytes:
+        # have no length
+        if t_type.length is not None:
+            try:
+                if t_type.length > 0:
+                    code += textwrap.dedent("""\
+                    # base indent                
+                        if len(target_column_value) > {len}:
+                            msg = "{table}.{column} has type {type} which cannot accept value '{{val}}' because length {{val_len}} > {len} limit (_make_bytes_coerce)"
+                            msg = msg.format(                                
+                                val=target_column_value,
+                                val_len=len(target_column_value),
+                            )
+                            raise ValueError(msg)                        
+                        """).format(len=t_type.length,
+                                    table=self,
+                                    column=target_name,
+                                    type=str(t_type).replace('"', "'"),
+                                    )
+            except TypeError:
+                # t_type.length is not a comparable type
+                pass
+        code += self._generate_null_check(target_column_object)
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _make_int_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+        code += textwrap.dedent("""\
+        # base indent
+            try:            
+                if isinstance(target_column_value, int):
+                    pass
+                elif target_column_value is None:
+                    return None
+                elif isinstance(target_column_value, str):
+                    target_column_value = str2int(target_column_value)
+                elif isinstance(target_column_value, float):
+                    target_column_value = int(target_column_value)            
+            except ValueError as e:
+                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_int_coerce)".format(                            
+                            val=target_column_value,
+                            e=e,
+                        )
+                raise ValueError(msg)
+            """).format(table=self, column=target_column_object.name)
+        code += self._generate_null_check(target_column_object)
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _make_float_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+        # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
+        # The thought is that ETL jobs that need the performance and can guarantee no commas
+        # can explicitly use float
+        code += textwrap.dedent("""\
+        # base indent
+            try:            
+                if isinstance(target_column_value, float):
+                    if math.isnan(target_column_value):
+                        target_column_value = self.NAN_REPLACEMENT_VALUE
+                elif target_column_value is None:
+                    return None            
+                elif isinstance(target_column_value, str):
+                    target_column_value = str2float(target_column_value)            
+                elif isinstance(target_column_value, int):
+                    target_column_value = float(target_column_value)
+                elif isinstance(target_column_value, Decimal):
+                    if math.isnan(target_column_value):
+                        target_column_value = self.NAN_REPLACEMENT_VALUE
+                    else:
+                        target_column_value = float(target_column_value)
+            except ValueError as e:
+                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_float_coerce)".format(                            
+                            val=target_column_value,
+                            e=e,
+                        )
+                raise ValueError(msg)
+            """).format(table=self, column=target_column_object.name)
+        code += self._generate_null_check(target_column_object)
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _make_decimal_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        target_name = target_column_object.name
+        t_type = target_column_object.type
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+
+        code += textwrap.dedent("""\
+        # base indent            
+            if isinstance(target_column_value, Decimal):
+                pass
+            elif isinstance(target_column_value, float):
+                pass
+            elif target_column_value is None:
+                return None
+            """)
+
+        # If for performance reasons you don't want this conversion...
+        #   DON'T send in a string!
+        # str2decimal takes 765 ns vs 312 ns for Decimal() but handles commas and signs.
+        # The thought is that ETL jobs that need the performance and can
+        # guarantee no commas can explicitly use float or Decimal
+        code += textwrap.dedent("""\
+        # base indent            
+            elif isinstance(target_column_value, str):
+                try:
+                    target_column_value = str2decimal(target_column_value)
+                except ValueError as e:
+                    msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_decimal_coerce)".format(                            
+                                val=target_column_value,
+                                e=e,
+                            )
+                    raise ValueError(msg)
+        """).format(table=self, column=target_column_object.name)
+
+        # t_type.length is None for BLOB, LargeBinary fields.
+        # This really might not be required since all
+        # discovered types with python_type == bytes:
+        # have no length
+        if t_type.precision is not None:
+            scale = nvl(t_type.scale, 0)
+            integer_digits_allowed = t_type.precision - scale
+            code += textwrap.dedent("""\
+            # base indent
+                if target_column_value is not None:
+                    digits = getIntegerPlaces(target_column_value)            
+                    if digits > {integer_digits_allowed}:
+                        msg = "{table}.{column} can't accept '{{val}}' since it has {{digits}} digits (_make_decimal_coerce)"\
+                              "which is > {integer_digits_allowed} by (prec {precision} - scale {scale}) limit".format(                            
+                                val=target_column_value,
+                                digits=digits,
+                            )
+                        raise ValueError(msg)
+                """).format(
+                    table=self,
+                    column=target_name,
+                    integer_digits_allowed=integer_digits_allowed,
+                    precision=t_type.precision,
+                    scale=scale
+                )
+
+        code += self._generate_null_check(target_column_object)
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _make_date_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+        # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
+        # The thought is that ETL jobs that need the performance and can guarantee no commas
+        # can explicitly use float
+        code += textwrap.dedent("""\
+        # base indent  
+            try:
+                # Note datetime check must be 1st because datetime tests as an instance of date  
+                if isinstance(target_column_value, datetime):
+                    target_column_value = date(target_column_value.year,
+                                               target_column_value.month,
+                                               target_column_value.day)        
+                elif isinstance(target_column_value, date):
+                    pass            
+                elif target_column_value is None:
+                    return None
+                elif isinstance(target_column_value, str):
+                    target_column_value = str2date(target_column_value, dt_format=self.default_date_format)
+                else:
+                    target_column_value = str2date(str(target_column_value), dt_format=self.default_date_format)
+            except ValueError as e:
+                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_date_coerce)".format(                            
+                            val=target_column_value,
+                            e=e,
+                        )
+                raise ValueError(msg)
+            """).format(table=self, column=target_column_object.name)
+        code += self._generate_null_check(target_column_object)
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _make_datetime_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+        # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
+        # The thought is that ETL jobs that need the performance and can guarantee no commas
+        # can explicitly use float
+        code += textwrap.dedent("""\
+        # base indent
+            try:            
+                if isinstance(target_column_value, datetime):
+                    pass
+                elif target_column_value is None:
+                    return None            
+                elif isinstance(target_column_value, date):
+                    target_column_value = datetime.combine(target_column_value, time.min)            
+                elif isinstance(target_column_value, str):
+                    target_column_value = str2datetime(target_column_value,
+                                                       dt_format=self.default_date_time_format)
+                else:
+                    target_column_value = str2datetime(str(target_column_value),
+                                                       dt_format=self.default_date_time_format)
+            except ValueError as e:
+                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_datetime_coerce)".format(                            
+                            val=target_column_value,
+                            e=e,
+                        )
+                raise ValueError(msg)
+            """).format(table=self, column=target_column_object.name)
+        code += self._generate_null_check(target_column_object)
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            code = compile(code, filename='_make_datetime_coerce', mode='exec')
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _make_time_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+        # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
+        # The thought is that ETL jobs that need the performance and can guarantee no commas
+        # can explicitly use float
+        code += textwrap.dedent("""\
+        # base indent
+            try:            
+                if isinstance(target_column_value, time):
+                    pass
+                elif target_column_value is None:
+                    return None            
+                elif isinstance(target_column_value, datetime):
+                    target_column_value = time(target_column_value.hour,
+                                               target_column_value.minute,
+                                               target_column_value.second,
+                                               target_column_value.microsecond,
+                                               target_column_value.tzinfo,
+                                               )            
+                elif isinstance(target_column_value, str):
+                    target_column_value = str2time(target_column_value, dt_format=self.default_time_format)
+                else:
+                    target_column_value = str2time(str(target_column_value), dt_format=self.default_time_format)
+            except ValueError as e:
+                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_time_coerce)".format(                            
+                            val=target_column_value,
+                            e=e,
+                        )
+                raise ValueError(msg)
+            """).format(table=self, column=target_column_object.name)
+        code += self._generate_null_check(target_column_object)
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _make_timedelta_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+        # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
+        # The thought is that ETL jobs that need the performance and can guarantee no commas
+        # can explicitly use float
+        code += textwrap.dedent("""\
+        # base indent            
+            try:
+                if isinstance(target_column_value, timedelta):
+                    pass
+                elif target_column_value is None:
+                    return None                         
+                else:
+                    target_column_value = timedelta(seconds=target_column_value)
+            except (TypeError, ValueError) as e:
+                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_timedelta_coerce)".format(                            
+                            val=target_column_value,
+                            e=e,
+                        )
+                raise ValueError(msg)
+            """).format(table=self, column=target_column_object.name)
+        code += self._generate_null_check(target_column_object)
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _make_bool_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+        target_name = target_column_object.name
+        name = self._get_coerce_method_name(target_column_object)
+        code = "def {name}(self, target_column_value):".format(name=name)
+        # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
+        # The thought is that ETL jobs that need the performance and can guarantee no commas
+        # can explicitly use float
+        code += textwrap.dedent("""\
+        # base indent
+            try:            
+                if isinstance(target_column_value, bool):
+                    pass                        
+                elif target_column_value is None:
+                    return None
+                elif isinstance(target_column_value, str):
+                    target_column_value = target_column_value.lower()
+                    if target_column_value in ['true', 'yes', 'y']:
+                        target_column_value = True
+                    elif target_column_value in ['false', 'no', 'n']:
+                        target_column_value = True
+                    else:
+                        type_error = True
+                        msg = "{table}.{column} unexpected value {{val}} (expected true/false, yes/no, y/n)".format(                            
+                                val=target_column_value,                            
+                            )
+                        raise ValueError(msg)
+                else:
+                    target_column_value = bool(target_column_value)
+            except (TypeError, ValueError) as e:
+                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_bool_coerce)".format(                            
+                            val=target_column_value,
+                            e=e,
+                        )
+                raise ValueError(msg)
+            """).format(table=self, column=target_name,)
+        code += self._generate_null_check(target_column_object)
+        code += textwrap.dedent("""
+        # base indent
+            return target_column_value
+        """)
+        try:
+            code = compile(code, filename='_make_bool_coerce', mode='exec')
+            exec(code)
+        except SyntaxError as e:
+            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+        # Add the new function as a method in this class
+        exec("self.{name} = {name}.__get__(self)".format(name=name))
+
+    def _build_coerce_methods(self):
+        for column in self.columns:
+            t_type = column.type
+            if t_type.python_type == str:
+                self._make_str_coerce(column)
+            elif t_type.python_type == bytes:
+                self._make_bytes_coerce(column)
+            elif t_type.python_type == int:
+                self._make_int_coerce(column)
+            elif t_type.python_type == float:
+                self._make_float_coerce(column)
+            elif t_type.python_type == Decimal:
+                self._make_decimal_coerce(column)
+            elif t_type.python_type == date:
+                self._make_date_coerce(column)
+            elif t_type.python_type == datetime:
+                self._make_datetime_coerce(column)
+            elif t_type.python_type == time:
+                self._make_time_coerce(column)
+            elif t_type.python_type == timedelta:
+                self._make_timedelta_coerce(column)
+            elif t_type.python_type == bool:
+                self._make_bool_coerce(column)
+            else:
+                warnings.warn('Table.build_row has no handler for {} = {}'.format(t_type, type(t_type)))
+                self._make_generic_coerce(column)
+        self._coerce_methods_built = True
+
+    def column_coerce_type(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement', target_column_value):
         target_name = target_column_object.name
         if target_column_value is not None:
             t_type = target_column_object.type
@@ -584,14 +1134,16 @@ class Table(ReadOnlyTable):
         # End if target_column_value is not None:
         return target_column_value
 
-    def build_row(self,
-                  source_row: Row,
-                  additional_values: dict = None,
-                  source_excludes: Iterable = None,
-                  target_excludes: Iterable = None,
-                  stat_name: str = 'build rows',
-                  parent_stats: Statistics = None,
-                  ) -> Row:
+    def build_row_old(
+            self,
+            source_row: Row,
+            additional_values: dict = None,
+            source_excludes: Iterable = None,
+            target_excludes: Iterable = None,
+            build_method: RowBuildMethod = RowBuildMethod.safe,
+            stat_name: str = 'build rows',
+            parent_stats: Statistics = None,
+            ) -> Row:
         """
         Use a source row to build a row with correct data types for this table.
 
@@ -601,6 +1153,11 @@ class Table(ReadOnlyTable):
         additional_values
         source_excludes
         target_excludes
+        build_method:
+            none, clone, or safe (default is safe)
+            None means use the row as is
+            Clone means create a subset clone
+            Safe does a clone and then checks each column type to ensure it matches the target
         stat_name
             Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
         parent_stats
@@ -612,26 +1169,200 @@ class Table(ReadOnlyTable):
         build_row_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         build_row_stats.print_start_stop_times = False
         build_row_stats.timer.start()
+        build_row_stats['method'] = build_method
         build_row_stats['calls'] += 1
+
+        if source_excludes is None:
+            source_excludes = set()
+        elif not isinstance(source_excludes, set):
+            source_excludes = set(source_excludes)
 
         # First make sure we have an instance of Row as a source
         if not isinstance(source_row, Row):
             # This will be slow if passed a lot of these non-Row objects
+            # TODO: Count non Row objects passed in and give warning if it exceeds 100 or so
             iteration_header = RowIterationHeader(logical_name='default')
             source_row = self.row_object(iteration_header, data=source_row)
+
+        if self.auto_generate_key:
+            # Primary key must be a single column
+            if self.primary_key is None:
+                raise ValueError("No primary key set")
+            else:
+                if isinstance(self.primary_key, Iterable):
+                    if len(self.primary_key) > 1:
+                        raise ValueError("Can't autogenerate key with a compound primary key")
+                    else:
+                        primary_key = list(self.primary_key)[0]
+                else:
+                    primary_key = self.primary_key
+
+                if primary_key not in source_excludes:
+                    if primary_key in source_row:
+                        warnings.warn('Ignoring primary key value passed in since auto_generate_key is enabled')
+                        source_excludes.add(primary_key)
+
         target_set = set(self.column_names)
         if target_excludes is not None:
             target_set -= set(target_excludes)
-        new_row = source_row.subset(exclude=source_excludes, keep_only=target_set)
 
-        # Safe type mode is slower, but gives better error messages than the
-        # database that will likely give a not-so helpful message or silently truncate a value.
-        # Non safe type mode can also lead to a failure of the lookups since type differences
-        # will cause the lookup key to look different from the existing value.
-        if self.safe_type_mode:
-            for target_name, target_column_value in new_row.items():
-                target_column_object = self.get_column(target_name)
-                new_row[target_name] = self.column_coerce_type(target_column_object, target_column_value)
+        if build_method == Table.RowBuildMethod.none:
+            new_row = source_row
+        else:
+            # clone or safe modes
+            new_row = source_row.subset(exclude=source_excludes, keep_only=target_set)
+
+            if build_method == Table.RowBuildMethod.safe:
+                # Safe type mode is slower, but gives better error messages than the
+                # database that will likely give a not-so helpful message or silently truncate a value.
+                # Non safe type mode can also lead to a failure of the lookups since type differences
+                # will cause the lookup key to look different from the existing value.
+                if self.safe_type_mode:
+                    for target_name, target_column_value in new_row.items():
+                        target_column_object = self.get_column(target_name)
+                        new_row[target_name] = self.column_coerce_type(target_column_object, target_column_value)
+
+        if not self.sanity_check_done:
+            self.sanity_check_example_row(example_source_row=source_row,
+                                          source_excludes=source_excludes,
+                                          target_excludes=target_excludes,
+                                          )
+
+        if additional_values:
+            for colName, value in additional_values.items():
+                new_row[colName] = value
+
+        build_row_stats.timer.stop()
+        return new_row
+
+    @staticmethod
+    def _get_build_row_name(row: Row) -> str:
+        return "_build_row_{}".format(row.iteration_header.iteration_id)
+
+    def build_row(
+            self,
+            source_row: Row,
+            additional_values: dict = None,
+            source_excludes: Iterable = None,
+            target_excludes: Iterable = None,
+            build_method: RowBuildMethod = RowBuildMethod.safe,
+            stat_name: str = 'build rows',
+            parent_stats: Statistics = None,
+            ) -> Row:
+        """
+        Use a source row to build a row with correct data types for this table.
+
+        Parameters
+        ----------
+        source_row
+        additional_values
+        source_excludes
+        target_excludes
+        build_method:
+            none, clone, or safe (default is safe)
+            None means use the row as is
+            Clone means create a subset clone
+            Safe does a clone and then checks each column type to ensure it matches the target
+        stat_name
+            Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
+        parent_stats
+
+        Returns
+        -------
+            row
+        """
+        build_row_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
+        build_row_stats.print_start_stop_times = False
+        build_row_stats.timer.start()
+        build_row_stats['method'] = build_method
+        build_row_stats['calls'] += 1
+
+        if source_excludes is None:
+            source_excludes = set()
+        elif not isinstance(source_excludes, set):
+            source_excludes = set(source_excludes)
+
+        # First make sure we have an instance of Row as a source
+        default_iteration_header_used = False
+        if not isinstance(source_row, Row):
+            # This will be slow if passed a lot of these non-Row objects
+            # TODO: Count non Row objects passed in and give warning if it exceeds 100 or so
+            iteration_header = RowIterationHeader(logical_name='default')
+            source_row = self.row_object(iteration_header, data=source_row)
+            default_iteration_header_used = True
+
+        if self.auto_generate_key:
+            # Primary key must be a single column
+            if self.primary_key is None:
+                raise ValueError("No primary key set")
+            else:
+                if isinstance(self.primary_key, Iterable):
+                    if len(self.primary_key) > 1:
+                        raise ValueError("Can't autogenerate key with a compound primary key")
+                    else:
+                        primary_key = list(self.primary_key)[0]
+                else:
+                    primary_key = self.primary_key
+
+                if primary_key not in source_excludes:
+                    if primary_key in source_row:
+                        warnings.warn('Ignoring primary key value passed in since auto_generate_key is enabled')
+                        source_excludes.add(primary_key)
+
+        target_set = set(self.column_names)
+        if target_excludes is not None:
+            target_set -= set(target_excludes)
+
+        if build_method == Table.RowBuildMethod.none:
+            new_row = source_row
+        else:
+            # clone or safe modes
+            new_row = source_row.subset(exclude=source_excludes, keep_only=target_set)
+
+            if not self._coerce_methods_built:
+                self._build_coerce_methods()
+
+            if build_method == Table.RowBuildMethod.safe and self.safe_type_mode:
+                # Safe type mode is slower, but gives better error messages than the
+                # database that will likely give a not-so helpful message or silently truncate a value.
+                # Non safe type mode can also lead to a failure of the lookups since type differences
+                # will cause the lookup key to look different from the existing value.
+                if default_iteration_header_used:
+                    for target_name, target_column_value in new_row.items():
+                        target_column_object = self.get_column(target_name)
+                        name = self._get_coerce_method_name(target_column_object)
+                        coerce_method = getattr(self, name)
+                        new_row.transform(target_name, coerce_method)
+                else:
+                    build_row_method_name = self._get_build_row_name(new_row)
+                    try:
+                        build_row_method = getattr(self, build_row_method_name)
+                        # Call method
+                    except AttributeError:
+                        code = "def {name}(self, new_row):\n".format(name=build_row_method_name)
+                        for target_name in new_row.keys():
+                            target_column_object = self.get_column(target_name)
+                            coerce_method_name = self._get_coerce_method_name(target_column_object)
+                            code += "    new_row.transform('{target_name}', self.{coerce_method_name})\n".format(
+                                target_name=target_name,
+                                coerce_method_name=coerce_method_name,
+                            )
+                        try:
+                            code = compile(code, filename=build_row_method_name, mode='exec')
+                            exec(code)
+                        except SyntaxError as e:
+                            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+                        # Add the new function as a method in this class
+                        exec("self.{name} = {name}.__get__(self)".format(name=build_row_method_name))
+                        build_row_method = getattr(self, build_row_method_name)
+                        # Call method
+                    build_row_method(new_row)
+
+        if not self.sanity_check_done:
+            self.sanity_check_example_row(example_source_row=source_row,
+                                          source_excludes=source_excludes,
+                                          target_excludes=target_excludes,
+                                          )
 
         if additional_values:
             for colName, value in additional_values.items():
@@ -957,7 +1688,7 @@ class Table(ReadOnlyTable):
     def insert_row(self,
                    source_row: Row,  # Must be a single row
                    additional_insert_values: dict = None,
-                   build_method: str = 'safe',
+                   build_method: RowBuildMethod=RowBuildMethod.safe,
                    source_excludes: list = None,
                    target_excludes: list = None,
                    stat_name: str = 'insert',
@@ -972,9 +1703,9 @@ class Table(ReadOnlyTable):
             The row with values to insert
         additional_insert_values
         build_method:
-            'safe' matches source to tagret column by column.
-            'clone' makes a clone of the source row. Prevents possible issues with outside changes to the row.
-            'none' uses the row as is.
+            RowBuildMethod.safe matches source to tagret column by column.
+            RowBuildMethod.clone makes a clone of the source row. Prevents possible issues with outside changes to the row.
+            RowBuildMethod.none uses the row as is.
         source_excludes:
             list of source columns to exclude
         target_excludes
@@ -990,25 +1721,13 @@ class Table(ReadOnlyTable):
         stats.timer.start()
         self.begin()
 
-        if not self.sanity_check_done:
-            self.sanity_check_example_row(example_source_row=source_row,
-                                          source_excludes=source_excludes,
-                                          target_excludes=target_excludes)
-
-        if build_method == 'none':
-            new_row = source_row
-        elif build_method == 'clone':
-            new_row = source_row.subset(exclude=source_excludes, )
-            if additional_insert_values:
-                for colName, value in additional_insert_values.items():
-                    new_row[colName] = value
-        else:
-            new_row = self.build_row(source_row=source_row,
-                                     additional_values=additional_insert_values,
-                                     source_excludes=source_excludes,
-                                     target_excludes=target_excludes,
-                                     parent_stats=stats,
-                                     )
+        new_row = self.build_row(source_row=source_row,
+                                 additional_values=additional_insert_values,
+                                 source_excludes=source_excludes,
+                                 target_excludes=target_excludes,
+                                 build_method=build_method,
+                                 parent_stats=stats,
+                                 )
 
         self.autogenerate_key(new_row, force_override=False)
 
@@ -1661,6 +2380,8 @@ class Table(ReadOnlyTable):
                       row: Row,
                       changes_list: list = None,
                       additional_update_values: Union[dict, Row] = None,
+                      add_to_cache: bool = True,
+                      update_apply_entire_row = False,
                       stat_name: str = 'update',
                       parent_stats: Statistics = None,
                       **kwargs
@@ -1682,6 +2403,8 @@ class Table(ReadOnlyTable):
             A list of ColumnDifference objects to apply to the row
         additional_update_values:
             A Row or dict of additional values to apply to the main row
+        add_to_cache:
+            Should this method update the cache (not if caller will)
         stat_name:
             Name of this step for the ETLTask statistics. Default = 'update'
         parent_stats:
@@ -1707,20 +2430,28 @@ class Table(ReadOnlyTable):
         if additional_update_values is not None:
             for col_name, value in additional_update_values.items():
                 row[col_name] = value
-        if self.maintain_cache_during_load:
+        if add_to_cache and self.maintain_cache_during_load:
             self.cache_row(row, allow_update=True)
 
         # Check that the row isn't pending an insert
         if row.status != RowStatus.insert:
 
-            # TODO: Support partial updates.
-            # We could save significant network transit times in some cases if we didn't send the whole row
-            # back as an update. However, we might also not want a different update statement for each combination
-            # of updated columns. Unfortunately, having code in update_pending_batch scan the combinations for the
-            # most efficient ways to group the updates would also likely be slow.
+            if update_apply_entire_row or changes_list is None:
+                row.status = RowStatus.update_whole
+                self._add_pending_update(row, parent_stats=stats)
+            else:
+                # Support partial updates.
+                # We could save significant network transit times in some cases if we didn't send the whole row
+                # back as an update. However, we might also not want a different update statement for each combination
+                # of updated columns. Unfortunately, having code in update_pending_batch scan the combinations for the
+                # most efficient ways to group the updates would also likely be slow.
+                update_columns = set(self.primary_key)
+                for d_chg in changes_list:
+                    update_columns.add(d_chg.column_name)
+                partial_row = row.subset(keep_only=update_columns)
+                partial_row.status = RowStatus.update_partial
+                self._add_pending_update(partial_row, parent_stats=stats)
 
-            row.status = RowStatus.update_whole
-            self._add_pending_update(row, parent_stats=stats)
             if stats is not None:
                 stats['update called'] += 1
         else:
@@ -1765,12 +2496,6 @@ class Table(ReadOnlyTable):
             Default is to place statistics in the ETLTask level statistics.
         """
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
-
-        if not self.sanity_check_done:
-            self.sanity_check_example_row(updates_to_make,
-                                          source_excludes,
-                                          target_excludes,
-                                          ignore_target_not_in_source=True)
 
         source_mapped_as_target_row = self.build_row(source_row=updates_to_make,
                                                      source_excludes=source_excludes,
@@ -1840,12 +2565,6 @@ class Table(ReadOnlyTable):
                                  target_excludes=target_excludes,
                                  parent_stats=stats)
             return
-
-        if not self.sanity_check_done:
-            self.sanity_check_example_row(updates_to_make,
-                                          source_excludes,
-                                          target_excludes,
-                                          ignore_target_not_in_source=True)
 
         source_mapped_as_target_row = self.build_row(source_row=updates_to_make,
                                                      source_excludes=source_excludes,
@@ -2033,6 +2752,7 @@ class Table(ReadOnlyTable):
                insert_callback: Callable[[Row], None] = None,
                source_excludes: list = None,
                target_excludes: list = None,
+               build_method: RowBuildMethod = RowBuildMethod.safe,
                stat_name: str = 'upsert',
                parent_stats: Statistics = None,
                **kwargs
@@ -2068,6 +2788,11 @@ class Table(ReadOnlyTable):
             list of Row source columns to exclude when mapping to this Table.
         target_excludes
             list of Table columns to exclude when mapping from the source Row(s)
+        build_method:
+            none, clone, or safe (default is safe)
+            None means use the row as is
+            Clone means create a subset clone
+            Safe does a clone and then checks each column type to ensure it matches the target
         stat_name
             Name of this step for the ETLTask statistics. Default = 'upsert'
         parent_stats
@@ -2079,12 +2804,6 @@ class Table(ReadOnlyTable):
 
         stats.timer.start()
         self.begin()
-
-        if not self.sanity_check_done:
-            self.sanity_check_example_row(example_source_row=source_row,
-                                          source_excludes=source_excludes,
-                                          target_excludes=target_excludes,
-                                          )
 
         stats['upsert source row count'] += 1
 
@@ -2100,6 +2819,7 @@ class Table(ReadOnlyTable):
         source_mapped_as_target_row = self.build_row(source_row=source_row,
                                                      source_excludes=source_excludes,
                                                      target_excludes=target_excludes,
+                                                     build_method=build_method,
                                                      parent_stats=stats,
                                                      )
 
@@ -2133,23 +2853,31 @@ class Table(ReadOnlyTable):
                                                    exclude=do_not_update + skip_update_check_on)
             delayed_changes = existing_row.compare_to(source_mapped_as_target_row,
                                                       compare_only=skip_update_check_on)
-            if self.trace_data:
+
+            if self.track_update_columns:
+                col_stats = self.get_stats_entry('updated columns', parent_stats=stats)
                 for chg in changes_list:
-                    self.log.debug("{key} {name} changed from {old} to {new}".format(
-                        key=lookup_keys,
-                        name=chg.column_name,
-                        old=chg.old_value,
-                        new=chg.new_value
-                    )
-                    )
-                for chg in delayed_changes:
-                    self.log.debug("{key} NO UPDATE TRIGGERED BY {name} changed from {old} to {new}".format(
-                        key=lookup_keys,
-                        name=chg.column_name,
-                        old=chg.old_value,
-                        new=chg.new_value
-                    )
-                    )
+                    col_stats.add_to_stat(key=chg.column_name, increment=1)
+                    if self.trace_data:
+                        self.log.debug("{key} {name} changed from {old} to {new}".format(
+                            key=lookup_keys,
+                            name=chg.column_name,
+                            old=chg.old_value,
+                            new=chg.new_value
+                            )
+                        )
+                if len(changes_list) > 0:
+                    for chg in delayed_changes:
+                        col_stats.add_to_stat(key=chg.column_name, increment=1)
+                        if self.trace_data:
+                            self.log.debug("{key} NO UPDATE TRIGGERED BY {name} changed from {old} to {new}".format(
+                                key=lookup_keys,
+                                name=chg.column_name,
+                                old=chg.old_value,
+                                new=chg.new_value
+                                )
+                            )
+
             if len(changes_list) > 0:
                 self.apply_updates(row=existing_row,
                                    changes_list=changes_list + delayed_changes,
@@ -2255,6 +2983,7 @@ class Table(ReadOnlyTable):
         ]
 
         for source_row in special_rows:
+            self.upsert(source_row, parent_stats=stats)
             self.upsert(source_row, parent_stats=stats)
 
         self.commit(parent_stats=stats)

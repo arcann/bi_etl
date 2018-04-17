@@ -136,7 +136,7 @@ Component Class                                                     Usable as  U
                                                                                           * update_not_in_set, update_not_processed
 :class:`~bi_etl.components.hst_table.Hst_Table`                     Yes        Yes        Inherits from Table. Adds ability to correctly load versioned
                                                                                           tables. Supports both type 2 dimensions and date versioned
-                                                                                          warehouse tables. Also has cleanup_spurious_versions method
+                                                                                          warehouse tables. Also has cleanup_versions method
                                                                                           to remove version rows that are not needed (due to being
                                                                                           redundant).
 :class:`~bi_etl.components.data_analyzer.DataAnalyzer`              No         Yes        Produces a summary of the columns in the data rows passed to the

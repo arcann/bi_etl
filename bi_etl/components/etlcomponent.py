@@ -70,7 +70,7 @@ class ETLComponent(Iterable):
         self._column_names = None  
         # Note this calls the property setter
         self.__trace_data = False
-        self._stats = Statistics(name=self.logical_name)
+        self._stats = Statistics(stats_id=self.logical_name)
         self._rows_read = 0
         self.__enter_called = False
         self.__close_called = False
@@ -342,7 +342,8 @@ class ETLComponent(Iterable):
             if self.check_row_limit():
                 break            
         stats.timer.stop()
-        
+
+    # noinspection PyProtocol
     def __iter__(self)-> Iterable[Row]:
         """
         Iterate over all rows.
@@ -433,41 +434,25 @@ class ETLComponent(Iterable):
             
         if print_start_stop_times is None:
             print_start_stop_times = default_print_start_stop_times
-        
-        name = '{}.{}'.format(parent_stats.name, stats_id) 
-        
+
         if stats_id not in parent_stats:
-            stats = Statistics(name=name, print_start_stop_times=print_start_stop_times)
-            parent_stats[stats_id] = stats
+            stats = Statistics(stats_id=stats_id, parent=parent_stats, print_start_stop_times=print_start_stop_times)
         else:
             stats = parent_stats[stats_id]
              
-        return stats            
-    
-    def add_stats_entry(self, stats_id, stats_entry, parent_stats=None):
-        parent_stats = self._get_stats_parent(parent_stats)
-        
-        id_nbr = 1
-        base_stats_id = stats_id
-        while stats_id in parent_stats:
-            id_nbr += 1
-            stats_id = '{} {}'.format(base_stats_id, id_nbr)
-        name = '{}.{}'.format(parent_stats.name, stats_id)
-        stats_entry.name = name
-        parent_stats[stats_id] = stats_entry
-        
+        return stats
+
     def get_unique_stats_entry(self, stats_id, parent_stats=None, print_start_stop_times=None):
-        new_stats = Statistics(print_start_stop_times=print_start_stop_times)
-        self.add_stats_entry(stats_id=stats_id,
-                             stats_entry=new_stats,
-                             parent_stats=parent_stats
-                             )
+        parent_stats = self._get_stats_parent(parent_stats)
+        stats_id = parent_stats.get_unique_stats_id(stats_id)
+        new_stats = Statistics(stats_id=stats_id, parent=parent_stats, print_start_stop_times=print_start_stop_times)
         return new_stats 
         
     @property
     def statistics(self):
         return self._stats
 
+    # noinspection PyPep8Naming
     def Row(self, data=None, logical_name=None, iteration_header=None):
         """
         Make a new empty row with this components structure.
@@ -482,4 +467,3 @@ class ETLComponent(Iterable):
         return RowIterationHeader(logical_name=logical_name,
                                   primary_key=self.primary_key,
                                   parent=self)
-

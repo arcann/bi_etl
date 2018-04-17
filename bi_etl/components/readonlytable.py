@@ -237,6 +237,19 @@ class ReadOnlyTable(ETLComponent):
         # Get the primary key from the table
         self.primary_key = list(self._table.primary_key)
 
+    def set_columns(self, columns):
+        # Remove columns from the table
+        for col in self._columns:
+            col.table = None
+        # Clear table from columns passed in
+        for col in columns:
+            col.table = None
+        # Remove the table definition so we can add it back below
+        self._columns = columns
+        self._column_names = None
+        self.database.remove(self.table)
+        self.table = sqlalchemy.schema.Table(self.table_name, self.database, *self._columns, quote=False)
+
     def exclude_columns(self, columns_to_exclude):
         """
         Exclude columns from the table. Removes them from all SQL statements.
@@ -282,12 +295,7 @@ class ReadOnlyTable(ETLComponent):
             except KeyError:
                 # Already not there
                 pass
-        # Remove columns from the table
-        for col in self._columns:
-            col.table = None
-        # Remove the table definition so we can add it back below
-        self.database.remove(self.table)
-        self.table = sqlalchemy.schema.Table(self.table_name, self.database, *self._columns, quote=False)
+        self.set_columns(self._columns)
 
     def include_only_columns(self, columns_to_include):
         """
@@ -665,7 +673,7 @@ class ReadOnlyTable(ETLComponent):
                           )
 
     @property
-    def columns(self):
+    def columns(self) -> typing.List['sqlalchemy.sql.expression.ColumnElement']:
         """
         A named-based collection of :class:`sqlalchemy.sql.expression.ColumnElement` objects in this table/view. 
         
@@ -693,7 +701,7 @@ class ReadOnlyTable(ETLComponent):
                     return index_entry
             else:
                 raise KeyError(
-                    '{} does not have a column named {} or {}'.format(self.table_name, column, column.lower()))
+                    '{} does not have a column named {} (or lowercase {}) it does have {}'.format(self.table_name, column, column.lower(), self._column_name_index.keys()))
 
     def get_column_name(self, column):
         """
@@ -1191,6 +1199,8 @@ class ReadOnlyTable(ETLComponent):
         if not isinstance(source_row, Row):
             if isinstance(source_row, list):
                 source_row = self.Row(zip(self.primary_key, source_row))
+            elif isinstance(source_row, dict):
+                source_row = self.Row(source_row)
             else:
                 source_row = self.Row(zip(self.primary_key, [source_row]))
         return self.get_by_lookup(ReadOnlyTable.PK_LOOKUP,
@@ -1223,36 +1233,8 @@ class ReadOnlyTable(ETLComponent):
         lookup = self.get_lookup(lookup_name)
         assert isinstance(lookup, Lookup)
 
-        if lookup.cache_enabled:
-            try:
-                row = lookup.find_in_cache(source_row)
-                stats['Found in cache'] += 1
-                stats.timer.stop()
-                return row
-            except NoResultFound as e:
-                stats['Not in cache'] += 1
-                if self.cache_clean and not self.always_fallback_to_db:
-                    #  Don't pass onto SQL if the lookup cache has initialized but the value isn't there
-                    stats.timer.stop()
-                    raise e
-                    # Otherwise we'll continue to the DB query below
-            except (KeyError, ValueError):
-                # Lookup not cached. Allow database lookup to proceed, but give warning since we thought it was cached
-                warnings.warn("WARNING: {tbl} caching is enabled, but lookup {lkp} returned error {e}".format(
-                    tbl=self,
-                    lkp=lookup_name,
-                    e=traceback.format_exc()
-                )
-                )
-
-        # Do a lookup on the database 
-        try:
-            stats['DB lookup performed'] += 1
-            row = lookup.find_in_remote_table(source_row)
-            row.status = RowStatus.existing
-            if self.maintain_cache_during_load and lookup.cache_enabled:
-                self.cache_row(row, allow_update=False)
-            stats['DB lookup found row'] += 1
-        finally:
-            stats.timer.stop()
-        return row
+        return lookup.find(row=source_row,
+                           fallback_to_db=self.always_fallback_to_db or not self.cache_clean,
+                           maintain_cache=self.maintain_cache_during_load,
+                           stats=stats
+                           )

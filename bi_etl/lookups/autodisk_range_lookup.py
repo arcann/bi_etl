@@ -4,10 +4,12 @@ Created on Jan 5, 2016
 
 @author: woodd
 """
+from configparser import ConfigParser
 
+from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
-from bi_etl.lookups.range_lookup import RangeLookup
 from bi_etl.lookups.disk_range_lookup import DiskRangeLookup
+from bi_etl.lookups.range_lookup import RangeLookup
 
 
 class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
@@ -27,7 +29,14 @@ class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
 
     """
 
-    def __init__(self, lookup_name, lookup_keys, parent_component, begin_date, end_date, config=None, path=None):
+    def __init__(self,
+                 lookup_name: str,
+                 lookup_keys: list,
+                 parent_component: ETLComponent,
+                 begin_date,
+                 end_date,
+                 config: ConfigParser = None,
+                 path=None):
         """
         Optional parameter path controls where the data is persisted
         """

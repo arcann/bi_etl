@@ -4,18 +4,21 @@ Created on Jan 5, 2016
 
 @author: woodd
 """
-from typing import Union
-
-from bi_etl.components.row.row_case_insensitive import RowCaseInsensitive as Row
-from bi_etl.exceptions import NoResultFound
-from bi_etl.lookups.lookup import Lookup
-from bi_etl.lookups.disk_lookup import DiskLookup
-from bi_etl.timer import Timer
 import gc
-import psutil
-from sortedcontainers import SortedDict
+from configparser import ConfigParser
+from datetime import datetime
+from typing import Union, MutableMapping
 
-__all__ = ['Lookup']
+import psutil
+from bi_etl.components.row.row import Row
+
+from bi_etl.components.etlcomponent import ETLComponent
+from bi_etl.exceptions import NoResultFound
+from bi_etl.lookups.disk_lookup import DiskLookup
+from bi_etl.lookups.lookup import Lookup
+from bi_etl.timer import Timer
+
+__all__ = ['AutoDiskLookup']
 
 
 class AutoDiskLookup(Lookup):
@@ -34,23 +37,23 @@ class AutoDiskLookup(Lookup):
     to that segment would need to go to both places.
 
     """
-    def __init__(self, 
-                 lookup_name, 
-                 lookup_keys, 
-                 parent_component, 
-                 config=None,
+    def __init__(self,
+                 lookup_name: str,
+                 lookup_keys: list,
+                 parent_component: ETLComponent,
+                 config: ConfigParser = None,
                  path=None,
-                 max_percent_ram_used = None,
-                 max_process_ram_usage_mb = None,
+                 max_percent_ram_used=None,
+                 max_process_ram_usage_mb=None,
                  **kwargs
                  ):
         Lookup.__init__(self,
-                        lookup_name= lookup_name, 
-                        lookup_keys= lookup_keys, 
-                        parent_component= parent_component, 
-                        config= config,
+                        lookup_name=lookup_name,
+                        lookup_keys=lookup_keys,
+                        parent_component=parent_component,
+                        config=config,
                         )
-        self.cache = None
+        self._cache = None
         self.rows_cached = 0
         # First try and use passed value
         self.max_percent_ram_used = max_percent_ram_used
@@ -58,8 +61,8 @@ class AutoDiskLookup(Lookup):
         if self.max_percent_ram_used is None:
             if self.config is not None:
                 self.max_percent_ram_used = self.config.getfloat('Limits',
-                                                                'disk_swap_at_percent_ram_used',
-                                                                fallback= None)
+                                                                 'disk_swap_at_percent_ram_used',
+                                                                 fallback=None)
         # Finally default value
         if self.max_percent_ram_used is None:
             # Needs to be less than the default in bi_etl.components.table.Table.fill_cache
@@ -71,7 +74,7 @@ class AutoDiskLookup(Lookup):
             if self.config is not None:
                 self.max_process_ram_usage_mb = self.config.getfloat('Limits',
                                                                      'disk_swap_at_process_ram_usage_mb',
-                                                                     fallback= None)
+                                                                     fallback=None)
         # Finally default value
         if self.max_process_ram_usage_mb is None:
             self.max_process_ram_usage_mb = 2.5 * 1024**3
@@ -94,30 +97,14 @@ class AutoDiskLookup(Lookup):
             else:
                 self.path = DiskLookup.DEFAULT_PATH
 
-    # pylint: disable=unused-argument, no-self-use
-    def get_unique_stats_entry(self, stats_id, parent_stats=None, print_start_stop_times= None):
-        # Since we aren't capturing any useful stats in the sub caches yet, skip creating stats entries
-        #
-        # =======================================================================
-        # total_stats_id = '{cls} {name} {sub}'.format(cls= self.__class__.__name__,
-        #                                        name=self.lookup_name,
-        #                                        sub=stats_id
-        #                                        )
-        # return self.parent_component.get_unique_stats_entry(stats_id=total_stats_id, 
-        #                                                     parent_stats=parent_stats, 
-        #                                                     print_start_stop_times=print_start_stop_times
-        #                                                     )
-        # =======================================================================
-        return None
-
     def _init_mem_cache(self):
-        self.cache = self.MemoryLookupClass(lookup_name= self.lookup_name, 
-                                            lookup_keys= self.lookup_keys, 
-                                            parent_component= self, 
-                                            config= self.config,
-                                            **self.lookup_class_args
-                                            )
-        self.cache.init_cache()
+        self._cache = self.MemoryLookupClass(lookup_name=self.lookup_name,
+                                             lookup_keys=self.lookup_keys,
+                                             parent_component=self.parent_component,
+                                             config=self.config,
+                                             **self.lookup_class_args
+                                             )
+        self._cache.init_cache()
     
     def init_cache(self):
         if self.cache_enabled is None:
@@ -127,35 +114,35 @@ class AutoDiskLookup(Lookup):
     
     def get_memory_size(self):
         ram_size = 0
-        if self.cache is not None:
-            ram_size += self.cache.get_memory_size()
+        if self._cache is not None:
+            ram_size += self._cache.get_memory_size()
         if self.disk_cache is not None:
             ram_size += self.disk_cache.get_memory_size()
         return ram_size 
         
     def get_disk_size(self):
         disk_size = 0
-        if self.cache is not None:
-            disk_size += self.cache.get_disk_size()
+        if self._cache is not None:
+            disk_size += self._cache.get_disk_size()
         if self.disk_cache is not None:
             disk_size += self.disk_cache.get_disk_size()
         return disk_size     
         
     def clear_cache(self):
-        if self.cache is not None:
-            self.cache.clear_cache()
-            del self.cache
+        if self._cache is not None:
+            self._cache.clear_cache()
+            del self._cache
         if self.disk_cache is not None:
             self.disk_cache.clear_cache()
             del self.disk_cache 
                     
-        self.cache = None
+        self._cache = None
         self.disk_cache = None
     
     def __len__(self):
         total_len = 0
-        if self.cache is not None:
-            total_len += len(self.cache)
+        if self._cache is not None:
+            total_len += len(self._cache)
         if self.disk_cache is not None:
             total_len += len(self.disk_cache) 
         return total_len
@@ -164,7 +151,7 @@ class AutoDiskLookup(Lookup):
         if self.disk_cache is None:
             self.disk_cache = self.DiskLookupClass(lookup_name=self.lookup_name,
                                                    lookup_keys=self.lookup_keys,
-                                                   parent_component=self,
+                                                   parent_component=self.parent_component,
                                                    config=self.config,
                                                    path=self.path,
                                                    **self.lookup_class_args
@@ -172,23 +159,23 @@ class AutoDiskLookup(Lookup):
             self.disk_cache.init_cache()
             # Do not warn about protected access to _get_estimate_row_size
             # pylint: disable=protected-access
-            self.cache._check_estimate_row_size(force_now=True)
-            self.disk_cache._row_size = self.cache._row_size
-            self.disk_cache._done_get_estimate_row_size = self.cache._done_get_estimate_row_size
+            self._cache.check_estimate_row_size(force_now=True)
+            self.disk_cache._row_size = self._cache.estimated_row_size()
+            self.disk_cache._done_get_estimate_row_size = self._cache.has_done_get_estimate_row_size()
 
     def flush_to_disk(self):
-        if self.cache is not None and len(self.cache) > 0:
+        if self._cache is not None and len(self._cache) > 0:
             rows_before = len(self)
             self.init_disk_cache()
             timer = Timer()
-            self.log.info('Flushing {rows:,} rows to disk.'.format(rows= len(self.cache)))
+            self.log.info('Flushing {rows:,} rows to disk.'.format(rows=len(self._cache)))
             gc.collect()
             before_move_mb = self.our_process.memory_info().rss/(1024**2)
-            for row in self.cache:
+            for row in self._cache:
                 self.disk_cache.cache_row(row)
-            self.cache.clear_cache()
-            del self.cache
-            self.cache = None         
+            self._cache.clear_cache()
+            del self._cache
+            self._cache = None
             self._init_mem_cache()
             if len(self) != rows_before:
                 msg = "Row count changed during flush to disk." \
@@ -198,8 +185,7 @@ class AutoDiskLookup(Lookup):
             gc.collect()
             after_move_mb = self.our_process.memory_info().rss/(1024**2)
             self.log.info('Flushing rows freed {freed:,.3f} MB from process '
-                          'before {before:,.3f} after {after:,.3f})'
-                .format(
+                          'before {before:,.3f} after {after:,.3f})'.format(
                     freed=before_move_mb - after_move_mb,
                     before=before_move_mb,
                     after=after_move_mb
@@ -233,9 +219,9 @@ class AutoDiskLookup(Lookup):
                 return True
         return False
 
-    def cache_row(self, row, allow_update= True):
+    def cache_row(self, row: Row, allow_update: bool=True):
         if self.cache_enabled:        
-            if self.cache is None:
+            if self._cache is None:
                 self.init_cache()
     
             self.rows_cached += 1
@@ -257,23 +243,23 @@ class AutoDiskLookup(Lookup):
 
             # Now cache the row
             if self.disk_cache is None:
-                self.cache.cache_row(row, allow_update=allow_update)
+                self._cache.cache_row(row, allow_update=allow_update)
             else:
                 # We need to make sure each row is in only once place
                 lk_tuple = self.get_hashable_combined_key(row)
-                if lk_tuple in self.cache.cache:
+                if lk_tuple in self._cache:
                     # Move existing key date ranges to disk
                     versions_collection = self.get_versions_collection(row)
-                    del self.cache.cache[lk_tuple]
+                    self._cache.uncache_set(lk_tuple)
                     disk_lk_tuple = self.disk_cache.get_hashable_combined_key(row)
-                    self.disk_cache.cache[disk_lk_tuple] = versions_collection
+                    self.disk_cache.cache_set(disk_lk_tuple, versions_collection)
 
                 # Put add new row to disk as well
                 self.disk_cache.cache_row(row, allow_update=allow_update)
 
     def uncache_row(self, row):
-        if self.cache is not None:
-            self.cache.uncache_row(row)
+        if self._cache is not None:
+            self._cache.uncache_row(row)
         if self.disk_cache is not None:
             self.disk_cache.uncache_row(row)
 
@@ -281,14 +267,14 @@ class AutoDiskLookup(Lookup):
         """
         The rows will come out in any order.  DO NOT MODIFY cache during the loop
         """
-        if self.cache is not None:
-            for row in self.cache:
+        if self._cache is not None:
+            for row in self._cache:
                 yield row
         if self.disk_cache is not None:
             for row in self.disk_cache:
                 yield row
 
-    def get_versions_collection(self, row) -> Union[dict, SortedDict]:
+    def get_versions_collection(self, row) -> MutableMapping[datetime, Row]:
         """
         This method exists for compatibility with range caches
 
@@ -299,15 +285,15 @@ class AutoDiskLookup(Lookup):
 
         Returns
         -------
-        A dict or SortedDict of rows
+        A MutableMapping of rows
         """
         if not self.cache_enabled:
             raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
-        if self.cache is None:
+        if self._cache is None:
             self.init_cache()
 
         try:
-            return self.cache.get_versions_collection(row)
+            return self._cache.get_versions_collection(row)
         except NoResultFound:
             if self.disk_cache is not None:
                 return self.disk_cache.get_versions_collection(row)

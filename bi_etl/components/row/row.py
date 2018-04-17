@@ -6,6 +6,7 @@ Created on Sep 17, 2014
 """
 import typing
 import warnings
+from collections import OrderedDict
 from decimal import Decimal
 from typing import Union, List, Iterable
 
@@ -24,7 +25,7 @@ class Row(typing.MutableMapping):
     Handles column names that are SQL Alchemy column objects.
     Keeps order of the columns (see columns_in_order)
     """
-    NUMERIC_TYPES = [int, float, Decimal]
+    NUMERIC_TYPES = {int, float, Decimal}
     # For performance with the Column to str conversion we keep a cache of converted values
     __name_map_db = dict()
 
@@ -141,6 +142,7 @@ class Row(typing.MutableMapping):
 
         for source_data in args:
             try:
+                # noinspection PyStatementEffect
                 source_data[None]
                 # Is a dict with None it it! That's odd, but...
                 self.update_from_dict(source_data)
@@ -183,7 +185,7 @@ class Row(typing.MutableMapping):
         column_name = self._get_name(column_specifier)
         return self.iteration_header.get_column_position(column_name)
 
-    def get_column_name(self, column_specifier, raise_on_not_exist= True):
+    def get_column_name(self, column_specifier, raise_on_not_exist=True):
         if column_specifier is None:
             return None
         column_name = self._get_name(column_specifier)
@@ -217,10 +219,10 @@ class Row(typing.MutableMapping):
 
     def __repr__(self):
         return '{cls}(name={name},status={status},primary_key={pk},\n{content}'.format(
-            cls= self.__class__.__name__,
+            cls=self.__class__.__name__,
             name=self.name,
             status=self.status,
-            pk = self.primary_key,
+            pk=self.primary_key,
             content=self.str_formatted()
         )
 
@@ -232,7 +234,7 @@ class Row(typing.MutableMapping):
                                                                 s=self.status
                                                                 )
         else:
-            cv = [ self[k] for k in self.columns_in_order[:5] ]
+            cv = [self[k] for k in self.columns_in_order[:5]]
             return "{name} cols[:5]={cv} status={s}".format(name=self.name,
                                                             cv=cv,
                                                             s=self.status
@@ -265,7 +267,7 @@ class Row(typing.MutableMapping):
 
     @property
     def as_dict(self) -> dict:
-        return dict(zip(self.columns_in_order, self._data_values))
+        return OrderedDict(zip(self.columns_in_order, self._data_values))
 
     def items(self):
         for column_name, column_value in zip(self.columns_in_order, self._data_values):
@@ -306,6 +308,7 @@ class Row(typing.MutableMapping):
         )
 
         # -1 because positions are 1 based not 0 based
+        # noinspection PyProtectedMember
         return self.iteration_header._columns_in_order[position - 1]
 
     def get_by_position(self, position):
@@ -343,7 +346,7 @@ class Row(typing.MutableMapping):
         """
         self.set_by_zposition(position-1, value)
 
-    def rename_column(self, old_name, new_name, ignore_missing = False):
+    def rename_column(self, old_name, new_name, ignore_missing=False):
         """
         Rename a column
 
@@ -472,6 +475,7 @@ class Row(typing.MutableMapping):
         """
         A list of the columns of this row (order not guaranteed in child instances).
         """
+        # noinspection PyProtectedMember
         return self.iteration_header._columns_in_order
 
     @property
@@ -583,9 +587,9 @@ class Row(typing.MutableMapping):
                     else:
                         values_equal = (existing_column_value == other_col_value)
                     if not values_equal:
-                        differences_list.append(ColumnDifference(column_name= other_col_name,
-                                                                 old_value= existing_column_value,
-                                                                 new_value= other_col_value,
+                        differences_list.append(ColumnDifference(column_name=other_col_name,
+                                                                 old_value=existing_column_value,
+                                                                 new_value=other_col_value,
                                                                  )
                                                 )
         return differences_list
@@ -602,6 +606,7 @@ class Row(typing.MutableMapping):
                   transform_function,
                   *args,
                   **kwargs):
+        # noinspection PyIncorrectDocstring
         """
         Apply a transformation to a column.
         The transformation function must take the value to be transformed as it's first argument.
@@ -616,10 +621,15 @@ class Row(typing.MutableMapping):
             Positional arguments to pass to transform_function
         kwargs: dict
             Keyword arguments to pass to transform_function
+
+        Keyword Parameters Used Directly
+        --------------------------------
         raise_on_not_exist:
             Should this function raise an error if the column_specifier doesn't match an existing column.
             Must be passed as a keyword arg
             Defaults to True
+
+        All other keyword parameters are passed along to the transform_function
         """
         # noinspection PyPep8Naming
         RAISE_ON_NOT_EXIST_NAME = 'raise_on_not_exist'
@@ -637,7 +647,15 @@ class Row(typing.MutableMapping):
             if raise_on_not_exist:
                 raise e
             return self
-        new_value = transform_function(value, *args, **kwargs)
+        try:
+            new_value = transform_function(value, *args, **kwargs)
+        except Exception as e:
+            raise ValueError("{func} on {col} with value {val} yielded {e}".format(
+                func=transform_function,
+                val=value,
+                col=column_name,
+                e=e,
+            ))
         self._data_values[position] = new_value
         return self
 
@@ -705,6 +723,7 @@ def main():
                """
                )
     print(r)
+
 
 if __name__ == "__main__":
     main()

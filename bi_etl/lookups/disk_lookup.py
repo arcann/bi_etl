@@ -12,8 +12,11 @@ import string
 import sys
 import tempfile
 import weakref
+from configparser import ConfigParser
 
 import semidbm
+
+from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.memory_size import get_dir_size
 from bi_etl.memory_size import get_size_gc
@@ -24,20 +27,26 @@ __all__ = ['DiskLookup']
 class DiskLookup(Lookup):
     DEFAULT_PATH = None
     
-    def __init__(self, lookup_name, lookup_keys, parent_component, config=None, path= None, **kwargs):
+    def __init__(self,
+                 lookup_name: str,
+                 lookup_keys: list,
+                 parent_component: ETLComponent,
+                 config: ConfigParser = None,
+                 path=None,
+                 **kwargs):
         """
         Optional parameter path where the lookup files should be persisted to disk
         """        
-        super(DiskLookup, self).__init__(lookup_name= lookup_name, 
-                                         lookup_keys= lookup_keys, 
-                                         parent_component= parent_component, 
-                                         config= config,
+        super(DiskLookup, self).__init__(lookup_name=lookup_name,
+                                         lookup_keys=lookup_keys,
+                                         parent_component=parent_component,
+                                         config=config,
                                          **kwargs
                                          )
         self._set_path(path)
         self.dbm = None
-        self.cache_dir_mgr = None
-        self.cache_file_path = None
+        self._cache_dir_mgr = None
+        self._cache_file_path = None
         self.use_value_cache = False
         self._finalizer = None
         
@@ -55,21 +64,23 @@ class DiskLookup(Lookup):
             self.cache_enabled = True
         if self.cache_enabled:
             file_prefix = ''.join([c for c in self.lookup_name if c in string.ascii_letters])
-            self.cache_dir_mgr = tempfile.TemporaryDirectory(dir=self.path, prefix=file_prefix)
-            self.cache_file_path = self.cache_dir_mgr.name
-            self.log.info("Creating cache in {}".format(self.cache_file_path))
+            self._cache_dir_mgr = tempfile.TemporaryDirectory(dir=self.path, prefix=file_prefix)
+            self._cache_file_path = self._cache_dir_mgr.name
+            self.log.info("Creating cache in {}".format(self._cache_file_path))
             if sys.platform.startswith('win'):
-                self.dbm = semidbm.open(self.cache_file_path, 'n')            
+                self.dbm = semidbm.open(self._cache_file_path, 'n')
             else:
-                file = os.path.join(self.cache_file_path, 'data')
+                file = os.path.join(self._cache_file_path, 'data')
                 self.dbm = dbm.open(file, 'n')
-            self.cache = shelve.BsdDbShelf(self.dbm, 
-                                           protocol=pickle.HIGHEST_PROTOCOL,
-                                           writeback=False,)
+            self._cache = shelve.BsdDbShelf(
+                self.dbm,
+                protocol=pickle.HIGHEST_PROTOCOL,
+                writeback=False,
+            )
             self._finalizer = weakref.finalize(self, self._cleanup)
 
     def __len__(self):
-        if self.cache is not None:
+        if self._cache is not None:
             return len(self.dbm.keys())
         else:
             return 0
@@ -79,7 +90,7 @@ class DiskLookup(Lookup):
             # Slow but shouldn't be too bad twice
             self._row_size = get_size_gc(self.dbm)
         
-    def _check_estimate_row_size(self, force_now=False):
+    def check_estimate_row_size(self, force_now=False):
         if force_now or not self._done_get_estimate_row_size:
             row_cnt = min(len(self), 1000)
             total_row_sizes = 0
@@ -91,14 +102,14 @@ class DiskLookup(Lookup):
                     break      
             self._row_size = math.ceil(total_row_sizes / row_cnt)
             msg = '{lookup_name} row key size (in memory) now estimated at {size:,} bytes per row'
-            msg = msg.format(lookup_name= self.lookup_name,
-                             size= self._row_size)
+            msg = msg.format(lookup_name=self.lookup_name,
+                             size=self._row_size)
             self.log.debug(msg)
             self._done_get_estimate_row_size = True   
         
     def get_disk_size(self):
-        if self.cache_file_path:
-            return get_dir_size(self.cache_file_path)
+        if self._cache_file_path:
+            return get_dir_size(self._cache_file_path)
         else:
             return 0
         
@@ -112,10 +123,10 @@ class DiskLookup(Lookup):
         self.clear_cache()            
 
     def clear_cache(self):
-        if self.cache is not None:
-            self.cache.close()
-            self.cache_dir_mgr.cleanup()
-        self.cache = None
+        if self._cache is not None:
+            self._cache.close()
+            self._cache_dir_mgr.cleanup()
+        self._cache = None
 
 
 def test():

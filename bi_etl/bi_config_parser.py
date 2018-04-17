@@ -52,7 +52,15 @@ class BIConfigParser(ConfigParser):
                                                    fallback=False
                                                    )
 
-    def merge_parent(self, directories, parent_file):
+    def merge_config(self, other_config):
+        for section in other_config.sections():
+            if not self.has_section(section):
+                self.add_section(section)
+            for option in other_config.options(section):
+                if not self.has_option(section, option):
+                    self[section][option] = other_config[section][option]
+
+    def merge_parent(self, directories: list, parent_file: str):
         parent_config = ConfigParser(allow_no_value=True,
                                      interpolation=ExtendedInterpolation())
         file_paths = [os.path.normpath(os.path.join(directory, parent_file)) for directory in directories]
@@ -65,12 +73,7 @@ class BIConfigParser(ConfigParser):
 
             self.config_file_read.extend(files_read)
 
-            for section in parent_config.sections():
-                if not self.has_section(section):
-                    self.add_section(section)
-                for option in parent_config.options(section):
-                    if not self.has_option(section, option):
-                        self[section][option] = parent_config[section][option]
+            self.merge_config(parent_config)
 
             # Check if we need to read another level of parent files
             if parent_config.has_section('Config'):
@@ -86,13 +89,13 @@ class BIConfigParser(ConfigParser):
                         if not alread_read:
                             self.merge_parent(read_dirs, file_name)
 
-    def read_parents(self, directories):
+    def read_parents(self, directories: list):
         if self.has_section('Config'):
             for setting in self['Config']:
                 if setting.startswith('parent'):
                     self.merge_parent(directories, self['Config'][setting])
 
-    def read_config_ini(self, file_name='config.ini'):
+    def read_config_ini(self, path: str=None, file_name: str='config.ini'):
         r"""
         If the BI_ETL_CONFIG environment variable is set, read the config file(s) as specified there (; delimited).
 
@@ -116,6 +119,8 @@ class BIConfigParser(ConfigParser):
                 expected_config_files
             ))
         else:
+            if path is None:
+                path = os.getcwd()
             user_dir = os.path.expanduser('~')
             expected_config_files = [
                 # These static paths are for running as a windows service
@@ -125,7 +130,7 @@ class BIConfigParser(ConfigParser):
                 # If those don't work then look in the user directory
                 os.path.join(user_dir, 'bi_etl_config', file_name),
                 # Finally use a file in the current directory (will override other settings)
-                os.path.join(os.getcwd(), file_name),
+                os.path.join(path, file_name),
             ]
         files_read = self.read(expected_config_files)
         if files_read is None or len(files_read) == 0:
@@ -159,7 +164,7 @@ class BIConfigParser(ConfigParser):
         (root_path, _) = os.path.split(parent_path)
         return root_path
 
-    def read_relative_config(self, config_file_name, start_path=None):
+    def read_relative_config(self, config_file_name: str='config.ini', start_path: str=None):
         """
         Search from start_path (default current directory) up to file the configuration file
 
@@ -335,8 +340,8 @@ class BIConfigParser(ConfigParser):
             log_file_entry_format = self.get('logging',
                                              'log_file_entry_format',
                                              fallback=default_entry_format)
-            log_file_entry_formater = logging.Formatter(log_file_entry_format, self.date_format)
-            file_handler.setFormatter(log_file_entry_formater)
+            log_file_entry_formatter = logging.Formatter(log_file_entry_format, self.date_format)
+            file_handler.setFormatter(log_file_entry_formatter)
             file_handler_level = self.get('logging', 'file_log_level', fallback='DEBUG').upper()
             file_handler.setLevel(file_handler_level)
             self.rootLogger.addHandler(file_handler)
@@ -471,37 +476,41 @@ class BIConfigParser(ConfigParser):
         self.log.info('Config file in use = {}'.format(self.config_file_read))
 
 
-def build_example():
+def build_example(config: BIConfigParser=None, config_file_name: str='config.ini', example_config_dir: str='example_config_files'):
     """
     Builds an example config file from the currently active one in the users folder
     """
     from bi_etl.utility.ask import yes_no
 
-    my_config = BIConfigParser()
-    ini_path = my_config.read_config_ini()
-    my_config.setup_logging()
+    if config is None:
+        config = BIConfigParser()
+        config.read_config_ini()
+        config.setup_logging()
     log = logging.getLogger(__name__)
     log.info('Logging level is {}'.format(logging.getLevelName(log.getEffectiveLevel())))
 
-    root_path = BIConfigParser.get_package_root()
+    if not os.path.exists(example_config_dir):
+        response = yes_no("{} does not exist. Create it?".format(example_config_dir))
+        if response:
+            os.mkdir(example_config_dir)
+        else:
+            raise FileNotFoundError("{} does not exist.".format(example_config_dir))
 
-    example_ini_file = os.path.join(root_path, 'example_config_files', 'config.ini')
+    example_ini_file = os.path.join(example_config_dir, config_file_name)
     log.info("Starting")
 
     response = yes_no("Proceed with rebuilding example in {}?".format(example_ini_file))
     if response:
         log.info("Building example_ini_file = {}".format(example_ini_file))
-        with open(ini_path[0], 'r') as source:
-            with open(example_ini_file, 'w') as target:
-                for line in source:
-                    password_match = re.match(r'(.*password.*)=', line, re.IGNORECASE)
+        if isinstance(config.config_file_read, str):
+            config.config_file_read = [config.config_file_read]
+        with open(example_ini_file, 'w') as target:
+            for section in config.sections():
+                for option in config.options(section):
+                    password_match = re.match(r'(.*password.*)=', option, re.IGNORECASE)
                     if password_match:
-                        password_line = "{password_attr}=*******************\n".format(
-                            password_attr=password_match.group(1))
-                        target.write(password_line)
-                    else:
-                        target.write(line)
-
+                        config.set(section, option, '*'*40)
+            config.write(target)
         log.info("Done")
     else:
         log.info("Cancelled")

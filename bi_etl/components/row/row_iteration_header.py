@@ -197,6 +197,7 @@ class RowIterationHeader(object):
                 position = self._add_column(column_name)
         return position
 
+    # noinspection PyProtectedMember
     def row_set_item(self, column_name: str, value, row)-> 'RowIterationHeader':
         """
         Set a column in a row and return a new row header (it might have changed if the column was new). 
@@ -211,6 +212,7 @@ class RowIterationHeader(object):
         """
         if column_name in self._columns_positions:
             position = self._columns_positions[column_name]
+            # noinspection PyProtectedMember
             row._data_values[position] = value
             new_header = self
         else:
@@ -222,6 +224,7 @@ class RowIterationHeader(object):
                 new_header._action_position = new_header._add_column(column_name)
 
             # Protected access is required here since we can't call setitem it calls this method.
+            # noinspection PyProtectedMember
             row._data_values.append(value)
         return new_header
 
@@ -341,6 +344,7 @@ class RowIterationHeader(object):
                 if self.primary_key is not None and column_name in self.primary_key:
                     self.primary_key.remove(column_name)
             # Protected access is required here since we can't call __delitem__, it calls this method.
+            # noinspection PyProtectedMember
             del row._data_values[new_header._action_position]
             return new_header
 
@@ -428,6 +432,7 @@ class RowIterationHeader(object):
         for old_pos in new_iteration_header._action_position:
             # Protected access is required here since we can't call setitem it calls this method.
             # We append to what should be an empty list since we chose allocate_space = False
+            # noinspection PyProtectedMember
             sub_row._data_values.append(row._data_values[old_pos])
         return sub_row
 

@@ -3,14 +3,15 @@ Created on Sep 15, 2014
 
 @author: woodd
 """
-from configparser import ConfigParser
-
 import errno
 import logging
+import re
+import socket
 import traceback
-import warnings
-from queue import Empty
 import typing
+import warnings
+from configparser import ConfigParser
+from queue import Empty
 
 from CaseInsensitiveDict import CaseInsensitiveDict
 
@@ -18,6 +19,8 @@ from bi_etl import utility
 from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.database.connect import Connect, DatabaseMetadata
 from bi_etl.notifiers.email import Email
+from bi_etl.notifiers.log_notifier import LogNotifier
+from bi_etl.notifiers.slack import Slack
 from bi_etl.scheduler import models
 from bi_etl.scheduler import queue_io
 from bi_etl.scheduler.exceptions import ParameterError, TaskStopRequested
@@ -135,6 +138,7 @@ class ETLTask(object):
         self.summary_message_from_client = False
         self.last_log_msg_time = None
         self.pending_log_msgs = list()
+        self.warning_messages = set()
         self.last_log_msg = ""
         # set initial default value for waiting_for_workflow
         self.waiting_for_workflow = False
@@ -204,6 +208,16 @@ class ETLTask(object):
         module = self.__class__.__module__
 
         return module + '.' + self.__class__.__name__
+
+    @property
+    def environment_name(self):
+        environment = self.config.get('environment', 'name', fallback=None)
+        if environment is None:
+            if self._scheduler is not None:
+                environment = self._scheduler.qualified_host_name
+            else:
+                environment = socket.gethostname()
+        return environment
 
     @property
     def task_rec(self):
@@ -305,6 +319,9 @@ class ETLTask(object):
 
         return self._log
 
+    def add_warning(self, warning_message):
+        self.warning_messages.add(warning_message)
+
     # pylint: disable=no-self-use
     def depends_on(self):
         """
@@ -403,7 +420,7 @@ class ETLTask(object):
         return self._config
 
     @property
-    def scheduler(self):
+    def scheduler(self) -> 'SchedulerInterface':
         """
         Get the existing :class`bi_etl.scheduler.scheduler.Scheduler` that this task is running under.
         or
@@ -543,13 +560,15 @@ class ETLTask(object):
         self._parameter_dict.update(kwargs)
         for param_name, param_value in kwargs.items():
             self.set_parameter(param_name, param_value, local_only=local_only, commit=commit)
+
         # Also accept a list of dicts, tuples, or lists
         # eg. add_parameters( [ ('param1','example'), ('param2',100) ] )
         #  or add_parameters( [ ['param1','example'], ['param2',100] ] )
         #  or add_parameters( [ ('param1','example'), ['param2',100] ] )
         #  or parms = {'param1':'example', 'param2':100}
         #     add_parameters(parms)
-        #### which is equivalent to
+        #
+        # which is equivalent to
         #     add_parameters(**parms)
         for arg in args:
             if isinstance(arg, typing.Mapping):
@@ -690,7 +709,9 @@ class ETLTask(object):
 
         config = self.config
         if not isinstance(config, BIConfigParser):
-            config = BIConfigParser(config)
+            new_config = BIConfigParser()
+            new_config.merge_config(config)
+            self.config = new_config
         config.set_dated_log_file_name(self.name, '.log')
         config.setup_logging()
 
@@ -742,9 +763,11 @@ class ETLTask(object):
         if self.child_to_parent is not None:
             self.child_to_parent.put(msg)
 
+    # noinspection PyMethodMayBeStatic
     def allow_concurrent_runs(self):
         return False
 
+    # noinspection PyMethodMayBeStatic
     def needs_to_ok_child_runs(self):
         """
         Override and return True if you need to give OK before children are allowed to run.
@@ -752,25 +775,27 @@ class ETLTask(object):
         """
         return False
 
-    def process_child_run_requested(self, childRunRequested):
+    def process_child_run_requested(self, child_run_requested):
         """
         Override to examine child task before giving OK.
         """
-        self.send_mesage(ChildRunOK(childRunRequested.child_task_id))
+        self.send_mesage(ChildRunOK(child_run_requested.child_task_id))
 
+    # noinspection PyMethodMayBeStatic
     def needs_to_get_child_statuses(self):
         """
         Override and return True if you want to get status updates on children.
         """
         return False
 
+    # noinspection PyMethodMayBeStatic
     def needs_to_get_ancestor_statuses(self):
         """
         Override and return True if you want to get status updates on any ancestor.
         """
         return False
 
-    def process_child_status_update(self, childStatusUpdate):
+    def process_child_status_update(self, child_status_update):
         """
         Override to examine child task status (ChildRunFinished instances)
         """
@@ -779,17 +804,9 @@ class ETLTask(object):
     def process_messages(self, block=False):
         """
         Processes messages for this task.  Should be called somewhere in any row looping.
-        
-        Parameters
-        ----------
-        block: boolean 
-            Block while waiting. Defaults to False.
-            If block is True, this will run until a terminating message is received or an exception is thrown by the process_X calls.
-            If block if False, you probably want to call inside a loop.
-
 
         **Example Code:**
-                
+
         .. code-block:: python
 
             from bi_etl.scheduler.exceptions import WorkflowFinished
@@ -810,8 +827,13 @@ class ETLTask(object):
                    self.process_messages(block=True)
                 except WorkflowFinished:
                     pass
-                    
         
+        Parameters
+        ----------
+        block: boolean 
+            Block while waiting. Defaults to False.
+            If block is True, this will run until a terminating message is received or an exception is thrown by the process_X calls.
+            If block if False, you probably want to call inside a loop.
         """
         q = self.parent_to_child
         if q is not None:
@@ -902,25 +924,18 @@ class ETLTask(object):
             self.log.exception(e)
             self.log.error(utility.dict_to_str(e.__dict__))
             if not no_mail:
-                smtp_to = self.config.get('SMTP', 'distro_list', fallback=None)
-                if not smtp_to:
-                    self.log.warning("SMTP distro_list option not found. No mail sent.")
-                else:
-                    environment = self.config.get('SMTP', 'environment', fallback='Unknown_ENVT')
-                    message_list = list()
-                    message_list.append(repr(e))
-                    message_list.append("Task ID = {}".format(self.task_id))
-                    ui_url = self.config.get('Scheduler', 'base_ui_url', fallback=None)
-                    if ui_url and self.task_id:
-                        message_list.append("Run details are here: {}{}".format(ui_url, self.task_id))
-                    message_content = '\n'.join(message_list)
-                    subject = "{environment} {etl} load failed".format(environment=environment, etl=self)
+                environment = self.config.get('environment', 'name', fallback='Unknown_ENVT')
+                message_list = list()
+                message_list.append(repr(e))
+                message_list.append("Task ID = {}".format(self.task_id))
+                ui_url = self.config.get('Scheduler', 'base_ui_url', fallback=None)
+                if ui_url and self.task_id:
+                    message_list.append("Run details are here: {}{}".format(ui_url, self.task_id))
+                message_content = '\n'.join(message_list)
+                subject = "{environment} {etl} load failed".format(environment=environment, etl=self)
 
-                    #TODO: Define notifiers setup from config
-                    notifiers_list = [Email(self.config, smtp_to)]
+                self.notify('failures', subject=subject, message=message_content)
 
-                    for notifier in notifiers_list:
-                        notifier.send(message_content, subject=subject)
             self.log.info("{} FAILED.".format(self))
             if self.child_to_parent is not None:
                 self.child_to_parent.put(e)
@@ -933,15 +948,72 @@ class ETLTask(object):
 
         return self.status == Status.succeeded
 
+    NOTIFIER_CLASES = {
+        'Email': Email,
+        'LogNotifier': LogNotifier,
+        'Slack': Slack
+    }
+
+    def get_notifiers(self, channel_name) -> list:
+        config_sections_str = self.config.get('Notifiers', channel_name, fallback=None)
+        config_sections = list()
+        if config_sections_str is not None and config_sections_str != '':
+            for config_section in re.split(r'\W+', config_sections_str):
+                notifier_class_str = self.config.get(config_section, 'notifier_class', fallback=None)
+                if notifier_class_str in self.NOTIFIER_CLASES:
+                    config_sections.append(config_section)
+                else:
+                    self.log.warning('Channel {} set to unknown notifier_class {}. Logging notification instead'.format(
+                        channel_name,
+                        notifier_class_str,
+                    ))
+                    self.log.warning('Accepted notifier_class values are {}'.format(self.NOTIFIER_CLASES.keys()))
+                    if 'LogNotifier' not in config_sections:
+                        config_sections.append('LogNotifier')
+        elif config_sections_str == '':
+            pass
+        else:
+            self.log.info('Channel {} not set in config, logging notification instead.'.format(
+                channel_name
+            ))
+            if 'LogNotifier' not in config_sections:
+                config_sections.append('LogNotifier')
+
+        notifiers_list = list()
+        for config_section in config_sections:
+            if config_section == 'LogNotifier':
+                notifier_class_str = config_section
+            else:
+                notifier_class_str = self.config.get(config_section, 'notifier_class', fallback=None)
+
+            notifier_class = self.NOTIFIER_CLASES[notifier_class_str]
+            notifiers_list.append(notifier_class(self.config, config_section))
+        return notifiers_list
+
+    def notify(self, channel_name, subject, message):
+        # Note: all exceptions are caught since we don't want notifications to kill the load
+        try:
+            notifiers_list = self.get_notifiers(channel_name)
+            for notifier in notifiers_list:
+                try:
+                    notifier.send(message=message, subject=subject)
+                except Exception as e:
+                    self.log.exception(e)
+        except Exception as e:
+            self.log.exception(e)
+
+
+
+
     @property
     def statistics(self):
         """
         Return the execution statistics from the task and all of it's registered components.
         """
-        stats = Statistics()
+        stats = Statistics(self.name)
         # Only report init stats if something significant was done there
         if self.init_timer.seconds_elapsed > 1:
-            stats['Task Init'] = (self.init_timer.statistics)
+            stats['Task Init'] = self.init_timer.statistics
 
         for obj in self.object_registry:
             try:
@@ -957,11 +1029,11 @@ class ETLTask(object):
             except Exception as e:  # pylint: disable=broad-except
                 self.log.exception(e)
 
-        stats['Task Load'] = (self.load_timer.statistics)
+        stats['Task Load'] = self.load_timer.statistics
 
         # Only report finish stats if something significant was done there
         if self.finish_timer.seconds_elapsed > 1:
-            stats['Task Finish'] = (self.finish_timer.statistics)
+            stats['Task Finish'] = self.finish_timer.statistics
 
         return stats
 
@@ -988,6 +1060,8 @@ class ETLTask(object):
 
     def __exit__(self, exit_type, exit_value, exit_traceback):
         self.close()
+
+
 
 
 def run_task(task_name,
@@ -1031,9 +1105,9 @@ def run_task(task_name,
         A queue to use for child to parent communication (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).
     """
     # For memory testing
-    #tr = tracker.SummaryTracker()
-    #tr.diff()
-    ran_ok = False
+    # tr = tracker.SummaryTracker()
+    # tr.diff()
+
     try:
         logging.basicConfig(level=logging.DEBUG)
         queue_out_stream = queue_io.redirect_output_to(child_to_parent)
@@ -1046,10 +1120,10 @@ def run_task(task_name,
             print("setup_logging")
             config.setup_logging(queue_out_stream)
         elif isinstance(config, str):
-            configFile = config.split(',')
-            print(("Using config file(s) {}".format(configFile)))
+            config_file = config.split(',')
+            print(("Using config file(s) {}".format(config_file)))
             config = BIConfigParser()
-            config.read(configFile)
+            config.read(config_file)
             config.set_dated_log_file_name(task_name, '.log')
             print("setup_logging")
             config.setup_logging(queue_out_stream)
@@ -1057,7 +1131,7 @@ def run_task(task_name,
             print("Using passed config")
 
         print(('Scanning for task matching {}'.format(task_name)))
-        # Import is done here to prevent circular module depencency
+        # Import is done here to prevent circular module dependency
         from bi_etl.scheduler.scheduler_interface import SchedulerInterface
         if scheduler is None:
             scheduler = SchedulerInterface()
@@ -1079,8 +1153,8 @@ def run_task(task_name,
         print("run_task is done")
 
         # For memory testing
-        #gc.collect()
-        #tr.print_diff()
+        # gc.collect()
+        # tr.print_diff()
 
     except Exception as e:
         traceback.print_exc()
