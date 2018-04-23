@@ -95,7 +95,7 @@ class BIConfigParser(ConfigParser):
                 if setting.startswith('parent'):
                     self.merge_parent(directories, self['Config'][setting])
 
-    def read_config_ini(self, path: str=None, file_name: str='config.ini'):
+    def read_config_ini(self, current_path: str=None, file_name: str= 'config.ini'):
         r"""
         If the BI_ETL_CONFIG environment variable is set, read the config file(s) as specified there (; delimited).
 
@@ -119,8 +119,8 @@ class BIConfigParser(ConfigParser):
                 expected_config_files
             ))
         else:
-            if path is None:
-                path = os.getcwd()
+            if current_path is None:
+                current_path = os.getcwd()
             user_dir = os.path.expanduser('~')
             expected_config_files = [
                 # These static paths are for running as a windows service
@@ -129,9 +129,20 @@ class BIConfigParser(ConfigParser):
                 os.path.join("E:\\", "bi_etl_config", file_name),
                 # If those don't work then look in the user directory
                 os.path.join(user_dir, 'bi_etl_config', file_name),
-                # Finally use a file in the current directory (will override other settings)
-                os.path.join(path, file_name),
+
+                os.path.join(current_path, file_name),
             ]
+        # Finally use a file in the current directory or parents (will override other settings)
+        relative_configs = list()
+        done = False
+        while not done:
+            if os.path.isfile(os.path.join(current_path, file_name)):
+                relative_configs.append(os.path.join(current_path, file_name))
+            old_path = current_path
+            current_path = os.path.split(current_path)[0]
+            if current_path == old_path:
+                done = True
+        expected_config_files.extend(reversed(relative_configs))
         files_read = self.read(expected_config_files)
         if files_read is None or len(files_read) == 0:
             raise FileNotFoundError('None of the expected config files where found: {}'.format(expected_config_files))
