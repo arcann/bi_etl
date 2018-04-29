@@ -132,17 +132,17 @@ class BIConfigParser(ConfigParser):
 
                 os.path.join(current_path, file_name),
             ]
-        # Finally use a file in the current directory or parents (will override other settings)
-        relative_configs = list()
-        done = False
-        while not done:
-            if os.path.isfile(os.path.join(current_path, file_name)):
-                relative_configs.append(os.path.join(current_path, file_name))
-            old_path = current_path
-            current_path = os.path.split(current_path)[0]
-            if current_path == old_path:
-                done = True
-        expected_config_files.extend(reversed(relative_configs))
+            # Finally use a file in the current directory or parents (will override other settings)
+            relative_configs = list()
+            done = False
+            while not done:
+                if os.path.isfile(os.path.join(current_path, file_name)):
+                    relative_configs.append(os.path.join(current_path, file_name))
+                old_path = current_path
+                current_path = os.path.split(current_path)[0]
+                if current_path == old_path:
+                    done = True
+            expected_config_files.extend(reversed(relative_configs))
         files_read = self.read(expected_config_files)
         if files_read is None or len(files_read) == 0:
             raise FileNotFoundError('None of the expected config files where found: {}'.format(expected_config_files))
