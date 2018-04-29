@@ -21,6 +21,7 @@ install_requires = [
     # For Docs build
     'sphinx',
     'sphinx-autodoc-annotation',
+    'btrees',
     ]
 
 extras_require = {
