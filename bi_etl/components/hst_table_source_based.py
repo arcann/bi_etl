@@ -1,3 +1,5 @@
+import textwrap
+
 from typing import Union, List, Callable
 
 from bi_etl.components.hst_table import HistoryTable
@@ -303,7 +305,13 @@ class HistoryTableSourceBased(HistoryTable):
         if self.prior_upsert_row is not None:
             if row_begin_date < self.prior_upsert_row[self.begin_date_column]:
                 raise RuntimeError(
-                    "rows not in begin date order!\nrow={}\nprior_upsert_row={}".format(
+                    textwrap.dedent("""\
+                    rows not in begin date order!
+                    nk_tuple = {}
+                    row = {}
+                    prior_upsert_row = {}
+                    """).format(
+                        nk_tuple,
                         repr(source_mapped_as_target_row),
                         repr(self.prior_upsert_row)
                     )

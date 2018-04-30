@@ -8,6 +8,7 @@ Created on Dec 23, 2015
 import sys
 from bi_etl.scheduler.sdtout_queue import StdoutQueue
 
+
 def redirect_output_to(queue_instance):
     if queue_instance is not None and not hasattr(sys, 'saved_stds_tuple'):
         sys.saved_stds_tuple = (sys.stdout, sys.stderr)
@@ -17,6 +18,7 @@ def redirect_output_to(queue_instance):
         return queue_out_stream
     else:
         return None
+
 
 def restore_standard_output():
     if hasattr(sys, 'saved_stds_tuple'):

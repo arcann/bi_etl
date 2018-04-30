@@ -269,6 +269,10 @@ class Row(typing.MutableMapping):
     def as_dict(self) -> dict:
         return OrderedDict(zip(self.columns_in_order, self._data_values))
 
+    @property
+    def as_key_value_list(self) -> list:
+        return list(zip(self.columns_in_order, self._data_values))
+
     def items(self):
         for column_name, column_value in zip(self.columns_in_order, self._data_values):
             yield column_name, column_value
