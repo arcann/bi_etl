@@ -51,7 +51,6 @@ class ETLTask(object):
     start_following_tasks() can be overridden.
     """
 
-    DEFAULT_NO_MAIL = False
     CLASS_VERSION = 1.0
 
     def __init__(self,
@@ -158,6 +157,7 @@ class ETLTask(object):
         self.init_timer = Timer(start_running=False)
         self.load_timer = Timer(start_running=False)
         self.finish_timer = Timer(start_running=False)
+        self.suppress_notifications = False
 
     def __getstate__(self):
         odict = dict()
@@ -862,7 +862,7 @@ class ETLTask(object):
                 pass
 
     def run(self,
-            no_mail=None,
+            suppress_notifications=None,
             parent_to_child=None,
             child_to_parent=None,
             ):
@@ -874,13 +874,11 @@ class ETLTask(object):
         self.parent_to_child = parent_to_child
         self.__thread_init()
 
-        if no_mail is None:
+        if suppress_notifications is None:
             # If run directly, assume it a testing run and don't send e-mails
             if self.__class__.__module__ == '__main__':
-                self.log.info("Direct module execution detected. Failure e-mails will not be sent")
-                no_mail = True
-            else:
-                no_mail = ETLTask.DEFAULT_NO_MAIL
+                self.log.info("Direct module execution detected. Notifications will not be sent")
+                self.suppress_notifications = True
 
         self.status = Status.running
 
@@ -923,7 +921,7 @@ class ETLTask(object):
             self.status = Status.failed
             self.log.exception(e)
             self.log.error(utility.dict_to_str(e.__dict__))
-            if not no_mail:
+            if not self.suppress_notifications:
                 environment = self.config.get('environment', 'name', fallback='Unknown_ENVT')
                 message_list = list()
                 message_list.append(repr(e))
@@ -1061,13 +1059,13 @@ class ETLTask(object):
     def __exit__(self, exit_type, exit_value, exit_traceback):
         self.close()
 
-
+##################
 
 
 def run_task(task_name,
              parameters=None,
              config=None,
-             no_mail=None,
+             suppress_notifications=None,
              # Scheduler specific
              scheduler=None,
              task_id=None,
@@ -1088,8 +1086,8 @@ def run_task(task_name,
     config: bi_etl.bi_config_parser.BIConfigParser 
         The configuration to use (defaults to reading it from :doc:`config_ini`).
         If passed it should be an instance of :class:`bi_etl.bi_config_parser.BIConfigParser`.
-    no_mail: boolean
-        Skip sending email on failure? See no_mail in :meth:`bi_etl.scheduler.task.ETLTask.run`.
+    suppress_notifications: boolean
+        Skip sending email on failure? See suppress_notifications in :meth:`bi_etl.scheduler.task.ETLTask.run`.
     scheduler: bi_etl.scheduler.scheduler.Scheduler
         The :class:`bi_etl.scheduler.scheduler.Scheduler` this job should be run under. 
         Optional. Defaults to not running via a scheduler.
@@ -1144,7 +1142,7 @@ def run_task(task_name,
                              )
         if parameters is not None and len(parameters) > 0:
             etl_task.set_parameters(parameters)
-        ran_ok = etl_task.run(no_mail=no_mail,
+        ran_ok = etl_task.run(suppress_notifications=suppress_notifications,
                               parent_to_child=parent_to_child,
                               child_to_parent=child_to_parent,
                               )

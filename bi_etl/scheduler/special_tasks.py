@@ -22,7 +22,7 @@ class CheckPointTask(ETLTask):
         pass
 
     def run(self,
-            no_mail=None,
+            suppress_notifications=None,
             parent_to_child=None,
             child_to_parent=None,
             ):

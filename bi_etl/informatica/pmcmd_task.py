@@ -34,9 +34,10 @@ class PMCMD_Task(ETLTask):
             self.cmd.getworkflowdetails(workflow)
         except Exception:
             pass
-        
+
+
 if __name__ == '__main__':
     task = PMCMD_Task()
     task.set_parameter('folder', 'MASTER')
     task.set_parameter('workflow', 'wf_TEST_Derek')
-    task.run(no_mail = True)                
+    task.run(suppress_notifications= True)

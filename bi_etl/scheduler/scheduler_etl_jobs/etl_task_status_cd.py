@@ -63,4 +63,4 @@ class ETL_Task_Status_CD(ETLTask):
 
 if __name__ == '__main__':
     task = ETL_Task_Status_CD()
-    task.run(no_mail = True)    
+    task.run(suppress_notifications= True)
