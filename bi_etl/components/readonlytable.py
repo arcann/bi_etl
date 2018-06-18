@@ -116,6 +116,7 @@ class ReadOnlyTable(ETLComponent):
                  database: DatabaseMetadata,
                  table_name: str,
                  table_name_case_sensitive: bool = False,
+                 schema: str = None,
                  exclude_columns: list = None,
                  include_only_columns: list = None,
                  **kwargs
@@ -161,9 +162,12 @@ class ReadOnlyTable(ETLComponent):
             # be quoted unless they are a reserved word. 
             # Names with any number of upper case characters will be quoted and sent exactly. Note that this behavior
             # applies even for databases which standardize upper case names as case insensitive such as Oracle.
+            if '.' in table_name:
+                schema, table_name = table_name.split('.', 1)
+
             if not table_name_case_sensitive:
                 table_name = table_name.lower()
-            self.table = sqlalchemy.schema.Table(table_name, database, autoload=True, quote=False)
+            self.table = sqlalchemy.schema.Table(table_name, database, schema=schema, autoload=True, quote=False)
 
         self.__natural_key_override = False
         self.__natural_key = None
@@ -208,6 +212,16 @@ class ReadOnlyTable(ETLComponent):
         The table name
         """
         return self._table_name
+
+    @property
+    def qualified_table_name(self):
+        """
+        The table name
+        """
+        if self._table.schema is not None:
+            return self._table.schema + '.' + self._table_name
+        else:
+            return self._table_name
 
     @property
     def table(self):

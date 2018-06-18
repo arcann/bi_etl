@@ -13,6 +13,7 @@ import warnings
 from decimal import Decimal
 from decimal import InvalidOperation
 from enum import IntEnum, unique
+from pprint import pformat
 
 import sqlalchemy
 import subprocess
@@ -176,9 +177,10 @@ class Table(ReadOnlyTable):
                                     )
         self.load_via_bcp = False
         self.track_update_columns = True
-        self.bcp_table_name = 'dbo.' + self.table.name
+        self.bcp_table_name = self.qualified_table_name
         self.bcp_update_table_name = self.table_name + '_UPD'
         self._bcp_update_table_dict = dict()
+        self._bcp_encoding = 'utf-8'
         self.track_source_rows = False
         self.auto_generate_key = False
         self.last_update_date = None
@@ -1392,21 +1394,30 @@ class Table(ReadOnlyTable):
             ins.with_hint(self.insert_hint)
         return ins
 
-    def _bcp(self,
+    def _bcp_batch_output(self,
              file_path,
              bcp_format_path=None,
              direction='in',
+             delimiter='^K',
              temp_dir=None,
              start_line=1,
              ):
         if temp_dir is None:
             cleanup_temp = True
-            temp_dir = tempfile.TemporaryDirectory()
+            temp_dir_obj = tempfile.TemporaryDirectory()
+            temp_dir = temp_dir_obj.name
         else:
+            temp_dir_obj = None
             cleanup_temp = False
 
         bcp_errors = os.path.join(temp_dir, "bcp.errors")
         bcp_output = os.path.join(temp_dir, "bcp.output")
+
+        if self._bcp_encoding == 'utf_16_le':
+            char_encoding = 'UTF-16'
+        else:
+            # char_encoding = 'UTF-8'
+            char_encoding = '65001'
 
         cmd = [self.task.config.get('BCP', 'path', fallback='bcp'),
                self.bcp_table_name,
@@ -1418,21 +1429,22 @@ class Table(ReadOnlyTable):
                '-U', self.table.bind.url.username,
                '-P', self.table.bind.url.password,
                # Max errors
-               '-m', '0',
+               # '-m', '0',
                '-o', bcp_output,
                '-e', bcp_errors,
-               '-b', '10000',
-               # UTF-8
-               '-C', 'UTF-8',
+               # '-b', '10000',
+               # encoding eg UTF-8
+               '-C', char_encoding,
                # pipe delimited
-               '-t', '|',
+               '-t', delimiter,
                # hints
-               '-h', 'CHECK_CONSTRAINTS,TABLOCK',
+               # '-h', 'CHECK_CONSTRAINTS,TABLOCK',
                # '-h', 'CHECK_CONSTRAINTS',
                # Specify start line defaults to 1 in params
                '-F', str(start_line),
                # packet size = Max
-               '-a', '65535']
+               # '-a', '65535'
+               ]
         if bcp_format_path:
             cmd.extend(['-f', bcp_format_path])
         else:
@@ -1441,17 +1453,20 @@ class Table(ReadOnlyTable):
         self.log.debug(" ".join(cmd).replace(self.table.bind.url.password, '****'))
 
         try:
-            rc = subprocess.check_call(cmd)
-            self.log.debug('bcp rc = {}'.format(rc))
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+            self.log.debug('bcp output = {}'.format(output))
             with open(bcp_output, 'r') as bcp_output_file:
                 messages = bcp_output_file.read()
             self.log.debug('BCP raw output:')
             self.log.debug(messages)
             with open(bcp_errors, 'r') as bcp_error_file:
                 error_messages = bcp_error_file.read()
-            self.log.debug('BCP raw errors:')
-            self.log.debug(error_messages)
-            messages += error_messages
+            if len(error_messages) > 0:
+                self.log.error('-' * 80)
+                self.log.error('BCP raw errors:')
+                self.log.error(error_messages)
+                self.log.error('-' * 80)
+                messages += error_messages
             self.log.debug('BCP line by line output:')
             rows = 0
             for line in messages.split('\n'):
@@ -1465,19 +1480,134 @@ class Table(ReadOnlyTable):
             raise e
         except subprocess.CalledProcessError as e:
             self.log.error("Error code " + str(e.returncode))
-            self.log.error("From " + ' '.join(e.cmd))
             with open(bcp_output, 'r') as bcp_output_file:
                 messages = bcp_output_file.read()
-            self.log.debug('BCP raw output:')
-            self.log.debug(messages)
+                self.log.error('-' * 80)
+            self.log.error('BCP raw output:')
+            self.log.error(messages)
+            self.log.error('-' * 80)
             with open(bcp_errors, 'r') as bcp_error_file:
                 error_messages = bcp_error_file.read()
-            self.log.debug('BCP raw errors:')
-            self.log.debug(error_messages)
-            raise e
+            self.log.error('BCP raw errors:')
+            self.log.error(error_messages)
+            self.log.error('-'*80)
+            raise RuntimeError("BCP Error code " + str(e.returncode))
         finally:
             if cleanup_temp:
-                temp_dir.cleanup()
+                temp_dir_obj.cleanup()
+
+    def _bcp(self,
+             file_path,
+             bcp_format_path=None,
+             direction='in',
+             delimiter='^K',
+             temp_dir=None,
+             start_line=1,
+             ):
+        if temp_dir is None:
+            cleanup_temp = True
+            temp_dir_obj = tempfile.TemporaryDirectory()
+            temp_dir = temp_dir_obj.name
+        else:
+            temp_dir_obj = None
+            cleanup_temp = False
+
+        bcp_errors = os.path.join(temp_dir, "bcp.errors")
+
+        if self._bcp_encoding == 'utf_16_le':
+            char_encoding = 'UTF-16'
+        else:
+            # char_encoding = 'UTF-8'
+            char_encoding = '65001'
+
+        cmd = [self.task.config.get('BCP', 'path', fallback='bcp'),
+               self.bcp_table_name,
+               # in / out
+               direction,
+               file_path,
+               '-S', self.table.bind.url.host,
+               '-d', self.table.bind.url.database,
+               '-U', self.table.bind.url.username,
+               '-P', self.table.bind.url.password,
+               # Max errors
+               # '-m', '0',
+               # '-o', bcp_output,
+               '-e', bcp_errors,
+               '-b', '5000',
+               # encoding eg UTF-8
+               '-C', char_encoding,
+               # pipe delimited
+               '-t', delimiter,
+               # hints
+               # '-h', 'CHECK_CONSTRAINTS,TABLOCK',
+               # '-h', 'CHECK_CONSTRAINTS',
+               # Specify start line defaults to 1 in params
+               '-F', str(start_line),
+               # packet size = Max
+               # '-a', '65535'
+               ]
+        if bcp_format_path:
+            cmd.extend(['-f', bcp_format_path])
+        else:
+            # UTF Mode
+            cmd.extend(['-w'])
+        self.log.debug(" ".join(cmd).replace(self.table.bind.url.password, '****'))
+        messages = list()
+
+        try:
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=1, stderr=subprocess.PIPE)
+            while p.poll() is None:
+                # TODO: Use asyncio instead?
+                line = p.stdout.readline()
+                if line != b'':
+                    line = line.strip()
+                    messages.append(line)
+                    self.log.info(line)
+            for line in p.stdout.readlines():
+                if line != b'':
+                    line = line.strip()
+                    messages.append(line)
+                    self.log.info(line)
+            p.stdout.close()
+            p.stderr.close()
+            rc = p.returncode
+            if rc != 0:
+                self.log.error('bcp returned code {}'.format(rc))
+            with open(bcp_errors, 'r') as bcp_error_file:
+                error_messages = bcp_error_file.read()
+            if len(error_messages) > 0:
+                self.log.error('-' * 80)
+                self.log.error('BCP error detail:')
+                self.log.error(error_messages)
+                self.log.error('-' * 80)
+            self.log.debug('BCP output parsing:')
+            rows = 0
+            for line in messages:
+                line = line.strip()
+                if line.endswith(b' rows copied.'):
+                    rows = int(line[:-13])
+                    self.log.debug("Rows message found rows = {}".format(rows))
+                    break
+            return rows
+
+        except IOError as e:
+            raise e
+        except subprocess.CalledProcessError as e:
+            self.log.error("Error code " + str(e.returncode))
+            self.log.error('BCP messages:')
+            self.log.error(pformat(messages))
+            self.log.error('BCP output:')
+            self.log.error(e.output)
+            self.log.error('-' * 80)
+            with open(bcp_errors, 'r') as bcp_error_file:
+                error_messages = bcp_error_file.read()
+            self.log.error('BCP raw errors:')
+            self.log.error(error_messages)
+            self.log.error('-'*80)
+            raise RuntimeError("BCP Error code " + str(e.returncode))
+        finally:
+            if cleanup_temp:
+                temp_dir_obj.cleanup()
 
     @staticmethod
     def _bcp_format_value(value):
@@ -1495,6 +1625,90 @@ class Table(ReadOnlyTable):
             return ''
         else:
             return str(value).replace('|', '/')
+
+    def _bcp_create_format_file(self, bcp_format_path, delimiter=None, row_terminator=None):
+        with open(bcp_format_path, "w", encoding="utf-8") as bcp_fmt:
+            field_list = list()
+            column_list = list()
+            max_col = len(self.columns)
+            if delimiter is None:
+                if self._bcp_encoding == 'utf_16_le':
+                    delimiter = '|\\0'
+                else:
+                    delimiter = '|'
+            for col_num, column in enumerate(self.columns):
+                c_type = column.type
+                p_type = c_type.python_type
+                scale = None
+                # Types
+                # https://docs.microsoft.com/en-us/sql/relational-databases/import-export/xml-format-files-sql-server?view=sql-server-2017
+                # https://msdn.microsoft.com/en-us/library/ff718877(v=sql.105).aspx
+                if p_type == int:
+                    size = 24
+                    b_type = "SQLINT"
+                elif p_type == datetime:
+                    size = 48
+                    b_type = "SQLDATETIME"
+                elif p_type == date:
+                    size = 22
+                    b_type = "SQLDATE"
+                elif p_type == str:
+                    size = c_type.length * 2
+                    if size > 2**15:
+                        size = None
+                        b_type = "SQLTEXT"
+                    else:
+                        b_type = "SQLVARYCHAR"
+                        # b_type = "SQLNVARCHAR"
+
+                else:
+                    raise ValueError(
+                        "bcp method not coded to support data type {type} for column {col}".format(
+                            type=p_type,
+                            col=column
+                        )
+                    )
+
+                if col_num + 1 == max_col:
+                    if row_terminator is None:
+                        if self._bcp_encoding == 'utf_16_le':
+                            delimiter = "\\r\\0\\n\\0"
+                        else:
+                            delimiter = "\\r\\n"
+                    else:
+                        delimiter = row_terminator
+                if self._bcp_encoding == 'utf_16_le':
+                    field_type = 'NCharTerm'
+                else:
+                    field_type = 'NCharTerm'
+                field_spec = '<FIELD ID="{col_num}" xsi:type="{type}" TERMINATOR="{term}"'.format(
+                    col_num=col_num + 1,
+                    type=field_type,
+                    term=delimiter,
+                    )
+                if size is not None:
+                    field_spec += ' MAX_LENGTH="{size}"'.format(size=size)
+                if scale is not None:
+                    field_spec += ' SCALE="{scale}"'.format(scale=scale)
+                field_spec += "/>"
+                field_list.append(field_spec)
+                column_list.append(
+                    '<COLUMN SOURCE="{col_num}" NAME="{name}" xsi:type="{b_type}"/>'.format(
+                        col_num=col_num + 1,
+                        name=column.name,
+                        b_type=b_type,
+                    )
+                )
+            bcp_fmt.write(textwrap.dedent("""\
+                            <?xml version="1.0"?>
+                            <BCPFORMAT xmlns="http://schemas.microsoft.com/sqlserver/2004/bulkload/format" 
+                            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                            <RECORD>
+                            """))
+            bcp_fmt.write('\n'.join(field_list))
+            bcp_fmt.write(textwrap.dedent("""\n</RECORD>\n<ROW>"""))
+            bcp_fmt.write('\n'.join(column_list))
+            bcp_fmt.write(textwrap.dedent("""\n</ROW>\n</BCPFORMAT>"""))
 
     def _bcp_insert_rows(self, rows_to_insert):
         """
@@ -1520,59 +1734,10 @@ class Table(ReadOnlyTable):
         with tempfile.TemporaryDirectory() as bcp_dir:
             bcp_file_path = os.path.join(bcp_dir, "bcp_file")
             bcp_format_path = os.path.join(bcp_dir, "bcp.fmt")
-            with open(bcp_format_path, "w", encoding="utf-8") as bcp_fmt:
-                field_list = list()
-                column_list = list()
-                max_col = len(self.columns)
-                term = '|\\0'
-                for col_num, column in enumerate(self.columns):
-                    c_type = column.type
-                    p_type = c_type.python_type
-                    if p_type == int:
-                        size = 24
-                        b_type = "SQLINT"
-                    elif p_type == datetime:
-                        size = 48
-                        b_type = "SQLDATETIME"
-                    elif p_type == str:
-                        size = c_type.length * 2
-                        b_type = "SQLVARYCHAR"
-                    else:
-                        raise ValueError(
-                            "bcp method not coded to support data type {type} for column {col}".format(
-                                type=p_type,
-                                col=column
-                            )
-                        )
-                    if col_num + 1 == max_col:
-                        term = "\\r\\0\\n\\0"
-                    field_list.append(
-                        '<FIELD ID="{col_num}" xsi:type="NCharTerm" TERMINATOR="{term}" MAX_LENGTH="{size}"/>'.format(
-                            col_num=col_num + 1,
-                            size=size,
-                            term=term
-                        )
-                    )
-                    column_list.append(
-                        '<COLUMN SOURCE="{col_num}" NAME="{name}" xsi:type="{b_type}"/>'.format(
-                            col_num=col_num + 1,
-                            name=column.name,
-                            b_type=b_type,
-                        )
-                    )
-                bcp_fmt.write(textwrap.dedent("""\
-                                <?xml version="1.0"?>
-                                <BCPFORMAT xmlns="http://schemas.microsoft.com/sqlserver/2004/bulkload/format" 
-                                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-                                <RECORD>
-                                """))
-                bcp_fmt.write('\n'.join(field_list))
-                bcp_fmt.write(textwrap.dedent("""\n</RECORD>\n<ROW>"""))
-                bcp_fmt.write('\n'.join(column_list))
-                bcp_fmt.write(textwrap.dedent("""\n</ROW>\n</BCPFORMAT>"""))
+            self._bcp_create_format_file(bcp_format_path)
 
             with open(bcp_file_path, "wt",
-                      encoding='utf_16_le',
+                      encoding=self._bcp_encoding,
                       ) as bcp_file:
                 bcp_file.write('\uFEFF')
                 for row_num, row in enumerate(rows_to_insert):
@@ -3013,9 +3178,9 @@ class Table(ReadOnlyTable):
         database_type = type(self.connection().dialect).name
         if database_type == 'oracle':
             self.execute('alter session set ddl_lock_timeout={}'.format(timeout))
-            self.execute("TRUNCATE TABLE {}".format(self.table))
+            self.execute("TRUNCATE TABLE {}".format(self.qualified_table_name))
         elif database_type in ['mssql', 'mysql', 'postgresql', 'sybase']:
-            self.execute("TRUNCATE TABLE {}".format(self.table))
+            self.database.execute_direct("TRUNCATE TABLE {}".format(self.qualified_table_name))
         else:
             self.execute(self._delete_stmt())
         stats.timer.stop()
