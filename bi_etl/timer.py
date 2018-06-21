@@ -93,7 +93,7 @@ class Timer(object):
                     )
 
     def print(self):
-        print(self.message_detailed)
+        print(self.message_detailed())
 
     def start(self)-> None:
         if not self.running:

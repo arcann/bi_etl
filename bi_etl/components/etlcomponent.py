@@ -52,6 +52,7 @@ class ETLComponent(Iterable):
     """
     DEFAULT_PROGRESS_FREQUENCY = 10  # Seconds
     DEFAULT_PROGRESS_MESSAGE = "{logical_name} current row # {row_number:,}"
+    logging_level_reported = False
 
     def __init__(self,
                  task: ETLTask,
@@ -82,7 +83,9 @@ class ETLComponent(Iterable):
         # self.log = logging.getLogger(__name__)
         self.log = logging.getLogger("{mod}.{cls}".format(mod=self.__class__.__module__, cls=self.__class__.__name__))
         if self.task is not None:
-            self.task.log_logging_level()
+            if not ETLComponent.logging_level_reported:
+                self.task.log_logging_level()
+                ETLComponent.logging_level_reported = True
         self.row_object = Row
         
         # Register this component with it's parent task        

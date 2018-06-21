@@ -755,6 +755,36 @@ class ReadOnlyTable(ETLComponent):
         max_value = max_row['max_1']
         return max_value
 
+    def count(self, column: str=None, where=None) -> int:
+        """
+        Query the table/view to get the count of a given column.
+
+        Parameters
+        ----------
+        column: str or :class:`sqlalchemy.sql.expression.ColumnElement`.
+            The column to get the max value of
+        where: string or list of strings
+            Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`
+            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+
+        Returns
+        -------
+        count : int
+
+        """
+        if column is not None:
+            column = self.get_column(column)
+        stmt = self.select([functions.count(column).label("count_1")]).select_from(self.table)
+        if where is not None:
+            if isinstance(where, list):
+                for c in where:
+                    stmt = stmt.where(c)
+            else:
+                stmt = stmt.where(where)
+        row = self.get_one(stmt)
+        count_value = row['count_1']
+        return count_value
+
     @property
     @functools.lru_cache(maxsize=16)
     def row_name(self):
