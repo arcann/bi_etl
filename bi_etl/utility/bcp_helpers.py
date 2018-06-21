@@ -1,0 +1,242 @@
+import textwrap
+from configparser import ConfigParser
+
+from datetime import date, datetime
+import os
+import tempfile
+from pprint import pformat
+
+import subprocess
+
+import logging
+
+log = logging.getLogger('etl.utils.bcp_helpers')
+
+
+def create_bcp_format_file(table, bcp_format_path, encoding=None, delimiter=None, row_terminator=None):
+    with open(bcp_format_path, "w", encoding="utf-8") as bcp_fmt:
+        field_list = list()
+        column_list = list()
+        max_col = len(table.columns)
+        if delimiter is None:
+            if encoding == 'utf_16_le':
+                delimiter = '|\\0'
+            else:
+                delimiter = '|'
+        for col_num, column in enumerate(table.columns):
+            c_type = column.type
+            p_type = c_type.python_type
+            size = None
+            scale = None
+            # Types
+            # https://docs.microsoft.com/en-us/sql/relational-databases/import-export/xml-format-files-sql-server?view=sql-server-2017
+            # https://msdn.microsoft.com/en-us/library/ff718877(v=sql.105).aspx
+
+            if p_type == int:
+                size = 24
+            elif p_type == datetime:
+                size = 48
+            elif p_type == date:
+                size = 22
+            elif p_type == str:
+                size = c_type.length * 2
+                if size > 2 ** 15:
+                    size = None
+
+            if col_num + 1 == max_col:
+                if row_terminator is None:
+                    if encoding == 'utf_16_le':
+                        delimiter = "\\r\\0\\n\\0"
+                    else:
+                        delimiter = "\\r\\n"
+                else:
+                    delimiter = row_terminator
+            if encoding == 'utf_16_le':
+                field_type = 'NCharTerm'
+            else:
+                field_type = 'CharTerm'
+            field_spec = '<FIELD ID="{col_num}" xsi:type="{type}" COLLATION="" TERMINATOR="{term}"'.format(
+                col_num=col_num + 1,
+                type=field_type,
+                term=delimiter,
+            )
+            if size is not None:
+                field_spec += ' MAX_LENGTH="{size}"'.format(size=size)
+            if scale is not None:
+                field_spec += ' SCALE="{scale}"'.format(scale=scale)
+            field_spec += "/>"
+            field_list.append(field_spec)
+            column_list.append(
+                '<COLUMN SOURCE="{col_num}" NAME="{name}" />'.format(
+                    col_num=col_num + 1,
+                    name=column.name,
+                )
+            )
+        bcp_fmt.write(textwrap.dedent("""\
+                        <?xml version="1.0"?>
+                        <BCPFORMAT xmlns="http://schemas.microsoft.com/sqlserver/2004/bulkload/format" 
+                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                        <RECORD>
+                        """))
+        bcp_fmt.write('\n'.join(field_list))
+        bcp_fmt.write(textwrap.dedent("""\n</RECORD>\n<ROW>"""))
+        bcp_fmt.write('\n'.join(column_list))
+        bcp_fmt.write(textwrap.dedent("""\n</ROW>\n</BCPFORMAT>"""))
+
+
+def run_bcp(
+        config: ConfigParser,
+        table_name: str,
+        file_path: str,
+        database_bind,
+        format_file_path=None,
+        direction='in',
+        delimiter='^K',
+        temp_dir=None,
+        start_line=1,
+        encoding=None,
+        ):
+    if temp_dir is None:
+        cleanup_temp = True
+        temp_dir_obj = tempfile.TemporaryDirectory()
+        temp_dir = temp_dir_obj.name
+    else:
+        temp_dir_obj = None
+        cleanup_temp = False
+
+    bcp_errors = os.path.join(temp_dir, "bcp.errors")
+
+    if encoding == 'utf_16_le':
+        char_encoding = 'UTF-16'
+    else:
+        # char_encoding = 'UTF-8'
+        char_encoding = '65001'
+
+    cmd = [config.get('BCP', 'path', fallback='bcp'),
+           table_name,
+           # in / out
+           direction,
+           file_path,
+           '-S', database_bind.url.host,
+           '-d', database_bind.url.database,
+           '-U', database_bind.url.username,
+           '-P', database_bind.url.password,
+           # Max errors
+           # '-m', '1000',
+           # '-o', bcp_output,
+           '-e', bcp_errors,
+           # Batch size
+           '-b', '5000',
+           # encoding eg UTF-8
+           '-C', char_encoding,
+           # hints
+           # '-h', 'CHECK_CONSTRAINTS,TABLOCK',
+           # '-h', 'CHECK_CONSTRAINTS',
+           # packet size = Max
+           # '-a', '65535'
+           ]
+
+    # Specify start line defaults to 1 in params
+    if start_line > 1:
+        cmd.extend(['-F', str(start_line)])
+
+    if format_file_path:
+        cmd.extend(['-f', format_file_path])
+    else:
+        # UTF Mode
+        if encoding == 'utf_16_le':
+            cmd.extend(['-w'])
+        else:
+            cmd.extend(['-c'])
+        cmd.extend(['-t', delimiter])
+
+    log.debug(" ".join(cmd).replace(database_bind.url.password, '****'))
+    messages = list()
+
+    try:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=1, stderr=subprocess.STDOUT)
+        # this did not work
+        # try:
+        #     outs, _ = p.communicate(input=database_bind.url.password, timeout=1)
+        #     for line in outs.spltlines:
+        #         if line != b'':
+        #             line = line.strip()
+        #             messages.append(line)
+        #             log.info(line)
+        # except subprocess.TimeoutExpired:
+        #     pass
+        while p.poll() is None:
+
+            line = p.stdout.readline()
+            if line != b'':
+                line = line.strip()
+                messages.append(line)
+                log.info(line)
+        for line in p.stdout.readlines():
+            if line != b'':
+                line = line.strip()
+                messages.append(line)
+                log.info(line)
+        p.stdout.close()
+        rc = p.returncode
+        if rc != 0:
+            log.error('bcp returned code {}'.format(rc))
+        with open(bcp_errors, 'r', encoding='utf-8', errors='skip') as bcp_error_file:
+            error_messages = bcp_error_file.read()
+        if len(error_messages) > 0:
+            if rc == 0:
+                rc = 1
+                log.error("Errors with rc = 0. Setting rc = 1")
+            log.error('-' * 80)
+            log.error('BCP error detail:')
+            log.error(error_messages)
+            log.error('-' * 80)
+
+        if rc == 0:
+            log.debug('BCP output parsing:')
+            rows = 0
+            for line in messages:
+                line = line.strip()
+                if line.endswith(b' rows copied.'):
+                    rows = int(line[:-13])
+                    log.debug("Rows message found rows = {}".format(rows))
+                    break
+            return rows
+        else:
+            raise RuntimeError('bcp error')
+
+    except IOError as e:
+        raise e
+    except subprocess.CalledProcessError as e:
+        log.error("Error code " + str(e.returncode))
+        log.error('BCP messages:')
+        log.error(pformat(messages))
+        log.error('BCP output:')
+        log.error(e.output)
+        log.error('-' * 80)
+        with open(bcp_errors, 'r') as bcp_error_file:
+            error_messages = bcp_error_file.read()
+        log.error('BCP raw errors:')
+        log.error(error_messages)
+        log.error('-' * 80)
+        raise RuntimeError("BCP Error code " + str(e.returncode))
+    finally:
+        if cleanup_temp:
+            temp_dir_obj.cleanup()
+
+
+def format_value_for_bcp(value):
+    if isinstance(value, datetime):
+        # noinspection PyTypeChecker,PyTypeChecker
+        return ('{year:4d}-{month:02d}-{day:02d} {hour:02d}:{min:02d}:{sec:06.3f}'
+                .format(year=value.year,
+                        month=value.month,
+                        day=value.day,
+                        hour=value.hour,
+                        min=value.minute,
+                        sec=value.second + value.microsecond / 1000000)
+                )
+    elif value is None:
+        return ''
+    else:
+        return str(value).replace('|', '/')
