@@ -5,7 +5,6 @@ Created on Sept 12 2016
 """
 import hashlib
 import os.path
-import pymssql
 
 from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.scheduler.task import ETLTask
@@ -14,8 +13,9 @@ from bi_etl.timer import Timer
 
 class RunSQLScript(ETLTask):
     def __init__(self,
-                 script_path,
-                 script_name,
+                 datbase_entry: str,
+                 script_path: str,
+                 script_name: str,
                  task_id=None,
                  parent_task_id=None,
                  root_task_id=None,
@@ -29,6 +29,7 @@ class RunSQLScript(ETLTask):
                          scheduler=scheduler,
                          task_rec=task_rec,
                          config=config)
+        self.datbase_entry = datbase_entry
         self.script_path = script_path
         self.script_name = script_name
 
@@ -65,9 +66,8 @@ class RunSQLScript(ETLTask):
         return hasher.hexdigest()
 
     def load(self):
-        datbase_entry = self.get_parameter('datbase_entry')
-        database = self.get_database(datbase_entry)
-        sql_replacements_str = self.config.get(datbase_entry, 'SQL_Replacements', fallback='')
+        database = self.get_database(self.datbase_entry)
+        sql_replacements_str = self.config.get(self.datbase_entry, 'SQL_Replacements', fallback='')
         sql_replacements = dict()
         for replacement_line in sql_replacements_str.split('\n'):
             replacement_line = replacement_line.strip()
@@ -105,20 +105,22 @@ class RunSQLScript(ETLTask):
                 self.log.debug("Executing SQL:\n" + part_sql)
                 timer = Timer()
 
+                # noinspection PyBroadException
                 try:
                     cursor.execute(part_sql)
-                except pymssql.OperationalError as e:
+                except Exception as e:
                     self.log.error(part_sql)
                     raise e
 
                 self.log.info("Statement took {} seconds".format(timer.seconds_elapsed_formatted))
+                # noinspection PyBroadException
                 try:
                     row = cursor.fetchone()
                     self.log.info("Results:")
                     while row:
                         self.log.info(row)
                         row = cursor.fetchone()
-                except pymssql.OperationalError:
+                except Exception:
                     self.log.info("No results returned")
                 self.log.info("{:,} rows were affected".format(cursor.rowcount))
                 # self.log.info("Statement took {} seconds and affected {:,} rows"
@@ -136,8 +138,7 @@ def main():
     config = BIConfigParser()
     config.read_config_ini()
     base_path = config['SQL Scripts']['path']
-    script = RunSQLScript(base_path, "bi/cd_indicator.sql")
-    script.set_parameter('datbase_entry', 'BI_Cache')
+    script = RunSQLScript('BI_Cache', base_path, "bi/cd_indicator.sql")
     script.load()
 
 
