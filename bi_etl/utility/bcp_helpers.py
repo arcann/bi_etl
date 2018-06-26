@@ -39,9 +39,13 @@ def create_bcp_format_file(table, bcp_format_path, encoding=None, delimiter=None
             elif p_type == date:
                 size = 22
             elif p_type == str:
-                size = c_type.length * 2
-                if size > 2 ** 15:
-                    size = None
+                if c_type.length is not None:
+                    if encoding == 'utf_16_le':
+                        size = c_type.length * 2
+                    else:
+                        size = c_type.length
+                    if size > 2 ** 15:
+                        size = None
 
             if col_num + 1 == max_col:
                 if row_terminator is None:
