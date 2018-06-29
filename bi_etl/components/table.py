@@ -22,7 +22,7 @@ from sqlalchemy.sql.expression import bindparam
 from typing import Iterable, Callable, List, Union
 
 from bi_etl.components.etlcomponent import ETLComponent
-from bi_etl.components.readonlytable import ReadOnlyTable , NoResultFound
+from bi_etl.components.readonlytable import ReadOnlyTable, NoResultFound
 from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
@@ -224,7 +224,7 @@ class Table(ReadOnlyTable):
         self.pending_update_stats = None
         self.pending_update_rows = list()
 
-        self.sanity_check_done = False
+        self.sanity_check_default_iterator_done = False
         self.ignore_source_not_in_target = False
         self.ignore_target_not_in_source = False
         self.raise_on_source_not_in_target = False
@@ -313,9 +313,6 @@ class Table(ReadOnlyTable):
             raise_on_source_not_in_target=None,
             raise_on_target_not_in_source=None,
     ):
-
-        self.sanity_check_done = True
-
         if ignore_source_not_in_target is None:
             ignore_source_not_in_target = self.ignore_source_not_in_target
         if ignore_target_not_in_source is None:
@@ -1139,107 +1136,6 @@ class Table(ReadOnlyTable):
         # End if target_column_value is not None:
         return target_column_value
 
-    def build_row_old(
-            self,
-            source_row: Row,
-            additional_values: dict = None,
-            source_excludes: Iterable = None,
-            target_excludes: Iterable = None,
-            build_method: RowBuildMethod = RowBuildMethod.safe,
-            stat_name: str = 'build rows',
-            parent_stats: Statistics = None,
-            ) -> Row:
-        """
-        Use a source row to build a row with correct data types for this table.
-
-        Parameters
-        ----------
-        source_row
-        additional_values
-        source_excludes
-        target_excludes
-        build_method:
-            none, clone, or safe (default is safe)
-            None means use the row as is
-            Clone means create a subset clone
-            Safe does a clone and then checks each column type to ensure it matches the target
-        stat_name
-            Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
-        parent_stats
-
-        Returns
-        -------
-            row
-        """
-        build_row_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
-        build_row_stats.print_start_stop_times = False
-        build_row_stats.timer.start()
-        build_row_stats['method'] = build_method
-        build_row_stats['calls'] += 1
-
-        if source_excludes is None:
-            source_excludes = set()
-        elif not isinstance(source_excludes, set):
-            source_excludes = set(source_excludes)
-
-        # First make sure we have an instance of Row as a source
-        if not isinstance(source_row, Row):
-            # This will be slow if passed a lot of these non-Row objects
-            # TODO: Count non Row objects passed in and give warning if it exceeds 100 or so
-            iteration_header = RowIterationHeader(logical_name='default')
-            source_row = self.row_object(iteration_header, data=source_row)
-
-        if self.auto_generate_key:
-            # Primary key must be a single column
-            if self.primary_key is None:
-                raise ValueError("No primary key set")
-            else:
-                if isinstance(self.primary_key, Iterable):
-                    if len(self.primary_key) > 1:
-                        raise ValueError("Can't autogenerate key with a compound primary key")
-                    else:
-                        primary_key = list(self.primary_key)[0]
-                else:
-                    primary_key = self.primary_key
-
-                if primary_key not in source_excludes:
-                    if primary_key in source_row:
-                        warnings.warn('Ignoring primary key value passed in since auto_generate_key is enabled')
-                        source_excludes.add(primary_key)
-
-        target_set = set(self.column_names)
-        if target_excludes is not None:
-            target_set -= set(target_excludes)
-
-        if build_method == Table.RowBuildMethod.none:
-            new_row = source_row
-        else:
-            # clone or safe modes
-            new_row = source_row.subset(exclude=source_excludes, keep_only=target_set)
-
-            if build_method == Table.RowBuildMethod.safe:
-                # Safe type mode is slower, but gives better error messages than the
-                # database that will likely give a not-so helpful message or silently truncate a value.
-                # Non safe type mode can also lead to a failure of the lookups since type differences
-                # will cause the lookup key to look different from the existing value.
-                if self.safe_type_mode:
-                    for target_name, target_column_value in new_row.items():
-                        target_column_object = self.get_column(target_name)
-                        new_row[target_name] = self.column_coerce_type(target_column_object, target_column_value)
-
-        if not self.sanity_check_done:
-            self.sanity_check_example_row(example_source_row=source_row,
-                                          source_excludes=source_excludes,
-                                          target_excludes=target_excludes,
-                                          )
-
-        if additional_values:
-            for colName, value in additional_values.items():
-                new_row[colName] = value
-
-        build_row_stats.timer.stop()
-        return new_row
-
     @staticmethod
     def _get_build_row_name(row: Row) -> str:
         return "_build_row_{}".format(row.iteration_header.iteration_id)
@@ -1333,6 +1229,13 @@ class Table(ReadOnlyTable):
                 # Non safe type mode can also lead to a failure of the lookups since type differences
                 # will cause the lookup key to look different from the existing value.
                 if default_iteration_header_used:
+                    if not self.sanity_check_default_iterator_done:
+                        self.sanity_check_example_row(example_source_row=source_row,
+                                                      source_excludes=source_excludes,
+                                                      target_excludes=target_excludes,
+                                                      )
+                        self.sanity_check_default_iterator_done = True
+
                     for target_name, target_column_value in new_row.items():
                         target_column_object = self.get_column(target_name)
                         name = self._get_coerce_method_name(target_column_object)
@@ -1344,6 +1247,11 @@ class Table(ReadOnlyTable):
                         build_row_method = getattr(self, build_row_method_name)
                         # Call method
                     except AttributeError:
+                        self.sanity_check_example_row(example_source_row=source_row,
+                                                      source_excludes=source_excludes,
+                                                      target_excludes=target_excludes,
+                                                      )
+
                         code = "def {name}(self, new_row):\n".format(name=build_row_method_name)
                         for target_name in new_row.keys():
                             target_column_object = self.get_column(target_name)
@@ -1362,12 +1270,6 @@ class Table(ReadOnlyTable):
                         build_row_method = getattr(self, build_row_method_name)
                         # Call method
                     build_row_method(new_row)
-
-        if not self.sanity_check_done:
-            self.sanity_check_example_row(example_source_row=source_row,
-                                          source_excludes=source_excludes,
-                                          target_excludes=target_excludes,
-                                          )
 
         if additional_values:
             for colName, value in additional_values.items():
@@ -2663,7 +2565,6 @@ class Table(ReadOnlyTable):
             if source_excludes is None:
                 source_excludes = []
             if self.primary_key not in source_excludes:
-                warnings.warn('Ignoring primary key value passed in since auto_generate_key is enabled')
                 source_excludes.extend(self.primary_key)
 
         # Check for existing row
