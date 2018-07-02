@@ -68,7 +68,8 @@ class ETLComponent(Iterable):
         self.progress_message = self.DEFAULT_PROGRESS_MESSAGE
         self.max_rows = None        
         self.log_first_row = True
-        self._column_names = None  
+        if not hasattr(self, '_column_names'):
+            self._column_names = None
         # Note this calls the property setter
         self.__trace_data = False
         self._stats = Statistics(stats_id=self.logical_name)

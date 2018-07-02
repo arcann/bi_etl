@@ -171,7 +171,7 @@ class HistoryTableSourceBased(HistoryTable):
                  task: ETLTask,
                  database: DatabaseMetadata,
                  table_name: str,
-                 table_name_case_sensitive: bool = False,
+                 table_name_case_sensitive: bool = True,
                  exclude_columns: list = None,
                  **kwargs
                  ):

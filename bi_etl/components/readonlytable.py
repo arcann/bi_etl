@@ -115,7 +115,7 @@ class ReadOnlyTable(ETLComponent):
                  task: ETLTask,
                  database: DatabaseMetadata,
                  table_name: str,
-                 table_name_case_sensitive: bool = False,
+                 table_name_case_sensitive: bool = True,
                  schema: str = None,
                  exclude_columns: list = None,
                  include_only_columns: list = None,
