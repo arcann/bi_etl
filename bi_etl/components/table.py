@@ -164,7 +164,7 @@ class Table(ReadOnlyTable):
                  task,
                  database,
                  table_name,
-                 table_name_case_sensitive=True,
+                 table_name_case_sensitive=False,
                  exclude_columns=None,
                  **kwargs
                  ):
@@ -1251,8 +1251,6 @@ class Table(ReadOnlyTable):
                                                       source_excludes=source_excludes,
                                                       target_excludes=target_excludes,
                                                       )
-                        if len(new_row.keys()) == 0:
-                            raise ValueError("Can't process rows with no columns")
 
                         code = "def {name}(self, new_row):\n".format(name=build_row_method_name)
                         for target_name in new_row.keys():
@@ -1267,7 +1265,6 @@ class Table(ReadOnlyTable):
                             exec(code)
                         except SyntaxError as e:
                             self.log.exception("{e} from code\n{code}".format(e=e, code=code))
-                            raise e
                         # Add the new function as a method in this class
                         exec("self.{name} = {name}.__get__(self)".format(name=build_row_method_name))
                         build_row_method = getattr(self, build_row_method_name)
@@ -1522,7 +1519,7 @@ class Table(ReadOnlyTable):
         return new_row
 
     def insert(self,
-               source: Union[Row, list],  # Could also be a whole list of rows
+               source_row: Union[Row, list],  # Could also be a whole list of rows
                additional_insert_values: dict = None,
                source_excludes: set = None,
                target_excludes: set = None,
@@ -1534,7 +1531,7 @@ class Table(ReadOnlyTable):
         
         Parameters
         ----------
-        source: :class:`Row` or list thereof
+        source_row: :class:`Row` or list thereof
             Row(s) to insert
         additional_insert_values: dict
             Additional values to set on each row.
@@ -1547,26 +1544,24 @@ class Table(ReadOnlyTable):
             Default is to place statistics in the ETLTask level statistics.                               
         """
 
-        if isinstance(source, list):
-            for row in source:
-                self.insert_row(
-                    row,
-                    additional_insert_values=additional_insert_values,
-                    source_excludes=source_excludes,
-                    target_excludes=target_excludes,
-                    parent_stats=parent_stats,
-                    **kwargs
-                    )
+        if isinstance(source_row, list):
+            for row in source_row:
+                self.insert_row(row,
+                                additional_insert_values=additional_insert_values,
+                                source_excludes=source_excludes,
+                                target_excludes=target_excludes,
+                                parent_stats=parent_stats,
+                                **kwargs
+                                )
                 return None
         else:
-            return self.insert_row(
-                source,
-                additional_insert_values=additional_insert_values,
-                source_excludes=source_excludes,
-                target_excludes=target_excludes,
-                parent_stats=parent_stats,
-                **kwargs
-                )
+            return self.insert_row(source_row,
+                                   additional_insert_values=additional_insert_values,
+                                   source_excludes=source_excludes,
+                                   target_excludes=target_excludes,
+                                   parent_stats=parent_stats,
+                                   **kwargs
+                                   )
 
     def _delete_pending_batch(self,
                               stat_name='delete',
@@ -2443,8 +2438,13 @@ class Table(ReadOnlyTable):
             if existing_key not in set_of_key_tuples:
                 stats['updates count'] += 1
 
-                # First we need the entire existing row
-                target_row = self.get_by_lookup(lookup_name, row)
+                try:
+                    # First we need the entire existing row
+                    target_row = lookup.find(row)
+                except NoResultFound:
+                    raise RuntimeError("keys {} found in database or cache but not found now by get_by_lookup".format(
+                        row.as_key_value_list
+                    ))
 
                 # Then we can apply the updates to it
                 self.apply_updates(row=target_row,

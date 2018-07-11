@@ -68,8 +68,7 @@ class ETLComponent(Iterable):
         self.progress_message = self.DEFAULT_PROGRESS_MESSAGE
         self.max_rows = None        
         self.log_first_row = True
-        if not hasattr(self, '_column_names'):
-            self._column_names = None
+        self._column_names = None  
         # Note this calls the property setter
         self.__trace_data = False
         self._stats = Statistics(stats_id=self.logical_name)
@@ -271,7 +270,9 @@ class ETLComponent(Iterable):
                 
     def iter_result(self,
                     result_list: object,
+                    columns_in_order: list = None,
                     criteria_dict: dict = None,
+                    logical_name=None,
                     progress_frequency: int = None,
                     stats_id: str = None,
                     parent_stats: Statistics = None) -> Iterable[Row]:
@@ -296,7 +297,10 @@ class ETLComponent(Iterable):
             result_iter = self._fetch_many_iter(result_list)
         else:
             result_iter = result_list
-        this_iteration_header = self.generate_iteration_header()
+        this_iteration_header = self.generate_iteration_header(
+            logical_name=logical_name,
+            columns_in_order=columns_in_order,
+        )
 
         # noinspection PyTypeChecker
         for row in result_iter:
@@ -465,9 +469,17 @@ class ETLComponent(Iterable):
             iteration_header = self.generate_iteration_header(logical_name=logical_name)
         return self.row_object(iteration_header=iteration_header, data=data)
 
-    def generate_iteration_header(self, logical_name=None):
+    def generate_iteration_header(self, logical_name=None, columns_in_order=None):
         if logical_name is None:
             logical_name = self.row_name
+
+        if columns_in_order is None:
+            result_primary_key = self.primary_key
+        else:
+            result_primary_key = None
+
         return RowIterationHeader(logical_name=logical_name,
-                                  primary_key=self.primary_key,
-                                  parent=self)
+                                  primary_key=result_primary_key,
+                                  parent=self,
+                                  columns_in_order=columns_in_order,
+                                  )

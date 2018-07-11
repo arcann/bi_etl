@@ -9,6 +9,7 @@ import os.path
 from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.timer import Timer
+from bi_etl.utility import CaseInsensitiveDict
 
 
 class RunSQLScript(ETLTask):
@@ -43,6 +44,26 @@ class RunSQLScript(ETLTask):
                 _, root_no_drive = os.path.splitdrive(root_path)
                 if root_no_drive in {'', '\\', os.path.sep}:
                     raise ValueError("RunSQLScript could not find script_path {}".format(paths_tried))
+
+    def __getstate__(self):
+        odict = super().__getstate__()
+        odict['datbase_entry'] = self.datbase_entry
+        odict['script_path'] = self.datbase_entry
+        odict['script_name'] = self.script_name
+        return odict
+
+    def __setstate__(self, odict):
+        self.__init__(
+            datbase_entry=odict['datbase_entry'],
+            script_path=odict['script_path'],
+            script_name=odict['script_name'],
+            task_id=odict['task_id'],
+            parent_task_id=odict['parent_task_id'],
+            root_task_id=odict['root_task_id'],
+            # We don't pass scheduler or config from the Scheduler to the running instance
+            # scheduler= odict['scheduler']
+            )
+        self._parameter_dict = CaseInsensitiveDict(odict['_parameter_dict'])
 
     def depends_on(self):
         return []

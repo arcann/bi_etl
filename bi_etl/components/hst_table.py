@@ -182,7 +182,7 @@ class HistoryTable(Table):
                  task: ETLTask,
                  database: DatabaseMetadata,
                  table_name: str,
-                 table_name_case_sensitive: bool = True,
+                 table_name_case_sensitive: bool = False,
                  exclude_columns: list = None,
                  default_effective_date: datetime = None,
                  **kwargs
@@ -1529,7 +1529,7 @@ class HistoryTable(Table):
                          max_end_date_warnings: int = 100,
                          parent_stats=None,
                          progress_message="{table} cleanup_versions "
-                                                   "pass {pass_number} current row # {row_number:,}",
+                                          "pass {pass_number} current row # {row_number:,}",
                          ):
         """
         This routine will look for and remove versions where no material difference exists

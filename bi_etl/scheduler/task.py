@@ -166,6 +166,9 @@ class ETLTask(object):
         odict['root_task_id'] = self.root_task_id
         odict['parent_task_id'] = self.parent_task_id
         odict['status'] = self.status
+        odict['parent_to_child'] = self.parent_to_child
+        odict['child_to_parent'] = self.child_to_parent
+        odict['_parameter_dict'] = dict(self._parameter_dict)
         # We don't pass scheduler or config from the Scheduler to the running instance
         # odict['scheduler'] = self._scheduler
         # print("__getstate__ {}".format(utility.dict_to_str(odict)))
@@ -183,6 +186,9 @@ class ETLTask(object):
                       # We don't pass scheduler or config from the Scheduler to the running instance
                       # scheduler= odict['scheduler']
                       )
+        self.parent_to_child = odict['parent_to_child']
+        self.child_to_parent = odict['child_to_parent']
+        self._parameter_dict = CaseInsensitiveDict(odict['_parameter_dict'])
 
     def log_logging_level(self):
         # Calling bi_etl.utility version
@@ -868,7 +874,7 @@ class ETLTask(object):
             ):
         """
         Should not generally be overridden.
-        This is called smtp_to run the task's code in the init, load, and finish methods.
+        This is called to run the task's code in the init, load, and finish methods.
         """
         self.child_to_parent = child_to_parent
         self.parent_to_child = parent_to_child

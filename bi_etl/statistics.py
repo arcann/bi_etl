@@ -120,6 +120,32 @@ class Statistics(object):
     def update(self, other):
         return self._stats_data.update(other)
 
+    def merge(self, other):
+        for stats_key in other.keys():
+            value = other[stats_key]
+            if isinstance(value, int):
+                self.add_to_stat(stats_key, value)
+            elif (isinstance(value, dict)
+                  or isinstance(value, Statistics)):
+                if self[stats_key] == 0:
+                    self[stats_key] = value
+                elif isinstance(self[stats_key], Statistics):
+                    self[stats_key].merge(value)
+                elif isinstance(self[stats_key], OrderedDict):
+                    self[stats_key] = Statistics(stats_id=stats_key,
+                                                 parent=self)
+                    self[stats_key].merge(value)
+                else:
+                    raise ValueError("Can't merge {path}:{key} type {type} "
+                                     "with {opath}:{okey} type {otype}".format(
+                        path=self.path,
+                        key=stats_key,
+                        type=type(self[stats_key]),
+                        opath=other.path,
+                        okey=stats_key,
+                        otype=type(value),
+                    ))
+
     def __contains__(self, key):
         return self._stats_data.__contains__(key)
 

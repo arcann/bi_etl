@@ -324,8 +324,9 @@ class BIConfigParser(ConfigParser):
         log_file_name = prefix + datetime.now().strftime(date_time_format) + suffix
         self.set_log_file_name(log_file_name)
 
-    def add_log_file_handler(self):
-        filename = self.get_log_file_name()
+    def add_log_file_handler(self, filename=None):
+        if filename is None:
+            filename = self.get_log_file_name()
         file_handler = None
         if filename is not None:
             if self.trace_logging_setup:
@@ -360,6 +361,13 @@ class BIConfigParser(ConfigParser):
             if self.trace_logging_setup:
                 self.log.info('No log filename defined. File logging skipped.')
         return file_handler
+
+    def replace_log_file_handler(self, filename=None):
+        log = self.rootLogger
+        for handler in list(log.handlers):
+            if isinstance(handler, logging.FileHandler):
+                log.removeHandler(handler)
+        self.add_log_file_handler(filename=filename)
 
     def setup_log_levels(self):
         no_loggers_found = False

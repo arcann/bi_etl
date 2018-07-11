@@ -677,14 +677,14 @@ class Scheduler(SchedulerInterface):
             parent_to_child = multiprocessing.Queue()  # @UndefinedVariable
             child_to_parent = multiprocessing.Queue()  # @UndefinedVariable
             # Run method to avoid serializing the task itself
-            process = multiprocessing.Process(target= bi_etl.scheduler.task.run_task,  # @UndefinedVariable
+            process = multiprocessing.Process(target=bi_etl.scheduler.task.run_task,  # @UndefinedVariable
                                               kwargs={
                                                       'task_name': etl_task.name,
                                                       'task_id': etl_task.task_id,
                                                       'parent_task_id': etl_task.parent_task_id,
                                                       'root_task_id': etl_task.root_task_id,
-                                                      'parent_to_child':parent_to_child,
-                                                      'child_to_parent':child_to_parent,
+                                                      'parent_to_child': parent_to_child,
+                                                      'child_to_parent': child_to_parent,
                                                       'scheduler': self,
                                                      }
                            )

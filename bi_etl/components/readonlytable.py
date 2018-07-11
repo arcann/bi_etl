@@ -115,7 +115,7 @@ class ReadOnlyTable(ETLComponent):
                  task: ETLTask,
                  database: DatabaseMetadata,
                  table_name: str,
-                 table_name_case_sensitive: bool = True,
+                 table_name_case_sensitive: bool = False,
                  schema: str = None,
                  exclude_columns: list = None,
                  include_only_columns: list = None,
@@ -655,7 +655,8 @@ class ReadOnlyTable(ETLComponent):
                                 criteria_dict=criteria_dict,
                                 progress_frequency=progress_frequency,
                                 stats_id=stats_id,
-                                parent_stats=parent_stats
+                                parent_stats=parent_stats,
+                                columns_in_order=column_list,
                                 )
 
     def order_by(self,
@@ -790,13 +791,20 @@ class ReadOnlyTable(ETLComponent):
     def row_name(self):
         return str(self.table)
 
-    def generate_iteration_header(self, logical_name=None):
+    def generate_iteration_header(self, logical_name=None, columns_in_order=None):
         if logical_name is None:
             logical_name = self.row_name
+
+        if columns_in_order is None:
+            columns_in_order = self.column_names
+            result_primary_key = self.primary_key
+        else:
+            result_primary_key = None
+
         return RowIterationHeader(logical_name=logical_name,
-                                  primary_key=self.primary_key,
+                                  primary_key=result_primary_key,
                                   parent=self,
-                                  columns_in_order=self.column_names)
+                                  columns_in_order=columns_in_order)
 
     def get_special_row(self,
                         short_char,
