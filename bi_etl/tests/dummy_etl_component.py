@@ -28,8 +28,11 @@ class DummyETLComponent(ETLComponent):
     def _raw_rows(self):
         return self.data
 
-    def generate_iteration_header(self, logical_name=None):
+    def generate_iteration_header(self, logical_name=None, columns_in_order=None):
         if self.iteration_header is not None:
             return self.iteration_header
         else:
-            return super().generate_iteration_header(logical_name=logical_name)
+            return super().generate_iteration_header(
+                logical_name=logical_name,
+                columns_in_order=columns_in_order,
+            )
