@@ -3,6 +3,8 @@ Created on Sep 17, 2014
 
 @author: woodd
 """
+from enum import IntEnum, unique
+
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
@@ -16,6 +18,14 @@ class SQLQuery(ETLComponent):
     
     
     """
+    @unique
+    class ParamType(IntEnum):
+        """
+        Row status values
+        """
+        bind = 1
+        format = 2
+
     def __init__(self,
                  task: ETLTask,
                  database: DatabaseMetadata,
@@ -30,6 +40,7 @@ class SQLQuery(ETLComponent):
         
         self.engine = database.bind
         self.sql = sql
+        self.param_mode = SQLQuery.ParamType.bind
         
         # Should be the last call of every init
         self.set_kwattrs(**kwargs) 
@@ -44,7 +55,10 @@ class SQLQuery(ETLComponent):
         """
         Run the SQL as is with no parameters or substitutions.
         """
-        return self.run_parameters()
+        if self.param_mode == SQLQuery.ParamType.bind:
+            return self._raw_rows_bind_parameters()
+        else:
+            return self._raw_rows_format_parameters()
     
     def _obtain_column_names(self):
         # Column_names can be slow to obtain
@@ -52,16 +66,16 @@ class SQLQuery(ETLComponent):
         # So just raise an error
         raise NotImplementedError()
 
-    def run_parameters(self, **parameters):
+    def _raw_rows_bind_parameters(self, **parameters):
         """
         Run the SQL providing optional bind parameters. (:param in the SQL)
         """
         stats = self.get_stats_entry(stats_id=self.default_stats_id)
         stats.timer.start()
         select_result = self.engine.execute(self.sql, **parameters)
-        return self.iter_result(select_result, parent_stats=stats)
+        return select_result
 
-    def run_substitute(self, *args, **kwargs):
+    def _raw_rows_format_parameters(self, *args, **kwargs):
         """
         Uses Python string formatting like {} or {name} to build a SQL string.
         Can be used to dynamically change the structure of the SQL, compared to bind variables which are more limited but faster.
@@ -70,4 +84,4 @@ class SQLQuery(ETLComponent):
         stats.timer.start()
         select = self.sql.format(*args, **kwargs)
         select_result = self.engine.execute(select)
-        return self.iter_result(select_result, parent_stats=stats)
+        return select_result
