@@ -7,15 +7,31 @@ Created on Dec 23, 2015
 import logging
 import sqlalchemy
 
-
-#pylint: disable=abstract-method
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.engine.reflection import Inspector
+from sqlalchemy.sql.schema import DEFAULT_NAMING_CONVENTION
 
 
 class DatabaseMetadata(sqlalchemy.schema.MetaData):
     """
     A light wrapper over sqlalchemy.schema.MetaData
     """
+
+    def __init__(self, bind=None, reflect=False, schema=None,
+                 quote_schema=None,
+                 naming_convention=DEFAULT_NAMING_CONVENTION,
+                 info=None,
+                 database_name=None,
+                 ):
+        super().__init__(
+            bind=bind,
+            reflect=reflect,
+            schema=schema,
+            quote_schema=quote_schema,
+            naming_convention=naming_convention,
+            info=info,
+        )
+        self._table_inventory = None
+        self.database_name = database_name
 
     def _set_parent(self, parent):
         pass
@@ -76,3 +92,9 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         finally:
             dpapi_connection.close()
         return results
+
+    def table_inventory(self, force_reload=False):
+        if self._table_inventory is None or force_reload:
+            inspector = Inspector.from_engine(self.bind)
+            self._table_inventory = inspector.get_table_names()
+        return self._table_inventory
