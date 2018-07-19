@@ -5,8 +5,10 @@ Created on Sept 12 2016
 """
 import hashlib
 import os.path
+from typing import Union
 
 from bi_etl.bi_config_parser import BIConfigParser
+from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.timer import Timer
 from bi_etl.utility import CaseInsensitiveDict
@@ -14,7 +16,7 @@ from bi_etl.utility import CaseInsensitiveDict
 
 class RunSQLScript(ETLTask):
     def __init__(self,
-                 datbase_entry: str,
+                 datbase_entry: Union[str, DatabaseMetadata],
                  script_path: str,
                  script_name: str,
                  task_id=None,
@@ -87,8 +89,11 @@ class RunSQLScript(ETLTask):
         return hasher.hexdigest()
 
     def load(self):
-        database = self.get_database(self.datbase_entry)
-        sql_replacements_str = self.config.get(self.datbase_entry, 'SQL_Replacements', fallback='')
+        if isinstance(self.datbase_entry, DatabaseMetadata):
+            database = self.datbase_entry
+        else:
+            database = self.get_database(self.datbase_entry)
+        sql_replacements_str = self.config.get(database.database_name, 'SQL_Replacements', fallback='')
         sql_replacements = dict()
         for replacement_line in sql_replacements_str.split('\n'):
             replacement_line = replacement_line.strip()
