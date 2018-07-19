@@ -1,14 +1,13 @@
+import logging
+import os
+import subprocess
+import tempfile
 import textwrap
 from configparser import ConfigParser
-
 from datetime import date, datetime
-import os
-import tempfile
 from pprint import pformat
 
-import subprocess
-
-import logging
+from sqlalchemy.dialects.mssql import BIT
 
 log = logging.getLogger('etl.utils.bcp_helpers')
 
@@ -24,16 +23,26 @@ def create_bcp_format_file(table, bcp_format_path, encoding=None, delimiter=None
             else:
                 delimiter = '|'
         for col_num, column in enumerate(table.columns):
-            c_type = column.type
-            p_type = c_type.python_type
             size = None
             scale = None
+
+            c_type = column.type
+            try:
+                p_type = c_type.python_type
+            except NotImplementedError:
+                if isinstance(c_type, BIT):
+                    p_type = bool
+                else:
+                    raise ValueError("Unexpected data type {} for column".format(c_type, column))
+
             # Types
             # https://docs.microsoft.com/en-us/sql/relational-databases/import-export/xml-format-files-sql-server?view=sql-server-2017
             # https://msdn.microsoft.com/en-us/library/ff718877(v=sql.105).aspx
 
             if p_type == int:
                 size = 24
+            elif p_type == bool:
+                size = 1
             elif p_type == datetime:
                 size = 48
             elif p_type == date:
