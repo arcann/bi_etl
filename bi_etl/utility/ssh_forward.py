@@ -9,7 +9,7 @@ import logging
 log = logging.getLogger('etl.utils.ssh_forward')
 
 
-def ssh_forward(host: str, user: str, server_port: int, local_port: int=None, wait: bool=False, ssh_path=None):
+def ssh_forward(host: str, user: str, server_port: int, local_port: int=None, wait: bool=False, ssh_path=None, seconds_wait_for_usage=10):
     # Command line options documentation
     # https://man.openbsd.org/ssh
     if ssh_path is None:
@@ -29,7 +29,7 @@ def ssh_forward(host: str, user: str, server_port: int, local_port: int=None, wa
         # It will not exit while the forward port is in use.
         # If this is the second forward to run it will exit after 10 seconds since it won't have
         # an active forward.
-        'sleep 10',
+        'sleep', str(seconds_wait_for_usage),
     ]
     log.debug("Starting ssh")
     log.debug(cmd)
@@ -71,6 +71,7 @@ def ssh_forward_using_config(config: ConfigParser, section='ssh', wait=False):
     server_port = config[section]['server_port']
     local_port = config[section].get('local_port', fallback=None)
     ssh_path = config[section].get('ssh_path', fallback=None)
+    seconds_wait_for_usage = config[section].get('seconds_wait_for_usage', fallback=10)
     ssh_forward(
         host=host,
         user=user,
@@ -78,7 +79,11 @@ def ssh_forward_using_config(config: ConfigParser, section='ssh', wait=False):
         server_port=server_port,
         wait=wait,
         ssh_path=ssh_path,
+        seconds_wait_for_usage=seconds_wait_for_usage,
     )
+    seconds_wait_for_tunnel_start = config[section].get('seconds_wait_for_tunnel_start', fallback=None)
+    if seconds_wait_for_tunnel_start:
+        time.sleep(seconds_wait_for_tunnel_start)
 
 
 if __name__ == '__main__':
