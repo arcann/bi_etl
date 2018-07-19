@@ -3,9 +3,7 @@ Created on Sep 17, 2014
 
 @author: woodd
 """
-import traceback
 import typing
-import warnings
 from datetime import datetime
 from operator import attrgetter
 from typing import Iterable
@@ -156,6 +154,7 @@ class ReadOnlyTable(ETLComponent):
         self._column_name_index = None
         self._excluded_columns = None
         self._table_name = table_name
+        self.schema = schema
         if table_name is not None:
             # Note from sqlalchemy:
             # Names which contain no upper case characters will be treated as case insensitive names, and will not 
@@ -163,11 +162,11 @@ class ReadOnlyTable(ETLComponent):
             # Names with any number of upper case characters will be quoted and sent exactly. Note that this behavior
             # applies even for databases which standardize upper case names as case insensitive such as Oracle.
             if '.' in table_name:
-                schema, table_name = table_name.split('.', 1)
+                self.schema, table_name = table_name.split('.', 1)
 
             if not table_name_case_sensitive:
                 table_name = table_name.lower()
-            self.table = sqlalchemy.schema.Table(table_name, database, schema=schema, autoload=True, quote=False)
+            self.table = sqlalchemy.schema.Table(table_name, database, schema=self.schema, autoload=True, quote=False)
 
         self.__natural_key_override = False
         self.__natural_key = None
@@ -262,7 +261,7 @@ class ReadOnlyTable(ETLComponent):
         self._columns = columns
         self._column_names = None
         self.database.remove(self.table)
-        self.table = sqlalchemy.schema.Table(self.table_name, self.database, *self._columns, quote=False)
+        self.table = sqlalchemy.schema.Table(self.table_name, self.database, *self._columns, schema=self.schema, quote=False)
 
     def exclude_columns(self, columns_to_exclude):
         """

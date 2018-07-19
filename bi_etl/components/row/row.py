@@ -606,8 +606,8 @@ class Row(typing.MutableMapping):
         return diffs == []
 
     def transform(self,
-                  column_specifier,
-                  transform_function,
+                  column_specifier: str,
+                  transform_function: typing.Callable,
                   *args,
                   **kwargs):
         # noinspection PyIncorrectDocstring
@@ -621,9 +621,9 @@ class Row(typing.MutableMapping):
             The column name in the row to be transformed
         transform_function: func
             The transformation function to use. It must take the value to be transformed as it's first argument.
-        args: list
+        args:
             Positional arguments to pass to transform_function
-        kwargs: dict
+        kwargs:
             Keyword arguments to pass to transform_function
 
         Keyword Parameters Used Directly

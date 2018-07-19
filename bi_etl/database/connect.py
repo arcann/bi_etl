@@ -5,9 +5,12 @@ Created on Jan 22, 2016
 @author: woodd
 """
 import logging
+from configparser import ConfigParser
+
 from sqlalchemy import create_engine
 from sqlalchemy import types as sqltypes
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.orm import scoped_session
 from bi_etl.database.database_metadata import DatabaseMetadata
 
@@ -25,7 +28,11 @@ class _FastNumeric(sqltypes.Numeric):
 # A: So that we can override the whole thing at once in MockConnect
 class Connect(object):
     @staticmethod
-    def get_sqlachemy_engine(config, database_name, usersection=None, **kwargs):
+    def get_sqlachemy_engine(
+            config: ConfigParser,
+            database_name: str,
+            usersection: str=None,
+            **kwargs) -> Engine:
         log = logging.getLogger(__name__)
 
         dialect = config.get(database_name, 'dialect', fallback='oracle')
@@ -79,7 +86,11 @@ class Connect(object):
         return engine
 
     @staticmethod
-    def get_sqlachemy_session(config, database_name, usersection=None):
+    def get_sqlachemy_session(
+            config: ConfigParser,
+            database_name: str,
+            usersection: str = None,
+            **kwargs) -> Session:
         log = logging.getLogger(__name__)
         log.debug('Making session for {}, userid = {}'.format(database_name, usersection))
         engine = Connect.get_sqlachemy_engine(config, database_name, usersection)
@@ -91,10 +102,20 @@ class Connect(object):
         return session
 
     @staticmethod
-    def get_database_metadata(config, database_name, user=None, schema=None, **kwargs):
+    def get_database_metadata(
+            config: ConfigParser,
+            database_name: str,
+            user: str=None,
+            schema: str=None,
+            **kwargs) -> DatabaseMetadata:
         log = logging.getLogger(__name__)
         engine = Connect.get_sqlachemy_engine(config, database_name, user, **kwargs)
         if schema is None and config.has_option(database_name, 'schema'):
             schema = config.get(database_name, 'schema')
             log.info("Using config file schema {}".format(schema))
-        return DatabaseMetadata(bind=engine, schema=schema, quote_schema=False)
+        return DatabaseMetadata(
+            bind=engine,
+            schema=schema,
+            quote_schema=False,
+            database_name=database_name
+        )

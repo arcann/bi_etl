@@ -8,7 +8,6 @@ import typing
 
 from bi_etl.components.row.row import Row
 from bi_etl.statistics import Statistics
-from bi_etl.timer import Timer
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.etlcomponent import ETLComponent
 import logging
@@ -185,7 +184,7 @@ class CSVWriter(ETLComponent):
             self.file = open(
                 file_data,
                 mode=file_mode,
-                newline='\n',
+                newline='',
                 encoding=encoding,
                 errors=errors
                 )
@@ -217,6 +216,7 @@ class CSVWriter(ETLComponent):
         self.skipinitialspace = False
         self.strict = False
         self.large_field_support = False
+        self.lineterminator = None
         # End csv module params
 
         self.trace_data = False
@@ -252,6 +252,7 @@ class CSVWriter(ETLComponent):
                 quoting=self.quoting,
                 skipinitialspace=self.skipinitialspace,
                 strict=self.strict,
+                lineterminator=self.lineterminator,
                 )
             if self.large_field_support:
                 csv.field_size_limit(2147483647)  # largest value it will accept
@@ -301,7 +302,9 @@ class CSVWriter(ETLComponent):
         if not self._header_written:
             self.write_header()
 
+        assert len(source_row) > 0, "Empty row passed into csv insert"
         new_row = source_row.subset(keep_only=self.column_names)
+        assert len(new_row) > 0, "Empty row generated using columns passed into csv insert"
 
         if additional_insert_values:
             for colName, value in additional_insert_values.items():

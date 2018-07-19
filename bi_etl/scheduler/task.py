@@ -5,14 +5,13 @@ Created on Sep 15, 2014
 """
 import errno
 import logging
-import re
 import socket
 import traceback
-import typing
 import warnings
-from configparser import ConfigParser
 from queue import Empty
 
+import re
+import typing
 from CaseInsensitiveDict import CaseInsensitiveDict
 
 from bi_etl import utility
@@ -31,14 +30,9 @@ from bi_etl.scheduler.messages import ChildStatusUpdate
 from bi_etl.scheduler.status import Status
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
-
-
-# For memory testing:
-# import gc
-# from pympler import tracker
-
 # pylint: disable=too-many-instance-attributes, too-many-public-methods
 # pylint: disable=too-many-statements, too-many-branches, too-many-arguments
+
 
 class ETLTask(object):
     """
@@ -415,7 +409,7 @@ class ETLTask(object):
         return self._mutually_exclusive_with_set
 
     @property
-    def config(self) -> ConfigParser:
+    def config(self) -> BIConfigParser:
         """
         Get the task configuration object. If it was not passed in, it will be read from the users
         folder.
@@ -426,7 +420,7 @@ class ETLTask(object):
         return self._config
 
     @property
-    def scheduler(self) -> 'SchedulerInterface':
+    def scheduler(self) -> 'bi_etl.scheduler.scheduler_interface.SchedulerInterface':
         """
         Get the existing :class`bi_etl.scheduler.scheduler.Scheduler` that this task is running under.
         or
@@ -642,7 +636,15 @@ class ETLTask(object):
         # _database_pool is used to close connections when the task finishes
         self._database_pool.append(database_object)
 
-    def get_database(self, database_name, user=None, schema=None, **kwargs) -> DatabaseMetadata:
+    def get_database_name(self):
+        return NotImplementedError()
+
+    def get_database(
+            self,
+            database_name: str=None,
+            user: str=None,
+            schema: str=None,
+            **kwargs) -> DatabaseMetadata:
         """
         Get a new database connection.
         
@@ -653,13 +655,34 @@ class ETLTask(object):
         user: str
         schema: str
         """
+        if database_name is None:
+            database_name = self.get_database_name()
+        database_obj = Connect.get_database_metadata(
+            config=self.config,
+            database_name=database_name,
+            user=user,
+            schema=schema,
+            **kwargs
+        )
+        self.add_database(database_obj)
+        return database_obj
 
-        return Connect.get_database_metadata(config=self.config,
-                                             database_name=database_name,
-                                             user=user,
-                                             schema=schema,
-                                             **kwargs
-                                             )
+    def get_sql_script_runner(self, script_name: str, database_entry: str=None):
+        if database_entry is None:
+            database_entry = self.get_database_name()
+        # Late import to avoid circular dependency
+        from bi_etl.utility.run_sql_script import RunSQLScript
+        return RunSQLScript(
+            datbase_entry=database_entry,
+            script_path=self.config['SQL Scripts']['path'],
+            script_name=script_name,
+            config=self.config,
+        )
+
+    def run_sql_script(self, script_name: str, database_entry: str=None):
+        ok = self.get_sql_script_runner(script_name=script_name, database_entry=database_entry).run()
+        if not ok:
+            raise ValueError(script_name + " failed")
 
     def get_setting(self, setting_name, assignments=None):
         return self.config.get(section=self.name, option=setting_name, vars=assignments)
@@ -669,7 +692,7 @@ class ETLTask(object):
 
     def register_object(self, obj):
         """
-        Register an ETLComponent object with the task.
+        Register an ETLComponent or Statistics object with the task.
         This allows the task to 
         1) Get statistics from the component
         2) Close the component when done
@@ -717,7 +740,7 @@ class ETLTask(object):
         if not isinstance(config, BIConfigParser):
             new_config = BIConfigParser()
             new_config.merge_config(config)
-            self.config = new_config
+            self._config = new_config
         config.set_dated_log_file_name(self.name, '.log')
         config.setup_logging()
 
@@ -1005,9 +1028,6 @@ class ETLTask(object):
                     self.log.exception(e)
         except Exception as e:
             self.log.exception(e)
-
-
-
 
     @property
     def statistics(self):
