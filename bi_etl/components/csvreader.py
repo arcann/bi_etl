@@ -312,7 +312,8 @@ class CSVReader(ETLComponent):
         Get the column names from the file. ETLComponent only call this if self._column_names is None:
         """
         try:            
-            header_row = self.__read_header_row()            
+            header_row = self.__read_header_row()
+            assert header_row is not None, "Header row not found (or empty)"
             # Make sure to use setter here! It deals with duplicate names                
             self.column_names = header_row
             if self.trace_data:
