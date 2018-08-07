@@ -93,8 +93,10 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             dpapi_connection.close()
         return results
 
-    def table_inventory(self, force_reload=False):
-        if self._table_inventory is None or force_reload:
+    def table_inventory(self, schema=None, force_reload=False):
+        if self._table_inventory is None:
+            self._table_inventory = dict()
+        if schema not in self._table_inventory or force_reload:
             inspector = Inspector.from_engine(self.bind)
-            self._table_inventory = inspector.get_table_names()
-        return self._table_inventory
+            self._table_inventory[schema] = inspector.get_table_names(schema=schema)
+        return self._table_inventory[schema]
