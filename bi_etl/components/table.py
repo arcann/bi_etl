@@ -165,6 +165,7 @@ class Table(ReadOnlyTable):
                  database,
                  table_name,
                  table_name_case_sensitive=False,
+                 schema: str = None,
                  exclude_columns=None,
                  **kwargs
                  ):
@@ -173,6 +174,7 @@ class Table(ReadOnlyTable):
                                     database=database,
                                     table_name=table_name,
                                     table_name_case_sensitive=table_name_case_sensitive,
+                                    schema=schema,
                                     exclude_columns=exclude_columns,
                                     )
         self.load_via_bcp = False
@@ -222,7 +224,7 @@ class Table(ReadOnlyTable):
 
         # A list of any pending rows to apply as updates
         self.pending_update_stats = None
-        self.pending_update_rows = list()
+        self.pending_update_rows = dict()
 
         self.sanity_check_default_iterator_done = False
         self.ignore_source_not_in_target = False
@@ -2057,11 +2059,11 @@ class Table(ReadOnlyTable):
         self.begin()
 
         if self.load_via_bcp:
-            self._update_via_bcp(self.pending_update_rows)
+            self._update_via_bcp(self.pending_update_rows.values())
         else:
             pending_update_statements = StatementQueue()
 
-            for row_dict in self.pending_update_rows:
+            for row_dict in self.pending_update_rows.values():
                 if row_dict.status not in [RowStatus.deleted, RowStatus.insert]:
                     stats['apply updates sent to db'] += 1
                     update_stmt_key = row_dict.column_set
@@ -2119,14 +2121,21 @@ class Table(ReadOnlyTable):
                 self.rollback()
                 raise e
         del self.pending_update_rows
-        self.pending_update_rows = list()
+        self.pending_update_rows = dict()
         stats.timer.stop()
 
     def _add_pending_update(self, row, parent_stats=None):
         assert self.primary_key, "add_pending_update called for table with no primary key"
         assert row.status != RowStatus.insert, "add_pending_update called with row that's pending insert"
         assert row.status != RowStatus.deleted, "add_pending_update called with row that's pending delete"
-        self.pending_update_rows.append(row)
+        key_tuple = self.get_primary_key_value_tuple(row)
+        if key_tuple not in self.pending_update_rows:
+            self.pending_update_rows[key_tuple] = row
+        else:
+            # Apply updates to the existing pending update
+            existing_update = self.pending_update_rows[key_tuple]
+            for col in row:
+                existing_update[col] = row[col]
         if len(self.pending_update_rows) >= self.batch_size:
             self._update_pending_batch(parent_stats=parent_stats)
 
@@ -2159,6 +2168,8 @@ class Table(ReadOnlyTable):
             A Row or dict of additional values to apply to the main row
         add_to_cache:
             Should this method update the cache (not if caller will)
+        update_apply_entire_row:
+            Should the update set all non-key coluyns or just the changed values?
         stat_name:
             Name of this step for the ETLTask statistics. Default = 'update'
         parent_stats:
@@ -2169,6 +2180,7 @@ class Table(ReadOnlyTable):
         assert row.status != RowStatus.deleted, "apply_updates called for deleted row {}".format(row)
 
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
+        self.pending_update_stats = stats
         stats.timer.start()
 
         # Set the last update date
@@ -2609,7 +2621,7 @@ class Table(ReadOnlyTable):
                 skip_update_check_on = []
             changes_list = existing_row.compare_to(source_mapped_as_target_row,
                                                    exclude=do_not_update + skip_update_check_on)
-            delayed_changes = existing_row.compare_to(source_mapped_as_target_row,
+            conditional_changes = existing_row.compare_to(source_mapped_as_target_row,
                                                       compare_only=skip_update_check_on)
 
             if self.track_update_columns:
@@ -2625,20 +2637,25 @@ class Table(ReadOnlyTable):
                             )
                         )
                 if len(changes_list) > 0:
-                    for chg in delayed_changes:
-                        col_stats.add_to_stat(key=chg.column_name, increment=1)
-                        if self.trace_data:
-                            self.log.debug("{key} NO UPDATE TRIGGERED BY {name} changed from {old} to {new}".format(
-                                key=lookup_keys,
-                                name=chg.column_name,
-                                old=chg.old_value,
-                                new=chg.new_value
-                                )
+                    conditional_changes_msg = 'Conditional change applied'
+                else:
+                    conditional_changes_msg = 'Conditional change NOT applied'
+
+                for chg in conditional_changes:
+                    col_stats.add_to_stat(key=chg.column_name, increment=1)
+                    if self.trace_data:
+                        self.log.debug("{key} {msg}: {name} changed from {old} to {new}".format(
+                            key=lookup_keys,
+                            msg=conditional_changes_msg,
+                            name=chg.column_name,
+                            old=chg.old_value,
+                            new=chg.new_value,
                             )
+                        )
 
             if len(changes_list) > 0:
                 self.apply_updates(row=existing_row,
-                                   changes_list=changes_list + delayed_changes,
+                                   changes_list=changes_list + conditional_changes,
                                    additional_update_values=additional_update_values,
                                    parent_stats=stats
                                    )

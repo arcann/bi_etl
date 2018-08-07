@@ -172,6 +172,7 @@ class HistoryTableSourceBased(HistoryTable):
                  database: DatabaseMetadata,
                  table_name: str,
                  table_name_case_sensitive: bool = True,
+                 schema: str = None,
                  exclude_columns: list = None,
                  **kwargs
                  ):
@@ -179,6 +180,7 @@ class HistoryTableSourceBased(HistoryTable):
         super().__init__(task=task,
                          database=database,
                          table_name=table_name,
+                         schema=schema,
                          table_name_case_sensitive=table_name_case_sensitive,
                          exclude_columns=exclude_columns,
                          )

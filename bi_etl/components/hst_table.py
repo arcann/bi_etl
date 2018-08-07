@@ -183,6 +183,7 @@ class HistoryTable(Table):
                  database: DatabaseMetadata,
                  table_name: str,
                  table_name_case_sensitive: bool = False,
+                 schema: str = None,
                  exclude_columns: list = None,
                  default_effective_date: datetime = None,
                  **kwargs
@@ -192,6 +193,7 @@ class HistoryTable(Table):
                          database=database,
                          table_name=table_name,
                          table_name_case_sensitive=table_name_case_sensitive,
+                         schema=schema,
                          exclude_columns=exclude_columns,
                          )
         self.__default_effective_date = None
