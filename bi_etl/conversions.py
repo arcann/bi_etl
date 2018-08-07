@@ -25,7 +25,7 @@ def str2int(s):
     """
     String to integer
     """
-    if s == None or s == '':
+    if s is None or s == '':
         return None
     else:
         return int(s.replace(',', ''))
@@ -41,8 +41,8 @@ def str2float(s):
         try:    
             return float(s.replace(',', ''))
         except ValueError as e:
-            if s[-1] in ['-','+']:
-                s2 = s[-1]+ s[:-1].replace(',','')
+            if s[-1] in ['-', '+']:
+                s2 = s[-1] + s[:-1].replace(',', '')
                 return float(s2)
             else:
                 raise e
