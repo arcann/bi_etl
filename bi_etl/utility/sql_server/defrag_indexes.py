@@ -22,7 +22,7 @@ class DefragIndexes(ETLTask):
 
         sql = """
                 SELECT
-                       nt.name AS table_name,
+                       rtrim(ltrim(ns.name)) + '.' + nt.name AS table_name,
                        ni.name AS index_name,
                        index_type_desc,
                        avg_fragmentation_in_percent,
@@ -38,6 +38,7 @@ class DefragIndexes(ETLTask):
                        sys.indexes ni
                         ON ni.index_id = s.index_id
                         AND ni.object_id = s.object_id
+                        join sys.schemas ns on ns.schema_id = nt.schema_id
                 WHERE avg_fragmentation_in_percent > 20
                   AND index_type_desc IN('CLUSTERED INDEX', 'NONCLUSTERED INDEX')
                   AND ni.name not in ('PK_BigFatTable')
