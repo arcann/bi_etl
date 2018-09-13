@@ -899,11 +899,11 @@ class ReadOnlyTable(ETLComponent):
         =========== =========
         Integer     -7777
         Short Text  '~'
-        Long Text   'Not Applicable'
+        Long Text   'Not Available'
         Date        9999-7-1
         =========== =========          
         """
-        return self.get_special_row('~', 'Not Applicable', -7777, datetime(9999, 7, 1))
+        return self.get_special_row('~', 'Not Available', -7777, datetime(9999, 7, 1))
 
     def get_various_row(self):
         """
