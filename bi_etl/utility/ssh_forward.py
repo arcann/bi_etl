@@ -9,7 +9,15 @@ import logging
 log = logging.getLogger('etl.utils.ssh_forward')
 
 
-def ssh_forward(host: str, user: str, server_port: int, local_port: int=None, wait: bool=False, ssh_path=None, seconds_wait_for_usage=10):
+def ssh_forward(
+        host: str,
+        user: str,
+        server: str,
+        server_port: int,
+        local_port: int=None,
+        wait: bool=False,
+        ssh_path=None,
+        seconds_wait_for_usage=10):
     # Command line options documentation
     # https://man.openbsd.org/ssh
     if ssh_path is None:
@@ -19,8 +27,9 @@ def ssh_forward(host: str, user: str, server_port: int, local_port: int=None, wa
     cmd = [
         ssh_path,
         '{user}@{host}'.format(user=user, host=host),
-        '-L', '127.0.0.1:{local_port}:localhost:{server_port}'.format(
+        '-L', '127.0.0.1:{local_port}:{server}:{server_port}'.format(
             local_port=local_port,
+            server=server,
             server_port=server_port,
         ),
         '-o', 'ExitOnForwardFailure=yes',
@@ -32,7 +41,7 @@ def ssh_forward(host: str, user: str, server_port: int, local_port: int=None, wa
         'sleep', str(seconds_wait_for_usage),
     ]
     log.debug("Starting ssh")
-    log.debug(cmd)
+    log.debug(' '.join(cmd))
     try:
         if wait:
             stdout = subprocess.PIPE
@@ -68,6 +77,7 @@ def ssh_forward(host: str, user: str, server_port: int, local_port: int=None, wa
 def ssh_forward_using_config(config: ConfigParser, section='ssh', wait=False):
     host = config[section]['host']
     user = config[section]['user']
+    server = config.get(section, 'server', fallback='localhost')
     server_port = config[section]['server_port']
     local_port = config[section].get('local_port', fallback=None)
     ssh_path = config[section].get('ssh_path', fallback=None)
@@ -76,6 +86,7 @@ def ssh_forward_using_config(config: ConfigParser, section='ssh', wait=False):
         host=host,
         user=user,
         local_port=local_port,
+        server=server,
         server_port=server_port,
         wait=wait,
         ssh_path=ssh_path,
