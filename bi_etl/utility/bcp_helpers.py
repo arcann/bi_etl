@@ -12,6 +12,10 @@ from sqlalchemy.dialects.mssql import BIT
 log = logging.getLogger('etl.utils.bcp_helpers')
 
 
+class BCPError(Exception):
+    pass
+
+
 def create_bcp_format_file(table, bcp_format_path, encoding=None, delimiter=None, row_terminator=None):
     with open(bcp_format_path, "w", encoding="utf-8") as bcp_fmt:
         field_list = list()
@@ -139,7 +143,7 @@ def run_bcp(
            # '-o', bcp_output,
            '-e', bcp_errors,
            # Batch size
-           '-b', '5000',
+           '-b', str(config.get('BCP', 'batch', fallback='10000')),
            # encoding eg UTF-8
            '-C', char_encoding,
            # hints
@@ -216,7 +220,7 @@ def run_bcp(
                     break
             return rows
         else:
-            raise RuntimeError('bcp error')
+            raise BCPError('bcp error')
 
     except IOError as e:
         raise e
@@ -232,7 +236,7 @@ def run_bcp(
         log.error('BCP raw errors:')
         log.error(error_messages)
         log.error('-' * 80)
-        raise RuntimeError("BCP Error code " + str(e.returncode))
+        raise BCPError("BCP Error code " + str(e.returncode))
     finally:
         if cleanup_temp:
             temp_dir_obj.cleanup()
