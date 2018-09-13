@@ -5,6 +5,8 @@ Created on Sept 12 2016
 """
 import hashlib
 import os.path
+import re
+
 from typing import Union
 
 from bi_etl.bi_config_parser import BIConfigParser
@@ -72,7 +74,7 @@ class RunSQLScript(ETLTask):
 
     @property
     def name(self):
-        return 'run_sql_script.' + self.script_name
+        return 'run_sql_script.' + self.script_name.replace('/', '.').replace('\\', '.')
 
     @property
     def script_full_name(self):
@@ -111,7 +113,10 @@ class RunSQLScript(ETLTask):
         self.log.info("database={}".format(database))
         conn = database.bind.engine.raw_connection()
         try:
-            conn.autocommit(True)
+            try:
+                conn.autocommit(True)
+            except TypeError:
+                conn.autocommit = True
             cursor = conn.cursor()
 
             script_full_name = self.script_full_name
@@ -124,9 +129,12 @@ class RunSQLScript(ETLTask):
                     self.log.info('replacing "{}" with "{}"'.format(old, new))
                     sql = sql.replace(old, new)
 
-            parts = sql.split("\nGO\n")
+            # parts = sql.split("\nGO\n")
+            go_pattern = re.compile('\nGO\n', flags=re.IGNORECASE)
+            parts = go_pattern.split(sql)
             for part_sql in parts:
-                if part_sql.endswith('GO'):
+                part_sql = part_sql.strip()
+                if part_sql.upper().endswith('GO'):
                     part_sql = part_sql[:-2]
                 self.log.debug("Executing SQL:\n" + part_sql)
                 timer = Timer()
