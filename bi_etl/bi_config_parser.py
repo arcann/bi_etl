@@ -357,10 +357,20 @@ class BIConfigParser(ConfigParser):
             file_handler_level = self.get('logging', 'file_log_level', fallback='DEBUG').upper()
             file_handler.setLevel(file_handler_level)
             self.rootLogger.addHandler(file_handler)
+            self.log.info('File log level = {}'.format(file_handler_level))
         else:
             if self.trace_logging_setup:
                 self.log.info('No log filename defined. File logging skipped.')
         return file_handler
+
+    def remove_log_file_handler(self, filename=None):
+        if filename is None:
+            filename = self.get_log_file_name()
+        log = self.rootLogger
+        for handler in list(log.handlers):
+            if isinstance(handler, logging.FileHandler):
+                if filename in handler.baseFilename:
+                    log.removeHandler(handler)
 
     def replace_log_file_handler(self, filename=None):
         log = self.rootLogger
@@ -425,74 +435,77 @@ class BIConfigParser(ConfigParser):
 
         Based on the [logging] and [loggers] sections of the configuration file.
         """
-        self.logging_setup = True
 
-        # Close out any existing handlers
-        for handler in self.rootLogger.handlers:
-            handler.flush()
-            handler.close()
+        if not self.logging_setup:
+            self.logging_setup = True
 
-        # Reset the handlers
-        self.rootLogger.handlers.clear()
+            # Close out any existing handlers
+            for handler in self.rootLogger.handlers:
+                handler.flush()
+                handler.close()
 
-        # Monkey-patch getLogger's dict to be case-insensitive by lower casing all names
-        # We really need this because the config options from [loggers] will be returned
-        # in lower case
+            # Reset the handlers
+            self.rootLogger.handlers.clear()
 
-        logger_dict = CaseInsensitiveDict(logging.Logger.manager.loggerDict)  # @UndefinedVariable
-        logging.Logger.manager.loggerDict = logger_dict
+            # Monkey-patch getLogger's dict to be case-insensitive by lower casing all names
+            # We really need this because the config options from [loggers] will be returned
+            # in lower case
 
-        if self.trace_logging_setup:
-            print('[logging].trace_setup is True}')
-            print('Starting root logger handlers {}'.format(self.rootLogger.handlers))
+            logger_dict = CaseInsensitiveDict(logging.Logger.manager.loggerDict)  # @UndefinedVariable
+            logging.Logger.manager.loggerDict = logger_dict
 
-        # Modify the root logger level to at least INFO for now
-        self.rootLogger.setLevel(self.get('logging', 'root_level', fallback=logging.INFO))
+            if self.trace_logging_setup:
+                print('[logging].trace_setup is True}')
+                print('Starting root logger handlers {}'.format(self.rootLogger.handlers))
 
-        if console_output is None:
-            error_output = sys.stderr
-            debug_output = sys.stdout
-        else:
-            error_output = console_output
-            debug_output = console_output
+            # Modify the root logger level to at least INFO for now
+            self.rootLogger.setLevel(self.get('logging', 'root_level', fallback=logging.INFO))
 
-        def non_error(record):
-            return record.levelno != logging.ERROR
+            if console_output is None:
+                error_output = sys.stderr
+                debug_output = sys.stdout
+            else:
+                error_output = console_output
+                debug_output = console_output
 
-        console_error_log = logging.StreamHandler(error_output)
-        console_error_log.setLevel(logging.ERROR)
-        self.rootLogger.addHandler(console_error_log)
+            def non_error(record):
+                return record.levelno != logging.ERROR
 
-        console_log = logging.StreamHandler(debug_output)
-        console_log.setLevel(self.get('logging', 'console_log_level', fallback='DEBUG').upper())
-        console_log.addFilter(non_error)
-        self.rootLogger.addHandler(console_log)
+            console_error_log = logging.StreamHandler(error_output)
+            console_error_log.setLevel(logging.ERROR)
+            self.rootLogger.addHandler(console_error_log)
 
-        console_entry_format = self.get('logging', 'console_entry_format', fallback=None)
-        if console_entry_format:
-            console_entry_formater = logging.Formatter(console_entry_format, self.date_format)
-            console_log.setFormatter(console_entry_formater)
-            console_error_log.setFormatter(console_entry_formater)
+            console_log = logging.StreamHandler(debug_output)
+            console_log.setLevel(self.get('logging', 'console_log_level', fallback='DEBUG').upper())
+            # Errors go to console_error_log above
+            console_log.addFilter(non_error)
+            self.rootLogger.addHandler(console_log)
+
+            console_entry_format = self.get('logging', 'console_entry_format', fallback=None)
+            if console_entry_format:
+                console_entry_formater = logging.Formatter(console_entry_format, self.date_format)
+                console_log.setFormatter(console_entry_formater)
+                console_error_log.setFormatter(console_entry_formater)
+
+            self.setup_log_levels()
+
+            # Switch to this modules logger
+            log = logging.getLogger(__name__)
+
+            logging.captureWarnings(True)
+
+            log_level_name = logging.getLevelName(log.getEffectiveLevel())
+            if self.trace_logging_setup:
+                log.info('This modules logging level is {}'.format(log_level_name))
+            # Record the config file that is in use.
+            # The log statement in read_config_ini will not have been logged to the file
+            self.log.info('Config file in use = {}'.format(self.config_file_read))
 
         if use_log_file_setting:
             self.add_log_file_handler()
         else:
             if self.trace_logging_setup:
                 self.log.info('use_log_file_setting = False. setup_log_file not called.')
-
-        self.setup_log_levels()
-
-        # Switch to this modules logger
-        log = logging.getLogger(__name__)
-
-        logging.captureWarnings(True)
-
-        log_level_name = logging.getLevelName(log.getEffectiveLevel())
-        if self.trace_logging_setup:
-            log.info('This modules logging level is {}'.format(log_level_name))
-        # Record the config file that is in use.
-        # The log statement in read_config_ini will not have been logged to the file
-        self.log.info('Config file in use = {}'.format(self.config_file_read))
 
 
 def build_example(config: BIConfigParser=None, config_file_name: str='config.ini', example_config_dir: str='example_config_files'):

@@ -77,6 +77,7 @@ class ETLTask(object):
             of :class:`bi_etl.bi_config_parser.BIConfigParser`.
         """
         self._log = None
+        self.log_file_name = None
         self._task_rec = None
 
         # If we got both task_id and task_rec
@@ -147,7 +148,7 @@ class ETLTask(object):
         self._logged_dependencies = False
         self._normalized_dependents_set = None
         self._mutually_exclusive_with_set = None
-        self._database_pool = None
+        self._database_pool = list()
         self.init_timer = Timer(start_running=False)
         self.load_timer = Timer(start_running=False)
         self.finish_timer = Timer(start_running=False)
@@ -644,16 +645,21 @@ class ETLTask(object):
             database_name: str=None,
             user: str=None,
             schema: str=None,
+            override_port: int=None,
             **kwargs) -> DatabaseMetadata:
         """
         Get a new database connection.
         
         Parameters
         ----------
-        database_name: str
+        database_name:
             The name of the database section in :doc:`config_ini`
-        user: str
-        schema: str
+        user:
+            The user name to connect with. Defaults to config setting.
+        schema:
+            The schema to default to. Defaults to config setting.
+        override_port:
+            Override the config definition for the port (useful for SSH tunnels)
         """
         if database_name is None:
             database_name = self.get_database_name()
@@ -662,6 +668,7 @@ class ETLTask(object):
             database_name=database_name,
             user=user,
             schema=schema,
+            override_port=override_port,
             **kwargs
         )
         self.add_database(database_obj)
@@ -705,6 +712,11 @@ class ETLTask(object):
         self.object_registry.append(obj)
         return obj
 
+    def make_statistics_entry(self, stats_id):
+        stats = Statistics(stats_id=stats_id)
+        self.register_object(stats)
+        return stats
+
     # pylint: disable=singleton-comparison
     def debug_sql(self, mode: typing.Union[bool, int] = True):
         """
@@ -741,13 +753,13 @@ class ETLTask(object):
             new_config = BIConfigParser()
             new_config.merge_config(config)
             self._config = new_config
-        config.set_dated_log_file_name(self.name, '.log')
+        if self.log_file_name is None:
+            self.log_file_name = self.name
+        config.set_dated_log_file_name(self.log_file_name, '.log')
         config.setup_logging()
 
         self.log_logging_level()
         self.log.debug("externally_provided_scheduler = {}".format(self._externally_provided_scheduler))
-
-        self._database_pool = list()
 
     def init(self):
         """
@@ -908,6 +920,8 @@ class ETLTask(object):
             if self.__class__.__module__ == '__main__':
                 self.log.info("Direct module execution detected. Notifications will not be sent")
                 self.suppress_notifications = True
+        else:
+            self.suppress_notifications = suppress_notifications
 
         self.status = Status.running
 
@@ -944,6 +958,8 @@ class ETLTask(object):
                 self.child_to_parent.put(stats)
             stats_formatted = Statistics.format_statistics(stats)
             self.log.info("{} statistics=\n{stats}".format(self, stats=stats_formatted))
+
+            self.config.remove_log_file_handler(self.log_file_name)
 
             self.start_following_tasks()
         except Exception as e:  # pylint: disable=broad-except
@@ -1018,16 +1034,17 @@ class ETLTask(object):
         return notifiers_list
 
     def notify(self, channel_name, subject, message):
-        # Note: all exceptions are caught since we don't want notifications to kill the load
-        try:
-            notifiers_list = self.get_notifiers(channel_name)
-            for notifier in notifiers_list:
-                try:
-                    notifier.send(message=message, subject=subject)
-                except Exception as e:
-                    self.log.exception(e)
-        except Exception as e:
-            self.log.exception(e)
+        if not self.suppress_notifications:
+            # Note: all exceptions are caught since we don't want notifications to kill the load
+            try:
+                notifiers_list = self.get_notifiers(channel_name)
+                for notifier in notifiers_list:
+                    try:
+                        notifier.send(message=message, subject=subject)
+                    except Exception as e:
+                        self.log.exception(e)
+            except Exception as e:
+                self.log.exception(e)
 
     @property
     def statistics(self):
@@ -1076,6 +1093,7 @@ class ETLTask(object):
                 database.bind.dispose()
                 database.clear()
             del self._database_pool
+            self._database_pool = list()
         except Exception as e:  # pylint: disable=broad-except
             self.log.debug(repr(e))
 

@@ -32,6 +32,7 @@ class Connect(object):
             config: ConfigParser,
             database_name: str,
             usersection: str=None,
+            override_port: int=None,
             **kwargs) -> Engine:
         log = logging.getLogger(__name__)
 
@@ -61,6 +62,10 @@ class Connect(object):
             no_pw_url += ':****'
         if dsn is not None:
             next_part = '@' + dsn
+            url += next_part
+            no_pw_url += next_part
+        if override_port is not None:
+            next_part = ':' + str(override_port)
             url += next_part
             no_pw_url += next_part
         if dbname is not None:
@@ -107,9 +112,10 @@ class Connect(object):
             database_name: str,
             user: str=None,
             schema: str=None,
+            override_port: int=None,
             **kwargs) -> DatabaseMetadata:
         log = logging.getLogger(__name__)
-        engine = Connect.get_sqlachemy_engine(config, database_name, user, **kwargs)
+        engine = Connect.get_sqlachemy_engine(config, database_name, user, override_port=override_port, **kwargs)
         if schema is None and config.has_option(database_name, 'schema'):
             schema = config.get(database_name, 'schema')
             log.info("Using config file schema {}".format(schema))

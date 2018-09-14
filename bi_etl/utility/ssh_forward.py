@@ -1,3 +1,4 @@
+import random
 import subprocess
 import time
 from configparser import ConfigParser
@@ -23,7 +24,7 @@ def ssh_forward(
     if ssh_path is None:
         ssh_path = 'ssh'
     if local_port is None:
-        local_port = server_port
+        local_port = random.randrange(10000, 60000)
     cmd = [
         ssh_path,
         '{user}@{host}'.format(user=user, host=host),
@@ -66,7 +67,9 @@ def ssh_forward(
                     log.error(errs)
                 log.error("ssh return code = {}".format(rc))
         else:
-            log.info("ssh tunnel running OK")
+            log.info("ssh tunnel running OK with local_port = {}".format(local_port))
+
+        return local_port
 
     except subprocess.CalledProcessError as e:
         log.error(e.stdout)
@@ -82,7 +85,7 @@ def ssh_forward_using_config(config: ConfigParser, section='ssh', wait=False):
     local_port = config[section].get('local_port', fallback=None)
     ssh_path = config[section].get('ssh_path', fallback=None)
     seconds_wait_for_usage = config[section].get('seconds_wait_for_usage', fallback=10)
-    ssh_forward(
+    local_port = ssh_forward(
         host=host,
         user=user,
         local_port=local_port,
@@ -95,6 +98,8 @@ def ssh_forward_using_config(config: ConfigParser, section='ssh', wait=False):
     seconds_wait_for_tunnel_start = config[section].get('seconds_wait_for_tunnel_start', fallback=None)
     if seconds_wait_for_tunnel_start:
         time.sleep(seconds_wait_for_tunnel_start)
+
+    return local_port
 
 
 if __name__ == '__main__':
