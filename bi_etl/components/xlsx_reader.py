@@ -221,10 +221,11 @@ class XLSXReader(ETLComponent):
     def _raw_rows(self):
         # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
         self.__active_row = self.start_row
+        this_iteration_header = self.generate_iteration_header()
         for row in self.active_worksheet.iter_rows(row_offset=self.start_row-1):
-            self.__active_row += 1            
+            self.__active_row += 1
             row_values = XLSXReader._get_cell_values(row)           
-            d = self.Row(list(zip(self.column_names, row_values)))
+            d = self.Row(list(zip(self.column_names, row_values)), iteration_header=this_iteration_header)
             len_column_names = len(self.column_names)
             len_row = len(row_values)
             if len_column_names < len_row:
