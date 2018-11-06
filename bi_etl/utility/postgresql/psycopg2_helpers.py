@@ -53,7 +53,7 @@ def psycopg2_sql_extract(
     conn.set_client_encoding(encoding)
     cur = conn.cursor()
 
-    copy_stmt = "COPY ({sql}) TO STDOUT WITH DELIMITER {delimiter} NULL {null}".format(
+    copy_stmt = "COPY ({sql}) TO STDOUT WITH DELIMITER '{delimiter}' NULL '{null}'".format(
         sql=sql,
         delimiter=delimiter,
         null=null,

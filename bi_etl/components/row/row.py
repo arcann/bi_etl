@@ -176,8 +176,8 @@ class Row(typing.MutableMapping):
                                              )
                 else:
                     args = source_data.__str__()
-                    raise ValueError("Row couldn't get set with {atype} {args}."
-                                     " Error {e}."
+                    raise ValueError("Row instance couldn't be built with source type {atype} value={args}."
+                                     " Error was {e}."
                                      .format(e=e, args=args, atype=type(args))
                                      )
 

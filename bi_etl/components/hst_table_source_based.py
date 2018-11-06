@@ -266,7 +266,7 @@ class HistoryTableSourceBased(HistoryTable):
             self.prior_upsert_key = nk_tuple
             self.prior_upsert_lookup_name = lookup_name
             try:
-                existing_rows = lookup.find_versions_collection(self.prior_upsert_key)
+                existing_rows = lookup.find_versions_list(self.prior_upsert_key)
             except NoResultFound:
                 # No existing rows were found, insert
                 new_row = source_mapped_as_target_row
@@ -287,7 +287,8 @@ class HistoryTableSourceBased(HistoryTable):
 
                 return new_row
 
-            self.prior_upsert_existing_rows_list = list(existing_rows.items())
+            # We only reach here if a result was found from the lookup
+            self.prior_upsert_existing_rows_list = existing_rows
             self.prior_upsert_existing_row_index = 0
             self.prior_upsert_update_callback = update_callback
             self.prior_upsert_insert_callback = insert_callback
@@ -330,7 +331,8 @@ class HistoryTableSourceBased(HistoryTable):
                 existing_begin_date = self.default_end_date
                 existing_row = None
             else:
-                existing_begin_date, existing_row = self.prior_upsert_existing_rows_list[self.prior_upsert_existing_row_index]
+                existing_row = self.prior_upsert_existing_rows_list[self.prior_upsert_existing_row_index]
+                existing_begin_date = existing_row[self.begin_date_column]
 
             if row_begin_date < existing_begin_date:
                 # New date is before all remaining existing rows
@@ -382,7 +384,8 @@ class HistoryTableSourceBased(HistoryTable):
 
     def finish_pending_existing_rows(self):
         if self.prior_upsert_row is not None:
-            for existing_begin_date, existing_row in self.prior_upsert_existing_rows_list[self.prior_upsert_existing_row_index:]:
+            for existing_row in self.prior_upsert_existing_rows_list[self.prior_upsert_existing_row_index:]:
+                existing_begin_date = existing_row[self.begin_date_column]
                 excludes = set(self.primary_key)
                 excludes.add(self.end_date_column)
                 upsert_row = self.prior_upsert_row.subset(exclude=excludes)

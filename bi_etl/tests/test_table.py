@@ -1350,7 +1350,7 @@ class TestTable(unittest.TestCase):
 
         row = rows_dict[-7777]
         self.assertEqual(row['col1'], -7777)
-        self.assertEqual(row['col2'], 'Not Applicable')
+        self.assertEqual(row['col2'], 'Not Available')
         self.assertEqual(row['col3'], -7777)
         self.assertEqual(row['col4'], -7777)
 

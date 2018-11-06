@@ -296,7 +296,7 @@ class BIConfigParser(ConfigParser):
                 folder = self.get('logging', 'log_folder')
                 folder = os.path.expanduser(folder)
                 if not os.path.exists(folder):
-                    os.mkdir(folder)
+                    os.makedirs(folder)
                 log_file_name = os.path.join(folder, log_file_name)
         return log_file_name
 
@@ -524,7 +524,7 @@ def build_example(config: BIConfigParser=None, config_file_name: str='config.ini
     if not os.path.exists(example_config_dir):
         response = yes_no("{} does not exist. Create it?".format(example_config_dir))
         if response:
-            os.mkdir(example_config_dir)
+            os.makedirs(example_config_dir)
         else:
             raise FileNotFoundError("{} does not exist.".format(example_config_dir))
 

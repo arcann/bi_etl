@@ -353,7 +353,7 @@ class ReadOnlyTable(ETLComponent):
         # Close the database connection
         self.close()
 
-    def execute(self, statement, *list_params, **params):
+    def execute(self, statement, *list_params, **params) -> sqlalchemy.engine.ResultProxy:
         # compiled_cache created huge memory usage. It seems like each lookup created it's own entry
         # execution_options(compiled_cache=self.__compile_cache)
         if self.trace_sql:

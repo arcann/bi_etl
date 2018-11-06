@@ -436,16 +436,16 @@ class Lookup(object):
                              )
             raise RuntimeError(msg)
 
-    def find_versions_collection_in_remote_table(self, row: Union[Row, tuple]) -> MutableMapping[datetime, Row]:
-        return {self.COLLECTION_INDEX: self.find_in_remote_table(row)}
+    def find_versions_list_in_remote_table(self, row: Union[Row, tuple]) -> list:
+        return [self.find_in_remote_table(row)]
 
-    def find_versions_collection(
+    def find_versions_list(
             self,
             row: Union[Row, tuple],
             fallback_to_db: bool=True,
             maintain_cache: bool=True,
             stats: Statistics=None,
-            ) -> MutableMapping[datetime, Row]:
+            ) -> list:
         """
 
         Parameters
@@ -465,7 +465,7 @@ class Lookup(object):
         """
         if self.cache_enabled:
             try:
-                rows = self.get_versions_collection(row)
+                rows = list(self.get_versions_collection(row).values())
                 if stats is not None:
                     stats['Found in cache'] += 1
                     stats.timer.stop()
@@ -504,8 +504,8 @@ class Lookup(object):
         try:
             if stats is not None:
                 stats['DB lookup performed'] += 1
-            rows = self.find_versions_collection_in_remote_table(row)
-            for row in rows.values():
+            rows = self.find_versions_list_in_remote_table(row)
+            for row in rows:
                 row.status = RowStatus.existing
                 if maintain_cache and self.cache_enabled:
                     self.cache_row(row, allow_update=False)

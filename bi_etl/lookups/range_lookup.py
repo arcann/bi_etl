@@ -248,7 +248,7 @@ class RangeLookup(Lookup):
                 msg += '\n--------------------------\n' 
             raise RuntimeError(msg)
 
-    def find_versions_collection_in_remote_table(self, row: Union[Row, tuple]) -> list:
+    def find_versions_list_in_remote_table(self, row: Union[Row, tuple]) -> list:
         """
         Find a matching row in the lookup based on the lookup index (keys)
 
@@ -265,7 +265,11 @@ class RangeLookup(Lookup):
         values_dict = super()._get_remote_stmt_where_values(row)
 
         # noinspection PyUnresolvedReferences
-        rows = list(self.parent_component.execute(self._remote_lookup_stmt, values_dict))
+        result = list(self.parent_component.execute(self._remote_lookup_stmt, values_dict))
+        rows = list()
+        for result_proxy_row in result:
+            row = self.parent_component.Row(data=result_proxy_row)
+            rows.append(row)
         self.stats.timer.stop()
         if len(rows) == 0:
             raise NoResultFound()
