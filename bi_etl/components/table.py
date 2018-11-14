@@ -2759,7 +2759,6 @@ class Table(ReadOnlyTable):
 
         for source_row in special_rows:
             self.upsert(source_row, parent_stats=stats)
-            self.upsert(source_row, parent_stats=stats)
 
         self.commit(parent_stats=stats)
         self.auto_generate_key = save_auto_gen
