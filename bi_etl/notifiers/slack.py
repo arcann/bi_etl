@@ -14,11 +14,17 @@ class Slack(Notifier):
         self.slack_client = SlackClient(slack_token)
         self.slack_channel = config.get(config_section, 'channel', fallback=None)
         self.mention = config.get(config_section, 'mention', fallback=None)
-        if self.slack_channel is None:
+
+        if self.slack_channel is not None and self.slack_channel.lower().startswith('get from'):
+            channel_section = self.slack_channel[9:]
+            self.slack_channel = config.get(channel_section, 'channel', fallback=None)
+
+        if self.slack_channel is None or self.slack_channel == 'OVERRIDE_THIS_SETTING':
             self.log.warning("Slack channel not set. No slack messages will be sent.")
+            self.slack_channel = None
 
     def send(self, message, subject=None, throw_exception=False):
-        if self.slack_channel is not None and self.slack_channel != 'OVERRIDE_THIS_SETTING':
+        if self.slack_channel is not None:
             if subject:
                 message_to_send = "{}: {}".format(subject, message)
             else:
@@ -26,11 +32,15 @@ class Slack(Notifier):
 
             if self.mention:
                 message_to_send += ' ' + self.mention
+                link_names = True
+            else:
+                link_names = False
 
             result = self.slack_client.api_call(
                 "chat.postMessage",
                 channel=self.slack_channel,
-                text=message_to_send
+                text=message_to_send,
+                link_names=link_names
             )
             if not result['ok']:
                 self.log.error('slack error: {} for channel {}'.format(
