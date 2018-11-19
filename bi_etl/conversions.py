@@ -11,14 +11,12 @@ from datetime import time
 from decimal import Decimal, InvalidOperation
 from typing import Union
 
-Transformation = namedtuple(typename='Transformation', field_names=['column', 'conversion'])
 
-
-class Conversion(object):
-    def __init__(self, function, *args, **kwargs):
-        self.function = function
-        self.args = args
-        self.kwargs = kwargs
+def strip(s: str):
+    if s is None:
+        return None
+    else:
+        return s.strip()
 
 
 def str2int(s):
@@ -301,12 +299,12 @@ License: MIT
 
 # see: http://goo.gl/kTQMs
 SYMBOLS = {
-    'customary'     : ('B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'),
-    'customary_ext' : ('byte', 'kilo', 'mega', 'giga', 'tera', 'peta', 'exa',
-                       'zetta', 'iotta'),
-    'iec'           : ('Bi', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi', 'Yi'),
-    'iec_ext'       : ('byte', 'kibi', 'mebi', 'gibi', 'tebi', 'pebi', 'exbi',
-                       'zebi', 'yobi'),
+    'customary'     : ['B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'],
+    'customary_ext' : ['byte', 'kilo', 'mega', 'giga', 'tera', 'peta', 'exa',
+                       'zetta', 'iotta'],
+    'iec'           : ['Bi', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi', 'Yi'],
+    'iec_ext'       : ['byte', 'kibi', 'mebi', 'gibi', 'tebi', 'pebi', 'exbi',
+                       'zebi', 'yobi'],
 }
 
 
@@ -357,7 +355,7 @@ def bytes2human(n, format_str='%(value).1f %(symbol)s', symbols='customary'):
     for symbol in reversed(symbols[1:]):
         if n >= prefix[symbol]:
             value = float(n) / prefix[symbol]
-            return format_str% dict(symbol=symbols[0], value=value)
+            return format_str % dict(symbol=symbol, value=value)
     return format_str % dict(symbol=symbols[0], value=n)
 
 

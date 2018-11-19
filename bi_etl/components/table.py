@@ -2185,7 +2185,13 @@ class Table(ReadOnlyTable):
 
         # Set the last update date
         if self.last_update_date is not None:
-            row[self.get_column_name(self.last_update_date)] = datetime.now()
+            last_update_date_col = self.get_column_name(self.last_update_date)
+            if changes_list is not None:
+                # To support partial updates, we need to add the last_update_date change to the list
+                last_update_date_chg = ColumnDifference(last_update_date_col, row[last_update_date_col], datetime.now())
+                changes_list.append(last_update_date_chg)
+            else:
+                row[last_update_date_col] = datetime.now()
 
         if changes_list is not None:
             for d_chg in changes_list:
@@ -2619,10 +2625,14 @@ class Table(ReadOnlyTable):
                 do_not_update = []
             if skip_update_check_on is None:
                 skip_update_check_on = []
-            changes_list = existing_row.compare_to(source_mapped_as_target_row,
-                                                   exclude=do_not_update + skip_update_check_on)
-            conditional_changes = existing_row.compare_to(source_mapped_as_target_row,
-                                                      compare_only=skip_update_check_on)
+            changes_list = existing_row.compare_to(
+                source_mapped_as_target_row,
+                exclude=do_not_update + skip_update_check_on
+            )
+            conditional_changes = existing_row.compare_to(
+                source_mapped_as_target_row,
+                compare_only=skip_update_check_on
+            )
 
             if self.track_update_columns:
                 col_stats = self.get_stats_entry('updated columns', parent_stats=stats)
