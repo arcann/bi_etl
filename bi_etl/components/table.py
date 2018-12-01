@@ -2144,7 +2144,7 @@ class Table(ReadOnlyTable):
                       changes_list: list = None,
                       additional_update_values: Union[dict, Row] = None,
                       add_to_cache: bool = True,
-                      update_apply_entire_row = False,
+                      update_apply_entire_row: bool = False,
                       stat_name: str = 'update',
                       parent_stats: Statistics = None,
                       **kwargs
@@ -2188,7 +2188,11 @@ class Table(ReadOnlyTable):
             last_update_date_col = self.get_column_name(self.last_update_date)
             if changes_list is not None:
                 # To support partial updates, we need to add the last_update_date change to the list
-                last_update_date_chg = ColumnDifference(last_update_date_col, row[last_update_date_col], datetime.now())
+                if last_update_date_col in row:
+                    prev_last_update = row[last_update_date_col]
+                else:
+                    prev_last_update = None
+                last_update_date_chg = ColumnDifference(last_update_date_col, prev_last_update, datetime.now())
                 changes_list.append(last_update_date_chg)
             else:
                 row[last_update_date_col] = datetime.now()
