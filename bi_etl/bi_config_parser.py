@@ -9,7 +9,7 @@ import logging
 import os.path
 import re
 import sys
-from configparser import NoSectionError
+from configparser import NoSectionError, _UNSET
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
@@ -49,7 +49,7 @@ class BIConfigParser(ConfigParser):
         self.logging_setup = False
         self.trace_logging_setup = self.getboolean('logging',
                                                    'trace_setup',
-                                                   fallback=False
+                                                   fallback=False,
                                                    )
 
     def merge_config(self, other_config):
@@ -57,7 +57,7 @@ class BIConfigParser(ConfigParser):
             if not self.has_section(section):
                 self.add_section(section)
             for option in other_config.options(section):
-                if not self.has_option(section, option):
+                if not self.has_direct_option(section, option):
                     self[section][option] = other_config[section][option]
 
     def merge_parent(self, directories: list, parent_file: str):
@@ -205,6 +205,46 @@ class BIConfigParser(ConfigParser):
         self.log.info('Read config file (relative) {}'.format(file_path))
         self.config_file_read = self.read(file_path)
         return self.config_file_read
+
+    def has_direct_option(self, section, option):
+        return super().has_option(section, option)
+
+    def has_option(self, section, option):
+        if super().has_option(section, option):
+            return True
+        else:
+            if '.' in section:
+                section_list = section.split('.')[:-1]
+                return self.has_option(section='.'.join(section_list), option=option)
+            else:
+                return False
+
+    def get(self, section, option, *, raw=False, vars=None, fallback=_UNSET):
+        """
+        Get an option value for a given section.
+
+        If `vars' is provided, it must be a dictionary. The option is looked up
+        in `vars' (if provided), `section', and in `DEFAULTSECT' in that order.
+        If the key is not found and `fallback' is provided, it is used as
+        a fallback value. `None' can be provided as a `fallback' value.
+
+        If interpolation is enabled and the optional argument `raw' is False,
+        all interpolations are expanded in the return values.
+
+        Arguments `raw', `vars', and `fallback' are keyword only.
+
+        The section DEFAULT is special.
+        """
+        try:
+            if super().has_option(section, option):
+                return super().get(section, option, raw=raw, vars=vars, fallback=fallback)
+            else:
+                if '.' in section:
+                    section_list = section.split('.')[:-1]
+                    return self.get(section='.'.join(section_list), option=option, raw=raw, vars=vars, fallback=fallback)
+        except NoSectionError:
+            pass
+        return super().get(section, option, raw=raw, vars=vars, fallback=fallback)
 
     def get_byte_size(self, section: str, option: str, fallback: str = None) -> int:
         """

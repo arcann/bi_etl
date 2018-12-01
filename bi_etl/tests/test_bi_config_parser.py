@@ -216,6 +216,36 @@ class Test(unittest.TestCase):
                       config.get_log_file_name(),
                       )
 
+    def test_inherit_1(self):
+        config = bi_etl.bi_config_parser.BIConfigParser()
+        config.add_section('level1')
+        config.add_section('level1.level2')
+        config.set('level1', 'A', '1')
+        config.set('level1', 'B', '2')
+        config.set('level1.level2', 'A', '10')
+
+        self.assertEquals(config['level1.level2']['A'], '10')
+        self.assertEquals(config.get('level1.level2', 'A'), '10')
+
+        self.assertEquals(config['level1.level2']['B'], '2')
+        self.assertEquals(config.get('level1.level2', 'B'), '2')
+
+        self.assertEquals(config.get('level1.level2', 'C', fallback='3'), '3')
+
+        self.assertEquals(config.get('level1', 'C', fallback='4'), '4')
+
+        try:
+            config.get('level1', 'C')
+            self.fail("Did not raise NoOptionError")
+        except configparser.NoOptionError:
+            pass
+
+        try:
+            config.get('level1.level2', 'C')
+            self.fail("Did not raise NoOptionError")
+        except configparser.NoOptionError:
+            pass
+
 
 if __name__ == "__main__":
     unittest.main()
