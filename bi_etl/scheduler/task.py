@@ -906,6 +906,7 @@ class ETLTask(object):
             suppress_notifications=None,
             parent_to_child=None,
             child_to_parent=None,
+            handle_exceptions=True,
             ):
         """
         Should not generally be overridden.
@@ -964,6 +965,8 @@ class ETLTask(object):
             self.start_following_tasks()
         except Exception as e:  # pylint: disable=broad-except
             self.status = Status.failed
+            if not handle_exceptions:
+                raise e
             self.log.exception(e)
             self.log.error(utility.dict_to_str(e.__dict__))
             if not self.suppress_notifications:
