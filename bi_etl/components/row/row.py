@@ -6,7 +6,9 @@ Created on Sep 17, 2014
 """
 import typing
 import warnings
-from collections import OrderedDict
+from collections import OrderedDict, KeysView
+import sys
+OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
 from decimal import Decimal
 from typing import Union, List, Iterable
 
@@ -287,8 +289,9 @@ class Row(typing.MutableMapping):
     def __copy__(self):
         return self.clone()
 
-    def keys(self):
-        return self.columns_in_order
+    def keys(self) -> KeysView:
+        # noinspection PyArgumentList
+        return KeysView(self.columns_in_order)
 
     def _extend_to_size(self, desired_size):
         current_length = len(self._data_values)

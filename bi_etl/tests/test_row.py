@@ -6,7 +6,6 @@ Created on Mar 26, 2015
 import unittest
 from collections import OrderedDict
 
-import pytest
 from sqlalchemy.engine.result import RowProxy
 from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.sql.sqltypes import Integer, String, Numeric
@@ -461,7 +460,7 @@ class TestRow(unittest.TestCase):
             pass
 
 
-@pytest.mark.skip(reason="Not ready yet")
+@unittest.skip("Not ready yet")
 class TestRowCaseInsensitive(TestRow):
     def setUp(self):
         super().setUp(row_object=RowCaseInsensitive)

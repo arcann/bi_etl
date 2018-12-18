@@ -8,6 +8,7 @@ import typing
 
 from bi_etl.components.row.row import Row
 from bi_etl.statistics import Statistics
+from bi_etl.timer import Timer
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.etlcomponent import ETLComponent
 import logging

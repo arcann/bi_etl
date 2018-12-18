@@ -6,7 +6,9 @@ Created on Sep 17, 2014
 
 import timeit
 from collections import OrderedDict
-from datetime import datetime, timedelta
+import sys
+OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
+from datetime import datetime
 
 
 class Timer(object):

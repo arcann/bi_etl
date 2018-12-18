@@ -7,6 +7,8 @@ import unittest
 from bi_etl.utility import dict_to_str
 from datetime import datetime
 from collections import OrderedDict
+import sys
+OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
 
 
 class Test(unittest.TestCase):

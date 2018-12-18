@@ -4,6 +4,8 @@ Created on Mar 20, 2015
 @author: woodd
 """
 from collections import OrderedDict
+import sys
+OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
 from typing import List
 
 from bi_etl.timer import Timer
