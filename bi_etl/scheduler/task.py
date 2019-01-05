@@ -1000,7 +1000,7 @@ class ETLTask(object):
         'Slack': Slack
     }
 
-    def get_notifiers(self, channel_name) -> list:
+    def get_notifiers(self, channel_name, auto_include_log=True) -> list:
         config_sections_str = self.config.get('Notifiers', channel_name, fallback=None)
         config_sections = list()
         if config_sections_str is not None and config_sections_str != '':
@@ -1022,6 +1022,12 @@ class ETLTask(object):
             self.log.info('Channel {} not set in config, logging notification instead.'.format(
                 channel_name
             ))
+            # Add LogNotifier if it would not be auto included below
+            if not auto_include_log:
+                if 'LogNotifier' not in config_sections:
+                    config_sections.append('LogNotifier')
+
+        if auto_include_log:
             if 'LogNotifier' not in config_sections:
                 config_sections.append('LogNotifier')
 

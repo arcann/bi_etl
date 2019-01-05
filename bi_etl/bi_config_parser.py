@@ -95,7 +95,7 @@ class BIConfigParser(ConfigParser):
                 if setting.startswith('parent'):
                     self.merge_parent(directories, self['Config'][setting])
 
-    def read_config_ini(self, current_path: str=None, file_name: str= 'config.ini'):
+    def read_config_ini(self, current_path: str = None, file_name: str = 'config.ini'):
         r"""
         If the BI_ETL_CONFIG environment variable is set, read the config file(s) as specified there (; delimited).
 
