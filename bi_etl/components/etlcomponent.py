@@ -305,6 +305,7 @@ class ETLComponent(Iterable):
 
         # noinspection PyTypeChecker
         for row in result_iter:
+            self.process_messages()
             if not self._iterator_applied_filters:
                 if criteria_dict is not None:
                     passed_filter = True
@@ -323,22 +324,18 @@ class ETLComponent(Iterable):
             # Add to current stat counter
             stats['rows_read'] += 1
             if stats['rows_read'] == 1:
-                self.process_messages()
                 stats['first row seconds'] = stats.timer.seconds_elapsed_formatted
                 if self.log_first_row:
                     self.log_progress(row, stats)
             elif progress_frequency is not None:
                 # noinspection PyTypeChecker
                 if 0 < progress_frequency < progress_timer.seconds_elapsed:
-                    self.process_messages()
                     self.log_progress(row, stats)
                     progress_timer.reset()
                 elif progress_frequency == 0:
                     # Log every row
-                    self.process_messages()
-                    self.log_progress(row, stats)            
+                    self.log_progress(row, stats)
             if self.trace_data:
-                self.process_messages()
                 self.log.debug("READ {name}:\n{row}".format(name=self,
                                                             row=dict_to_str(row).encode('utf-8',
                                                                                         errors='replace')
