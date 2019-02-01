@@ -4,6 +4,7 @@ Created on Sep 17, 2014
 @author: woodd
 """
 import codecs
+import contextlib
 import math
 import os
 import tempfile
@@ -12,11 +13,8 @@ import traceback
 import warnings
 from decimal import Decimal
 from decimal import InvalidOperation
-from enum import IntEnum, unique
-from pprint import pformat
 
 import sqlalchemy
-import subprocess
 from datetime import datetime, date, time, timedelta
 from sqlalchemy.sql.expression import bindparam
 from typing import Iterable, Callable, List, Union
@@ -27,6 +25,7 @@ from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
+from bi_etl.components.get_next_key.local_table_memory import LocalTableMemory
 from bi_etl.conversions import nvl
 from bi_etl.conversions import replace_tilda
 from bi_etl.conversions import str2date
@@ -145,11 +144,23 @@ class Table(ReadOnlyTable):
         Should the :meth:`upsert` method keep a set container of source row keys that it has processed?  
         That set would then be used by :meth:`update_not_processed`, :meth:`logically_delete_not_processed`,
         and :meth:`delete_not_processed`.
-         
     """
     DEFAULT_BATCH_SIZE = 5000
     # Replacement for float Not a Number (NaN) values
     NAN_REPLACEMENT_VALUE = None
+
+    from enum import IntEnum, unique
+
+    @unique
+    class InsertMethod(IntEnum):
+        execute_many = 1
+        insert_values_list = 2
+        bcp = 3
+
+    @unique
+    class UpdateMethod(IntEnum):
+        execute_many = 1
+        bcp = 3
 
     @unique
     class RowBuildMethod(IntEnum):
@@ -177,7 +188,9 @@ class Table(ReadOnlyTable):
                                     schema=schema,
                                     exclude_columns=exclude_columns,
                                     )
-        self.load_via_bcp = False
+        self.support_multiprocessing = False
+        self.insert_method = Table.InsertMethod.execute_many
+        self.update_method = Table.UpdateMethod.execute_many
         self.track_update_columns = True
         self.bcp_table_name = self.qualified_table_name
         self.bcp_update_table_name = self.table_name + '_UPD'
@@ -203,6 +216,9 @@ class Table(ReadOnlyTable):
 
         # Init table "memory"
         self.max_keys = dict()
+        self.max_locally_allocated_keys = dict()
+        self._table_key_memory = LocalTableMemory(self)
+        self._max_keys_lock = contextlib.nullcontext()
 
         # Make a self example source row
         self._example_row = self.Row()
@@ -234,7 +250,7 @@ class Table(ReadOnlyTable):
 
         self._coerce_methods_built = False
 
-        # Should be the last call of every init            
+        # Should be the after all self attributes are created
         self.set_kwattrs(**kwargs)
 
     def close(self):
@@ -261,45 +277,30 @@ class Table(ReadOnlyTable):
             else:
                 self.__batch_size = 1
 
+    @property
+    def table_key_memory(self):
+        return self._table_key_memory
+
+    @table_key_memory.setter
+    def table_key_memory(self, table_key_memory):
+        self._table_key_memory = table_key_memory
+        table_key_memory.table = self
+
     def autogenerate_sequence(self, row, seq_column: str, force_override=True):
         # Make sure we have a column object
         seq_column_obj = self.get_column(seq_column)
         # If key value is not already set, or we are supposed to force override                    
         if row.get(seq_column_obj.name) is None or force_override:
-            # Get the database max
-            current_max = self.max_keys.get(seq_column_obj)
-            if current_max is None:
-                current_max = self.max(seq_column_obj)
-                # In case the database call returns None
-                if current_max is None:
-                    current_max = 0
-                    self.log.info("Initialize sequence for {} with value {:}".format(
-                        seq_column_obj,
-                        current_max + 1
-                    )
-                    )
-                # Make sure max is an integer
-                current_max = int(current_max)
-                # Check for negative (special values) set max to 0
-                if current_max < 0:
-                    current_max = 0
-                    self.log.info("Initialize sequence for {} with value {:} (and not negative value)".format(
-                        seq_column_obj,
-                        current_max + 1
-                    )
-                    )
-            current_max += 1
-            row[seq_column_obj] = current_max
-            # self.log.debug("{} Value = {}  =  {}".format(seq_column, row[seq_column], current_max))
-            self.max_keys[seq_column_obj] = current_max
-            return current_max
+            next_key = self.table_key_memory.get_next_key(seq_column)
+            row[seq_column_obj] = next_key
+            return next_key
 
     def autogenerate_key(self, row, force_override=True):
         if self.auto_generate_key:
             pk_list = list(self.primary_key)
             if len(pk_list) > 1:
                 raise AssertionError(
-                    "Can't auto generate a compound key with table {self.} pk={self.primary_key}".format(self=self)
+                    f"Can't auto generate a compound key with table {self} pk={self.primary_key}"
                 )
             key = pk_list[0]
             return self.autogenerate_sequence(row, seq_column=key, force_override=force_override)
@@ -344,9 +345,8 @@ class Table(ReadOnlyTable):
             source_col_list = source_definition
         else:
             self.log.error(
-                "check_column_mapping source_definition needs to be ETLComponent, Row, set, or list. Got {}".format(
-                    type(source_definition)
-                )
+                "check_column_mapping source_definition needs to be ETLComponent, Row, set, or list. "
+                f"Got {type(source_definition)}"
             )
             return False
 
@@ -364,12 +364,7 @@ class Table(ReadOnlyTable):
                     if src_col not in target_set:
                         if isinstance(source_definition, set):
                             pos = 'N/A'
-                        msg = "Sanity Check: Source {src} contains column {col}({pos}) not in target {tgt}".format(
-                            src=source_name,
-                            col=src_col,
-                            pos=pos,
-                            tgt=self
-                        )
+                        msg = f"Sanity Check: Source {source_name} contains column {src_col}({pos}) not in target {self}"
                         if raise_on_source_not_in_target:
                             raise ColumnMappingError(msg)
                         else:
@@ -391,13 +386,7 @@ class Table(ReadOnlyTable):
                     else:
                         if tgtCol not in [self.delete_flag, self.last_update_date]:
                             pos = target_col_list.index(tgtCol)
-                            msg = "Sanity Check: Target {tgt} contains column {col}(col {pos}) not in source {src}"
-                            msg = msg.format(
-                                tgt=self,
-                                col=tgtCol,
-                                pos=pos,
-                                src=source_name
-                            )
+                            msg = f"Sanity Check: Target {self} contains column {tgtCol}(col {pos}) not in source {source_name}"
                             if raise_on_target_not_in_source:
                                 raise ColumnMappingError(msg)
                             else:
@@ -435,32 +424,30 @@ class Table(ReadOnlyTable):
             self.log.error(traceback.format_exc())
             self.log.debug(repr(e))
 
-    def _generate_null_check(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
+    def _generate_null_check(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement') -> str:
         target_name = target_column_object.name
         code = ''
         if not target_column_object.nullable:
             if not self.auto_generate_key and target_name in self.primary_key:
                 # Check for nulls. Not as an ELSE because the conversion logic might have made the value null
-                code = textwrap.dedent("""\
+                code = textwrap.dedent(f"""\
                 # base indent            
                     if target_column_value is None:                                            
-                        msg = "{table}.{column} has is not nullable and this cannot accept value '{{val}}'".format(
+                        msg = "{self}.{target_name} has is not nullable and this cannot accept value '{{val}}'".format(
                             val=target_column_value,
                         )
                         raise ValueError(msg)                    
-                """).format(table=self,
-                            column=target_name,
-                           )
+                """)
         return code
 
     @staticmethod
     def _get_coerce_method_name(target_column_object: 'sqlalchemy.sql.expression.ColumnElement') -> str:
-        return "_coerce_{}".format(target_column_object.name)
+        return f"_coerce_{target_column_object.name}"
 
     def _make_generic_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
         name = self._get_coerce_method_name(target_column_object)
-        code = "def {name}(self, target_column_value):".format(name=name)
-        code += str(self._generate_null_check(target_column_object))
+        code = f"def {name}(self, target_column_value):"
+        code += self._generate_null_check(target_column_object)
         code += textwrap.dedent("""
         # base indent
             return target_column_value
@@ -468,15 +455,15 @@ class Table(ReadOnlyTable):
         try:
             exec(code)
         except SyntaxError as e:
-            self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+            self.log.exception(f"{e} from code\n{code}")
         # Add the new function as a method in this class
-        exec("self.{name} = {name}.__get__(self)".format(name=name))
+        exec(f"self.{name} = {name}.__get__(self)")
 
     def _make_str_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
         target_name = target_column_object.name
         t_type = target_column_object.type
         name = self._get_coerce_method_name(target_column_object)
-        code = "def {name}(self, target_column_value):".format(name=name)
+        code = f"def {name}(self, target_column_value):"
         code += textwrap.dedent("""\
         # base indent
             if isinstance(target_column_value, str):
@@ -508,20 +495,14 @@ class Table(ReadOnlyTable):
         if t_type.length is not None:
             try:
                 if t_type.length > 0:
-                    code += textwrap.dedent("""\
+                    code += textwrap.dedent(f"""\
                     # base indent
-                        if len(target_column_value) > {len}:
-                            msg = "{table}.{column} has type {type} which cannot accept value '{{val}}' because length {{val_len}} > {len} limit (_make_str_coerce)"
-                            msg = msg.format(                                
-                                val=target_column_value,
-                                val_len=len(target_column_value),
-                            )
+                        if len(target_column_value) > {t_type.length}:
+                            msg = ("{self}.{target_name} has type {str(t_type).replace('"', "'")} "
+                                   f"which cannot accept value '{{target_column_value}}' because "
+                                   f"length {{len(target_column_value)}} > {t_type.length} limit (_make_str_coerce)")
                             raise ValueError(msg)                        
-                        """).format(len=t_type.length,
-                                    table=self,
-                                    column=target_name,
-                                    type=str(t_type).replace('"', "'"),
-                                    )
+                        """)
             except TypeError:
                 # t_type.length is not a comparable type
                 pass
@@ -1371,7 +1352,48 @@ class Table(ReadOnlyTable):
             stats = self.pending_insert_stats
             if stats is None:
                 stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
-        if self.load_via_bcp:
+        if self.insert_method == Table.InsertMethod.insert_values_list:
+            prepare_stats = self.get_stats_entry('prepare ' + stat_name, parent_stats=stats)
+            prepare_stats.print_start_stop_times = False
+            prepare_stats.timer.start()
+            pending_insert_statements = StatementQueue(execute_with_binds=False)
+            for new_row in self.pending_insert_rows:
+                if new_row.status != RowStatus.deleted:
+                    stmt_key = new_row.positioned_column_set
+                    stmt = pending_insert_statements.get_statement_by_key(stmt_key)
+                    if stmt is None:
+                        prepare_stats['statements prepared'] += 1
+                        stmt = f"INSERT INTO {self.qualified_table_name} ({', '.join(new_row.columns_in_order)}) VALUES {{values}}"
+                        pending_insert_statements.add_statement(stmt_key, stmt)
+                    prepare_stats['rows prepared'] += 1
+                    stmt_values = new_row.values_in_order()
+                    pending_insert_statements.append_values_by_key(stmt_key, stmt_values)
+
+                    # Change the row status to existing, now any updates should be via update statements
+                    new_row.status = RowStatus.existing
+            prepare_stats.timer.stop()
+            try:
+                db_stats = self.get_stats_entry(stat_name + ' database execute', parent_stats=stats)
+                db_stats.print_start_stop_times = False
+                db_stats.timer.start()
+                rows_affected = pending_insert_statements.execute(self.connection())
+                db_stats.timer.stop()
+                db_stats['rows inserted'] += rows_affected
+                del self.pending_insert_rows
+                self.pending_insert_rows = list()
+            except Exception as e:
+                # self.log.error(traceback.format_exc())
+                self.log.exception(e)
+                self.log.error("Bulk insert failed. Applying as single inserts to find error row...")
+                self.rollback()
+                self.begin()
+                # Retry one at a time
+                pending_insert_statements.execute_singly(self.connection())
+                # If that didn't cause the error... re raise the original error
+                self.log.error("Single inserts did not produce the error. Original error will be issued below.")
+                self.rollback()
+                raise e
+        elif self.insert_method == Table.InsertMethod.bcp:
             bcp_stats = self.get_stats_entry(stat_name + ' bcp insert', parent_stats=stats)
             bcp_stats.print_start_stop_times = False
             bcp_stats.timer.start()
@@ -1423,19 +1445,7 @@ class Table(ReadOnlyTable):
                 self.rollback()
                 self.begin()
                 # Retry one at a time
-                for row_num, (stmt, row) in enumerate(pending_insert_statements.iter_single_statements()):
-                    try:
-                        # TODO: This should share the same code as insert_row's Immediate insert section
-                        self.connection().execute(stmt, row)
-                    except Exception as e:
-                        if not isinstance(row, Row):
-                            row = self.Row(row)
-                        self.log.error("Error with row {row_num} stmt {stmt} stmt_values {vals}".format(
-                            row_num=row_num,
-                            stmt=stmt,
-                            vals=row.str_formatted()
-                        ))
-                        raise e
+                pending_insert_statements.execute_singly()
                 # If that didn't cause the error... re raise the original error
                 self.log.error("Single inserts did not produce the error. Original error will be issued below.")
                 self.rollback()
@@ -2058,7 +2068,7 @@ class Table(ReadOnlyTable):
         stats.timer.start()
         self.begin()
 
-        if self.load_via_bcp:
+        if self.update_method == Table.UpdateMethod.bcp:
             self._update_via_bcp(self.pending_update_rows.values())
         else:
             pending_update_statements = StatementQueue()
