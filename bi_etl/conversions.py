@@ -77,7 +77,7 @@ def str2decimal(s):
             return Decimal(s)
         except InvalidOperation as e:
             if s[-1] in ['-', '+']:
-                s2 = s[-1]+ s[:-1].replace(',', '')
+                s2 = s[-1] + s[:-1].replace(',', '')
                 return Decimal(s2)
             else:
                 raise e
@@ -93,7 +93,7 @@ def str2decimal_end_sign(s):
         return None
     else:
         if s[-1] in ['-','+']:
-            s2 = s[-1]+ s[:-1].replace(',','')
+            s2 = s[-1] + s[:-1].replace(',','')
             return Decimal(s2)
         else:
             s = s.replace(',', '')
@@ -152,8 +152,7 @@ def str2datetime(s, dt_format='%m/%d/%Y %H:%M:%S'):
     dt_format: str
         For format options please see https://docs.python.org/3.5/library/datetime.html#strftime-strptime-behavior
     """
-    # TODO: Warn callers of deprecated  00000000 to None conversion. They should use nullif instead
-    if s is None or s == '' or s == '00000000':
+    if s is None or s == '':
         return None
     else:
         return datetime.strptime(s, dt_format)

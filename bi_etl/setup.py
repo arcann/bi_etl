@@ -1,8 +1,8 @@
-'''
+"""
 Created on Mar 26, 2015
 
 @author: woodd
-'''
+"""
 import os
 import sys
 from setuptools import setup, find_packages
@@ -20,12 +20,9 @@ install_requires = [
     'psutil >= 2.0.0',
     'openpyxl',
     'psutil',
-<<<<<<< local
     'sortedcontainers',
     'CaseInsensitiveDict',
-=======
-    'pyodbc',
->>>>>>> other
+    'pytest',
     ]
 
 if sys.version_info[0] < 3:
@@ -37,8 +34,8 @@ extras_require = {
     }
 
 setup(name='bi_etl',
-      ##TODO: Increment this version
-      version='0.1',
+      # TODO: Increment this version
+      version='0.7',
       description='ETL (Extract Transform Load) framework geared towards BI database in particular.',
       long_description=README + '\n\n' + CHANGES,
       classifiers=[

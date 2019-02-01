@@ -161,11 +161,13 @@ class BIConfigParser(ConfigParser):
         """
         Get the root path of a package given an object (default is this module).
 
-        Parameters:
-            obj: The object to inspect for package
-                 Defaults to this module
+        Parameters
+        ----------
+        obj:
+            The object to inspect for package. Defaults to this module
 
-        Returns:
+        Returns
+        -------
             The root path of the package
         """
         if obj is None:
@@ -209,7 +211,22 @@ class BIConfigParser(ConfigParser):
     def has_direct_option(self, section, option):
         return super().has_option(section, option)
 
-    def has_option(self, section, option):
+    def has_option(self, section, option) -> bool:
+        """
+
+        Parameters
+        ----------
+        section
+            Which section to check. Sections are created with a square braket heading e.g  [My_Section]
+            Case-sensitive
+        option
+            Which option to check. Case-sensitive
+
+        Returns
+        -------
+        True if the section and option exist
+
+        """
         if super().has_option(section, option):
             return True
         else:
@@ -222,18 +239,26 @@ class BIConfigParser(ConfigParser):
     def get(self, section, option, *, raw=False, vars=None, fallback=_UNSET):
         """
         Get an option value for a given section.
-
-        If `vars' is provided, it must be a dictionary. The option is looked up
-        in `vars' (if provided), `section', and in `DEFAULTSECT' in that order.
-        If the key is not found and `fallback' is provided, it is used as
-        a fallback value. `None' can be provided as a `fallback' value.
-
-        If interpolation is enabled and the optional argument `raw' is False,
-        all interpolations are expanded in the return values.
-
         Arguments `raw', `vars', and `fallback' are keyword only.
 
-        The section DEFAULT is special.
+        Parameters
+        ----------
+        section
+            Which section to look in. Sections are created with a square braket heading e.g  [My_Section]
+            The section DEFAULT is special.
+            Case-sensitive
+        option
+            Which option to get. Case-sensitive
+        raw
+            If interpolation is enabled and the optional argument `raw' is False,
+        all interpolations are expanded in the return values.
+        vars
+
+            If `vars' is provided, it must be a dictionary. The option is looked up
+            in `vars' (if provided), `section', and in `DEFAULTSECT' in that order.
+        fallback
+            If the key is not found and `fallback' is provided, it is used as
+            a fallback value. `None' can be provided as a `fallback' value.
         """
         try:
             if super().has_option(section, option):
