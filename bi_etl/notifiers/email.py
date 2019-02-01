@@ -12,7 +12,7 @@ class Email(Notifier):
         super().__init__(config=config,
                          config_section=config_section)
 
-    def send(self, message, subject=None, throw_exception=False):
+    def send(self, message, subject, throw_exception=False):
         smtp_to = self.config.get(self.config_section, 'distro_list', fallback=None)
         if not smtp_to:
             self.log.warning("{} distro_list option not found. No mail sent.".format(self.config_section))
@@ -34,10 +34,12 @@ class Email(Notifier):
                         if 'Sender' not in message:
                             message['Sender'] = self.config.get('SMTP', 'from')
                 else:
+                    if message is None:
+                        message = ''
                     message = MIMEText(message)
                     if subject is not None:
-                        message['Sender'] = self.config.get('SMTP', 'from')
-                    message['subject'] = subject
+                        message['subject'] = subject
+                    message['Sender'] = self.config.get('SMTP', 'from')
                     message['To'] = ','.join(to_addresses)
 
                 gateway = self.config.get('SMTP', 'gateway')

@@ -1,4 +1,5 @@
 from configparser import ConfigParser
+from time import sleep
 
 from bi_etl.notifiers.notifier import Notifier
 
@@ -23,12 +24,15 @@ class Slack(Notifier):
             self.log.warning("Slack channel not set. No slack messages will be sent.")
             self.slack_channel = None
 
-    def send(self, message, subject=None, throw_exception=False):
+    def send(self, subject, message, throw_exception=False):
         if self.slack_channel is not None:
-            if subject:
+            if subject and message:
                 message_to_send = "{}: {}".format(subject, message)
             else:
-                message_to_send = message
+                if message:
+                    message_to_send = message
+                else:
+                    message_to_send = subject
 
             if self.mention:
                 message_to_send += ' ' + self.mention
@@ -36,16 +40,27 @@ class Slack(Notifier):
             else:
                 link_names = False
 
-            result = self.slack_client.api_call(
-                "chat.postMessage",
-                channel=self.slack_channel,
-                text=message_to_send,
-                link_names=link_names
-            )
-            if not result['ok']:
-                self.log.error('slack error: {} for channel {}'.format(
-                    result,
-                    self.slack_channel,
-                ))
+            retry = True
+
+            while retry:
+                result = self.slack_client.api_call(
+                    "chat.postMessage",
+                    channel=self.slack_channel,
+                    text=message_to_send,
+                    link_names=link_names
+                )
+                if result['ok']:
+                    retry = False
+                else:
+                    if result['error'] == 'ratelimited':
+                        self.log.info('Waiting for ratelimited to clear')
+                        sleep(1.5)
+                        retry = True
+                    else:
+                        self.log.error('slack error: {} for channel {}'.format(
+                            result,
+                            self.slack_channel,
+                        ))
+                        retry = False
         else:
             self.log.info("Slack message not sent: {}".format(message))

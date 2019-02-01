@@ -1042,14 +1042,14 @@ class ETLTask(object):
             notifiers_list.append(notifier_class(self.config, config_section))
         return notifiers_list
 
-    def notify(self, channel_name, subject, message):
+    def notify(self, channel_name, subject, message=None):
         if not self.suppress_notifications:
             # Note: all exceptions are caught since we don't want notifications to kill the load
             try:
                 notifiers_list = self.get_notifiers(channel_name)
                 for notifier in notifiers_list:
                     try:
-                        notifier.send(message=message, subject=subject)
+                        notifier.send(subject=subject, message=message)
                     except Exception as e:
                         self.log.exception(e)
             except Exception as e:

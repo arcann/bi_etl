@@ -8,7 +8,8 @@ class LogNotifier(Notifier):
         super().__init__(config=config,
                          config_section=config_section)
 
-    def send(self, message, subject=None, throw_exception=False):
-        if subject:
+    def send(self, subject, message, throw_exception=False):
+        if subject is not None:
             self.log.info(subject)
-        self.log.info(message)
+        if message is not None:
+            self.log.info(message)
