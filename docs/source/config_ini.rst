@@ -16,4 +16,4 @@ The file will be searched for in the following locations.
 +------------+-----------------------------------------------+
 
 A sample file can be found in the code repository
- :download:`example_config_files/config.ini <../../example_config_files/config.ini>`
+ :download:`example_config_files/config.ini <../../example_config.ini>`

@@ -14,7 +14,6 @@ Subpackages
     bi_etl.notifiers
     bi_etl.parameters
     bi_etl.scheduler
-    bi_etl.tests
     bi_etl.utility
 
 Submodules
