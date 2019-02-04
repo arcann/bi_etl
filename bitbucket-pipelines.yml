@@ -9,6 +9,8 @@ pipelines:
   default:
     - step:
         script: # Modify the commands below to build your repository.
+          - /opt/python/bin/conda update -y conda
+          - /opt/python/bin/conda env update -n root --file  environment.yml
           - pip install -e .
           - pip install pytest
           - pytest
