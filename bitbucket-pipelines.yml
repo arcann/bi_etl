@@ -9,10 +9,15 @@ pipelines:
   default:
     - step:
         caches:
-          - docker
+          - condacache
         script: # Modify the commands below to build your repository.
           - conda update -y conda
+          - conda env list
           - conda env update --file linux_environment.yml
           - pip install -e .
           - pip install pytest
           - pytest
+
+definitions:
+  caches:
+    condacache: /opt/python/bin
