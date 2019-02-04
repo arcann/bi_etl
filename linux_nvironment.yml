@@ -1,0 +1,24 @@
+name: bi_etl37
+channels:
+  - esri
+  - defaults
+dependencies:
+  - python>=3.7
+  - gevent
+  - ipython
+  - nose
+  - keyring
+  - SQLAlchemy
+  - psutil
+  - keyring
+  - lxml
+  - beautifulsoup4
+  - pip:
+    - btrees
+    - semidbm
+    - sortedcontainers
+    - openpyxl
+    - caseinsensitivedict
+    - sphinx
+    - sphinx-autodoc-annotation
+    - slackclient

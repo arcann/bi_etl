@@ -10,7 +10,7 @@ pipelines:
     - step:
         script: # Modify the commands below to build your repository.
           - conda update -y conda
-          - conda env update -n root --file  environment.yml
+          - conda env update -n root --file  linux_environment.yml
           - pip install -e .
           - pip install pytest
           - pytest
