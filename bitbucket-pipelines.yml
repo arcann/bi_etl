@@ -8,8 +8,6 @@ image: continuumio/anaconda3
 pipelines:
   default:
     - step:
-        caches:
-          - condacache
         script: # Modify the commands below to build your repository.
           - conda update -y conda
           - apt-get -y install gcc
@@ -17,7 +15,3 @@ pipelines:
           - export PYTHONPATH=.
           - pip install pytest
           - pytest
-
-definitions:
-  caches:
-    condacache: /opt/python/bin
