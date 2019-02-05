@@ -144,11 +144,12 @@ class StatementQueue(object):
                 except AttributeError:
                     vals = row
                 msg = f"Error {e} with row {row_num} stmt {stmt} stmt_values {vals}"
+                self.log.error(msg)
                 try:
                     orig = e.orig
                 except AttributeError:
                     orig = None
-                raise sqlalchemy.exc.StatementError(msg, stmt, vals, orig)
+                raise sqlalchemy.exc.StatementError(msg, str(stmt), vals, orig)
         return rows_affected
         
     def append_values_by_key(self, key, values):

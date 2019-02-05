@@ -281,11 +281,12 @@ class TestTable(unittest.TestCase):
                     tbl.insert(row)
                 tbl.commit()
                 self.fail('Error not raised (or passed on) on duplicate key')
-            except DatabaseError:
+            except (DatabaseError, sqlalchemy.exc.StatementError):
                 full_output = '\n'.join(log.output)
-                self.assertIn('Error with', full_output)
+                self.assertIn('UNIQUE constraint'.lower(), full_output.lower())
                 self.assertIn('col1', full_output)
-                self.assertRegex(full_output, expected_regex='col1:.*0', msg='col1: 0 not found in log output')
+                self.assertRegex(full_output, "col1'?:.*0", 'col1: 0 not found in log output')
+                self.assertIn('stmt_values', full_output)
 
     def testInsertDuplicateCanNotReplicate(self):
         tbl_name = 'testInsertDuplicate'
@@ -308,7 +309,7 @@ class TestTable(unittest.TestCase):
         # vs the redo will only do the current batch. So the failure won't be replicated. 
         tbl.batch_size = int(rows_to_insert / 2)
 
-        with self.assertLogs(tbl.log, logging.ERROR) as log:
+        with self.assertLogs() as log:
             try:
                 for i in range(rows_to_insert):
                     # Use full table row
@@ -322,7 +323,7 @@ class TestTable(unittest.TestCase):
                     tbl.insert(row)
                 tbl.commit()
                 self.fail('Error not raised (or passed on) on duplicate key')
-            except DatabaseError:
+            except (DatabaseError, sqlalchemy.exc.StatementError):
                 full_output = '\n'.join(log.output)
                 self.assertIn('Single inserts did not produce the error', full_output)
 
@@ -1211,7 +1212,7 @@ class TestTable(unittest.TestCase):
                         Column('strin_10_col', String(10)),
                         Column('bool_col', BOOLEAN),
                         Column('clob_col', CLOB),
-                        Column('enum_col', Enum(TestTable.MyEnum)).value,
+                        Column('enum_col', Enum(TestTable.MyEnum)),
                         ])
                     tgt_tbl.set_columns(columns)
 

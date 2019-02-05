@@ -1388,11 +1388,16 @@ class Table(ReadOnlyTable):
                 self.rollback()
                 self.begin()
                 # Retry one at a time
-                pending_insert_statements.execute_singly(self.connection())
-                # If that didn't cause the error... re raise the original error
-                self.log.error("Single inserts did not produce the error. Original error will be issued below.")
-                self.rollback()
-                raise e
+                try:
+                    pending_insert_statements.execute_singly(self.connection())
+                    # If that didn't cause the error... re raise the original error
+                    self.log.error("Single inserts did not produce the error. Original error will be issued below.")
+                    self.rollback()
+                    raise
+                except Exception as e_single:
+                    self.log.error(f"Single inserts got error {e_single}")
+                    self.log.exception(e_single)
+                    raise
         elif self.insert_method == Table.InsertMethod.bcp:
             bcp_stats = self.get_stats_entry(stat_name + ' bcp insert', parent_stats=stats)
             bcp_stats.print_start_stop_times = False
@@ -1445,11 +1450,16 @@ class Table(ReadOnlyTable):
                 self.rollback()
                 self.begin()
                 # Retry one at a time
-                pending_insert_statements.execute_singly(self.connection())
-                # If that didn't cause the error... re raise the original error
-                self.log.error("Single inserts did not produce the error. Original error will be issued below.")
-                self.rollback()
-                raise e
+                try:
+                    pending_insert_statements.execute_singly(self.connection())
+                    # If that didn't cause the error... re raise the original error
+                    self.log.error("Single inserts did not produce the error. Original error will be issued below.")
+                    self.rollback()
+                    raise
+                except Exception as e_single:
+                    self.log.error(f"Single inserts got error {e_single}")
+                    self.log.exception(e_single)
+                    raise
 
     def insert_row(self,
                    source_row: Row,  # Must be a single row
