@@ -10,7 +10,7 @@ from decimal import Context, ROUND_HALF_EVEN
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.conversions import str2decimal, str2date
 from bi_etl.scheduler.task import ETLTask
-from bi_etl.utility import getIntegerPlaces
+from bi_etl.utility import get_integer_places
 from operator import itemgetter
 
 
@@ -147,7 +147,7 @@ class DataAnalyzer(ETLComponent):
             # Else it's an actual string
             return DataAnalyzer.DataType(name=type(value).__name__, length=len(value))
         elif isinstance(value, int):
-            return DataAnalyzer.DataType(name='Integer', length=getIntegerPlaces(value))
+            return DataAnalyzer.DataType(name='Integer', length=get_integer_places(value))
         elif isinstance(value, float):
             if self.float_as_decimal:
                 dec = Context(prec=16, rounding=ROUND_HALF_EVEN).create_decimal_from_float(value).normalize()

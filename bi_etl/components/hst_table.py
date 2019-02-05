@@ -868,6 +868,8 @@ class HistoryTable(Table):
             skip_update_check_on.append(self.begin_date_column)
         if self.end_date_column not in skip_update_check_on:
             skip_update_check_on.append(self.end_date_column)
+        if self.last_update_date not in skip_update_check_on:
+            skip_update_check_on.append(self.last_update_date)
 
         type_1_surrogate = self.type_1_surrogate
         lookup_keys = None

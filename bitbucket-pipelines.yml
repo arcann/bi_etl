@@ -12,9 +12,9 @@ pipelines:
           - condacache
         script: # Modify the commands below to build your repository.
           - conda update -y conda
-          - conda env list
+          - apt-get -y install gcc
           - conda env update --file linux_environment.yml
-          - pip install -e .
+          - export PYTHONPATH=.
           - pip install pytest
           - pytest
 

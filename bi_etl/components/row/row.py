@@ -6,9 +6,8 @@ Created on Sep 17, 2014
 """
 import typing
 import warnings
-from collections import OrderedDict, KeysView
-import sys
-OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
+from collections import OrderedDict
+import collections.abc
 from decimal import Decimal
 from typing import Union, List, Iterable
 
@@ -30,6 +29,9 @@ class Row(typing.MutableMapping):
     NUMERIC_TYPES = {int, float, Decimal}
     # For performance with the Column to str conversion we keep a cache of converted values
     __name_map_db = dict()
+
+    class KeysView(collections.abc.KeysView):
+        pass
 
     def __init__(self,
                  iteration_header: RowIterationHeader,
@@ -289,9 +291,9 @@ class Row(typing.MutableMapping):
     def __copy__(self):
         return self.clone()
 
-    def keys(self) -> KeysView:
+    def keys(self) -> collections.abc.KeysView:
         # noinspection PyArgumentList
-        return KeysView(self.columns_in_order)
+        return self.KeysView(self.columns_in_order)
 
     def _extend_to_size(self, desired_size):
         current_length = len(self._data_values)

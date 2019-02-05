@@ -4,6 +4,7 @@ Created on Mar 26, 2015
 @author: woodd
 """
 import unittest
+import pytest
 from collections import OrderedDict
 
 from sqlalchemy.engine.result import RowProxy
@@ -86,7 +87,7 @@ class TestRow(unittest.TestCase):
     def test_as_dict(self):
         d = self.row1a.as_dict
         for k in self.source1a:
-            self.assertEquals(d[k], self.source1a[k],
+            self.assertEqual(d[k], self.source1a[k],
                               'row1[{}] returned wrong value {} != {}'.format(k, d[k], self.source1a[k]))
 
     def test_init_iter_zip(self):
@@ -469,7 +470,7 @@ class TestRowCaseInsensitive(TestRow):
         d = self.row1a.as_dict
         for k in self.source1a:
             dk = k.lower()
-            self.assertEquals(d[dk], self.source1a[k],
+            self.assertEqual(d[dk], self.source1a[k],
                               'row1[{}] returned wrong value {} != {}'.format(k, d[dk], self.source1a[k]))
 
     def test_getter_mixed_case(self):

@@ -127,9 +127,9 @@ class Test(unittest.TestCase):
             with mock.patch('os.getcwd', autospec=True) as getcwd:
                 getcwd.return_value = dir_path
                 config.read_config_ini(file_name='config.ini')
-            self.assertEquals(config['Settings']['child'], '1')
-            self.assertEquals(config['Settings']['child_override'], '2')
-            self.assertEquals(config['Settings']['parent'], 'abc')
+            self.assertEqual(config['Settings']['child'], '1')
+            self.assertEqual(config['Settings']['child_override'], '2')
+            self.assertEqual(config['Settings']['parent'], 'abc')
         except FileNotFoundError as e:
             self.fail(e)
 
@@ -143,9 +143,9 @@ class Test(unittest.TestCase):
             os.environ[config.CONFIG_ENV] = self.generated_child_ini_file_path
             config.read_config_ini()
             del os.environ[config.CONFIG_ENV]
-            self.assertEquals(config['Settings']['child'], '1')
-            self.assertEquals(config['Settings']['child_override'], '2')
-            self.assertEquals(config['Settings']['parent'], 'abc')
+            self.assertEqual(config['Settings']['child'], '1')
+            self.assertEqual(config['Settings']['child_override'], '2')
+            self.assertEqual(config['Settings']['parent'], 'abc')
         except FileNotFoundError as e:
             self.fail(e)
 
@@ -224,15 +224,15 @@ class Test(unittest.TestCase):
         config.set('level1', 'B', '2')
         config.set('level1.level2', 'A', '10')
 
-        self.assertEquals(config['level1.level2']['A'], '10')
-        self.assertEquals(config.get('level1.level2', 'A'), '10')
+        self.assertEqual(config['level1.level2']['A'], '10')
+        self.assertEqual(config.get('level1.level2', 'A'), '10')
 
-        self.assertEquals(config['level1.level2']['B'], '2')
-        self.assertEquals(config.get('level1.level2', 'B'), '2')
+        self.assertEqual(config['level1.level2']['B'], '2')
+        self.assertEqual(config.get('level1.level2', 'B'), '2')
 
-        self.assertEquals(config.get('level1.level2', 'C', fallback='3'), '3')
+        self.assertEqual(config.get('level1.level2', 'C', fallback='3'), '3')
 
-        self.assertEquals(config.get('level1', 'C', fallback='4'), '4')
+        self.assertEqual(config.get('level1', 'C', fallback='4'), '4')
 
         try:
             config.get('level1', 'C')

@@ -9,11 +9,12 @@ import re
 
 from typing import Union
 
+from CaseInsensitiveDict import CaseInsensitiveDict
+
 from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.timer import Timer
-from bi_etl.utility import CaseInsensitiveDict
 
 
 class RunSQLScript(ETLTask):

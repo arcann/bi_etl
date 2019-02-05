@@ -1,21 +1,17 @@
-name: bi_etl37
+name: base
 channels:
-  - esri
   - defaults
 dependencies:
   - python>=3.7
   - gevent
-  - nose
-  - keyring
   - SQLAlchemy
   - psutil
   - keyring
-  - lxml
-  - beautifulsoup4
+  - pytest
   - pip:
     - btrees
     - semidbm
     - sortedcontainers
     - openpyxl
-    - caseinsensitivedict
+    - CaseInsensitiveDict
     - slackclient

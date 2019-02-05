@@ -1211,7 +1211,7 @@ class TestTable(unittest.TestCase):
                         Column('strin_10_col', String(10)),
                         Column('bool_col', BOOLEAN),
                         Column('clob_col', CLOB),
-                        Column('enum_col', Enum(TestTable.MyEnum)),
+                        Column('enum_col', Enum(TestTable.MyEnum)).value,
                         ])
                     tgt_tbl.set_columns(columns)
 

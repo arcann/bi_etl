@@ -18,7 +18,7 @@ def ssh_forward(
         local_port: int = None,
         wait: bool = False,
         ssh_path: str = None,
-        seconds_wait_for_usage: int = 10):
+        seconds_wait_for_usage: int = 60):
     # Command line options documentation
     # https://man.openbsd.org/ssh
     if ssh_path is None:

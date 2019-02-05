@@ -6,8 +6,6 @@ Created on Sep 17, 2014
 
 import timeit
 from collections import OrderedDict
-import sys
-OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
 from datetime import datetime
 
 
@@ -61,7 +59,7 @@ class Timer(object):
                                     )
 
     @property
-    def statistics(self) -> OrderedDict:
+    def statistics(self) -> dict:
         stats = OrderedDict()
         if self.first_start_time != self.start_time:
             stats['first start time'] = self.first_start_time
@@ -73,7 +71,7 @@ class Timer(object):
         if self.task_name is None:
             return stats
         else:
-            return OrderedDict({self.task_name: stats})
+            return dict({self.task_name: stats})
 
     def message(self, task_name: str = None) -> str:
         if not task_name:

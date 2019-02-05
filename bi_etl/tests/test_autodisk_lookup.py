@@ -51,7 +51,7 @@ class TestAutodiskLookup(_TestBase):
             lookup.cache_row(new_row)
         self.assertGreaterEqual(lookup.get_disk_size(), 1000, 'Disk usage not reported correctly')
 
-        self.assertEquals(len(lookup), rows_before_move + rows_after_move)
+        self.assertEqual(len(lookup), rows_before_move + rows_after_move)
 
         self._post_test_cleanup(lookup)
 

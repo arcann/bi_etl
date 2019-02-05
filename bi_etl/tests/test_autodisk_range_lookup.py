@@ -79,9 +79,9 @@ class TestAutodiskRangeLookup(_TestBaseRangeLookup):
 
         for row in row_list:
             found_row = lookup.find_in_cache(row)
-            self.assertEquals(found_row, row)
+            self.assertEqual(found_row, row)
 
-        self.assertEquals(len(lookup), len(dates) * (rows_before_move + rows_after_move))
+        self.assertEqual(len(lookup), len(dates) * (rows_before_move + rows_after_move))
 
         self.assertGreaterEqual(lookup.get_disk_size(), 1000, 'Disk usage not reported correctly')
 

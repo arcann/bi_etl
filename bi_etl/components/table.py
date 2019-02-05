@@ -39,7 +39,7 @@ from bi_etl.statement_queue import StatementQueue
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
-from bi_etl.utility import getIntegerPlaces
+from bi_etl.utility import get_integer_places
 
 
 class Table(ReadOnlyTable):
@@ -415,8 +415,8 @@ class Table(ReadOnlyTable):
             self.log.debug("{} t_type.precision={}".format(target_name, t_type.precision))
             self.log.debug("{} target_column_value={}"
                            .format(target_name, target_column_value))
-            self.log.debug("{} getIntegerPlaces(target_column_value)={}"
-                           .format(target_name, getIntegerPlaces(target_column_value)))
+            self.log.debug("{} get_integer_places(target_column_value)={}"
+                           .format(target_name, get_integer_places(target_column_value)))
             self.log.debug("{} (t_type.precision - t_type.scale)={}"
                            .format(target_name,
                                    (nvl(t_type.precision, 0) - nvl(t_type.scale, 0))))
@@ -689,7 +689,7 @@ class Table(ReadOnlyTable):
             code += textwrap.dedent("""\
             # base indent
                 if target_column_value is not None:
-                    digits = getIntegerPlaces(target_column_value)            
+                    digits = get_integer_places(target_column_value)            
                     if digits > {integer_digits_allowed}:
                         msg = "{table}.{column} can't accept '{{val}}' since it has {{digits}} digits (_make_decimal_coerce)"\
                               "which is > {integer_digits_allowed} by (prec {precision} - scale {scale}) limit".format(                            
@@ -1023,11 +1023,11 @@ class Table(ReadOnlyTable):
                             target_column_value = self.NAN_REPLACEMENT_VALUE
                     if t_type.precision is not None:
                         scale = nvl(t_type.scale, 0)
-                        if getIntegerPlaces(target_column_value) > (t_type.precision - scale):
+                        if get_integer_places(target_column_value) > (t_type.precision - scale):
                             type_error = True
                             err_msg = "{digits} digits > {t_digits} = " \
                                       "(prec {prec} - scale {scale}) limit" \
-                                .format(digits=getIntegerPlaces(target_column_value),
+                                .format(digits=get_integer_places(target_column_value),
                                         t_digits=(t_type.precision - scale),
                                         prec=t_type.precision,
                                         scale=t_type.scale,
@@ -1445,7 +1445,7 @@ class Table(ReadOnlyTable):
                 self.rollback()
                 self.begin()
                 # Retry one at a time
-                pending_insert_statements.execute_singly()
+                pending_insert_statements.execute_singly(self.connection())
                 # If that didn't cause the error... re raise the original error
                 self.log.error("Single inserts did not produce the error. Original error will be issued below.")
                 self.rollback()

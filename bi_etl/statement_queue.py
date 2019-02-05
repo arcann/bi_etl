@@ -52,7 +52,7 @@ class StatementQueue(object):
             if value.microsecond == 0:
                 return "'" + value.isoformat() + "'"
             else:
-                return f"'{value:%Y-%m-%d %H:%M:%S}.{round(value.microsecond / 1000)}{value:%z}'"
+                return f"'{value:%Y-%m-%d %H:%M:%S}.{int(value.microsecond / 1000)}{value:%z}'"
         elif isinstance(value, date):
             return "'" + value.isoformat() + "'"
         elif value is None:
