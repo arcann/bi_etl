@@ -291,6 +291,13 @@ class BIConfigParser(ConfigParser):
                             )
         return str2bytes_size(str_size)
 
+    # Add better error message
+    def _get_conv(self, section, option, conv, *, raw=False, vars=None, fallback=_UNSET, **kwargs):
+        try:
+            return super()._get_conv(section, option, conv=conv, raw=raw, vars=vars, fallback=fallback, **kwargs)
+        except ValueError as e:
+            raise ValueError(f"get('{section}','{option}', with type conversion {conv}) failed with error {e}")
+
     # noinspection PyPackageRequirements
     def get_database_connection_tuple(self, database_name, user_section=None):
         """
