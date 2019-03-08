@@ -1,3 +1,5 @@
+import datetime
+import json
 import random
 import subprocess
 import time
@@ -8,6 +10,58 @@ from bi_etl.bi_config_parser import BIConfigParser
 import logging
 
 log = logging.getLogger('etl.utils.ssh_forward')
+
+
+def ssh_run_command(
+        host: str,
+        user: str,
+        command: str,
+        ssh_path: str = None,
+        ) -> str:
+    # Command line options documentation
+    # https://man.openbsd.org/ssh
+    if ssh_path is None:
+        ssh_path = 'ssh'
+    cmd = [
+        ssh_path,
+        '{user}@{host}'.format(user=user, host=host),
+        command,
+    ]
+    log.debug("Starting ssh")
+    log.debug(' '.join(cmd))
+    try:
+        stdout = subprocess.PIPE
+        stderr = subprocess.PIPE
+        log.debug(f"Running {' '.join(cmd)}")
+        p = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, universal_newlines=True)
+        log.info("Started ssh as ppid {}".format(p.pid))
+        outs, errs = p.communicate()
+        rc = p.poll()
+        if rc is not None:
+            if rc != 0:
+                if outs:
+                    log.info(outs)
+                if errs:
+                    log.error(errs)
+                log.error("ssh return code = {}".format(rc))
+        return outs
+
+    except subprocess.CalledProcessError as e:
+        log.error(e.stdout)
+        log.error(e.stderr)
+        raise e
+
+
+def ssh_run_command_using_config(config: ConfigParser, command: str, section='ssh') -> str:
+    host = config[section]['host']
+    user = config[section]['user']
+    ssh_path = config[section].get('ssh_path', fallback=None)
+    return ssh_run_command(
+        host=host,
+        user=user,
+        command=command,
+        ssh_path=ssh_path,
+    )
 
 
 def ssh_forward(
@@ -105,4 +159,15 @@ def ssh_forward_using_config(config: ConfigParser, section='ssh', wait=False):
 if __name__ == '__main__':
     my_config = BIConfigParser()
     my_config.read_config_ini()
-    ssh_forward_using_config(my_config, wait=True)
+    # ssh_forward_using_config(my_config, wait=True)
+    result = ssh_run_command_using_config(my_config, 'dhis_api_analytics --status')
+    print(result)
+    result_dict = json.loads(result)
+    print(result_dict)
+    completed = result_dict['completed']
+    message_time = datetime.datetime.strptime(result_dict['time']+'+0000', "%Y-%m-%dT%H:%M:%S.%f%z")
+    now = datetime.datetime.now(datetime.timezone.utc)
+    diff = now - message_time
+    print(f"Time since message {diff}")
+    print(f"days since message {diff.days}")
+    print(f"Total seconds since message {diff.total_seconds()}")
