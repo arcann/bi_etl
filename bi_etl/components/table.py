@@ -199,8 +199,8 @@ class Table(ReadOnlyTable):
         self.track_source_rows = False
         self.auto_generate_key = False
         self.last_update_date = None
-        self.default_date_format = '%m/%d/%Y'
-        self.default_date_time_format = '%m/%d/%Y %H:%M:%S'
+        self.default_date_format = '%Y-%m-%d'
+        self.default_date_time_format = '%Y-%m-%d %H:%M:%S'
         self.default_time_format = '%H:%M:%S'
         self.force_ascii = False
         codecs.register_error('replace_tilda', replace_tilda)
@@ -740,9 +740,10 @@ class Table(ReadOnlyTable):
                 else:
                     target_column_value = str2date(str(target_column_value), dt_format=self.default_date_format)
             except ValueError as e:
-                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_date_coerce)".format(                            
+                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_date_coerce) {{fmt}}".format(                            
                             val=target_column_value,
                             e=e,
+                            fmt=self.default_date_format,
                         )
                 raise ValueError(msg)
             """).format(table=self, column=target_column_object.name)
@@ -761,9 +762,6 @@ class Table(ReadOnlyTable):
     def _make_datetime_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
         name = self._get_coerce_method_name(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
-        # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
-        # The thought is that ETL jobs that need the performance and can guarantee no commas
-        # can explicitly use float
         code += textwrap.dedent("""\
         # base indent
             try:            
@@ -780,9 +778,10 @@ class Table(ReadOnlyTable):
                     target_column_value = str2datetime(str(target_column_value),
                                                        dt_format=self.default_date_time_format)
             except ValueError as e:
-                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_datetime_coerce)".format(                            
+                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_datetime_coerce) {{fmt}}".format(                            
                             val=target_column_value,
                             e=e,
+                            fmt=self.default_date_time_format,
                         )
                 raise ValueError(msg)
             """).format(table=self, column=target_column_object.name)
