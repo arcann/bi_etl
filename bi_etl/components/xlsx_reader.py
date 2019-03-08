@@ -140,6 +140,7 @@ class XLSXReader(ETLComponent):
     
     def set_active_worksheet_by_name(self, sheet_name):
         self.__active_worksheet = self.workbook[sheet_name]
+        self._column_names = None
         
     def set_active_worksheet_by_number(self, sheet_number):        
         sheet_name = self.get_sheet_names()[sheet_number]
