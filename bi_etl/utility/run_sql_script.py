@@ -87,6 +87,9 @@ class RunSQLScript(ETLTask):
         with open(self.script_full_name, 'rb') as afile:
             buf = afile.read(block_size)
             while len(buf) > 0:
+                # Ignore newline differences by converting all to \n
+                buf = buf.replace(b'\r\n', b'\n')
+                buf = buf.replace(b'\r', b'\n')
                 hasher.update(buf)
                 buf = afile.read(block_size)
         return hasher.hexdigest()
@@ -137,34 +140,36 @@ class RunSQLScript(ETLTask):
                 part_sql = part_sql.strip()
                 if part_sql.upper().endswith('GO'):
                     part_sql = part_sql[:-2]
-                self.log.debug("Executing SQL:\n" + part_sql)
-                timer = Timer()
+                part_sql = part_sql.strip()
+                if part_sql != '':
+                    self.log.debug("Executing SQL:\n" + part_sql)
+                    timer = Timer()
 
-                # noinspection PyBroadException
-                try:
-                    cursor.execute(part_sql)
-                except Exception as e:
-                    self.log.error(part_sql)
-                    raise e
+                    # noinspection PyBroadException
+                    try:
+                        cursor.execute(part_sql)
+                    except Exception as e:
+                        self.log.error(part_sql)
+                        raise e
 
-                self.log.info("Statement took {} seconds".format(timer.seconds_elapsed_formatted))
-                # noinspection PyBroadException
-                try:
-                    row = cursor.fetchone()
-                    self.log.info("Results:")
-                    while row:
-                        self.log.info(row)
+                    self.log.info("Statement took {} seconds".format(timer.seconds_elapsed_formatted))
+                    # noinspection PyBroadException
+                    try:
                         row = cursor.fetchone()
-                except Exception:
-                    self.log.info("No results returned")
-                self.log.info("{:,} rows were affected".format(cursor.rowcount))
-                # self.log.info("Statement took {} seconds and affected {:,} rows"
-                #               .format(timer.seconds_elapsed_formatted, ret.rowcount))
-                # if ret.returns_rows:
-                #     self.log.info("Rows returned:")
-                #     for row in ret:
-                #         self.log.info(dict_to_str(row))
-                self.log.info("-" * 80)
+                        self.log.info("Results:")
+                        while row:
+                            self.log.info(row)
+                            row = cursor.fetchone()
+                    except Exception:
+                        self.log.info("No results returned")
+                    self.log.info("{:,} rows were affected".format(cursor.rowcount))
+                    # self.log.info("Statement took {} seconds and affected {:,} rows"
+                    #               .format(timer.seconds_elapsed_formatted, ret.rowcount))
+                    # if ret.returns_rows:
+                    #     self.log.info("Rows returned:")
+                    #     for row in ret:
+                    #         self.log.info(dict_to_str(row))
+                    self.log.info("-" * 80)
         finally:
             conn.close()
 
@@ -174,7 +179,8 @@ def main():
     config.read_config_ini()
     base_path = config['SQL Scripts']['path']
     script = RunSQLScript('BI_Cache', base_path, "bi/cd_indicator.sql")
-    script.load()
+    # script.load()
+    print(f"Has is {script.get_sha1_hash()}")
 
 
 if __name__ == '__main__':
