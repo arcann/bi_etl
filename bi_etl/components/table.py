@@ -209,6 +209,7 @@ class Table(ReadOnlyTable):
         self.autocommit = False
         self.__batch_size = self.DEFAULT_BATCH_SIZE
         self.__transaction = None
+        self.skip_coercion_on = {}
 
         self._logical_delete_update = None
 
@@ -941,36 +942,42 @@ class Table(ReadOnlyTable):
 
     def _build_coerce_methods(self):
         for column in self.columns:
-            t_type = column.type
-            try:
-                if t_type.python_type == str:
-                    self._make_str_coerce(column)
-                elif t_type.python_type == bytes:
-                    self._make_bytes_coerce(column)
-                elif t_type.python_type == int:
-                    self._make_int_coerce(column)
-                elif t_type.python_type == float:
-                    self._make_float_coerce(column)
-                elif t_type.python_type == Decimal:
-                    self._make_decimal_coerce(column)
-                elif t_type.python_type == date:
-                    self._make_date_coerce(column)
-                elif t_type.python_type == datetime:
-                    self._make_datetime_coerce(column)
-                elif t_type.python_type == time:
-                    self._make_time_coerce(column)
-                elif t_type.python_type == timedelta:
-                    self._make_timedelta_coerce(column)
-                elif t_type.python_type == bool:
-                    self._make_bool_coerce(column)
-                else:
-                    warnings.warn('Table.build_row has no handler for {} = {}'.format(t_type, type(t_type)))
-                    self._make_generic_coerce(column)
-            except NotImplementedError:
-                raise ValueError("Column {} has type {} with no python_type".format(column, t_type))
+            if column.name in self.skip_coercion_on:
+                self._make_generic_coerce(column)
+            else:
+                t_type = column.type
+                try:
+                    if t_type.python_type == str:
+                        self._make_str_coerce(column)
+                    elif t_type.python_type == bytes:
+                        self._make_bytes_coerce(column)
+                    elif t_type.python_type == int:
+                        self._make_int_coerce(column)
+                    elif t_type.python_type == float:
+                        self._make_float_coerce(column)
+                    elif t_type.python_type == Decimal:
+                        self._make_decimal_coerce(column)
+                    elif t_type.python_type == date:
+                        self._make_date_coerce(column)
+                    elif t_type.python_type == datetime:
+                        self._make_datetime_coerce(column)
+                    elif t_type.python_type == time:
+                        self._make_time_coerce(column)
+                    elif t_type.python_type == timedelta:
+                        self._make_timedelta_coerce(column)
+                    elif t_type.python_type == bool:
+                        self._make_bool_coerce(column)
+                    else:
+                        warnings.warn('Table.build_row has no handler for {} = {}'.format(t_type, type(t_type)))
+                        self._make_generic_coerce(column)
+                except NotImplementedError:
+                    raise ValueError("Column {} has type {} with no python_type".format(column, t_type))
         self._coerce_methods_built = True
 
     def column_coerce_type(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement', target_column_value):
+        """
+        This is the slower non-dynamic code based data type conversion routine
+        """
         target_name = target_column_object.name
         if target_column_value is not None:
             t_type = target_column_object.type

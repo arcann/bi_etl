@@ -6,7 +6,6 @@ Created on Jan 5, 2016
 """
 from configparser import ConfigParser
 
-from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
 from bi_etl.lookups.disk_range_lookup import DiskRangeLookup
 from bi_etl.lookups.range_lookup import RangeLookup
@@ -32,7 +31,7 @@ class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: ETLComponent,
+                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  begin_date,
                  end_date,
                  config: ConfigParser = None,

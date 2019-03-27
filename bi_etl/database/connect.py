@@ -57,7 +57,7 @@ class Connect(object):
             if '\n' in db_options:
                 db_options = '&'.join([opt.strip() for opt in db_options.split('\n') if opt.strip() != ''])
 
-        if '?' in dbname:
+        if dbname is not None and '?' in dbname:
             dbname, db_options_legacy = dbname.split('?')
             if db_options is None:
                 db_options = db_options_legacy

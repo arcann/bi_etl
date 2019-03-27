@@ -12,7 +12,6 @@ from typing import Union, MutableMapping
 import psutil
 from bi_etl.components.row.row import Row
 
-from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.disk_lookup import DiskLookup
 from bi_etl.lookups.lookup import Lookup
@@ -40,7 +39,7 @@ class AutoDiskLookup(Lookup):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: ETLComponent,
+                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  config: ConfigParser = None,
                  path=None,
                  max_percent_ram_used=None,

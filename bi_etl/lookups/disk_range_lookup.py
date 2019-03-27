@@ -5,7 +5,6 @@ Created on May 15, 2015
 """
 from configparser import ConfigParser
 
-from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.lookups.disk_lookup import DiskLookup
 from bi_etl.lookups.range_lookup import RangeLookup
 
@@ -16,7 +15,7 @@ class DiskRangeLookup(RangeLookup, DiskLookup):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: ETLComponent,
+                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  begin_date,
                  end_date,
                  config: ConfigParser = None,

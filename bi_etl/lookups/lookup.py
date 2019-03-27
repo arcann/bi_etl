@@ -12,13 +12,10 @@ from datetime import datetime
 from typing import Union, MutableMapping
 
 import psutil
-
 # from sortedcontainers.sorteddict import SortedDict
 from BTrees.OOBTree import OOBTree
-
 from sqlalchemy.sql.expression import bindparam
 
-from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.conversions import ensure_datetime
@@ -37,7 +34,7 @@ class Lookup(object):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: ETLComponent,
+                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  config: ConfigParser = None,
                  **kwargs):
         self.lookup_name = lookup_name
@@ -220,6 +217,9 @@ class Lookup(object):
 
         Parameters
         ----------
+        lk_tuple:
+            The key tuple to store the rows under
+
         version_collection:
             The set of rows to cache
 
@@ -236,7 +236,7 @@ class Lookup(object):
             assert isinstance(version_collection, self.version_collection_type), "cache_row requires {} and not {}".format(self.version_collection_type, type(version_collection))
 
             if self.use_value_cache:
-                for row in version_collection:
+                for row in version_collection.values():
                     self._update_with_value_cache(row)
 
             if self._cache is None:
@@ -383,7 +383,7 @@ class Lookup(object):
             col_num += 1
         return stmt
 
-    def _get_remote_stmt_where_values(self, row: Union[Row, tuple], effective_date: datetime=None) -> dict:
+    def _get_remote_stmt_where_values(self, row: Union[Row, tuple], effective_date: datetime = None) -> dict:
         values_dict = dict()
         col_num = 1
         if isinstance(row, tuple):
@@ -411,6 +411,8 @@ class Lookup(object):
         -------
         A row
         """
+        assert hasattr(self.parent_component, 'execute'), f'ReadOnlyTable or class with execute method needed for DB lookup {type(self.parent_component)} will not work'
+
         self.stats.timer.start()        
         if self._remote_lookup_stmt is None:
             # noinspection PyUnresolvedReferences
@@ -442,9 +444,9 @@ class Lookup(object):
     def find_versions_list(
             self,
             row: Union[Row, tuple],
-            fallback_to_db: bool=True,
-            maintain_cache: bool=True,
-            stats: Statistics=None,
+            fallback_to_db: bool = True,
+            maintain_cache: bool = True,
+            stats: Statistics = None,
             ) -> list:
         """
 
@@ -518,9 +520,9 @@ class Lookup(object):
 
     def find(self,
              row: Union[Row, tuple],
-             fallback_to_db: bool=True,
-             maintain_cache: bool=True,
-             stats: Statistics=None,
+             fallback_to_db: bool = True,
+             maintain_cache: bool = True,
+             stats: Statistics = None,
              **kwargs
              ) -> Row:
         if self.cache_enabled:

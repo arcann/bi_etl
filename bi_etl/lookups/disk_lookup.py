@@ -16,7 +16,6 @@ from configparser import ConfigParser
 
 import semidbm
 
-from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.memory_size import get_dir_size
 from bi_etl.memory_size import get_size_gc
@@ -30,7 +29,7 @@ class DiskLookup(Lookup):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: ETLComponent,
+                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  config: ConfigParser = None,
                  path=None,
                  **kwargs):

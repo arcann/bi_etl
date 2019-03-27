@@ -3,28 +3,26 @@ Created on Sep 17, 2014
 
 @author: woodd
 """
+import functools
 import typing
 from datetime import datetime
 from operator import attrgetter
 from typing import Iterable
 
-import functools
 import sqlalchemy
-from bi_etl.database import DatabaseMetadata
-from bi_etl.scheduler.task import ETLTask
-from bi_etl.timer import Timer
-from bi_etl.components.etlcomponent import ETLComponent
-from bi_etl.components.row.row import Row
-from bi_etl.components.row.row_iteration_header import RowIterationHeader
-from bi_etl.components.row.row_status import RowStatus
-from bi_etl.exceptions import NoResultFound, MultipleResultsFound
-from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
-from bi_etl.lookups.lookup import Lookup
-from bi_etl.statistics import Statistics
-from bi_etl.utility import dict_to_str
 from sqlalchemy.sql import sqltypes, functions
 from sqlalchemy.sql.expression import text
 from sqlalchemy.sql.schema import Column
+
+from bi_etl.components.etlcomponent import ETLComponent
+from bi_etl.components.row.row import Row
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
+from bi_etl.database import DatabaseMetadata
+from bi_etl.exceptions import NoResultFound, MultipleResultsFound
+from bi_etl.lookups.lookup import Lookup
+from bi_etl.scheduler.task import ETLTask
+from bi_etl.statistics import Statistics
+from bi_etl.utility import dict_to_str
 
 __all__ = ['ReadOnlyTable']
 
@@ -123,18 +121,7 @@ class ReadOnlyTable(ETLComponent):
         super(ReadOnlyTable, self).__init__(task=task,
                                             logical_name=table_name,
                                             )
-
-        self.__lookups = dict()
-        # Default lookup class is AutoDiskLookup
-        self.default_lookup_class = AutoDiskLookup
-        self.default_lookup_class_kwargs = dict()
-        if self.task is not None:
-            self.default_lookup_class_kwargs['config'] = self.task.config
-
         self.trace_sql = False
-
-        self.cache_filled = False
-        self.cache_clean = False
         self.always_fallback_to_db = True
         self.maintain_cache_during_load = True
 
@@ -331,7 +318,7 @@ class ReadOnlyTable(ETLComponent):
         return self.__connection
 
     def close(self):
-        for lookup in self.__lookups.values():
+        for lookup in self.lookups.values():
             lookup.add_size_to_stats()
         if len(self.__compile_cache) > 0:
             cache_stats = self.get_stats_entry('compile cache', print_start_stop_times=False)
@@ -722,7 +709,7 @@ class ReadOnlyTable(ETLComponent):
         Get the column name given a possible :class:`sqlalchemy.sql.expression.ColumnElement` object.
         """
         if isinstance(column, Column):
-            return column.name
+            return self.table.columns[column.name].name
         else:
             return self.table.columns[column].name
 
@@ -755,7 +742,7 @@ class ReadOnlyTable(ETLComponent):
         max_value = max_row['max_1']
         return max_value
 
-    def count(self, column: str=None, where=None) -> int:
+    def count(self, column: str = None, where=None) -> int:
         """
         Query the table/view to get the count of a given column.
 
@@ -921,93 +908,100 @@ class ReadOnlyTable(ETLComponent):
         """
         return self.get_special_row('*', 'Various', -6666, datetime(9999, 6, 1))
 
-    def define_lookup(self,
-                      lookup_name: str,
-                      lookup_keys: list,
-                      lookup_class=None,
-                      lookup_class_kwargs=None,
-                      ):
-        """
-        Define a new lookup.
-        
-        Parameters
-        ----------
-        lookup_name: str
-            Name for the lookup. Used to refer to it later.
-        
-        lookup_keys: list
-            list of lookup key columns
-            
-        lookup_class: Class
-            Optional python class to use for the lookup. Defaults to value of default_lookup_class attribute.
-            
-        lookup_class_kwargs: dict
-            Optional dict of additional parameters to pass to lookup constructor. Defaults to empty dict.
-        """
-        if not self.__lookups:
-            self.__lookups = dict()
-        if lookup_name in self.__lookups:
-            self.log.warning("{} define_lookup is overriding the {} lookup with {}".format(
-                self,
-                lookup_name,
-                lookup_keys
-            )
-            )
-        if lookup_class is None:
-            lookup_class = self.default_lookup_class
-        if lookup_class_kwargs is None:
-            lookup_class_kwargs = self.default_lookup_class_kwargs
-
-        for key in lookup_keys:
-            self.get_column_name(key)
-
-        lookup = lookup_class(lookup_name="{}.{}".format(self.logical_name, lookup_name),
-                              lookup_keys=lookup_keys,
-                              parent_component=self,
-                              **lookup_class_kwargs
-                              )
-        self.__lookups[lookup_name] = lookup
-        return lookup
-
     def _check_pk_lookup(self):
-        if not self.__lookups:
-            self.__lookups = dict()
         # Check that we have setup the PK lookup.
         # Late binding so that it will take overrides to the default lookup class
-        if ReadOnlyTable.PK_LOOKUP not in self.__lookups:
+        if ReadOnlyTable.PK_LOOKUP not in self.lookups:
             if self.primary_key:
                 self.define_lookup(ReadOnlyTable.PK_LOOKUP, self.primary_key)
 
-    @property
-    def lookups(self):
-        return self.__lookups
+    def fill_cache(self,
+                   progress_frequency: float = 10,
+                   progress_message="{component} fill_cache current row # {row_number:,}",
+                   criteria_list: list = None,
+                   criteria_dict: dict = None,
+                   column_list: list = None,
+                   exclude_cols: list = None,
+                   order_by: list = None,
+                   assume_lookup_complete: bool = None,
+                   row_limit: int = None,
+                   parent_stats: Statistics = None,
+                   ):
+        """
+        Fill all lookup caches from the table.
 
-    def get_lookup(self, lookup_name):
+        Parameters
+        ----------
+        progress_frequency : int, optional
+            How often (in seconds) to output progress messages. Default 10. None for no progress messages.
+        progress_message : str, optional
+            The progress message to print.
+            Default is ``"{component} fill_cache current row # {row_number:,}"``. Note ``logical_name`` and ``row_number``
+            substitutions applied via :func:`format`.
+        criteria_list : string or list of strings
+            Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
+            https://goo.gl/JlY9us
+        criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
+        column_list:
+            List of columns to include
+        exclude_cols: list
+            Optional. Columns to exclude when filling the cache
+        order_by: list
+            list of columns to sort by when filling the cache (helps range caches)
+        assume_lookup_complete: boolean
+            Should later lookup calls assume the cache is complete?
+            If so, lookups will raise an Exception if a key combination is not found.
+            Default to False if filtering criteria was used, otherwise defaults to True.
+        row_limit: int
+            limit on number of rows to cache.
+        parent_stats: bi_etl.statistics.Statistics
+            Optional Statistics object to nest this steps statistics in.
+            Default is to place statistics in the ETLTask level statistics.
+        """
+
+        super().fill_cache(
+            progress_frequency=progress_frequency,
+            progress_message=progress_message,
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            column_list=column_list,
+            exclude_cols=exclude_cols,
+            order_by=order_by,
+            assume_lookup_complete=assume_lookup_complete,
+            row_limit=row_limit,
+            parent_stats=parent_stats,
+            )
+        # Set the table always_fallback_to_db value based on if criteria
+        # were used to load the cache and the assume_lookup_complete parameter
+        if criteria_list is not None or criteria_dict is not None:
+            # If criteria is used we'll default to not assuming the lookup is complete
+            if assume_lookup_complete is None:
+                assume_lookup_complete = False
+        else:
+            # If criteria is NOT used we'll default to assuming the lookup is complete
+            if assume_lookup_complete is None:
+                assume_lookup_complete = True
+        self.always_fallback_to_db = not assume_lookup_complete
+        self.log.info(f'Lookups will always_fallback_to_db = {self.always_fallback_to_db}')
+
+    def get_lookup(self, lookup_name) -> Lookup:
         self._check_pk_lookup()
 
         if lookup_name is None:
             lookup_name = ReadOnlyTable.PK_LOOKUP
-        try:
-            return self.__lookups[lookup_name]
-        except KeyError:
-            raise KeyError("{} does not contain a lookup named {}".format(self, lookup_name))
+        return super().get_lookup(lookup_name=lookup_name)
 
     def get_pk_lookup(self):
         return self.get_lookup(ReadOnlyTable.PK_LOOKUP)
 
-    def get_lookup_keys(self, lookup_name):
-        return self.get_lookup(lookup_name).lookup_keys
-
     def get_primary_key_value_list(self, row):
         self._check_pk_lookup()
-        return self.__lookups[ReadOnlyTable.PK_LOOKUP].get_list_of_lookup_column_values(row)
+        return self.lookups[ReadOnlyTable.PK_LOOKUP].get_list_of_lookup_column_values(row)
 
     def get_primary_key_value_tuple(self, row):
         self._check_pk_lookup()
-        return self.__lookups[ReadOnlyTable.PK_LOOKUP].get_hashable_combined_key(row)
-
-    def get_lookup_tuple(self, lookup_name, row):
-        return self.__lookups[lookup_name].get_hashable_combined_key(row)
+        return self.lookups[ReadOnlyTable.PK_LOOKUP].get_hashable_combined_key(row)
 
     @property
     def natural_key(self) -> list:
@@ -1057,189 +1051,6 @@ class ReadOnlyTable(ETLComponent):
     def get_natural_key_tuple(self, row):
         return tuple(self.get_natural_key_value_list(row))
 
-    def init_cache(self):
-        """
-        Initialize all lookup caches as empty.
-        """
-        self.cache_filled = False
-        for lookup in self.__lookups.values():
-            lookup.init_cache()
-
-    def clear_cache(self):
-        """
-        Clear all lookup caches. 
-        Sets to un-cached state (unknown state v.s. empty state which is what init_cache gives)
-        """
-        self.cache_filled = False
-        for lookup in self.__lookups.values():
-            lookup.clear_cache()
-
-    def cache_row(self, row, allow_update=False):
-        for lookup in self.__lookups.values():
-            if lookup.cache_enabled:
-                lookup.cache_row(row, allow_update)
-
-    def cache_commit(self):
-        for lookup in self.__lookups.values():
-            lookup.commit()
-
-    def uncache_row(self, row):
-        for lookup in self.__lookups.values():
-            lookup.uncache_row(row)
-
-    def uncache_where(self, key_names, key_values_dict):
-        if self.__lookups:
-            for lookup in self.__lookups.values():
-                lookup.uncache_where(key_names=key_names, key_values_dict=key_values_dict)
-
-    def fill_cache(self,
-                   progress_frequency: float = 10,
-                   progress_message="{table} fill_cache current row # {row_number:,}",
-                   criteria_list: list = None,
-                   criteria_dict: dict = None,
-                   column_list: list = None,
-                   exclude_cols: list = None,
-                   order_by: list = None,
-                   assume_lookup_complete: bool=None,
-                   row_limit: int=None,
-                   parent_stats: Statistics=None,
-                   ):
-        """
-        Fill all lookup caches from the table.
-        
-        Parameters
-        ----------
-        progress_frequency : int, optional
-            How often (in seconds) to output progress messages. Default 10. None for no progress messages.
-        progress_message : str, optional
-            The progress message to print. 
-            Default is ``"{table} fill_cache current row # {row_number:,}"``. Note ``logical_name`` and ``row_number``
-            substitutions applied via :func:`format`.
-        criteria_list : string or list of strings
-            Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
-            https://goo.gl/JlY9us
-        criteria_dict : dict
-            Dict keys should be columns, values are set using = or in
-        column_list:
-            List of columns to include
-        exclude_cols: list
-            Optional. Columns to exclude when filling the cache
-        order_by: list
-            list of columns to sort by when filling the cache (helps range caches)
-        assume_lookup_complete: boolean
-            Should later lookup calls assume the cache is complete?
-            If so, lookups will raise an Exception if a key combination is not found. 
-            Default to False if filtering criteria was used, otherwise defaults to True.
-        row_limit: int
-            limit on number of rows to cache.
-        parent_stats: bi_etl.statistics.Statistics
-            Optional Statistics object to nest this steps statistics in.
-            Default is to place statistics in the ETLTask level statistics.
-        """
-        self._check_pk_lookup()
-
-        # If we have, or can build a natural key
-        if self.natural_key:
-            # Make sure to build the lookup so it can be filled
-            self.ensure_nk_lookup()
-
-        assert isinstance(progress_frequency, int), "fill_cache progress_frequency expected to be int not {}".format(
-            type(progress_frequency))
-        self.log.info('{table}.fill_cache started'.format(table=self.table.name))
-        stats = self.get_unique_stats_entry('fill_cache', parent_stats=parent_stats)
-        stats.timer.start()
-
-        self.clear_cache()
-        progress_timer = Timer()
-        # Temporarily turn off read progress messages
-        saved_read_progress = self.progress_frequency
-        self.progress_frequency = None
-        rows_read = 0
-        limit_reached = False
-
-        self.init_cache()
-
-        for row in self.where(
-                criteria_list=criteria_list,
-                criteria_dict=criteria_dict,
-                column_list=column_list,
-                exclude_cols=exclude_cols,
-                order_by=order_by,
-                use_cache_as_source=False,
-                parent_stats=stats
-        ):
-            rows_read += 1
-            if row_limit is not None and rows_read >= row_limit:
-                limit_reached = True
-                self.log.warning(
-                    "{table}.fill_cache aborted at limit {rows:,} rows of data".format(table=self.table.name,
-                                                                                       rows=rows_read
-                                                                                       )
-                    )
-
-                self.log.warning("{table} proceeding without using cache lookup".format(table=self.table.name))
-
-                # We'll operate in partially cached mode
-                self.cache_filled = False
-                self.cache_clean = False
-                break
-            # Actually cache the row now
-            row.status = RowStatus.existing
-            self.cache_row(row, allow_update=False)
-
-            # noinspection PyTypeChecker
-            if 0.0 < progress_frequency <= progress_timer.seconds_elapsed:
-                self.process_messages()
-                progress_timer.reset()
-                self.log.info(progress_message.format(
-                    row_number=rows_read,
-                    table=self.table,
-                )
-                )
-        if not limit_reached:
-            self.cache_filled = True
-            self.cache_clean = True
-            # Set the table always_fallback_to_db value based on if criteria
-            # were used to load the cache and the assume_lookup_complete parameter
-            if criteria_list is not None or criteria_dict is not None:
-                # If criteria is used we'll default to not assuming the lookup is complete
-                if assume_lookup_complete is None:
-                    assume_lookup_complete = False
-            else:
-                # If criteria is NOT used we'll default to assuming the lookup is complete
-                if assume_lookup_complete is None:
-                    assume_lookup_complete = True
-            self.always_fallback_to_db = not assume_lookup_complete
-
-            self.log.info("{table}.fill_cache cached {rows:,} rows of data".format(
-                table=self.table.name,
-                rows=rows_read
-            )
-            )
-            self.log.info('Lookups will always_fallback_to_db = {}'.format(self.always_fallback_to_db))
-            ram_size = 0
-            disk_size = 0
-            for lookup in self.__lookups.values():
-                this_ram_size = lookup.get_memory_size()
-                this_disk_size = lookup.get_disk_size()
-                self.log.info('Lookup {} Rows {:,} Size RAM= {:,} bytes DISK={:,} bytes'.format(
-                    lookup,
-                    len(lookup),
-                    this_ram_size,
-                    this_disk_size
-                )
-                )
-                ram_size += this_ram_size
-                disk_size += this_disk_size
-            self.log.info('Note: RAM sizes do not add up as memory lookups share row objects')
-            self.log.info('Total Lookups Size DISK={:,} bytes'.format(disk_size))
-            stats['rows_in_cache'] = len(self.get_nk_lookup())
-
-        self.cache_commit()
-        stats.timer.stop()
-        # Restore read progress messages
-        self.progress_frequency = saved_read_progress
-
     def get_by_key(self,
                    source_row: Row,
                    stats_id: str = 'get_by_key',
@@ -1264,28 +1075,18 @@ class ReadOnlyTable(ETLComponent):
                       source_row: Row,
                       stats_id: str = 'get_by_lookup',
                       parent_stats: typing.Optional[Statistics] = None,
+                      fallback_to_db: bool = False,
                       ) -> Row:
-        """
-        Get by an alternate key.
-        Returns a :class:`~bi_etl.components.row.row_case_insensitive.Row`
-
-        Throws:
-            NoResultFound
-        """
-        stats = self.get_stats_entry(stats_id, parent_stats=parent_stats)
-        stats.print_start_stop_times = False
-        stats.timer.start()
-
-        self._check_pk_lookup()
 
         if lookup_name is None:
             lookup_name = ReadOnlyTable.PK_LOOKUP
 
-        lookup = self.get_lookup(lookup_name)
-        assert isinstance(lookup, Lookup)
+        fallback_to_db = fallback_to_db or self.always_fallback_to_db or not self.cache_clean
 
-        return lookup.find(row=source_row,
-                           fallback_to_db=self.always_fallback_to_db or not self.cache_clean,
-                           maintain_cache=self.maintain_cache_during_load,
-                           stats=stats
-                           )
+        return super().get_by_lookup(
+            lookup_name=lookup_name,
+            source_row=source_row,
+            stats_id=stats_id,
+            parent_stats=parent_stats,
+            fallback_to_db=fallback_to_db,
+        )

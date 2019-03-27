@@ -9,7 +9,6 @@ from typing import Union, MutableMapping
 
 from sqlalchemy.sql.expression import bindparam
 
-from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.row.row import Row
 from bi_etl.conversions import ensure_datetime
 from bi_etl.exceptions import BeforeAllExisting, AfterExisting, NoResultFound
@@ -23,7 +22,7 @@ class RangeLookup(Lookup):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: ETLComponent,
+                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  begin_date,
                  end_date,
                  config: ConfigParser = None,

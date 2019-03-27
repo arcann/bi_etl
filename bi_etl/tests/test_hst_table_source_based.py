@@ -362,6 +362,7 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                 tgt_tbl.auto_generate_key = True
                 tgt_tbl.type_1_surrogate = 'sk1_col'
                 tgt_tbl.trace_data = True
+                tgt_tbl.default_date_time_format = '%m/%d/%Y %H:%M:%S'
 
                 tgt_tbl.define_lookup(
                     'NK',

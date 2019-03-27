@@ -1188,9 +1188,13 @@ class TestTable(unittest.TestCase):
             ) as tgt_tbl:
                 # Just here to help IDE know the data type
                 assert isinstance(tgt_tbl, Table)
+                tgt_tbl.default_date_format = '%m/%d/%Y'
 
                 with mock.patch('bi_etl.components.etlcomponent.logging', autospec=True) as log:
                     tgt_tbl.log = log
+
+                    tgt_tbl.default_date_time_format = '%m/%d/%Y %H:%M:%S'
+                    tgt_tbl.default_date_format = '%m/%d/%Y'
 
                     # http://docs.sqlalchemy.org/en/latest/core/type_basics.html
                     tgt_tbl.table = sqlalchemy.schema.Table(tbl_name,
@@ -1475,6 +1479,9 @@ class TestTable(unittest.TestCase):
                 Column('col_dt', DateTime),
                 ])
             tbl.set_columns(columns)
+
+            tbl.default_date_time_format = '%m/%d/%Y %H:%M:%S'
+            tbl.default_date_format = '%m/%d/%Y'
 
             iteration_header = RowIterationHeader()
             row = Row(iteration_header=iteration_header)
