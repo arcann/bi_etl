@@ -4,8 +4,7 @@ Created on Nov 17, 2014
 @author: woodd
 """
 
-from collections import namedtuple
-from datetime import date
+from datetime import date, timedelta
 from datetime import datetime
 from datetime import time
 from decimal import Decimal, InvalidOperation
@@ -154,8 +153,43 @@ def str2datetime(s, dt_format='%m/%d/%Y %H:%M:%S'):
     """
     if s is None or s == '':
         return None
+    elif '.%f' in dt_format:
+        # Fractional seconds are included in format
+        # Try as is and then without in case source drops the Fractional seconds when zero
+        try:
+            return datetime.strptime(s, dt_format)
+        except ValueError as e:
+            msg = str(e)
+            if 'unconverted data remains' in msg:
+                # We might have more digits in the fractional seconds than Python can convert
+                msg, remains = msg.split(':')
+                remains = remains.strip()
+                try:
+                    # Make sure what remains is just digits (note this won't work if we have a timezone)
+                    int(remains)
+                    return datetime.strptime(s[:-1 * len(remains)], dt_format)
+                except ValueError:
+                    raise e
+            else:
+                try:
+                    return datetime.strptime(s, dt_format.replace('.%f', ''))
+                except ValueError:
+                    raise e
+    # No fractional seconds included in format
     else:
         return datetime.strptime(s, dt_format)
+
+
+def round_datetime_ms(source_datetime, digits_to_keep):
+    if source_datetime is None:
+        return None
+    new_microseconds = round(source_datetime.microsecond, digits_to_keep-6)
+    if new_microseconds == 1000000:
+        source_datetime = source_datetime.replace(microsecond=0)
+        source_datetime += timedelta(seconds=1)
+    else:
+        source_datetime = source_datetime.replace(microsecond=new_microseconds)
+    return source_datetime
 
 
 def change_tz(source_datetime, from_tzone, to_tzone):
