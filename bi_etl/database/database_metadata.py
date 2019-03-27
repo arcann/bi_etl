@@ -65,13 +65,26 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         log = logging.getLogger(__name__)
         log.debug("Calling procedure {} {}".format(procedure_name, args))
         dpapi_connection = self.bind.raw_connection()
+        results = None
         try:
             cursor = dpapi_connection.cursor()
-            cursor.callproc(procedure_name, args)
-            results = None
-            if return_results:
-                results = list(cursor.fetchall())
-            cursor.close()
+            if hasattr(cursor, 'callproc'):
+                cursor.callproc(procedure_name, args)
+                if return_results:
+                    results = list(cursor.fetchall())
+                cursor.close()
+            else:
+                if 'pyodbc' in self.bind.dialect.dialect_description == 'mssql+pyodbc':
+                    if len(args) > 0:
+                        sql = f"{{CALL {procedure_name}({','.join([qmark for qmark in ['?'] * len(args)])}) }}"
+                    else:
+                        sql = f"{{CALL {procedure_name}}}"
+                else:
+                    sql = f"EXEC {procedure_name}({','.join([qmark for qmark in ['?'] * len(args)])})"
+                cursor.execute(sql, args)
+                if return_results:
+                    results = list(cursor.fetchall())
+                cursor.close()
             dpapi_connection.commit()
         finally:
             dpapi_connection.close()

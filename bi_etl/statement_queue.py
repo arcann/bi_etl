@@ -46,7 +46,7 @@ class StatementQueue(object):
     def encapsulate_value(value) -> str:
         # Encapsulate the input for SQL use (add ' etc)
         if isinstance(value, str):
-            return "N'" + value.replace("'", "''") + "'"
+            return "'" + value.replace("'", "''") + "'"
         # Note we need to check datetime before date because a date passes both isinstance
         elif isinstance(value, datetime):
             if value.microsecond == 0:
