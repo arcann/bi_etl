@@ -5,11 +5,11 @@ Created on Jan 22, 2016
 @author: woodd
 """
 import logging
-from configparser import ConfigParser
 
+from bi_etl.bi_config_parser import BIConfigParser
 from sqlalchemy import create_engine
 from sqlalchemy import types as sqltypes
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine.base import Engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.orm import scoped_session
 from bi_etl.database.database_metadata import DatabaseMetadata
@@ -29,10 +29,10 @@ class _FastNumeric(sqltypes.Numeric):
 class Connect(object):
     @staticmethod
     def get_sqlachemy_engine(
-            config: ConfigParser,
+            config: BIConfigParser,
             database_name: str,
-            usersection: str=None,
-            override_port: int=None,
+            usersection: str = None,
+            override_port: int = None,
             **kwargs) -> Engine:
         log = logging.getLogger(__name__)
 
@@ -51,8 +51,27 @@ class Connect(object):
             password = None
 
         dbname = config.get(database_name, 'dbname', fallback=None)
+        db_options = config.get(database_name, 'db_options', fallback=None)
+
+        if db_options is not None:
+            if '\n' in db_options:
+                db_options = '&'.join([opt.strip() for opt in db_options.split('\n') if opt.strip() != ''])
+
+        if '?' in dbname:
+            dbname, db_options_legacy = dbname.split('?')
+            if db_options is None:
+                db_options = db_options_legacy
+            else:
+                # TODO: Better to check one option at a time for overlap.
+                #       Would need to split on & and then split on = to get option names
+                if db_options != db_options_legacy:
+                    db_options = db_options + '&' + db_options_legacy
+                    log.warning(f'Parts of database options specified in both dbname and db_options. ({db_options_legacy}) and ({db_options})')
+                else:
+                    log.warning(f'Identical database options specified in both dbname and db_options. ({db_options_legacy}) and ({db_options})')
 
         # dialect://user:pass@dsn/dbname
+        # mssql+pyodbc://{user}:{password}@{server}:1433/{database_name}?driver=ODBC+Driver+17+for+SQL+Server
         url = '{dialect}://'.format(dialect=dialect)
         if userid is not None:
             url += userid
@@ -72,6 +91,16 @@ class Connect(object):
             next_part = '/' + dbname
             url += next_part
             no_pw_url += next_part
+        if db_options is not None:
+            next_part = '?' + db_options
+            url += next_part
+            no_pw_url += next_part
+
+        fast_executemany = config.getboolean(database_name, 'fast_executemany', fallback=None)
+        if fast_executemany:
+            kwargs['fast_executemany'] = True
+            log.info('Using fast_executemany')
+
         log.debug('Connecting to {}'.format(no_pw_url))
 
         if dialect == 'oracle':
@@ -88,11 +117,12 @@ class Connect(object):
         engine = create_engine(url, **kwargs)
         if config.getboolean(database_name, 'fast_numeric', fallback=True):
             engine.dialect.colspecs[sqltypes.Numeric] = _FastNumeric
+            log.info('Using fast_numeric')
         return engine
 
     @staticmethod
     def get_sqlachemy_session(
-            config: ConfigParser,
+            config: BIConfigParser,
             database_name: str,
             usersection: str = None,
             **kwargs) -> Session:
@@ -108,11 +138,11 @@ class Connect(object):
 
     @staticmethod
     def get_database_metadata(
-            config: ConfigParser,
+            config: BIConfigParser,
             database_name: str,
-            user: str=None,
-            schema: str=None,
-            override_port: int=None,
+            user: str = None,
+            schema: str = None,
+            override_port: int = None,
             **kwargs) -> DatabaseMetadata:
         log = logging.getLogger(__name__)
         engine = Connect.get_sqlachemy_engine(config, database_name, user, override_port=override_port, **kwargs)
