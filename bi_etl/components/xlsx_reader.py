@@ -96,8 +96,8 @@ class XLSXReader(ETLComponent):
         self.__start_row = None
         self.__active_row = None               
         
-        self.__workbook = None        
-        self.__active_worksheet = None
+        self._workbook = None
+        self._active_worksheet = None
         
         # Should be the last call of every init
         self.set_kwattrs(**kwargs)
@@ -130,16 +130,19 @@ class XLSXReader(ETLComponent):
 
     @start_row.setter
     def start_row(self, value):
-        self.__start_row = value        
+        self.__start_row = value
+
+    def has_workbook_init(self) -> bool:
+        return self._workbook is not None
 
     @property
     def workbook(self):
-        if self.__workbook is None:
-            self.__workbook = load_workbook(filename=self.file_name, read_only=True)
-        return self.__workbook
+        if self._workbook is None:
+            self._workbook = load_workbook(filename=self.file_name, read_only=True)
+        return self._workbook
     
     def set_active_worksheet_by_name(self, sheet_name):
-        self.__active_worksheet = self.workbook[sheet_name]
+        self._active_worksheet = self.workbook[sheet_name]
         self._column_names = None
         
     def set_active_worksheet_by_number(self, sheet_number):        
@@ -148,9 +151,9 @@ class XLSXReader(ETLComponent):
     
     @property
     def active_worksheet(self):
-        if self.__active_worksheet is None:
+        if self._active_worksheet is None:
             self.set_active_worksheet_by_number(0)
-        return self.__active_worksheet            
+        return self._active_worksheet
     
     def get_sheet_names(self):
         return self.workbook.get_sheet_names()

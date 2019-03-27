@@ -32,6 +32,7 @@ extras_require = {
 tests_require = [
     'pytest',
     'coverage',
+    'pytest-cov',
 ]
 
 setup(name='bi_etl',
