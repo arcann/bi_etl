@@ -16,6 +16,7 @@ from decimal import InvalidOperation
 
 import sqlalchemy
 from datetime import datetime, date, time, timedelta
+
 from sqlalchemy.sql.expression import bindparam
 from typing import Iterable, Callable, List, Union
 
@@ -34,6 +35,7 @@ from bi_etl.conversions import str2decimal
 from bi_etl.conversions import str2float
 from bi_etl.conversions import str2int
 from bi_etl.conversions import str2time
+from bi_etl.conversions import round_datetime_ms
 from bi_etl.exceptions import ColumnMappingError
 from bi_etl.statement_queue import StatementQueue
 from bi_etl.statistics import Statistics
@@ -786,6 +788,20 @@ class Table(ReadOnlyTable):
                 raise ValueError(msg)
             """).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
+        if self.table.bind.dialect.dialect_description == 'mssql+pyodbc' and self.table.bind.dialect.fast_executemany:
+            # fast_executemany Currently causes this error on datetime update (dimension load)
+            # [Microsoft][ODBC Driver 17 for SQL Server]Datetime field overflow. Fractional second precision exceeds the scale specified in the parameter binding. (0)
+            # Also see https://github.com/sqlalchemy/sqlalchemy/issues/4418
+            # All because SQL Server DATETIME values are limited to 3 digits
+
+            # Check for datetime2 and don't do this!
+            if str(target_column_object.type) == 'DATETIME':
+                self.log.warning(f"Rounding microseconds on {target_column_object}")
+
+                code += textwrap.dedent("""
+                        # base indent
+                            target_column_value = round_datetime_ms(target_column_value, 3)
+                        """)
         code += textwrap.dedent("""
         # base indent
             return target_column_value
@@ -1046,7 +1062,15 @@ class Table(ReadOnlyTable):
                 elif t_type.python_type == datetime:
                     # If we already have a date or datetime value
                     if isinstance(target_column_value, datetime) or isinstance(target_column_value, date):
-                        pass
+                        if self.table.bind.dialect.dialect_description == 'mssql+pyodbc' and self.table.bind.dialect.fast_executemany:
+                            # fast_executemany Currently causes this error on datetime update (dimension load)
+                            # [Microsoft][ODBC Driver 17 for SQL Server]Datetime field overflow. Fractional second precision exceeds the scale specified in the parameter binding. (0)
+                            # Also see https://github.com/sqlalchemy/sqlalchemy/issues/4418
+                            # All because SQL Server DATETIME values are limited to 3 digits
+
+                            # Check for datetime2 and don't do this!
+                            if str(target_column_object.type) == 'DATETIME':
+                                target_column_value = round_datetime_ms(target_column_value, 3)
                     elif isinstance(target_column_value, str):
                         target_column_value = str2datetime(target_column_value,
                                                            dt_format=self.default_date_time_format)
@@ -1299,9 +1323,6 @@ class Table(ReadOnlyTable):
             # Check if a transaction is still active.
             if self.__transaction.is_active:
                 self.__transaction.commit()
-        # TODO: Remove this testing code
-        # bcp_dir = r"c:\temp"
-        # if bcp_dir:
         with tempfile.TemporaryDirectory() as bcp_dir:
             bcp_file_path = os.path.join(bcp_dir, "bcp_file")
             bcp_format_path = os.path.join(bcp_dir, "bcp.fmt")
@@ -1371,6 +1392,12 @@ class Table(ReadOnlyTable):
                     # Change the row status to existing, now any updates should be via update statements
                     new_row.status = RowStatus.existing
             prepare_stats.timer.stop()
+
+            # TODO: Slow performance on big varchars -- possible cause:
+            # By default pyodbc reads all text columns as SQL_C_WCHAR buffers and decodes them using UTF-16LE.
+            # When writing, it always encodes using UTF-16LE into SQL_C_WCHAR buffers.
+            # Connection.setencoding and Connection.setdecoding functions can override
+
             try:
                 db_stats = self.get_stats_entry(stat_name + ' database execute', parent_stats=stats)
                 db_stats.print_start_stop_times = False
@@ -1961,6 +1988,12 @@ class Table(ReadOnlyTable):
                                          use_cache_as_source=use_cache_as_source,
                                          parent_stats=parent_stats)
 
+    def set_last_update_date(self, row):
+        last_update_date_col = self.get_column_name(self.last_update_date)
+        last_update_coerce = getattr(self, f'_coerce_{last_update_date_col}')
+        last_update_value = last_update_coerce(datetime.now())
+        row[last_update_date_col] = last_update_value
+
     def _update_via_bcp(self, update_rows):
         """
         NOT READY FOR USE!
@@ -2204,17 +2237,7 @@ class Table(ReadOnlyTable):
 
         # Set the last update date
         if self.last_update_date is not None:
-            last_update_date_col = self.get_column_name(self.last_update_date)
-            if changes_list is not None:
-                # To support partial updates, we need to add the last_update_date change to the list
-                if last_update_date_col in row:
-                    prev_last_update = row[last_update_date_col]
-                else:
-                    prev_last_update = None
-                last_update_date_chg = ColumnDifference(last_update_date_col, prev_last_update, datetime.now())
-                changes_list.append(last_update_date_chg)
-            else:
-                row[last_update_date_col] = datetime.now()
+            self.set_last_update_date(row)
 
         if changes_list is not None:
             for d_chg in changes_list:

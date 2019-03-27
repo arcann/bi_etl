@@ -201,6 +201,7 @@ class HistoryTable(Table):
             self.default_effective_date = datetime.now()
         else:
             self.default_effective_date = default_effective_date
+
         self.__begin_date_column = None
         self.__end_date_column = None
         self.__default_begin_date = None
@@ -864,6 +865,9 @@ class HistoryTable(Table):
         # Don't check in begin or end dates for differences
         if skip_update_check_on is None:
             skip_update_check_on = []
+        if do_not_update is None:
+            do_not_update = []
+
         if self.begin_date_column not in skip_update_check_on:
             skip_update_check_on.append(self.begin_date_column)
         if self.end_date_column not in skip_update_check_on:
@@ -896,8 +900,6 @@ class HistoryTable(Table):
                                                                  parent_stats=stats
                                                                  )
 
-            if do_not_update is None:
-                do_not_update = []
             changes_list = existing_row.compare_to(source_mapped_as_target_row,
                                                    exclude=do_not_update + skip_update_check_on)
             delayed_changes = existing_row.compare_to(source_mapped_as_target_row, compare_only=skip_update_check_on)
@@ -963,7 +965,7 @@ class HistoryTable(Table):
             self.autogenerate_key(new_row, force_override=True)
 
             if self.last_update_date is not None:
-                new_row[self.get_column_name(self.last_update_date)] = datetime.now()
+                self.set_last_update_date(new_row)
 
             if self.trace_data:
                 self.log.debug("Inserting record effective {} before existing history".format(effective_date))
@@ -994,7 +996,7 @@ class HistoryTable(Table):
             self.autogenerate_key(new_row, force_override=True)
 
             if self.last_update_date is not None:
-                new_row[self.get_column_name(self.last_update_date)] = datetime.now()
+                self.set_last_update_date(new_row)
 
             if self.trace_data:
                 self.log.debug("{key} not found, inserting as new".format(key=lookup_keys))
@@ -1196,7 +1198,7 @@ class HistoryTable(Table):
         logically_deleted = Row(iteration_header=iteration_header)
         logically_deleted[self.delete_flag] = self.delete_flag_yes
         if self.last_update_date is not None:
-            logically_deleted[self.last_update_date] = datetime.now()
+            self.set_last_update_date(logically_deleted)
 
         if criteria_dict is None:
             # Default to not processing rows that are already deleted
