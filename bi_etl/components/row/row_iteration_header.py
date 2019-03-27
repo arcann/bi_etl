@@ -255,10 +255,14 @@ class RowIterationHeader(object):
                 All new rows created with this header will immediately get the new name,
                 in which case you won't want to call this method again.
         """
-        assert new_name not in self._columns_positions, "Target column name {} already exists".format(new_name)
         self.get_column_position.cache_clear()
         try:
             position = self._columns_positions[old_name]
+            # Only check if target column name exists if we found the source name
+            # This way we can have two renames that both map to the same target as long as
+            # 1) Only one of the source column names exists
+            # 2) ignore_missing is True
+            assert new_name not in self._columns_positions, "Target column name {} already exists".format(new_name)
             # Modification of columns required
             if not no_new_header:
                 action = tuple(['r', old_name, new_name])
