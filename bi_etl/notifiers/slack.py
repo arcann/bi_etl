@@ -25,7 +25,7 @@ class Slack(Notifier):
             self.slack_channel = None
 
     def send(self, subject, message, throw_exception=False):
-        if self.slack_channel is not None:
+        if self.slack_channel is not None and self.slack_channel != '':
             if subject and message:
                 message_to_send = "{}: {}".format(subject, message)
             else:
