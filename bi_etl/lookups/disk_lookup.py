@@ -13,9 +13,13 @@ import sys
 import tempfile
 import weakref
 from configparser import ConfigParser
+from datetime import datetime
+from typing import MutableMapping
 
 import semidbm
 
+from bi_etl.components.row.row import Row
+from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.memory_size import get_dir_size
 from bi_etl.memory_size import get_size_gc
@@ -32,22 +36,27 @@ class DiskLookup(Lookup):
                  parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  config: ConfigParser = None,
                  path=None,
+                 init_parent: bool = True,
                  **kwargs):
         """
         Optional parameter path where the lookup files should be persisted to disk
-        """        
-        super(DiskLookup, self).__init__(lookup_name=lookup_name,
-                                         lookup_keys=lookup_keys,
-                                         parent_component=parent_component,
-                                         config=config,
-                                         **kwargs
-                                         )
+        """
+        if init_parent:
+            super().__init__(
+                lookup_name=lookup_name,
+                lookup_keys=lookup_keys,
+                parent_component=parent_component,
+                config=config,
+                **kwargs
+                )
         self._set_path(path)
         self.dbm = None
         self._cache_dir_mgr = None
         self._cache_file_path = None
         self.use_value_cache = False
         self._finalizer = None
+        # Shelf requires str keys
+        self._hashble_key_type = str
         
     def _set_path(self, path):
         if path is not None:
@@ -111,11 +120,6 @@ class DiskLookup(Lookup):
             return get_dir_size(self._cache_file_path)
         else:
             return 0
-        
-    def get_hashable_combined_key(self, row):
-        # shelve expects str keys
-        result = str(self.get_list_of_lookup_column_values(row))
-        return result
 
     def _cleanup(self):
         print("Cleanup")

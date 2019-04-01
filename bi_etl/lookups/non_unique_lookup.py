@@ -4,7 +4,6 @@ Created on Feb 27, 2015
 @author: woodd
 """
 from configparser import ConfigParser
-from typing import Union
 
 from bi_etl.components.row.row import Row
 from bi_etl.exceptions import NoResultFound
@@ -19,6 +18,7 @@ class NonUniqueLookup(Lookup):
                  lookup_keys: list,
                  parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  config: ConfigParser = None,
+                 value_for_none='<None>',  # Needs to be comparable to datatypes in the key actual None is not.
                  ):
         super(NonUniqueLookup, self).__init__(
             lookup_name=lookup_name,
@@ -26,11 +26,24 @@ class NonUniqueLookup(Lookup):
             parent_component=parent_component,
             config=config
             )
+        self.value_for_none = value_for_none
         self._remote_lookup_stmt_no_date = None
         self._len = 0
 
     def __len__(self):
         return self._len
+
+    def get_list_of_lookup_column_values(self, row: Lookup.ROW_TYPES) -> list:
+        results = super().get_list_of_lookup_column_values(row)
+
+        # We expect that non-unique lookups might have nulls, we need to eliminate those
+        results_2 = list()
+        for value in results:
+            if value is None:
+                value = self.value_for_none
+            results_2.append(value)
+
+        return results_2
 
     def cache_row(self, row: Row, allow_update: bool = True):
         if self.cache_enabled:
@@ -43,23 +56,33 @@ class NonUniqueLookup(Lookup):
             if self._cache is None:
                 self.init_cache()
             matching_rows = self._cache.get(lk_tuple, None)
-            primary_key = self.parent_component.get_primary_key_value_tuple(row)
-            assert isinstance(primary_key, tuple)
+            try:
+                primary_key = self.parent_component.get_primary_key_value_tuple(row)
+                assert isinstance(primary_key, tuple)
+            except KeyError:
+                primary_key = None
 
             if matching_rows is None:
                 matching_rows = self.version_collection_type()
                 self._cache[lk_tuple] = matching_rows
 
-            if primary_key in matching_rows:
-                if not allow_update:
-                    self.log.error('Key already in lookup!')
-                    self.log.error(f'Existing row = {repr(matching_rows[primary_key])}')
-                    self.log.error(f'New duplicate row = {repr(row)}')
-                    raise ValueError(f'Key {lk_tuple} + primary_key {primary_key} already in cache and allow_update was False')
-            else:
-                self._len += 1
-
-            matching_rows[primary_key] = row
+            try:
+                if primary_key is None:
+                    self._len += 1
+                    matching_rows[self._len] = row
+                elif primary_key in matching_rows:
+                    if allow_update:
+                        matching_rows[primary_key] = row
+                    else:
+                        self.log.error('Key already in lookup!')
+                        self.log.error(f'Existing row = {repr(matching_rows[primary_key])}')
+                        self.log.error(f'New duplicate row = {repr(row)}')
+                        raise ValueError(f'Key {lk_tuple} + primary_key {primary_key} already in cache and allow_update was False')
+                else:
+                    self._len += 1
+                    matching_rows[primary_key] = row
+            except TypeError as e:
+                raise
 
             # Capture memory usage snapshots
             if self._row_size is None:
@@ -67,8 +90,8 @@ class NonUniqueLookup(Lookup):
             else:
                 self.check_estimate_row_size()
 
-    def uncache_row(self, row: Union[Row, tuple]):
-        if isinstance(row, tuple):
+    def uncache_row(self, row: Lookup.ROW_TYPES):
+        if isinstance(row, tuple) or isinstance(row, list):
             raise ValueError("{}.uncache_row requires a Row not a tuple since it needs the date".format(self.__class__.__name__))
         else:
             lk_tuple = self.get_hashable_combined_key(row)
@@ -85,9 +108,9 @@ class NonUniqueLookup(Lookup):
                     # Not found, that's OK
                     pass
 
-    def uncache_set(self, row: Union[Row, tuple]):
+    def uncache_set(self, row: Lookup.ROW_TYPES):
         if self._cache is not None:
-            if isinstance(row, tuple):
+            if isinstance(row, self._hashble_key_type):
                 lk_tuple = row
             else:
                 lk_tuple = self.get_hashable_combined_key(row)
@@ -102,15 +125,20 @@ class NonUniqueLookup(Lookup):
                 for row in row_list.values():
                     yield row
 
-    def find_in_cache(self, row: Union[Row, tuple], **kwargs):
+    def find_in_cache(self, row: Lookup.ROW_TYPES, **kwargs):
         """
         Find an existing row in the cache effective on the date provided.
         Can raise ValueError if the cache is not setup.
         Can raise NoResultFound if the key is not in the cache.
         Can raise BeforeAllExisting is the effective date provided is before all existing records.
         """
-        if isinstance(row, tuple):
+        assert self.cache_enabled, f"Cache not enabled for {self}"
+        assert self._cache is not None, f"Cache not created for {self}"
+        if isinstance(row, self._hashble_key_type):
             lk_tuple = row
+            primary_key = None
+        elif isinstance(row, list) or isinstance(row, tuple):
+            lk_tuple = self._hashble_key_type(row)
             primary_key = None
         else:
             lk_tuple = self.get_hashable_combined_key(row)
@@ -121,7 +149,7 @@ class NonUniqueLookup(Lookup):
 
         if primary_key is None:
             # Note: We are violating the documentation on this method by returning a list instead of a single row
-            return matching_rows.values()
+            return list(matching_rows.values())
         else:
             try:
                 return matching_rows[primary_key]
@@ -133,7 +161,7 @@ class NonUniqueLookup(Lookup):
                 msg += "\nprimary_key = {}".format(primary_key)
                 raise TypeError(msg)
 
-    def find_in_remote_table(self, row: Union[Row, tuple], **kwargs) -> Row:
+    def find_in_remote_table(self, row: Lookup.ROW_TYPES, **kwargs) -> Row:
         """
         Find a matching row in the lookup based on the lookup index (keys)
 
@@ -141,7 +169,7 @@ class NonUniqueLookup(Lookup):
         """
         raise NotImplementedError()
 
-    def find_versions_list_in_remote_table(self, row: Union[Row, tuple]) -> list:
+    def find_versions_list_in_remote_table(self, row: Lookup.ROW_TYPES) -> list:
         """
         Find a matching row in the lookup based on the lookup index (keys)
 

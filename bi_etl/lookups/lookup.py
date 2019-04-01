@@ -30,6 +30,7 @@ __all__ = ['Lookup']
 
 class Lookup(object):
     COLLECTION_INDEX = datetime(year=1900, month=1, day=1, hour=0, minute=0, second=0)
+    ROW_TYPES = Union[Row, tuple, list]
 
     def __init__(self,
                  lookup_name: str,
@@ -59,6 +60,7 @@ class Lookup(object):
         # http://pythonhosted.org/BTrees/index.html
         # self.version_collection_type = SortedDict
         self.version_collection_type = OOBTree
+        self._hashble_key_type = tuple
 
     # noinspection PyUnresolvedReferences
     def _get_version(self, versions_collection: MutableMapping[datetime, Row], effective_date: datetime):
@@ -109,15 +111,30 @@ class Lookup(object):
         self.stats['Memory Size'] = self.get_memory_size()
         self.stats['Disk Size'] = self.get_disk_size()
 
-    def get_list_of_lookup_column_values(self, row: Row) -> list:
-        lookup_values = list()
+    def get_list_of_lookup_column_values(self, row: ROW_TYPES) -> list:
+        if isinstance(row, tuple):
+            return list(row)
+        elif isinstance(row, list):
+            return row
+        else:
+            lookup_values = list()
 
-        for k in self.lookup_keys:
-            lookup_values.append(row[k])
-        return lookup_values
+            for k in self.lookup_keys:
+                lookup_values.append(row[k])
+            return lookup_values
 
-    def get_hashable_combined_key(self, row: Row):
-        return tuple(self.get_list_of_lookup_column_values(row))
+    def get_hashable_combined_key(self, row: ROW_TYPES):
+        if isinstance(row, self._hashble_key_type):
+            return row
+        elif isinstance(row, tuple):
+            return self._hashble_key_type(row)
+        elif isinstance(row, list):
+            return self._hashble_key_type(tuple(row))
+        else:
+            if self._hashble_key_type == tuple:
+                return self._hashble_key_type(self.get_list_of_lookup_column_values(row))
+            else:
+                return self._hashble_key_type(tuple(self.get_list_of_lookup_column_values(row)))
 
     def clear_cache(self) -> None:
         """
@@ -261,13 +278,10 @@ class Lookup(object):
         """
         pass
         
-    def uncache_row(self, row: Union[Row, tuple]):
+    def uncache_row(self, row: ROW_TYPES):
         if self._cache is not None:
             try:
-                if isinstance(row, tuple):
-                    lk_tuple = row
-                else:
-                    lk_tuple = self.get_hashable_combined_key(row)
+                lk_tuple = self.get_hashable_combined_key(row)
                 del self._cache[lk_tuple]
             except KeyError:
                 # This lookup uses columns not in the row provided.
@@ -281,7 +295,7 @@ class Lookup(object):
                 del self._cache
                 self._cache = None
 
-    def uncache_set(self, row: Union[Row, tuple]):
+    def uncache_set(self, row: ROW_TYPES):
         self.uncache_row(row)
 
     def __iter__(self):
@@ -318,7 +332,7 @@ class Lookup(object):
         for row in deletes:
             self.uncache_row(row)
 
-    def get_versions_collection(self, row: Union[Row, tuple]) -> MutableMapping[datetime, Row]:
+    def get_versions_collection(self, row: ROW_TYPES) -> MutableMapping[datetime, Row]:
         """
         This method exists for compatibility with range caches
 
@@ -336,16 +350,13 @@ class Lookup(object):
         if self._cache is None:
             self.init_cache()
 
-        if isinstance(row, tuple):
-            lk_tuple = row
-        else:
-            lk_tuple = self.get_hashable_combined_key(row)
+        lk_tuple = self.get_hashable_combined_key(row)
         try:
             return {Lookup.COLLECTION_INDEX: self._cache[lk_tuple]}
         except KeyError as e:
             raise NoResultFound(e)
 
-    def find_in_cache(self, row: Union[Row, tuple], **kwargs):
+    def find_in_cache(self, row: ROW_TYPES, **kwargs):
         """
         Find a matching row in the lookup based on the lookup index (keys)
         """
@@ -353,7 +364,7 @@ class Lookup(object):
         versions_collection = self.get_versions_collection(row)
         return versions_collection[Lookup.COLLECTION_INDEX]
 
-    def has_row(self, row: Union[Row, tuple]):
+    def has_row(self, row: ROW_TYPES):
         """
         Does the row exist in the cache (for any date if it's a date range cache)
 
@@ -383,20 +394,17 @@ class Lookup(object):
             col_num += 1
         return stmt
 
-    def _get_remote_stmt_where_values(self, row: Union[Row, tuple], effective_date: datetime = None) -> dict:
+    def _get_remote_stmt_where_values(self, row: ROW_TYPES, effective_date: datetime = None) -> dict:
         values_dict = dict()
         col_num = 1
-        if isinstance(row, tuple):
-            values_list = row
-        else:
-            values_list = self.get_list_of_lookup_column_values(row)
+        values_list = self.get_list_of_lookup_column_values(row)
 
         for key_val in values_list:
             values_dict['k{}'.format(col_num)] = key_val
             col_num += 1
         return values_dict
 
-    def find_in_remote_table(self, row: Union[Row, tuple], **kwargs) -> Row:
+    def find_in_remote_table(self, row: ROW_TYPES, **kwargs) -> Row:
         """
         Find a matching row in the lookup based on the lookup index (keys)
         
@@ -438,12 +446,12 @@ class Lookup(object):
                              )
             raise RuntimeError(msg)
 
-    def find_versions_list_in_remote_table(self, row: Union[Row, tuple]) -> list:
+    def find_versions_list_in_remote_table(self, row: ROW_TYPES) -> list:
         return [self.find_in_remote_table(row)]
 
     def find_versions_list(
             self,
-            row: Union[Row, tuple],
+            row: ROW_TYPES,
             fallback_to_db: bool = True,
             maintain_cache: bool = True,
             stats: Statistics = None,
@@ -519,7 +527,7 @@ class Lookup(object):
         return rows
 
     def find(self,
-             row: Union[Row, tuple],
+             row: ROW_TYPES,
              fallback_to_db: bool = True,
              maintain_cache: bool = True,
              stats: Statistics = None,

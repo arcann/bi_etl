@@ -27,11 +27,12 @@ class RangeLookup(Lookup):
                  end_date,
                  config: ConfigParser = None,
                  ):
-        super(RangeLookup, self).__init__(lookup_name=lookup_name,
-                                          lookup_keys=lookup_keys,
-                                          parent_component=parent_component,
-                                          config=config
-                                          )
+        super().__init__(
+            lookup_name=lookup_name,
+            lookup_keys=lookup_keys,
+            parent_component=parent_component,
+            config=config
+        )
         self.begin_date = begin_date
         self.end_date = end_date
         self._remote_lookup_stmt_no_date = None
@@ -79,8 +80,8 @@ class RangeLookup(Lookup):
             else:
                 self.check_estimate_row_size()
             
-    def uncache_row(self, row: Union[Row, tuple]):
-        if isinstance(row, tuple):
+    def uncache_row(self, row: Lookup.ROW_TYPES):
+        if isinstance(row, tuple) or isinstance(row, list):
             raise ValueError("{}.uncache_row requires a Row not a tuple since it needs the date".format(self.__class__.__name__))
         else:
             lk_tuple = self.get_hashable_combined_key(row)
@@ -96,9 +97,9 @@ class RangeLookup(Lookup):
                     # Not found, that's OK
                     pass
 
-    def uncache_set(self, row: Union[Row, tuple]):
+    def uncache_set(self, row: Lookup.ROW_TYPES):
         if self._cache is not None:
-            if isinstance(row, tuple):
+            if isinstance(row, self._hashble_key_type):
                 lk_tuple = row
             else:
                 lk_tuple = self.get_hashable_combined_key(row)
@@ -113,7 +114,7 @@ class RangeLookup(Lookup):
                 for row in versions_collection.values():
                     yield row
 
-    def get_versions_collection(self, row: Union[Row, tuple]) -> MutableMapping[datetime, Row]:
+    def get_versions_collection(self, row: Lookup.ROW_TYPES) -> MutableMapping[datetime, Row]:
         """
         This method exists for compatibility with range caches
 
@@ -127,7 +128,7 @@ class RangeLookup(Lookup):
         A MutableMapping of rows
         """
 
-        if isinstance(row, tuple):
+        if isinstance(row, self._hashble_key_type):
             lk_tuple = row
         else:
             lk_tuple = self.get_hashable_combined_key(row)
@@ -143,7 +144,7 @@ class RangeLookup(Lookup):
         except KeyError:
             raise NoResultFound()
 
-    def find_in_cache(self, row: Union[Row, tuple], **kwargs):
+    def find_in_cache(self, row: Lookup.ROW_TYPES, **kwargs):
         """
         Find an existing row in the cache effective on the date provided.
         Can raise ValueError if the cache is not setup.
@@ -173,10 +174,10 @@ class RangeLookup(Lookup):
         stmt = stmt.where(bindparam('eff_date') <= self.parent_component.get_column(self.end_date))
         return stmt
 
-    def _get_remote_stmt_where_values(self, row: Union[Row, tuple], effective_date: datetime = None) -> dict:
+    def _get_remote_stmt_where_values(self, row: Lookup.ROW_TYPES, effective_date: datetime = None) -> dict:
         values_dict = super(RangeLookup, self)._get_remote_stmt_where_values(row)
         if effective_date is None:
-            if isinstance(row, tuple):
+            if isinstance(row, tuple) or isinstance(row, list):
                 effective_date_value_name = 'k{}'.format(len(row))
                 effective_date = ensure_datetime(values_dict[effective_date_value_name])
                 del values_dict[effective_date_value_name]
@@ -185,7 +186,7 @@ class RangeLookup(Lookup):
         values_dict['eff_date'] = effective_date
         return values_dict
     
-    def find_in_remote_table(self, row: Union[Row, tuple], **kwargs) -> Row:
+    def find_in_remote_table(self, row: Lookup.ROW_TYPES, **kwargs) -> Row:
         """
         Find a matching row in the lookup based on the lookup index (keys)
         
@@ -247,7 +248,7 @@ class RangeLookup(Lookup):
                 msg += '\n--------------------------\n' 
             raise RuntimeError(msg)
 
-    def find_versions_list_in_remote_table(self, row: Union[Row, tuple]) -> list:
+    def find_versions_list_in_remote_table(self, row: Lookup.ROW_TYPES) -> list:
         """
         Find a matching row in the lookup based on the lookup index (keys)
 

@@ -55,6 +55,7 @@ class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
                                 path=path,
                                 begin_date=begin_date,
                                 end_date=end_date,
+                                init_parent=False,  # Don't have it call the parent init because RangeLookup will have done that
                                 )
         self.MemoryLookupClass = RangeLookup
         self.DiskLookupClass = DiskRangeLookup

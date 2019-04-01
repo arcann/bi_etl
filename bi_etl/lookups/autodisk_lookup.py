@@ -44,14 +44,16 @@ class AutoDiskLookup(Lookup):
                  path=None,
                  max_percent_ram_used=None,
                  max_process_ram_usage_mb=None,
+                 init_parent: bool = True,
                  **kwargs
                  ):
-        Lookup.__init__(self,
-                        lookup_name=lookup_name,
-                        lookup_keys=lookup_keys,
-                        parent_component=parent_component,
-                        config=config,
-                        )
+        if init_parent:
+            super().__init__(
+                lookup_name=lookup_name,
+                lookup_keys=lookup_keys,
+                parent_component=parent_component,
+                config=config,
+                )
         self._cache = None
         self.rows_cached = 0
         # First try and use passed value

@@ -19,7 +19,7 @@ class DiskRangeLookup(RangeLookup, DiskLookup):
                  begin_date,
                  end_date,
                  config: ConfigParser = None,
-                 path=None):
+                 path: str = None):
         """
         Optional parameter path controls where the data is persisted
         """
@@ -31,8 +31,19 @@ class DiskRangeLookup(RangeLookup, DiskLookup):
                              end_date=end_date,
                              config=config,
                              )
+        DiskLookup.__init__(
+            self,
+            lookup_name=lookup_name,
+            lookup_keys=lookup_keys,
+            parent_component=parent_component,
+            begin_date=begin_date,
+            end_date=end_date,
+            config=config,
+            path=path,
+            init_parent=False,  # Don't have it call the parent init because RangeLookup will have done that
+        )
         # Add on part of DiskLookup init that isn't covered by RangeLookup.__init__
-        self._set_path(path)
+        # self._set_path(path)
 
     def init_cache(self):
         DiskLookup.init_cache(self)
