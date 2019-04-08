@@ -4,11 +4,13 @@ from typing import Union, List, Callable
 
 from bi_etl.components.hst_table import HistoryTable
 from bi_etl.components.row.row import Row
-from bi_etl.conversions import ensure_datetime
+from bi_etl.components.row.row_status import RowStatus
+from bi_etl.components.table import Table
 from bi_etl.database import DatabaseMetadata
 from bi_etl.exceptions import NoResultFound
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.statistics import Statistics
+from bi_etl.timer import Timer
 
 __all__ = ['HistoryTableSourceBased']
 
@@ -468,7 +470,8 @@ class HistoryTableSourceBased(HistoryTable):
             else:
                 source_row[self.begin_date_column] = self.default_effective_date
         else:
-            source_row[self.begin_date_column] = ensure_datetime(effective_date)
+            date_coerce = getattr(self, f'_coerce_{self.begin_date_column}')
+            source_row[self.begin_date_column] = date_coerce(effective_date)
 
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.timer.start()
@@ -521,6 +524,129 @@ class HistoryTableSourceBased(HistoryTable):
                 stat_name=stat_name,
                 parent_stats=parent_stats,
                 )
+
+    def update_not_in_set(
+            self,
+            updates_to_make: Union[dict, Row],
+            set_of_key_tuples: set,
+            lookup_name: str = None,
+            criteria_list: list = None,
+            criteria_dict: dict = None,
+            use_cache_as_source: bool = True,
+            progress_frequency: int = None,
+            stat_name: str = 'update_not_in_set',
+            parent_stats: Statistics = None,
+            **kwargs
+    ):
+        """
+        Applies update to rows matching criteria that are not in the list_of_key_tuples pass in.
+
+        Parameters
+        ----------
+        updates_to_make: :class:`Row`
+            Row or dict of updates to make
+        set_of_key_tuples: set
+            Set of tuples comprising the primary key values. This list represents the rows that should *not* be updated.
+        lookup_name: str
+            The name of the lookup (see :meth:`define_lookup`) to use when searching for an existing row.
+        criteria_list : string or list of strings
+            Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
+            https://goo.gl/JlY9us
+        criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
+        use_cache_as_source: bool
+            Attempt to read existing rows from the cache?
+        stat_name: string
+            Name of this step for the ETLTask statistics. Default = 'delete_not_in_set'
+        progress_frequency: int
+            How often (in seconds) to output progress messages. Default = 10.  None for no progress messages.
+        parent_stats: bi_etl.statistics.Statistics
+            Optional Statistics object to nest this steps statistics in.
+            Default is to place statistics in the ETLTask level statistics.
+        kwargs:
+            effective_date: datetime
+                The effective date to use for the update
+        """
+        if criteria_list is None:
+            criteria_list = []
+
+        criteria_list.extend(
+            [
+                self.get_column(self.delete_flag) == self.delete_flag_no,
+                self.get_column(self.primary_key[0]) > 0,
+            ]
+        )
+        stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
+        stats['rows read'] = 0
+        stats['updates count'] = 0
+
+        stats.timer.start()
+        self.begin()
+
+        if progress_frequency is None:
+            progress_frequency = self.progress_frequency
+
+        progress_timer = Timer()
+
+        # Turn off read progress reports
+        saved_progress_frequency = self.progress_frequency
+        self.progress_frequency = None
+
+        if lookup_name is None:
+            lookup = self.get_nk_lookup()
+        else:
+            lookup = self.get_lookup(lookup_name)
+
+        # Turn off cache updates
+        saved_maintain_cache_during_load = self.maintain_cache_during_load
+        self.maintain_cache_during_load = False
+        self.cache_clean = False
+
+        # Note, here we select only lookup columns from self
+        for row in self.where(column_list=lookup.lookup_keys,
+                              criteria_list=criteria_list,
+                              criteria_dict=criteria_dict,
+                              use_cache_as_source=use_cache_as_source,
+                              parent_stats=stats):
+            if row.status == RowStatus.unknown:
+                pass
+            stats['rows read'] += 1
+            existing_key = lookup.get_hashable_combined_key(row)
+
+            if 0 < progress_frequency <= progress_timer.seconds_elapsed:
+                progress_timer.reset()
+                self.log.info("update_not_in_set current current row#={} row key={} updates done so far = {}".format(
+                    stats['rows read'], existing_key, stats['updates count']))
+
+            if existing_key not in set_of_key_tuples:
+                stats['updates count'] += 1
+
+                # Direct update method. This will be slow due to new connections per update
+                # and also update statements per row
+                # self.update(updates_to_make, key_names=lookup.lookup_keys, key_values=existing_key, force_new_connection=True)
+
+                try:
+                    # First we need the entire existing row
+                    target_row_list = lookup.find_versions_list(row)
+                except NoResultFound:
+                    raise RuntimeError("keys {} found in database or cache but not found now by get_by_lookup".format(
+                        row.as_key_value_list
+                    ))
+
+                for target_row in target_row_list:
+                    # Then we can apply the updates to it using Table non-versioned updates
+                    Table.apply_updates(
+                        self=self,
+                        row=target_row,
+                        additional_update_values=updates_to_make,
+                        parent_stats=stats
+                    )
+
+        stats.timer.stop()
+
+        # Restore saved progress_frequency
+        self.progress_frequency = saved_progress_frequency
+        self.maintain_cache_during_load = saved_maintain_cache_during_load
 
     def commit(self,
                stat_name='commit',

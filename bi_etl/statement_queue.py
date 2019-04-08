@@ -102,7 +102,10 @@ class StatementQueue(object):
                 values = self.statement_values[stmtKey]
                 if self.execute_with_binds:
                     result = connection.execute(stmt, values)
-                    rows_affected += result.rowcount
+                    if result.rowcount == -1:
+                        rows_affected += len(values)
+                    else:
+                        rows_affected += result.rowcount
                 else:
                     # cursor = connection.engine.raw_connection().cursor()
                     # for values_str in self.values_str_list(values):
@@ -110,7 +113,10 @@ class StatementQueue(object):
                     #     rows_affected += cursor.rowcount
                     for values_str in self.values_str_list(values):
                         result = connection.execute(stmt.format(values=values_str))
-                        rows_affected += result.rowcount
+                        if result.rowcount == -1:
+                            rows_affected += len(values)
+                        else:
+                            rows_affected += result.rowcount
             self.statements.clear()
             self.row_count = 0
         return rows_affected

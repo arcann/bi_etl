@@ -4,8 +4,6 @@ Created on Apr 2, 2015
 from typing import Union
 
 from openpyxl import load_workbook, Workbook
-from openpyxl.worksheet.cell_range import CellRange
-from openpyxl.worksheet.table import Table, TableStyleInfo
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.xlsx_reader import XLSXReader
@@ -112,6 +110,9 @@ class XLSXWriter(XLSXReader):
             self._active_worksheet = self.workbook[sheet_name]
             self._column_names = None
             self._insert_cnt_this_sheet = 0
+
+    def _obtain_column_names(self):
+        raise ValueError(f'Column names must be explicitly set on {self}')
 
     def write_header(self):
         if self.column_names is None:

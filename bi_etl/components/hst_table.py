@@ -1191,7 +1191,7 @@ class HistoryTable(Table):
             effective_date:
                 The effective date to use for this operation.
         """
-        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
+        effective_date = kwargs.get('effective_date', self.default_effective_date)
         if self.delete_flag is None:
             raise ValueError('delete_flag is not set')
         iteration_header = RowIterationHeader(logical_name='logically_deleted')
@@ -1262,7 +1262,7 @@ class HistoryTable(Table):
             effective_date: datetime
                 The effective date to use for the update
         """
-        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
+        effective_date = kwargs.get('effective_date', self.default_effective_date)
         self.logically_delete_not_in_set(set_of_key_tuples=set_of_key_tuples,
                                          effective_date=effective_date,
                                          lookup_name=lookup_name,
@@ -1303,7 +1303,7 @@ class HistoryTable(Table):
             effective_date:
                 The effective date to use for this operation.
         """
-        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
+        effective_date = kwargs.get('effective_date', self.default_effective_date)
         assert self.track_source_rows, "logically_delete_not_processed can't be used if we don't track source rows"
         if self.source_keys_processed is None or len(self.source_keys_processed) == 0:
             # We don't want to logically delete all the rows
@@ -1349,7 +1349,7 @@ class HistoryTable(Table):
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """
-        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
+        effective_date = kwargs.get('effective_date', self.default_effective_date)
         self.logically_delete_not_processed(criteria_list=criteria_list,
                                             criteria_dict=criteria_dict,
                                             parent_stats=parent_stats,
@@ -1398,7 +1398,8 @@ class HistoryTable(Table):
             effective_date: datetime
                 The effective date to use for the update
         """
-        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
+        date_coerce = getattr(self, f'_coerce_{self.begin_date_column}')
+        effective_date = date_coerce(kwargs.get('effective_date', self.default_effective_date))
         if criteria_list is None:
             criteria_list = []
 
@@ -1451,13 +1452,18 @@ class HistoryTable(Table):
                 stats['updates count'] += 1
 
                 # First we need the entire existing row
-                target_row = self.get_by_lookup_and_effective_date(lookup_name, row,
-                                                                   effective_date=effective_date)
+                target_row = self.get_by_lookup_and_effective_date(
+                    lookup_name,
+                    row,
+                    effective_date=effective_date
+                )
 
                 # Then we can apply the updates to it
-                self.apply_updates(target_row,
-                                   additional_update_values=updates_to_make,
-                                   parent_stats=stats)
+                self.apply_updates(
+                    target_row,
+                    additional_update_values=updates_to_make,
+                    parent_stats=stats,
+                )
 
                 #
                 # self.log.debug("{} found row {}".format(stat_name, dict_to_str(row)))
@@ -1508,7 +1514,7 @@ class HistoryTable(Table):
             effective_date: datetime
                 The effective date to use for the update
         """
-        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
+        effective_date = kwargs.get('effective_date', self.default_effective_date)
         assert self.track_source_rows, "update_not_processed can't be used if we don't track source rows"
 
         self.update_not_in_set(

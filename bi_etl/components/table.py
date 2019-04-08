@@ -37,6 +37,7 @@ from bi_etl.conversions import str2int
 from bi_etl.conversions import str2time
 from bi_etl.conversions import round_datetime_ms
 from bi_etl.exceptions import ColumnMappingError
+from bi_etl.lookups.lookup import Lookup
 from bi_etl.statement_queue import StatementQueue
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
@@ -257,6 +258,7 @@ class Table(ReadOnlyTable):
         self.set_kwattrs(**kwargs)
 
     def close(self):
+        self.commit()
         super(Table, self).close()
         self.clear_cache()
         # Clean out update temp tables
@@ -2347,10 +2349,11 @@ class Table(ReadOnlyTable):
                target_excludes: Iterable = None,
                stat_name: str = 'direct update',
                parent_stats: Statistics = None,
+               force_new_connection: bool = False,
                ):
         """
-        Directly performs a database update. Invalidates caching.  
-        If you have a full target row, use apply_updates.
+        Directly performs a database update. Invalidates caching.
+        THIS METHOD IS SLOW!  If you have a full target row, use apply_updates instead.
         
         Parameters
         ----------
@@ -2431,7 +2434,7 @@ class Table(ReadOnlyTable):
 
         self.begin()
         stats['direct_updates_sent_to_db'] += 1
-        result = self.execute(stmt)
+        result = self.execute(stmt, force_new_connection=force_new_connection)
         stats['direct_updates_applied_to_db'] += result.rowcount
         result.close()
 
@@ -2490,6 +2493,16 @@ class Table(ReadOnlyTable):
             lookup = self.get_nk_lookup()
         else:
             lookup = self.get_lookup(lookup_name)
+
+        if criteria_list is None:
+            criteria_list = []
+
+        if self.delete_flag is not None:
+            criteria_list.extend(
+                [
+                    self.get_column(self.delete_flag) == self.delete_flag_no,
+                ]
+            )
 
         # Note, here we select only lookup columns from self
         for row in self.where(column_list=lookup.lookup_keys,
@@ -2664,7 +2677,10 @@ class Table(ReadOnlyTable):
                 if not self.primary_key:
                     raise AssertionError("upsert needs a lookup_key or a table with a primary key!")
 
-            lookup_object = self.get_lookup(lookup_name)
+            if isinstance(lookup_name, Lookup):
+                lookup_object = lookup_name
+            else:
+                lookup_object = self.get_lookup(lookup_name)
             if not lookup_object.cache_enabled and self.maintain_cache_during_load and self.batch_size > 1:
                 raise AssertionError("Caching needs to be turned on if batch mode is on!")
 

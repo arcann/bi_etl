@@ -82,11 +82,11 @@ class XLSXReader(ETLComponent):
                 logical_name = str(self.file_name)
         
         # Don't pass kwargs up. They should be set here at the end
-        super(XLSXReader, self).__init__(task=task,
-                                         logical_name=logical_name,
-                                        )
+        super().__init__(
+            task=task,
+            logical_name=logical_name,
+        )
 
-        self._column_names = None
         # column to catch long rows (more values than columns)
         self.restkey = 'extra data past last delimiter'
         # default value for short rows (value for missing keys)    
@@ -145,8 +145,12 @@ class XLSXReader(ETLComponent):
         self._active_worksheet = self.workbook[sheet_name]
         self._column_names = None
         
-    def set_active_worksheet_by_number(self, sheet_number):        
-        sheet_name = self.get_sheet_names()[sheet_number]
+    def set_active_worksheet_by_number(self, sheet_number):
+        sheet_names = self.get_sheet_names()
+        if len(sheet_names) > (sheet_number + 1):
+            sheet_name = sheet_names[sheet_number]
+        else:
+            sheet_name = 'output'
         self.set_active_worksheet_by_name(sheet_name)
     
     @property

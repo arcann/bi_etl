@@ -1,13 +1,6 @@
 from bi_etl.components.get_next_key.base_table_memory import BaseTableMemory
 
 
-def main():
-    pass
-
-if __name__ == '__main__':
-    main()
-
-
 class LocalTableMemory(BaseTableMemory):
     def __init__(self, table):
         super().__init__(table=table)

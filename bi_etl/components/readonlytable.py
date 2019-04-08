@@ -311,11 +311,14 @@ class ReadOnlyTable(ETLComponent):
     def is_connected(self) -> bool:
         return self.__connection is not None
 
-    def connection(self) -> sqlalchemy.engine.base.Connection:
-        if self.__connection is None and self.table is not None:
-            self.__connection = self.table.metadata.bind.connect()
-        # noinspection PyTypeChecker
-        return self.__connection
+    def connection(self, force_new: bool = False) -> sqlalchemy.engine.base.Connection:
+        if force_new:
+            return self.table.metadata.bind.connect()
+        else:
+            if self.__connection is None and self.table is not None:
+                self.__connection = self.table.metadata.bind.connect()
+            # noinspection PyTypeChecker
+            return self.__connection
 
     def close(self):
         for lookup in self.lookups.values():
@@ -341,6 +344,21 @@ class ReadOnlyTable(ETLComponent):
         self.close()
 
     def execute(self, statement, *list_params, **params) -> sqlalchemy.engine.ResultProxy:
+        """
+
+        Parameters
+        ----------
+        statement:
+            The SQL statement to execute
+
+        force_new_connection:
+            Force a new connection to the DB for this query.
+            Defaults to False
+
+        Returns
+        -------
+        sqlalchemy.engine.ResultProxy with results
+        """
         # compiled_cache created huge memory usage. It seems like each lookup created it's own entry
         # execution_options(compiled_cache=self.__compile_cache)
         if self.trace_sql:
@@ -353,12 +371,25 @@ class ReadOnlyTable(ETLComponent):
             self.log.debug('list_params={}'.format(list_params))
             self.log.debug('params={}'.format(params))
             self.log.debug('-------------------------')
-        connection = self.connection()
+        if 'force_new_connection' in params:
+            force_new_connection = params['force_new_connection']
+            del params['force_new_connection']
+        else:
+            force_new_connection = False
+        connection = self.connection(force_new=force_new_connection)
         return connection.execute(statement, *list_params, **params)
 
-    def get_one(self, statement=None):
+    def get_one(self, statement=None, force_new_connection=True):
         """
-        Gets one row from the statement.
+        Executes and gets one row from the statement.
+
+        Parameters
+        ----------
+        statement:
+            The SQL statement to execute
+        force_new_connection:
+            Force a new connection to the DB for this query.
+            Defaults to False
         
         Returns
         -------
@@ -375,7 +406,7 @@ class ReadOnlyTable(ETLComponent):
         """
         if statement is None:
             statement = self.select()
-        results = self.execute(statement)
+        results = self.execute(statement, force_new_connection=force_new_connection)
         row1 = results.fetchone()
         if row1 is None:
             raise NoResultFound()
@@ -713,7 +744,7 @@ class ReadOnlyTable(ETLComponent):
         else:
             return self.table.columns[column].name
 
-    def max(self, column, where=None):
+    def max(self, column, where=None, force_new_connection: bool = True):
         """
         Query the table/view to get the maximum value of a given column. 
         
@@ -723,7 +754,10 @@ class ReadOnlyTable(ETLComponent):
             The column to get the max value of
         where: string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`
-            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where 
+            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+        force_new_connection:
+            Force a new connection to the DB for this query.
+            Defaults to True since we assume we might have an open connection already when we want to call max.
         
         Returns
         -------
@@ -738,7 +772,7 @@ class ReadOnlyTable(ETLComponent):
                     stmt = stmt.where(c)
             else:
                 stmt = stmt.where(where)
-        max_row = self.get_one(stmt)
+        max_row = self.get_one(stmt, force_new_connection=force_new_connection)
         max_value = max_row['max_1']
         return max_value
 

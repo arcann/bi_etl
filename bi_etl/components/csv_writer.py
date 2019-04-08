@@ -217,7 +217,7 @@ class CSVWriter(ETLComponent):
         self.skipinitialspace = False
         self.strict = False
         self.large_field_support = False
-        self.lineterminator = None
+        self.lineterminator = '\n'
         # End csv module params
 
         self.trace_data = False

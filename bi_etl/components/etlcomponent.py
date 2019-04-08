@@ -56,6 +56,7 @@ class ETLComponent(Iterable):
     """
     DEFAULT_PROGRESS_FREQUENCY = 10  # Seconds
     DEFAULT_PROGRESS_MESSAGE = "{logical_name} current row # {row_number:,}"
+    FULL_ITERATION_HEADER = 'full'
     logging_level_reported = False
 
     def __init__(self,
@@ -82,6 +83,7 @@ class ETLComponent(Iterable):
         self.__close_called = False
         self.read_batch_size = 1000
         self._iterator_applied_filters = False
+        self._full_iteration_header = None
         self.warnings_issued = 0
         self.warnings_limit = 100
 
@@ -112,7 +114,11 @@ class ETLComponent(Iterable):
 
     def set_kwattrs(self, **kwargs):
         for attr in kwargs:
-            setattr(self, attr, kwargs[attr])
+            if attr == 'column_names':
+                # Use the setter
+                self.column_names = kwargs[attr]
+            else:
+                setattr(self, attr, kwargs[attr])
     
     def __repr__(self):
         return "{cls}(task={task},logical_name={logical_name},primary_key={primary_key})".format(
@@ -473,15 +479,19 @@ class ETLComponent(Iterable):
         return self._stats
 
     # noinspection PyPep8Naming
-    def Row(self, data=None, logical_name=None, iteration_header=None):
+    def Row(self, data=None, logical_name: str = None, iteration_header: typing.Union[RowIterationHeader, str] = None):
         """
         Make a new empty row with this components structure.
         """
         if iteration_header is None:
             iteration_header = self.generate_iteration_header(logical_name=logical_name)
+        elif iteration_header == self.FULL_ITERATION_HEADER:
+            if self._full_iteration_header is None:
+                self._full_iteration_header = self.generate_iteration_header(logical_name=logical_name)
+            iteration_header = self._full_iteration_header
         return self.row_object(iteration_header=iteration_header, data=data)
 
-    def generate_iteration_header(self, logical_name=None, columns_in_order=None):
+    def generate_iteration_header(self, logical_name: str = None, columns_in_order: list = None) -> RowIterationHeader:
         if logical_name is None:
             logical_name = self.row_name
 
