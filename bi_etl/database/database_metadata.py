@@ -40,7 +40,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         with self.bind.connect() as connection:
             return connection.execute(sql)
     
-    def execute_procedure(self, procedure_name, *args, return_results=False):
+    def execute_procedure(self, procedure_name, *args, return_results=False, dpapi_connection=None):
         """
         Execute a stored procedure 
         
@@ -64,7 +64,12 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         """
         log = logging.getLogger(__name__)
         log.debug("Calling procedure {} {}".format(procedure_name, args))
-        dpapi_connection = self.bind.raw_connection()
+
+        if dpapi_connection is None:
+            dpapi_connection = self.bind.raw_connection()
+            close_connection = True
+        else:
+            close_connection = False
         results = None
         try:
             cursor = dpapi_connection.cursor()
@@ -87,7 +92,8 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
                 cursor.close()
             dpapi_connection.commit()
         finally:
-            dpapi_connection.close()
+            if close_connection:
+                dpapi_connection.close()
         return results
 
     def execute_direct(self, sql, return_results=False):

@@ -238,25 +238,26 @@ class RunSQLScript(ETLTask):
                         timer = Timer()
                         part_sql = part_sql.strip()
                         part_sql = part_sql.strip(';')
+                        part_sql = part_sql.strip()
 
                         if part_sql.startswith('EXEC') and database.bind.dialect.dialect_description == 'mssql+pyodbc':
                             sql_statement = sqlparse.parse(part_sql)[0]
-                            tokens = sql_statement.tokens
-                            procedure = tokens[2].value
-                            if len(tokens) == 5:
-                                procedure_args_raw = tokens[4].value
-                                procedure_args_list = procedure_args_raw.split(',')
-                                procedure_args = list()
-                                for arg in procedure_args_list:
-                                    arg = arg.strip()
-                                    arg2 = arg.strip("'")
-                                    procedure_args.append(arg2)
-                            elif len(tokens) == 3:
-                                procedure_args = None
-                            else:
+                            procedure = None
+                            procedure_args = list()
+                            for token in sql_statement.tokens:
+                                if isinstance(token, sqlparse.sql.Identifier):
+                                    procedure = token.value
+                                if isinstance(token, sqlparse.sql.IdentifierList):
+                                    procedure_args_raw = token.value
+                                    procedure_args_list = procedure_args_raw.split(',')
+                                    for arg in procedure_args_list:
+                                        arg = arg.strip()
+                                        arg2 = arg.strip("'")
+                                        procedure_args.append(arg2)
+                            if procedure is None:
                                 raise ValueError(f"Error parsing procedure parts {sql_statement.tokens}")
                             self.log.debug(f"Executing Procedure: {procedure} with args {procedure_args}")
-                            database.execute_procedure(procedure, *procedure_args)
+                            database.execute_procedure(procedure, *procedure_args, dpapi_connection=conn)
                             self.log.info("Procedure took {} seconds".format(timer.seconds_elapsed_formatted))
                         else:
                             self.log.debug(f"Executing SQL:\n{part_sql}\n--End SQL")

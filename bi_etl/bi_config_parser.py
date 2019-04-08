@@ -28,7 +28,8 @@ class BIConfigParser(ConfigParser):
     When allow_no_value is true (default: False), options without values are accepted; the value
     presented for these is None.
 
-    Adds a read_config_ini function to read bi_etl_config\config.ini from C:\, E:\ or Home directory
+    Adds a read_config_ini function to read config.ini from current path, Home directory
+    or on Windows from a folder named bi_etl_config just under the root C,D or E drive.
     Adds a read_relative_config function to search from pwd up to file the config file
     """
     CONFIG_ENV = 'BI_ETL_CONFIG'
