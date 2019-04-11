@@ -147,7 +147,7 @@ class XLSXReader(ETLComponent):
         
     def set_active_worksheet_by_number(self, sheet_number):
         sheet_names = self.get_sheet_names()
-        if len(sheet_names) > (sheet_number + 1):
+        if len(sheet_names) >= (sheet_number + 1):
             sheet_name = sheet_names[sheet_number]
         else:
             sheet_name = 'output'

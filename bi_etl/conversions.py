@@ -247,7 +247,14 @@ def nvl(value, default):
         return default
     else:
         return value
-    
+
+
+def coalesce(*values):
+    for candidate_value in values:
+        if candidate_value is not None:
+            return candidate_value
+    return None
+
 
 def nullif(v, value_to_null):
     """
