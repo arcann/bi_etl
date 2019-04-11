@@ -95,7 +95,7 @@ def ssh_forward(
         # an active forward.
         'sleep', str(seconds_wait_for_usage),
     ]
-    log.debug("Starting ssh")
+    log.info(f'Starting ssh to {host}:{server_port}')
     log.debug(' '.join(cmd))
     try:
         if wait:

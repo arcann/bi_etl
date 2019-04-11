@@ -96,96 +96,6 @@ class RunSQLScript(ETLTask):
                 buf = afile.read(block_size)
         return hasher.hexdigest()
 
-    @staticmethod
-    def split_sql_expressions(sql: str) -> list:
-        """
-        https://stackoverflow.com/questions/38856534/execute-sql-file-with-multiple-statements-separated-by-using-pyodbc
-
-        :param sql:
-        :return:
-        """
-        results = []
-        current = ''
-        state = None
-        for c in sql:
-            if state is None:  # default state, outside of special entity
-                current += c
-                if c in '"\'':
-                    # quoted string
-                    state = c
-                elif c == '-':
-                    # probably "--" comment
-                    state = '-'
-                elif c == '/':
-                    # probably '/*' comment
-                    state = '/'
-                elif c == ';':
-                    # remove it from the statement
-                    current = current[:-1].strip()
-                    # and save current stmt unless empty
-                    if current:
-                        results.append(current)
-                    current = ''
-            elif state == '-':
-                if c != '-':
-                    # not a comment
-                    state = None
-                    current += c
-                    continue
-                # remove first minus
-                current = current[:-1]
-                # comment until end of line
-                state = '--'
-            elif state == '--':
-                if c == '\n':
-                    # end of comment
-                    # and we do include this newline
-                    current += c
-                    state = None
-                # else just ignore
-            elif state == '/':
-                if c != '*':
-                    state = None
-                    current += c
-                    continue
-                # remove starting slash
-                current = current[:-1]
-                # multiline comment
-                state = '/*'
-            elif state == '/*':
-                if c == '*':
-                    # probably end of comment
-                    state = '/**'
-            elif state == '/**':
-                if c == '/':
-                    state = None
-                else:
-                    # not an end
-                    state = '/*'
-            elif state[0] in '"\'':
-                current += c
-                if state.endswith('\\'):
-                    # prev was backslash, don't check for ender
-                    # just revert to regular state
-                    state = state[0]
-                    continue
-                elif c == '\\':
-                    # don't check next char
-                    state += '\\'
-                    continue
-                elif c == state[0]:
-                    # end of quoted string
-                    state = None
-            else:
-                raise Exception('Illegal state %s' % state)
-
-        if current:
-            current = current.rstrip(';').strip()
-            if current:
-                results.append(current)
-
-        return results
-
     def load(self):
         if isinstance(self.datbase_entry, DatabaseMetadata):
             database = self.datbase_entry
@@ -266,8 +176,12 @@ class RunSQLScript(ETLTask):
                             try:
                                 cursor.execute(part_sql)
                             except Exception as e:
-                                self.log.error(part_sql)
-                                raise e
+                                if 'Invalid string or buffer length (0)' in str(e):
+                                    # Skip errors for blank SQL
+                                    pass
+                                else:
+                                    self.log.error(part_sql)
+                                    raise e
 
                             self.log.info("Statement took {} seconds".format(timer.seconds_elapsed_formatted))
                             # noinspection PyBroadException
