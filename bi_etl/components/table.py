@@ -1610,7 +1610,7 @@ class Table(ReadOnlyTable):
                                 parent_stats=parent_stats,
                                 **kwargs
                                 )
-                return None
+            return None
         else:
             return self.insert_row(source_row,
                                    additional_insert_values=additional_insert_values,
