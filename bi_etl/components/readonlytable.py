@@ -320,6 +320,9 @@ class ReadOnlyTable(ETLComponent):
             # noinspection PyTypeChecker
             return self.__connection
 
+    def set_connection(self, connection):
+        self.__connection = connection
+
     def close(self):
         for lookup in self.lookups.values():
             lookup.add_size_to_stats()

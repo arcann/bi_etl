@@ -2880,7 +2880,8 @@ class Table(ReadOnlyTable):
     def commit(self,
                stat_name='commit',
                parent_stats=None,
-               print_to_log=True):
+               print_to_log=True,
+               ):
         """
         Flush any buffered deletes, updates, or inserts
         
