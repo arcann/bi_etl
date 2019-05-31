@@ -3,6 +3,7 @@ Created on Jan 6, 2016
 
 @author: woodd
 """
+from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.etlcomponent import ETLComponent
 
@@ -17,7 +18,7 @@ class DummyETLComponent(ETLComponent):
         Constructor
         """
         if task is None:
-            task = ETLTask()
+            task = ETLTask(config=BIConfigParser())
         super().__init__(task=task, logical_name=logical_name, primary_key=primary_key)
         self.iteration_header = iteration_header
         if data is None:

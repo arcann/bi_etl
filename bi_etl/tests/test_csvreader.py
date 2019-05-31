@@ -8,6 +8,7 @@ import unittest
 import inspect
 import os
 
+from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.csvreader import CSVReader
 
@@ -32,7 +33,7 @@ class Test(unittest.TestCase):
         self.assertRegex(actual, expectedRe, msg)
 
     def setUp(self):
-        self.task = ETLTask()
+        self.task = ETLTask(config=BIConfigParser())
         self.test_files_path = self.get_test_files_path()
 
     def tearDown(self):
