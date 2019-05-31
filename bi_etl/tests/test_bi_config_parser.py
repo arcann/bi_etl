@@ -106,10 +106,6 @@ class Test(unittest.TestCase):
             # Make sure the current working dir is the bi_etl home dir
             # (where example_config.ini can be found)
             dir_path = os.path.dirname(os.path.realpath(__file__))
-            # Parent dir
-            dir_path = os.path.dirname(dir_path)
-            # Parent dir again
-            dir_path = os.path.dirname(dir_path)
             with mock.patch('os.getcwd', autospec=True) as getcwd:
                 getcwd.return_value = dir_path
                 config.read_config_ini(file_name='example_config.ini')

@@ -18,6 +18,7 @@ class DiskRangeLookup(RangeLookup, DiskLookup):
                  parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  begin_date,
                  end_date,
+                 use_value_cache: bool = True,
                  config: ConfigParser = None,
                  path: str = None):
         """
@@ -27,6 +28,7 @@ class DiskRangeLookup(RangeLookup, DiskLookup):
                              lookup_name=lookup_name,
                              lookup_keys=lookup_keys,
                              parent_component=parent_component,
+                             use_value_cache=use_value_cache,
                              begin_date=begin_date,
                              end_date=end_date,
                              config=config,

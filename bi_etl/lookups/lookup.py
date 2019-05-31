@@ -4,6 +4,8 @@ Created on Feb 26, 2015
 @author: woodd
 """
 import logging
+import sys
+
 import math
 import traceback
 import warnings
@@ -12,7 +14,6 @@ from datetime import datetime
 from typing import Union, MutableMapping
 
 import psutil
-# from sortedcontainers.sorteddict import SortedDict
 from BTrees.OOBTree import OOBTree
 from sqlalchemy.sql.expression import bindparam
 
@@ -37,6 +38,7 @@ class Lookup(object):
                  lookup_keys: list,
                  parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  config: ConfigParser = None,
+                 use_value_cache: bool = True,
                  **kwargs):
         self.lookup_name = lookup_name
         self.lookup_keys = lookup_keys
@@ -52,9 +54,11 @@ class Lookup(object):
         self._row_count_to_get_estimate_row_size = 1000        
         self._done_get_estimate_row_size = False
         self.cache_enabled = True
-        self.use_value_cache = True
+        self.use_value_cache = use_value_cache
         self._value_cache_str = dict()
+        self._value_cache_str_usage = dict()
         self._value_cache_datetime = dict()
+        self._value_cache_datetime_usage = dict()
         # OOBTree.BTree is now used instead of SortedDict
         # It ran tests in 80% of the time of the SortedDict equivalent
         # http://pythonhosted.org/BTrees/index.html
@@ -586,17 +590,51 @@ class Lookup(object):
         return row
 
     def _update_with_value_cache(self, row):
+        """
+        Update a row with str and datetime de-duplication references
+
+        :param row:
+        :return:
+        """
         for column_number, column_value in enumerate(row.values_in_order()):
             if isinstance(column_value, str):
                 if column_value in self._value_cache_str:
-                    row.set_by_zposition(column_number, self._value_cache_str[column_value])
+                    # Replace with value cache reference
+                    row.set_by_zposition_unsafe(column_number, self._value_cache_str[column_value])
+                    self._value_cache_str_usage[column_value] += 1
                 else:
+                    # Add to value cache
                     self._value_cache_str[column_value] = column_value
+                    self._value_cache_str_usage[column_value] = 0
             elif isinstance(column_value, datetime):
                 if column_value in self._value_cache_datetime:
-                    row.set_by_zposition(column_number, self._value_cache_datetime[column_value])
+                    # Replace with value cache reference
+                    row.set_by_zposition_unsafe(column_number, self._value_cache_datetime[column_value])
+                    self._value_cache_datetime_usage[column_value] += 1
                 else:
-                    self._value_cache_datetime[column_value] = column_value
+                    # Don't bother adding microsecond level datetime values to the dict
+                    # It will perform better if smaller
+                    if column_value.microsecond in {0, 999990, 999999}:
+                        # Add to value cache
+                        self._value_cache_datetime[column_value] = column_value
+                        self._value_cache_datetime_usage[column_value] = 0
+
+    @staticmethod
+    def _str_report_on_value_cache_usage(lookup_name: str, type_name: str, value_cache: dict) -> str:
+        key_count = len(value_cache)
+        if key_count > 0:
+            max_usage = max(value_cache.values())
+            total_usage = sum(value_cache.values())
+            total_bytes_saved = sum([sys.getsizeof(key) * value for key, value in value_cache.items()])
+            return f'{lookup_name} {type_name} value cache stored {key_count:,} values. Max key usage = {max_usage:,}. Avg key usage = {100.0 * total_usage / key_count :.2f}%. total_bytes_saved = {total_bytes_saved:,}'
+        else:
+            return f'{lookup_name} {type_name} value cache stored no values in cache'
+
+    def report_on_value_cache_effectiveness(self, lookup_name: str = None):
+        if lookup_name is None:
+            lookup_name = self.lookup_name
+        self.log.info(self._str_report_on_value_cache_usage(lookup_name, 'str', self._value_cache_str_usage))
+        self.log.info(self._str_report_on_value_cache_usage(lookup_name, 'datetime', self._value_cache_datetime_usage))
 
 
 def test():

@@ -34,6 +34,7 @@ class DiskLookup(Lookup):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
+                 use_value_cache: bool = True,
                  config: ConfigParser = None,
                  path=None,
                  init_parent: bool = True,
@@ -46,6 +47,7 @@ class DiskLookup(Lookup):
                 lookup_name=lookup_name,
                 lookup_keys=lookup_keys,
                 parent_component=parent_component,
+                use_value_cache=use_value_cache,
                 config=config,
                 **kwargs
                 )

@@ -366,7 +366,9 @@ class ETLComponent(Iterable):
             yield row
             stats.timer.start()
             if self.check_row_limit():
-                break            
+                break
+        if hasattr(result_list, 'close'):
+            result_list.close()
         stats.timer.stop()
 
     # noinspection PyProtocol
@@ -740,8 +742,12 @@ class ETLComponent(Iterable):
                     len(lookup),
                     this_ram_size,
                     this_disk_size
+                    )
                 )
-                )
+                if lookup.use_value_cache:
+                    lookup.report_on_value_cache_effectiveness()
+                else:
+                    self.log.info('Value cache not enabled')
                 ram_size += this_ram_size
                 disk_size += this_disk_size
             self.log.info('Note: RAM sizes do not add up as memory lookups share row objects')

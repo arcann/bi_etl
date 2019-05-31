@@ -92,10 +92,10 @@ class Timer(object):
                     secs=self.seconds_elapsed_formatted
                     )
 
-    def print(self):
+    def print(self) -> None:
         print(self.message_detailed())
 
-    def start(self)-> None:
+    def start(self) -> None:
         if not self.running:
             self.start_time = datetime.now()
             if self.first_start_time is None:
@@ -103,7 +103,7 @@ class Timer(object):
             self.start_time_precise = Timer.now()
             self.running = True
 
-    def stop(self)-> None:
+    def stop(self) -> None:
         if self.running:
             self.stop_time = datetime.now()
             if self.start_time_precise is not None:
@@ -114,6 +114,6 @@ class Timer(object):
                                  )
             self.running = False
 
-    def reset(self)-> None:
+    def reset(self) -> None:
         """Resets the clock statistics and restarts it."""        
         self.__init__()

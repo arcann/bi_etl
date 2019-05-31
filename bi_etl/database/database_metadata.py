@@ -79,14 +79,38 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
                     results = list(cursor.fetchall())
                 cursor.close()
             else:
-                if 'pyodbc' in self.bind.dialect.dialect_description == 'mssql+pyodbc':
-                    if len(args) > 0:
-                        sql = f"{{CALL {procedure_name}({','.join([qmark for qmark in ['?'] * len(args)])}) }}"
+                # Stopped using CALL because of issues like those mentioned on https://stackoverflow.com/a/34179375
+                # if False: # 'pyodbc' in self.bind.dialect.dialect_description == 'mssql+pyodbc':
+                #     if len(args) > 0:
+                #         sql = f"{{CALL {procedure_name}({','.join([qmark for qmark in ['?'] * len(args)])}) }}"
+                #     else:
+                #         sql = f"{{CALL {procedure_name}}}"
+                # else:
+                # sql = f"EXEC {procedure_name} {','.join([qmark for qmark in ['?'] * len(args)])}"
+                sql = f"EXEC {procedure_name} "
+                args2 = []
+                delim = ''
+                for arg in args:
+                    if isinstance(arg, str):
+                        arg = arg.strip()
+                    # Handle keyword named parameters
+                    if arg[0] == '@':
+                        param, value = arg.split('=')
+                        param = param.strip()
+                        param = f'{param}=?'
+                        value = value.strip()
+                        # Likely the opening quote of the value has not been removed yet
+                        if value[0] == "'":
+                            value = value[1:]
                     else:
-                        sql = f"{{CALL {procedure_name}}}"
-                else:
-                    sql = f"EXEC {procedure_name}({','.join([qmark for qmark in ['?'] * len(args)])})"
-                cursor.execute(sql, args)
+                        param = '?'
+                        value = arg
+                    sql += delim + param
+                    delim = ', '
+                    args2.append(value)
+
+                cursor.execute(sql, args2)
+
                 if return_results:
                     results = list(cursor.fetchall())
                 cursor.close()

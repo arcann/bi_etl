@@ -34,14 +34,17 @@ class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
                  parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  begin_date,
                  end_date,
+                 use_value_cache: bool = True,
                  config: ConfigParser = None,
-                 path=None):
+                 path=None,
+                 ):
         """
         Optional parameter path controls where the data is persisted
         """
         RangeLookup.__init__(self,
                              lookup_name=lookup_name,
                              lookup_keys=lookup_keys,
+                             use_value_cache=use_value_cache,
                              parent_component=parent_component,
                              begin_date=begin_date,
                              end_date=end_date,
@@ -55,6 +58,7 @@ class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
                                 path=path,
                                 begin_date=begin_date,
                                 end_date=end_date,
+                                use_value_cache=use_value_cache,
                                 init_parent=False,  # Don't have it call the parent init because RangeLookup will have done that
                                 )
         self.MemoryLookupClass = RangeLookup

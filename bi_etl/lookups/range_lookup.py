@@ -25,12 +25,14 @@ class RangeLookup(Lookup):
                  parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
                  begin_date,
                  end_date,
+                 use_value_cache: bool = True,
                  config: ConfigParser = None,
                  ):
         super().__init__(
             lookup_name=lookup_name,
             lookup_keys=lookup_keys,
             parent_component=parent_component,
+            use_value_cache=use_value_cache,
             config=config
         )
         self.begin_date = begin_date

@@ -94,7 +94,9 @@ class _TestBase(unittest.TestCase):
         
         # Test lookups
         search_row1 = self.parent_component1.Row( {self.key1_1: 1} )
-        self.assertEqual(lookup.find_in_cache(search_row1), self.row1)
+        match_row = lookup.find_in_cache(search_row1)
+        diffs = self.row1.compare_to(match_row)
+        self.assertEqual(diffs, [], f'Diffs {diffs} found in matched row')
         
         # Test lookup fail
         search_row2 = self.parent_component1.Row( {self.key1_1: 2} )
@@ -163,7 +165,7 @@ class _TestBase(unittest.TestCase):
         
         # Test lookup fail 3rd col
         not_expected_keys = expected_keys.clone()
-        not_expected_keys[self.key3_2]=datetime(2014,12,25,9,15,20)
+        not_expected_keys[self.key3_2] = datetime(2014, 12, 25, 9, 15, 20)
         self.assertRaises(NoResultFound, lookup.find_in_cache, row=not_expected_keys)
 
         self._post_test_cleanup(lookup)

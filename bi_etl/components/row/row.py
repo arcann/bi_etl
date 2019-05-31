@@ -27,6 +27,7 @@ class Row(typing.MutableMapping):
     Keeps order of the columns (see columns_in_order)
     """
     NUMERIC_TYPES = {int, float, Decimal}
+    RAISE_ON_NOT_EXIST_NAME = 'raise_on_not_exist'
     # For performance with the Column to str conversion we keep a cache of converted values
     __name_map_db = dict()
 
@@ -312,8 +313,8 @@ class Row(typing.MutableMapping):
         Get the column name in a given position.
         Note: The first column position is 1 (not 0 like a python list).
         """
-        assert 0 < position <= self.iteration_header.column_count(), IndexError(
-            "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count())
+        assert 0 < position <= self.iteration_header.column_count, IndexError(
+            "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count)
         )
 
         # -1 because positions are 1 based not 0 based
@@ -325,8 +326,8 @@ class Row(typing.MutableMapping):
         Get the column value by position.
         Note: The first column position is 1 (not 0 like a python list).
         """
-        assert 0 < position <= self.iteration_header.column_count(), IndexError(
-            "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count())
+        assert 0 < position <= self.iteration_header.column_count, IndexError(
+            "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count)
         )
         if position <= len(self._data_values):
             # -1 because positions are 1 based not 0 based
@@ -334,18 +335,21 @@ class Row(typing.MutableMapping):
         else:
             return None
 
+    def set_by_zposition_unsafe(self, zposition, value):
+        self._data_values[zposition] = value
+
     def set_by_zposition(self, zposition, value):
         """
         Set the column value by zposition (zero based)
         Note: The first column position is 0 for this method
         """
-        if 0 <= zposition < self.iteration_header.column_count():
+        if 0 <= zposition < self.iteration_header.column_count:
             if len(self._data_values) <= zposition:
                 self._extend_to_size(zposition + 1)
             self._data_values[zposition] = value
         else:
             raise IndexError(
-                "Position {} is invalid. Expected 0 to {}".format(zposition, self.iteration_header.column_count())
+                "zPosition {} is invalid. Expected 0 to {}".format(zposition, self.iteration_header.column_count - 1)
             )
 
     def set_by_position(self, position, value):
@@ -353,7 +357,12 @@ class Row(typing.MutableMapping):
         Set the column value by position.
         Note: The first column position is 1 (not 0 like a python list).
         """
-        self.set_by_zposition(position-1, value)
+        try:
+            self.set_by_zposition(position-1, value)
+        except IndexError:
+            raise IndexError(
+                "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count)
+            )
 
     def rename_column(self, old_name, new_name, ignore_missing=False):
         """
@@ -500,7 +509,7 @@ class Row(typing.MutableMapping):
 
     @property
     def column_count(self):
-        return self.iteration_header.column_count()
+        return self.iteration_header.column_count
 
     @property
     def positioned_column_set(self):
@@ -641,11 +650,11 @@ class Row(typing.MutableMapping):
         All other keyword parameters are passed along to the transform_function
         """
         # noinspection PyPep8Naming
-        RAISE_ON_NOT_EXIST_NAME = 'raise_on_not_exist'
+
         raise_on_not_exist = True
-        if RAISE_ON_NOT_EXIST_NAME in kwargs:
-            raise_on_not_exist = kwargs[RAISE_ON_NOT_EXIST_NAME]
-            del kwargs[RAISE_ON_NOT_EXIST_NAME]
+        if Row.RAISE_ON_NOT_EXIST_NAME in kwargs:
+            raise_on_not_exist = kwargs[Row.RAISE_ON_NOT_EXIST_NAME]
+            del kwargs[Row.RAISE_ON_NOT_EXIST_NAME]
 
         try:
             column_name = self._get_name(column_specifier)
@@ -658,14 +667,10 @@ class Row(typing.MutableMapping):
             return self
         try:
             new_value = transform_function(value, *args, **kwargs)
+            self._data_values[position] = new_value
         except Exception as e:
-            raise ValueError("{func} on {col} with value {val} yielded {e}".format(
-                func=transform_function,
-                val=value,
-                col=column_name,
-                e=e,
-            ))
-        self._data_values[position] = new_value
+            raise ValueError(f"{transform_function} on {column_name} with value {value} yielded {e}")
+
         return self
 
 

@@ -21,6 +21,23 @@ class HistoryTableSourceBased(HistoryTable):
     ETL target component for a table that stores history of updates where the source provides the dates to use.
     Also usable as a source.
 
+    Example:
+        Target table currently has:
+            2016 - A
+            2017 - B
+            2018 - C
+
+        Source Deletes 2017 version.  A normal HistoryTable load would not touch the 2017 version since it was not
+        provided in the source.
+
+        The desired output is:
+            2016 - A
+            2017 - A
+            2018 - C
+
+        This component handles that update by stepping through the provided source versions and existing target versions
+        updating each target version as required so it matches the closest source version earlier or equal in time.
+
     Parameters
     ----------
     task : ETLTask
@@ -615,15 +632,14 @@ class HistoryTableSourceBased(HistoryTable):
 
             if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 progress_timer.reset()
-                self.log.info("update_not_in_set current current row#={} row key={} updates done so far = {}".format(
-                    stats['rows read'], existing_key, stats['updates count']))
+                self.log.info(f"update_not_in_set current current row#={stats['rows read']:,} row key={existing_key} updates done so far = {stats['updates count']:,}")
 
             if existing_key not in set_of_key_tuples:
                 stats['updates count'] += 1
 
-                # Direct update method. This will be slow due to new connections per update
+                # Direct update method. This will be slow due to new statement per update
                 # and also update statements per row
-                # self.update(updates_to_make, key_names=lookup.lookup_keys, key_values=existing_key, force_new_connection=True)
+                # self.update(updates_to_make, key_names=lookup.lookup_keys, key_values=existing_key, connection_name='update')
 
                 try:
                     # First we need the entire existing row
@@ -651,11 +667,17 @@ class HistoryTableSourceBased(HistoryTable):
     def commit(self,
                stat_name='commit',
                parent_stats=None,
-               print_to_log=True):
+               print_to_log=True,
+               connection_name: str = None,
+               begin_new: bool = True,
+               ):
         if len(self.prior_upsert_existing_rows_list) > 0:
             # End the final batch
             self.finish_pending_existing_rows()
         super().commit(stat_name=stat_name,
                        parent_stats=parent_stats,
-                       print_to_log=print_to_log)
+                       print_to_log=print_to_log,
+                       connection_name=connection_name,
+                       begin_new=begin_new,
+                       )
 

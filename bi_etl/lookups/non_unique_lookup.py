@@ -17,6 +17,7 @@ class NonUniqueLookup(Lookup):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
+                 use_value_cache: bool = True,
                  config: ConfigParser = None,
                  value_for_none='<None>',  # Needs to be comparable to datatypes in the key actual None is not.
                  ):
@@ -24,6 +25,7 @@ class NonUniqueLookup(Lookup):
             lookup_name=lookup_name,
             lookup_keys=lookup_keys,
             parent_component=parent_component,
+            use_value_cache=use_value_cache,
             config=config
             )
         self.value_for_none = value_for_none

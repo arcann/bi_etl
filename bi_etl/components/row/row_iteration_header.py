@@ -35,6 +35,10 @@ class RowIterationHeader(object):
         self.iteration_id = RowIterationHeader.next_iteration_id
         RowIterationHeader.instance_dict[self.iteration_id] = self
         self.column_definition_locked = False
+        if columns_in_order:
+            self._column_count = len(columns_in_order)
+        else:
+            self._column_count = 0
         self.row_count = 0
         self.logical_name = logical_name or id(self)
         self._primary_key = None
@@ -79,6 +83,7 @@ class RowIterationHeader(object):
             if not start_empty:
                 new_header._columns_in_order = self._columns_in_order.copy()
                 new_header._columns_positions = self._columns_positions.copy()
+                new_header._column_count = self._column_count
 
             self._actions_to_next_headers[action] = new_header
         return self._actions_to_next_headers[action]
@@ -106,7 +111,7 @@ class RowIterationHeader(object):
     @columns_in_order.setter
     def columns_in_order(self, value):
         if self._columns_in_order is not None:
-            if len(self._columns_in_order) > 0:
+            if self.column_count > 0:
                 raise ValueError("Setting columns_in_order is only allowed on an empty RowIterationHeader")
         self._columns_in_order = value
         for position, column_name in enumerate(value):
@@ -172,8 +177,9 @@ class RowIterationHeader(object):
     def remove_row(self, row):
         self.row_count -= 1
 
+    @property
     def column_count(self) -> int:
-        return len(self._columns_in_order)
+        return self._column_count
 
     def has_column(self, column_name):
         return column_name in self._columns_positions
@@ -198,7 +204,7 @@ class RowIterationHeader(object):
         return position
 
     # noinspection PyProtectedMember
-    def row_set_item(self, column_name: str, value, row)-> 'RowIterationHeader':
+    def row_set_item(self, column_name: str, value, row) -> 'RowIterationHeader':
         """
         Set a column in a row and return a new row header (it might have changed if the column was new). 
         
@@ -222,6 +228,8 @@ class RowIterationHeader(object):
             new_header.add_row(row)
             if new_header._action_position is None:
                 new_header._action_position = new_header._add_column(column_name)
+            else:
+                pass
 
             # Protected access is required here since we can't call setitem it calls this method.
             # noinspection PyProtectedMember
@@ -232,7 +240,7 @@ class RowIterationHeader(object):
                       old_name: str,
                       new_name: str,
                       ignore_missing: bool = False,
-                      no_new_header: bool = False)-> 'RowIterationHeader':
+                      no_new_header: bool = False) -> 'RowIterationHeader':
         """
         Rename a column
 
@@ -345,6 +353,7 @@ class RowIterationHeader(object):
                 del new_header._columns_positions[column_name]
                 for following_col in new_header._columns_in_order[position:]:
                     new_header._columns_positions[following_col] -= 1
+                new_header._column_count = len(new_header._columns_in_order)
                 if self.primary_key is not None and column_name in self.primary_key:
                     self.primary_key.remove(column_name)
             # Protected access is required here since we can't call __delitem__, it calls this method.
@@ -427,6 +436,7 @@ class RowIterationHeader(object):
                 if remove_column:
                     del new_iteration_header._columns_in_order[sub_pos]
                     del new_iteration_header._columns_positions[new_column_name]
+            new_iteration_header._column_count = len(new_iteration_header._columns_in_order)
             new_iteration_header._action_position = old_positions_list
             # These should already be None unless running in the debugger, since it might have called
             # on the column_set or positioned_column_set properties.
@@ -441,7 +451,8 @@ class RowIterationHeader(object):
         return sub_row
 
     def _add_column(self, column_name: str) -> int:
-        position = len(self._columns_in_order)
+        position = self._column_count
+        self._column_count += 1
         self._columns_in_order.append(column_name)
         self._columns_positions[column_name] = position
         self._cached_column_set = None

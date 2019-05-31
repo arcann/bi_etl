@@ -209,7 +209,7 @@ class Table(ReadOnlyTable):
         codecs.register_error('replace_tilda', replace_tilda)
         self.autocommit = False
         self.__batch_size = self.DEFAULT_BATCH_SIZE
-        self.__transaction = None
+        self.__transaction_pool = dict()
         self.skip_coercion_on = {}
 
         self._logical_delete_update = None
@@ -258,7 +258,8 @@ class Table(ReadOnlyTable):
         self.set_kwattrs(**kwargs)
 
     def close(self):
-        self.commit()
+        for connection_name in self.connection_pool:
+            self.commit(connection_name, begin_new=False)
         super(Table, self).close()
         self.clear_cache()
         # Clean out update temp tables
@@ -1328,10 +1329,7 @@ class Table(ReadOnlyTable):
         """
         # Close connection to avoid locks
         # self.connection().close()
-        if self.__transaction is not None:
-            # Check if a transaction is still active.
-            if self.__transaction.is_active:
-                self.__transaction.commit()
+        self.commit()
         with tempfile.TemporaryDirectory() as bcp_dir:
             bcp_file_path = os.path.join(bcp_dir, "bcp_file")
             bcp_format_path = os.path.join(bcp_dir, "bcp.fmt")
@@ -2041,13 +2039,8 @@ class Table(ReadOnlyTable):
                                                 database=self.database,
                                                 )
                     update_table_object.close()
-                    if self.__transaction is not None:
-                        # Check if a transaction is still active.
-                        if self.__transaction.is_active:
-                            self.__transaction.commit()
-                            self.__transaction.close()
-                    if self.is_connected:
-                        self.connection().close()
+                    self.commit()
+                    self.close_connections()
                     pending_rows = list()
                     self._bcp_update_table_dict[update_stmt_key] = update_table_object, pending_rows
                 pending_rows.append(row)
@@ -2171,9 +2164,10 @@ class Table(ReadOnlyTable):
             except Exception as e:
                 # Retry one at a time
                 self.log.error("Bulk update failed. Applying as single updates to find error row...")
+                connection = self.connection(connection_name='singly')
                 for (stmt, row_dict) in pending_update_statements.iter_single_statements():
                     try:
-                        self.connection().execute(stmt, row_dict)
+                        connection.execute(stmt, row_dict)
                     except Exception as e:
                         self.log.error("Error with row {}".format(dict_to_str(row_dict)))
                         raise e
@@ -2349,7 +2343,7 @@ class Table(ReadOnlyTable):
                target_excludes: Iterable = None,
                stat_name: str = 'direct update',
                parent_stats: Statistics = None,
-               force_new_connection: bool = False,
+               connection_name: str = None,
                ):
         """
         Directly performs a database update. Invalidates caching.
@@ -2381,6 +2375,9 @@ class Table(ReadOnlyTable):
         parent_stats: bi_etl.statistics.Statistics
             Optional. Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
+        connection_name:
+            Name of the pooled connection to use
+            Defaults to DEFAULT_CONNECTION_NAME
         """
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.timer.start()
@@ -2434,7 +2431,7 @@ class Table(ReadOnlyTable):
 
         self.begin()
         stats['direct_updates_sent_to_db'] += 1
-        result = self.execute(stmt, force_new_connection=force_new_connection)
+        result = self.execute(stmt, connection_name=connection_name)
         stats['direct_updates_applied_to_db'] += result.rowcount
         result.close()
 
@@ -2508,6 +2505,7 @@ class Table(ReadOnlyTable):
         for row in self.where(column_list=lookup.lookup_keys,
                               criteria_list=criteria_list,
                               criteria_dict=criteria_dict,
+                              connection_name='select',
                               parent_stats=stats):
             if row.status == RowStatus.unknown:
                 pass
@@ -2516,8 +2514,7 @@ class Table(ReadOnlyTable):
 
             if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 progress_timer.reset()
-                self.log.info("update_not_in_set current current row#={} row key={} updates done so far = {}".format(
-                    stats['rows read'], existing_key, stats['updates count']))
+                self.log.info(f"update_not_in_set current current row#={stats['rows read']:,} row key={existing_key} updates done so far = {stats['updates count']:,}")
 
             if existing_key not in set_of_key_tuples:
                 stats['updates count'] += 1
@@ -2533,7 +2530,8 @@ class Table(ReadOnlyTable):
                 # Then we can apply the updates to it
                 self.apply_updates(row=target_row,
                                    additional_update_values=updates_to_make,
-                                   parent_stats=stats)
+                                   parent_stats=stats,
+                                   )
         stats.timer.stop()
 
         # Restore saved progress_frequency
@@ -2873,14 +2871,32 @@ class Table(ReadOnlyTable):
             self.execute(self._delete_stmt())
         stats.timer.stop()
 
-    def begin(self):
-        if self.__transaction is None or not self.__transaction.is_active:
-            self.__transaction = self.connection().begin()
+    def transaction(self, connection_name: str = None):
+        if connection_name is None:
+            connection_name = self.DEFAULT_CONNECTION_NAME
+        if connection_name in self.__transaction_pool:
+            return self.__transaction_pool[connection_name]
+        else:
+            return None
+
+    def begin(self, connection_name: str = None):
+        if connection_name is None:
+            connection_name = self.DEFAULT_CONNECTION_NAME
+        transaction = self.transaction(connection_name=connection_name)
+        if transaction is not None:
+            if not transaction.is_active:
+                transaction = self.connection(connection_name=connection_name).begin()
+                self.__transaction_pool[connection_name] = transaction
+        else:
+            transaction = self.connection(connection_name=connection_name).begin()
+            self.__transaction_pool[connection_name] = transaction
 
     def commit(self,
                stat_name='commit',
                parent_stats=None,
                print_to_log=True,
+               connection_name: str = None,
+               begin_new: bool = True,
                ):
         """
         Flush any buffered deletes, updates, or inserts
@@ -2894,30 +2910,44 @@ class Table(ReadOnlyTable):
             Default is to place statistics in the ETLTask level statistics.
         print_to_log: bool
             Should this add a debug log entry for each commit. Defaults to true.
+        connection_name:
+            Name of the pooled connection to use
+            Defaults to DEFAULT_CONNECTION_NAME
+        begin_new:
+            Start a new transaction after commit
         """
         # insert_pending_batch calls other *_pending methods
         self._insert_pending_batch()
 
-        if print_to_log:
-            self.log.debug("Committing {}".format(self.table_name))
         stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
         # Start & stop appropriate timers for each
         stats['commit count'] += 1
         stats.timer.start()
-        if self.__transaction is not None:
+        transaction = self.transaction(connection_name=connection_name)
+        if transaction is not None:
             # Check if a transaction is still active.
-            if self.__transaction.is_active:
-                self.__transaction.commit()
-                self.begin()
+            if transaction.is_active:
+                if print_to_log:
+                    if connection_name is None:
+                        connection_name = 'default'
+                    self.log.info(f'Committing {connection_name} connection')
+                transaction.commit()
+                if print_to_log:
+                    self.log.debug(f'Commit on {connection_name} connection done')
             else:
-                self.log.error('commit called when not in an active transaction')
+                self.log.debug(f'Connection {connection_name} transaction not active (commit called)')
         else:
-            self.log.error('commit called when not in a transaction')
+            self.log.debug(f'Connection {connection_name} has no transaction defined (commit called)')
+        if begin_new:
+            self.begin(connection_name=connection_name)
         stats.timer.stop()
 
     def rollback(self,
                  stat_name='rollback',
-                 parent_stats=None):
+                 parent_stats=None,
+                 connection_name: str = None,
+                 begin_new: bool = True,
+                 ):
         """
         Rollback any uncommitted deletes, updates, or inserts.
         
@@ -2927,19 +2957,25 @@ class Table(ReadOnlyTable):
             Name of this step for the ETLTask statistics. Default = 'rollback'
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
-            Default is to place statistics in the ETLTask level statistics.       
+            Default is to place statistics in the ETLTask level statistics.
+        connection_name:
+            Name of the connection to rollback
+        begin_new:
+            Start a new transaction after rollback
         """
         self.log.debug("Rolling back transaction")
         stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
         stats['calls'] += 1
         stats.timer.start()
-        if self.__transaction is not None:
+        transaction = self.transaction(connection_name=connection_name)
+        if transaction is not None:
             # Check if a transaction is still active.
-            if self.__transaction.is_active:
-                self.__transaction.rollback()
-                self.begin()
+            if transaction.is_active:
+                transaction.rollback()
             else:
                 self.log.debug('rollback called when not in an active transaction')
         else:
             self.log.debug('rollback called when not in a transaction')
+        if begin_new:
+            self.begin(connection_name=connection_name)
         stats.timer.stop()

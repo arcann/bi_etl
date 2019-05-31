@@ -106,6 +106,7 @@ class ReadOnlyTable(ETLComponent):
     """
     PK_LOOKUP = 'PK'
     NK_LOOKUP = 'NK'
+    DEFAULT_CONNECTION_NAME = 'default'
 
     def __init__(self,
                  task: ETLTask,
@@ -134,7 +135,7 @@ class ReadOnlyTable(ETLComponent):
         self.special_values_descriptive_min_length = 14  # Long enough to hold 'Not Applicable'
 
         self.database = database
-        self.__connection = None
+        self.__connection_pool = dict()
         self._table = None
         self._columns = None
         self._column_names = None
@@ -237,6 +238,10 @@ class ReadOnlyTable(ETLComponent):
         # Get the primary key from the table
         self.primary_key = list(self._table.primary_key)
 
+    @property
+    def connection_pool(self):
+        return self.__connection_pool.copy()
+
     def set_columns(self, columns):
         # Remove columns from the table
         for col in self._columns:
@@ -308,20 +313,39 @@ class ReadOnlyTable(ETLComponent):
         columns_to_exclude = set(self.column_names).difference(columns_to_include)
         self.exclude_columns(columns_to_exclude)
 
-    def is_connected(self) -> bool:
-        return self.__connection is not None
-
-    def connection(self, force_new: bool = False) -> sqlalchemy.engine.base.Connection:
-        if force_new:
-            return self.table.metadata.bind.connect()
+    def is_connected(self, connection_name: str = None) -> bool:
+        if connection_name is None:
+            connection_name = self.DEFAULT_CONNECTION_NAME
+        if connection_name in self.__connection_pool:
+            return not self.__connection_pool[connection_name].closed
         else:
-            if self.__connection is None and self.table is not None:
-                self.__connection = self.table.metadata.bind.connect()
-            # noinspection PyTypeChecker
-            return self.__connection
+            return False
 
-    def set_connection(self, connection):
-        self.__connection = connection
+    def connection(self, connection_name: str = None, open_if_closed: bool = True) -> sqlalchemy.engine.base.Connection:
+        if self.table is None:
+            raise ValueError("connection called with no table defined")
+        if connection_name is None:
+            connection_name = self.DEFAULT_CONNECTION_NAME
+        if connection_name in self.__connection_pool:
+            con = self.__connection_pool[connection_name]
+            if con.closed and open_if_closed:
+                con = self.table.metadata.bind.connect()
+                self.__connection_pool[connection_name] = con
+        else:
+            con = self.table.metadata.bind.connect()
+            self.__connection_pool[connection_name] = con
+        return con
+
+    def set_connection(self, connection, connection_name: str = None):
+        if connection_name is None:
+            connection_name = self.DEFAULT_CONNECTION_NAME
+        if connection_name in self.__connection_pool:
+            self.__connection_pool[connection_name].close()
+        self.__connection_pool[connection_name] = connection
+
+    def close_connections(self):
+        for con in self.__connection_pool.values():
+            con.close()
 
     def close(self):
         for lookup in self.lookups.values():
@@ -330,17 +354,11 @@ class ReadOnlyTable(ETLComponent):
             cache_stats = self.get_stats_entry('compile cache', print_start_stop_times=False)
             cache_stats['entries'] = len(self.__compile_cache)
             del self.__compile_cache
-        try:
-            if self.__connection is not None:
-                self.__connection.close()
-        except AttributeError:
-            pass
+        self.close_connections()
         super(ReadOnlyTable, self).close()
 
     def __del__(self):
-        # Close the database connection
-        if self.__connection is not None:
-            self.__connection.close()
+        self.close_connections()
 
     def __exit__(self, exit_type, exit_value, exit_traceback):  # @ReservedAssignment
         # Close the database connection
@@ -354,9 +372,9 @@ class ReadOnlyTable(ETLComponent):
         statement:
             The SQL statement to execute
 
-        force_new_connection:
-            Force a new connection to the DB for this query.
-            Defaults to False
+        connection_name:
+            Name of the pooled connection to use
+            Defaults to DEFAULT_CONNECTION_NAME
 
         Returns
         -------
@@ -374,15 +392,15 @@ class ReadOnlyTable(ETLComponent):
             self.log.debug('list_params={}'.format(list_params))
             self.log.debug('params={}'.format(params))
             self.log.debug('-------------------------')
-        if 'force_new_connection' in params:
-            force_new_connection = params['force_new_connection']
-            del params['force_new_connection']
+        if 'connection_name' in params:
+            connection_name = params['connection_name'] or self.DEFAULT_CONNECTION_NAME
+            del params['connection_name']
         else:
-            force_new_connection = False
-        connection = self.connection(force_new=force_new_connection)
+            connection_name = self.DEFAULT_CONNECTION_NAME
+        connection = self.connection(connection_name=connection_name)
         return connection.execute(statement, *list_params, **params)
 
-    def get_one(self, statement=None, force_new_connection=True):
+    def get_one(self, statement=None, connection_name: str = 'get_one'):
         """
         Executes and gets one row from the statement.
 
@@ -390,9 +408,10 @@ class ReadOnlyTable(ETLComponent):
         ----------
         statement:
             The SQL statement to execute
-        force_new_connection:
-            Force a new connection to the DB for this query.
-            Defaults to False
+
+        connection_name:
+            Name of the pooled connection to use
+            Defaults to 'get_one'
         
         Returns
         -------
@@ -409,7 +428,7 @@ class ReadOnlyTable(ETLComponent):
         """
         if statement is None:
             statement = self.select()
-        results = self.execute(statement, force_new_connection=force_new_connection)
+        results = self.execute(statement, connection_name=connection_name)
         row1 = results.fetchone()
         if row1 is None:
             raise NoResultFound()
@@ -509,6 +528,7 @@ class ReadOnlyTable(ETLComponent):
                   column_list: list = None,
                   exclude_cols: list = None,
                   use_cache_as_source: bool = None,
+                  connection_name: str = None,
                   stats_id: str = None,
                   parent_stats: Statistics = None):
         """
@@ -531,7 +551,9 @@ class ReadOnlyTable(ETLComponent):
             Name of this step for the ETLTask statistics.
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
-            Default is to place statistics in the ETLTask level statistics.          
+            Default is to place statistics in the ETLTask level statistics.
+        connection_name:
+            The name of the pooled connection to use
     
         Yields
         ------
@@ -623,7 +645,7 @@ class ReadOnlyTable(ETLComponent):
                     stmt = stmt.order_by(order_by)
             self.log.debug(stmt)
             stats.timer.start()
-            select_result = self.execute(stmt)
+            select_result = self.execute(stmt, connection_name=connection_name)
             stats.timer.stop()
             return select_result
 
@@ -634,6 +656,7 @@ class ReadOnlyTable(ETLComponent):
               column_list: typing.List[typing.Union[Column, str]] = None,
               exclude_cols: typing.List[typing.Union[Column, str]] = None,
               use_cache_as_source: bool = None,
+              connection_name: str = 'select',
               progress_frequency: int = None,
               stats_id: str = None,
               parent_stats: Statistics = None,
@@ -653,6 +676,8 @@ class ReadOnlyTable(ETLComponent):
             List of columns (str or Column)
         exclude_cols
         use_cache_as_source
+        connection_name:
+            Name of the pooled connection to use
         progress_frequency
         stats_id
         parent_stats
@@ -668,6 +693,7 @@ class ReadOnlyTable(ETLComponent):
                                           column_list=column_list,
                                           exclude_cols=exclude_cols,
                                           use_cache_as_source=use_cache_as_source,
+                                          connection_name=connection_name,
                                           stats_id=stats_id,
                                           parent_stats=parent_stats,
                                           )
@@ -747,7 +773,7 @@ class ReadOnlyTable(ETLComponent):
         else:
             return self.table.columns[column].name
 
-    def max(self, column, where=None, force_new_connection: bool = True):
+    def max(self, column, where=None, connection_name: str = 'max'):
         """
         Query the table/view to get the maximum value of a given column. 
         
@@ -755,12 +781,14 @@ class ReadOnlyTable(ETLComponent):
         ----------
         column: str or :class:`sqlalchemy.sql.expression.ColumnElement`.
             The column to get the max value of
+
         where: string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`
             http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
-        force_new_connection:
-            Force a new connection to the DB for this query.
-            Defaults to True since we assume we might have an open connection already when we want to call max.
+
+        connection_name:
+            Name of the pooled connection to use
+            Defaults to 'max'
         
         Returns
         -------
@@ -775,7 +803,7 @@ class ReadOnlyTable(ETLComponent):
                     stmt = stmt.where(c)
             else:
                 stmt = stmt.where(where)
-        max_row = self.get_one(stmt, force_new_connection=force_new_connection)
+        max_row = self.get_one(stmt, connection_name=connection_name)
         max_value = max_row['max_1']
         return max_value
 

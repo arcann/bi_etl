@@ -212,9 +212,6 @@ class HistoryTable(Table):
 
         self.default_lookup_class = AutoDiskRangeLookup
         # define_lookup will add the begin & end dates to the lookup args
-        self.default_lookup_class_kwargs = dict()
-        if self.task is not None:
-            self.default_lookup_class_kwargs['config'] = self.task.config
 
         self.type_1_surrogate = None
 
@@ -697,31 +694,23 @@ class HistoryTable(Table):
             if new_row[self.end_date_column] < effective_date:
                 self.warnings_issued += 1
                 if self.warnings_issued < self.warnings_limit:
-                    self.log.warning("The table had an existing key sequence that did not cover all dates.\n"
-                                     " End = {end} is less than eff date {eff}\n"
-                                     " Natural Keys = {keys}.".format(
-                        end=new_row[self.end_date_column],
-                        eff=effective_date,
-                        keys=self.get_nk_lookup().get_list_of_lookup_column_values(row)
-                    )
-                    )
+                    self.log.warning(f"The table had an existing key sequence that did not cover all dates.\n"
+                                     f" End = {new_row[self.end_date_column]} is less than eff date {effective_date}\n"
+                                     f" Natural Keys = {self.get_nk_lookup().get_list_of_lookup_column_values(row)}.")
                     for row in self.get_nk_lookup().get_versions_collection(row).values():
-                        self.log.info(" begin= {begin}\tend= {end}".format(
-                            begin=row[self.begin_date_column],
-                            end=row[self.end_date_column]
-                        ),
-                        )
+                        self.log.info(f" begin= {row[self.begin_date_column]}\tend= {row[self.end_date_column]}")
                 new_row[self.end_date_column] = self.default_end_date
 
             # Retire the existing row (after clone so that the existing end_date is passed on to the new row)
             # Note: The parent class apply_updates will check to only send update statement if the row is in the
             #       database, otherwise it will update the record that's pending insert
+            date_coerce = getattr(self, f'_coerce_{self.end_date_column}')
             super().apply_updates(row,
                                   stat_name=stat_name,
                                   parent_stats=parent_stats,
                                   changes_list=[ColumnDifference(self.end_date_column,
                                                                  old_value=row[self.end_date_column],
-                                                                 new_value=effective_date - timedelta(seconds=1))]
+                                                                 new_value=date_coerce(effective_date - timedelta(seconds=1)))]
                                   )
             if self.trace_data:
                 self.log.debug("retiring row with begin effective {begin} with new end date of {end}".format(
@@ -1584,6 +1573,7 @@ class HistoryTable(Table):
         stats = self.get_unique_stats_entry('cleanup_versions', parent_stats=parent_stats)
         stats.timer.start()
         stats.ensure_exists('rows sent for delete')
+        self.commit()
 
         # Figure out default remove_redundant_versions value if not provided
         if remove_redundant_versions is None:

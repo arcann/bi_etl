@@ -40,6 +40,7 @@ class AutoDiskLookup(Lookup):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
+                 use_value_cache: bool = True,
                  config: ConfigParser = None,
                  path=None,
                  max_percent_ram_used=None,
@@ -52,6 +53,7 @@ class AutoDiskLookup(Lookup):
                 lookup_name=lookup_name,
                 lookup_keys=lookup_keys,
                 parent_component=parent_component,
+                use_value_cache=use_value_cache,
                 config=config,
                 )
         self._cache = None
@@ -87,6 +89,9 @@ class AutoDiskLookup(Lookup):
         self.disk_cache = None
         self.MemoryLookupClass = Lookup
         self.DiskLookupClass = DiskLookup
+        if kwargs is None:
+            kwargs = dict()
+        kwargs['use_value_cache'] = use_value_cache
         self.lookup_class_args = kwargs
          
     def _set_path(self, path):
@@ -300,6 +305,14 @@ class AutoDiskLookup(Lookup):
                 return self.disk_cache.get_versions_collection(row)
             else:
                 raise NoResultFound()
+
+    def report_on_value_cache_effectiveness(self, lookup_name: str = None):
+        if lookup_name is None:
+            lookup_name = self.lookup_name
+        if self._cache:
+            self._cache.report_on_value_cache_effectiveness(f'{lookup_name} RAM')
+        if self.disk_cache:
+            self.disk_cache.report_on_value_cache_effectiveness(f'{lookup_name} DISK')
 
 
 def test():

@@ -5,6 +5,7 @@ Created on Sept 12 2016
 """
 from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.scheduler.task import ETLTask
+from bi_etl.database.database_metadata import DatabaseMetadata
 
 
 class CopyTableData(ETLTask):
@@ -12,7 +13,11 @@ class CopyTableData(ETLTask):
         return []
 
     def load(self):
-        database = self.get_database(self.get_parameter('datbase_entry'))
+        datbase_entry = self.get_parameter('datbase_entry')
+        if isinstance(datbase_entry, DatabaseMetadata):
+            database = datbase_entry
+        else:
+            database = self.get_database(self.get_parameter('datbase_entry'))
         source_table_name = self.get_parameter('source_table')
         target_table_name = self.get_parameter('target_table')
 
@@ -49,9 +54,10 @@ class CopyTableData(ETLTask):
                          cols=cols)
 
                 self.log.debug(sql)
-
+                # database.begin()
+                database.execute("begin tran")
                 database.execute(sql)
 
-                database.execute("commit")
+                database.execute("commit tran")
 
         self.log.info("Done")

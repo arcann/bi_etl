@@ -642,10 +642,10 @@ class ETLTask(object):
 
     def get_database(
             self,
-            database_name: str=None,
-            user: str=None,
-            schema: str=None,
-            override_port: int=None,
+            database_name: str = None,
+            user: str = None,
+            schema: str = None,
+            override_port: int = None,
             **kwargs) -> DatabaseMetadata:
         """
         Get a new database connection.
