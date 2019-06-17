@@ -158,7 +158,7 @@ class BIConfigParser(ConfigParser):
         return self.config_file_read
 
     @staticmethod
-    def get_package_root(obj: object=None) -> str:
+    def get_package_root(obj: object = None) -> str:
         """
         Get the root path of a package given an object (default is this module).
 
@@ -178,7 +178,7 @@ class BIConfigParser(ConfigParser):
         (root_path, _) = os.path.split(parent_path)
         return root_path
 
-    def read_relative_config(self, config_file_name: str='config.ini', start_path: str=None):
+    def read_relative_config(self, config_file_name: str = 'config.ini', start_path: str = None):
         """
         Search from start_path (default current directory) up to file the configuration file
 
@@ -237,6 +237,7 @@ class BIConfigParser(ConfigParser):
             else:
                 return False
 
+    # noinspection PyShadowingBuiltins
     def get(self, section, option, *, raw=False, vars=None, fallback=_UNSET):
         """
         Get an option value for a given section.
@@ -244,20 +245,19 @@ class BIConfigParser(ConfigParser):
 
         Parameters
         ----------
-        section
+        section:
             Which section to look in. Sections are created with a square braket heading e.g  [My_Section]
             The section DEFAULT is special.
             Case-sensitive
-        option
+        option:
             Which option to get. Case-sensitive
-        raw
+        raw:
             If interpolation is enabled and the optional argument `raw' is False,
         all interpolations are expanded in the return values.
-        vars
-
+        vars:
             If `vars' is provided, it must be a dictionary. The option is looked up
             in `vars' (if provided), `section', and in `DEFAULTSECT' in that order.
-        fallback
+        fallback:
             If the key is not found and `fallback' is provided, it is used as
             a fallback value. `None' can be provided as a `fallback' value.
         """
@@ -271,6 +271,31 @@ class BIConfigParser(ConfigParser):
         except NoSectionError:
             pass
         return super().get(section, option, raw=raw, vars=vars, fallback=fallback)
+
+    def get_single_line(self, section: str, option: str, fallback: str = None) -> str:
+        str_value = self.get(
+            section=section,
+            option=option,
+            fallback=fallback
+            )
+        if str_value is not None:
+            if '\n' in str_value:
+                str_value = str_value.replace('\n', '\\n')
+                raise ValueError(f"get_single_line('{section}','{option}') failed because the setting is multiline (check indentation).  Value = '{str_value}'")
+        return str_value
+
+    def get_list(self, section: str, option: str, delimiter: str = '\n', fallback: str = None):
+        str_value = self.get(
+            section=section,
+            option=option,
+            fallback=fallback
+        )
+        if str_value is not None:
+            value_list = str_value.split(delimiter)
+            list2 = [s.strip() for s in value_list]
+            return [s for s in list2 if s != '']
+        else:
+            return []
 
     def get_byte_size(self, section: str, option: str, fallback: str = None) -> int:
         """
@@ -293,10 +318,14 @@ class BIConfigParser(ConfigParser):
         return str2bytes_size(str_size)
 
     # Add better error message
-    def _get_conv(self, section, option, conv, *, raw=False, vars=None, fallback=_UNSET, **kwargs):
+    def _get_conv(self, section, option, conv, *, raw=False, vars = None, fallback=_UNSET, **kwargs):
         try:
             return super()._get_conv(section, option, conv=conv, raw=raw, vars=vars, fallback=fallback, **kwargs)
         except ValueError as e:
+            e = str(e)
+            if '\n' in e:
+                e = e.replace('\n', '\\n')
+                e += ' (Check indentation!)'
             raise ValueError(f"get('{section}','{option}', with type conversion {conv}) failed with error {e}")
 
     # noinspection PyPackageRequirements
