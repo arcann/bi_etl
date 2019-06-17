@@ -21,6 +21,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
                  naming_convention=DEFAULT_NAMING_CONVENTION,
                  info=None,
                  database_name=None,
+                 uses_bytes_length_limits=None,
                  ):
         super().__init__(
             bind=bind,
@@ -32,6 +33,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         )
         self._table_inventory = None
         self.database_name = database_name
+        self._uses_bytes_length_limits = uses_bytes_length_limits
 
     def _set_parent(self, parent):
         pass
@@ -143,3 +145,24 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             inspector = Inspector.from_engine(self.bind)
             self._table_inventory[schema] = inspector.get_table_names(schema=schema)
         return self._table_inventory[schema]
+
+    @property
+    def dialect(self):
+        return self.bind.dialect
+
+    @property
+    def dialect_name(self):
+        return self.bind.dialect.name
+
+    @property
+    def uses_bytes_length_limits(self):
+        if self._uses_bytes_length_limits is None:
+            # Note: Oracle can use either VARCHAR2(10 CHAR) or VARCHAR2(10 BYTE)
+            #       However, if not specified (and NLS_LENGTH_SEMANTICS is default), it's char so we assume that.
+            if self.dialect_name in {
+                'redshift', 'oracle'
+            }:
+                self._uses_bytes_length_limits = True
+            else:
+                self._uses_bytes_length_limits = False
+        return self._uses_bytes_length_limits

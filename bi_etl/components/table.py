@@ -501,14 +501,28 @@ class Table(ReadOnlyTable):
         if t_type.length is not None:
             try:
                 if t_type.length > 0:
-                    code += textwrap.dedent(f"""\
-                    # base indent
-                        if len(target_column_value) > {t_type.length}:
-                            msg = ("{self}.{target_name} has type {str(t_type).replace('"', "'")} "
-                                   f"which cannot accept value '{{target_column_value}}' because "
-                                   f"length {{len(target_column_value)}} > {t_type.length} limit (_make_str_coerce)")
-                            raise ValueError(msg)                        
-                        """)
+                    if self.database.uses_bytes_length_limits:
+                        # Encode the str as uft-8 to get the byte length
+                        code += textwrap.dedent(f"""\
+                            # base indent
+                                if len(target_column_value.encode('utf-8')) > {t_type.length}:
+                                    msg = ("{self}.{target_name} has type {str(t_type).replace('"', "'")} "
+                                           f"which cannot accept value '{{target_column_value}}' because "
+                                           f"byte length of {{len(target_column_value.encode('utf-8'))}} > {t_type.length} limit (_make_str_coerce)"
+                                           f"Note: char length is {{len(target_column_value)}}" 
+                                           )  
+                                    raise ValueError(msg)                        
+                            """)
+                    else:
+                        code += textwrap.dedent(f"""\
+                            # base indent
+                                if len(target_column_value) > {t_type.length}:
+                                    msg = ("{self}.{target_name} has type {str(t_type).replace('"', "'")} "
+                                           f"which cannot accept value '{{target_column_value}}' because "
+                                           f"char length of {{len(target_column_value)}} > {t_type.length} limit (_make_str_coerce)"
+                                           )
+                                    raise ValueError(msg)                        
+                            """)
             except TypeError:
                 # t_type.length is not a comparable type
                 pass
@@ -2861,7 +2875,7 @@ class Table(ReadOnlyTable):
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats['calls'] += 1
         stats.timer.start()
-        database_type = type(self.connection().dialect).name
+        database_type = self.database.dialect_name
         if database_type == 'oracle':
             self.execute('alter session set ddl_lock_timeout={}'.format(timeout))
             self.execute("TRUNCATE TABLE {}".format(self.qualified_table_name))

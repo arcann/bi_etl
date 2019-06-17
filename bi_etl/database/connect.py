@@ -149,9 +149,14 @@ class Connect(object):
         if schema is None and config.has_option(database_name, 'schema'):
             schema = config.get(database_name, 'schema')
             log.info("Using config file schema {}".format(schema))
+        if config.has_option(database_name, 'uses_bytes_length_limits'):
+            uses_bytes_length_limits = config.getboolean(database_name, 'uses_bytes_length_limits')
+        else:
+            uses_bytes_length_limits = None
         return DatabaseMetadata(
             bind=engine,
             schema=schema,
             quote_schema=False,
-            database_name=database_name
+            database_name=database_name,
+            uses_bytes_length_limits=uses_bytes_length_limits,
         )
