@@ -1,7 +1,7 @@
 """
 Created on Jan 5, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 import tempfile
 import unittest

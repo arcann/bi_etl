@@ -2,9 +2,10 @@
 """
 Created on Jan 20, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 from enum import IntEnum, unique
+
 
 @unique
 class RowStatus(IntEnum):

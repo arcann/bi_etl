@@ -2,7 +2,7 @@
 """
 Created on Sep 17, 2014
 
-@author: woodd
+@author: Derek Wood
 """
 from bi_etl.components.row.row_status import RowStatus
 
@@ -51,4 +51,4 @@ class RowCaseInsensitive(Row):
             return out_name
 
     def __repr__(self):
-        return 'RowCaseInsensitive(name={},status={},primary_key={},\n{}'.format(self._name, self.status, self.primary_key, dict_to_str(self))
+        return 'RowCaseInsensitive(name={},status={},primary_key={},\n{}'.format(self.name, self.status, self.primary_key, dict_to_str(self))

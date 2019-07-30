@@ -1,7 +1,7 @@
 """
 Created on Apr 14, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 import codecs
 from datetime import datetime, timedelta

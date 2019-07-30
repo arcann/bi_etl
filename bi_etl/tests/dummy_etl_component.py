@@ -1,7 +1,7 @@
 """
 Created on Jan 6, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.scheduler.task import ETLTask

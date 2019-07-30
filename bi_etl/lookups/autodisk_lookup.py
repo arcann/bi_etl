@@ -2,12 +2,16 @@
 """
 Created on Jan 5, 2016
 
-@author: woodd
+@author: Derek Wood
 """
+# https://www.python.org/dev/peps/pep-0563/
+from __future__ import annotations
+
+import typing
+
 import gc
 from configparser import ConfigParser
 from datetime import datetime
-from typing import Union, MutableMapping
 
 import psutil
 from bi_etl.components.row.row import Row
@@ -16,6 +20,9 @@ from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.disk_lookup import DiskLookup
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.timer import Timer
+
+if typing.TYPE_CHECKING:
+    from bi_etl.components.etlcomponent import ETLComponent
 
 __all__ = ['AutoDiskLookup']
 
@@ -39,7 +46,7 @@ class AutoDiskLookup(Lookup):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
+                 parent_component: ETLComponent,
                  use_value_cache: bool = True,
                  config: ConfigParser = None,
                  path=None,
@@ -190,25 +197,18 @@ class AutoDiskLookup(Lookup):
             self.log.info('Flushing rows took {} seconds'.format(timer.seconds_elapsed_formatted))
             gc.collect()
             after_move_mb = self.our_process.memory_info().rss/(1024**2)
-            self.log.info('Flushing rows freed {freed:,.3f} MB from process '
-                          'before {before:,.3f} after {after:,.3f})'.format(
-                    freed=before_move_mb - after_move_mb,
-                    before=before_move_mb,
-                    after=after_move_mb
-                )
+            self.log.info(
+                f'Flushing rows freed {before_move_mb - after_move_mb:,.3f} MB from process '
+                f'before {before_move_mb:,.3f} after {after_move_mb:,.3f})'
             )
 
     def memory_limit_reached(self) -> bool:
         if self.max_percent_ram_used is not None:
             if psutil.virtual_memory().percent > self.max_percent_ram_used:
                 self.log.warning(
-                    "{name} system memory limit reached {pct} > {pct_limit}% with {rows:,} rows of data"
-                        .format(
-                            name=self.lookup_name,
-                            rows=self.rows_cached,
-                            pct=psutil.virtual_memory().percent,
-                            pct_limit=self.max_percent_ram_used,
-                    )
+                    f"{self.lookup_name} system memory limit reached "
+                    f"{psutil.virtual_memory().percent} > {self.max_percent_ram_used}% "
+                    f"with {self.rows_cached:,} rows of data"
                 )
                 return True
         process_mb = self.our_process.memory_info().rss / (1024 ** 2)
@@ -225,7 +225,7 @@ class AutoDiskLookup(Lookup):
                 return True
         return False
 
-    def cache_row(self, row: Row, allow_update: bool=True):
+    def cache_row(self, row: Row, allow_update: bool = True):
         if self.cache_enabled:        
             if self._cache is None:
                 self.init_cache()
@@ -263,7 +263,7 @@ class AutoDiskLookup(Lookup):
                 # Put add new row to disk as well
                 self.disk_cache.cache_row(row, allow_update=allow_update)
 
-    def uncache_row(self, row):
+    def uncache_row(self, row: Lookup.ROW_TYPES):
         if self._cache is not None:
             self._cache.uncache_row(row)
         if self.disk_cache is not None:
@@ -280,7 +280,10 @@ class AutoDiskLookup(Lookup):
             for row in self.disk_cache:
                 yield row
 
-    def get_versions_collection(self, row) -> MutableMapping[datetime, Row]:
+    def get_versions_collection(
+            self,
+            row: Lookup.ROW_TYPES
+            ) -> typing.MutableMapping[datetime, Row]:
         """
         This method exists for compatibility with range caches
 

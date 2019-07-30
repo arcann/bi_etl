@@ -2,7 +2,7 @@
 """
 Created on Apr 18, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 from datetime import datetime
 import logging

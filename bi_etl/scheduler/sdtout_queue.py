@@ -1,7 +1,7 @@
 """
 Created on Apr 17, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 import sys
 

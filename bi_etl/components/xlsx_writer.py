@@ -1,7 +1,7 @@
 """
 Created on Apr 2, 2015
 """
-from typing import Union
+import typing
 
 from openpyxl import load_workbook, Workbook
 
@@ -71,7 +71,7 @@ class XLSXWriter(XLSXReader):
         not present in a given row (missing values).     
     """
     def __init__(self,
-                 task: ETLTask,
+                 task: typing.Optional[ETLTask],
                  file_name: str,
                  logical_name: str = None,
                  write_only: bool = True,
@@ -155,7 +155,7 @@ class XLSXWriter(XLSXReader):
         stats.timer.stop()
 
     def insert(self,
-               source_row: Union[Row, list],  # Could also be a whole list of rows
+               source_row: typing.Union[Row, list],  # Could also be a whole list of rows
                parent_stats: Statistics = None,
                **kwargs
                ):

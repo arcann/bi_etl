@@ -2,7 +2,7 @@
 """
 Created on Jan 12, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 import gc
 import sys

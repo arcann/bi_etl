@@ -1,7 +1,7 @@
 """
 Created on Mar 26, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 import unittest
 import pytest
@@ -279,7 +279,7 @@ class TestRow(unittest.TestCase):
         self.assertIn('UPPER', test_row)
         self.assertNotIn('MixedCase', test_row.column_set)
         self.assertEqual(test_row.column_count, 2, 'test_row.column_count #1 returned wrong value.')
-        self.assertEqual(test_row.columns_in_order, ['lower', 'UPPER'])
+        self.assertEqual(test_row.columns_in_order, ('lower', 'UPPER',))
         
         test_row['New'] = 'New Value'
         test_row.remove_columns(['lower', 'UPPER'])
@@ -289,13 +289,13 @@ class TestRow(unittest.TestCase):
         self.assertIn('New', test_row)
         self.assertEqual(test_row['New'], 'New Value')
         self.assertEqual(test_row.column_count, 1, 'test_row.column_count #2 returned wrong value.')
-        self.assertEqual(test_row.columns_in_order, ['New'])
+        self.assertEqual(test_row.columns_in_order, ('New',))
     
     def test_columns_in_order(self):
         # We have to use the list of tuple init call to maintain the ordering
         test_row = self.row3a
         columns_in_order = test_row.columns_in_order
-        self.assertEqual(self.columns, columns_in_order)
+        self.assertEqual(tuple(self.columns), columns_in_order)
         
     def test_by_position(self):
         test_row = self.row3a

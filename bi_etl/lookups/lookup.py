@@ -1,8 +1,10 @@
 """
 Created on Feb 26, 2015
 
-@author: woodd
+@author: Derek Wood
 """
+# https://www.python.org/dev/peps/pep-0563/
+from __future__ import annotations
 import logging
 import sys
 
@@ -11,10 +13,11 @@ import traceback
 import warnings
 from configparser import ConfigParser
 from datetime import datetime
-from typing import Union, MutableMapping
+import typing
 
 import psutil
 from BTrees.OOBTree import OOBTree
+from sqlalchemy.sql import Selectable
 from sqlalchemy.sql.expression import bindparam
 
 from bi_etl.components.row.row import Row
@@ -26,17 +29,20 @@ from bi_etl.exceptions import NoResultFound
 from bi_etl.memory_size import get_size_gc
 from bi_etl.statistics import Statistics
 
+if typing.TYPE_CHECKING:
+    from bi_etl.components.etlcomponent import ETLComponent
+
 __all__ = ['Lookup']
 
 
 class Lookup(object):
     COLLECTION_INDEX = datetime(year=1900, month=1, day=1, hour=0, minute=0, second=0)
-    ROW_TYPES = Union[Row, tuple, list]
+    ROW_TYPES = typing.Union[Row, typing.Sequence]
 
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
+                 parent_component: ETLComponent,
                  config: ConfigParser = None,
                  use_value_cache: bool = True,
                  **kwargs):
@@ -45,7 +51,9 @@ class Lookup(object):
         self.config = config
         self._cache = None
         self.parent_component = parent_component
-        self.stats = parent_component.get_unique_stats_entry(stats_id='{cls} {name}'.format(cls=self.__class__.__name__, name=self.lookup_name))
+        self.stats = parent_component.get_unique_stats_entry(
+            stats_id='{cls} {name}'.format(cls=self.__class__.__name__, name=self.lookup_name)
+        )
         self.log = logging.getLogger(self.__module__)
         self._remote_lookup_stmt = None
         self._row_size = None
@@ -64,7 +72,7 @@ class Lookup(object):
         # http://pythonhosted.org/BTrees/index.html
         # self.version_collection_type = SortedDict
         self.version_collection_type = OOBTree
-        self._hashble_key_type = tuple
+        self._hashable_key_type = tuple
 
     # noinspection PyUnresolvedReferences
     def _get_version(self, versions_collection: MutableMapping[datetime, Row], effective_date: datetime):
@@ -121,24 +129,21 @@ class Lookup(object):
         elif isinstance(row, list):
             return row
         else:
-            lookup_values = list()
-
-            for k in self.lookup_keys:
-                lookup_values.append(row[k])
+            lookup_values = [row[k] for k in self.lookup_keys]
             return lookup_values
 
-    def get_hashable_combined_key(self, row: ROW_TYPES):
-        if isinstance(row, self._hashble_key_type):
+    def get_hashable_combined_key(self, row: ROW_TYPES) -> typing.Sequence:
+        if isinstance(row, self._hashable_key_type):
             return row
         elif isinstance(row, tuple):
-            return self._hashble_key_type(row)
+            return self._hashable_key_type(row)
         elif isinstance(row, list):
-            return self._hashble_key_type(tuple(row))
+            return self._hashable_key_type(tuple(row))
         else:
-            if self._hashble_key_type == tuple:
-                return self._hashble_key_type(self.get_list_of_lookup_column_values(row))
+            if self._hashable_key_type == tuple:
+                return self._hashable_key_type(self.get_list_of_lookup_column_values(row))
             else:
-                return self._hashble_key_type(tuple(self.get_list_of_lookup_column_values(row)))
+                return self._hashable_key_type(tuple(self.get_list_of_lookup_column_values(row)))
 
     def clear_cache(self) -> None:
         """
@@ -182,11 +187,9 @@ class Lookup(object):
                 # get_size_gc is slow but shouldn't be too bad twice (once here and once above in _get_first_row_size)
                 total_cache_size = get_size_gc(self._cache)
                 new_row_size = math.ceil(total_cache_size / row_cnt)
-                self.log.debug('{lookup_name} Row memory size now estimated at {size:,} '
-                               'bytes per row using cache of {cnt:,} rows'
-                               .format(lookup_name=self.lookup_name,
-                                       size=new_row_size,
-                                       cnt=row_cnt)
+                self.log.debug(
+                    f'{self.lookup_name} Row memory size now estimated at {new_row_size:,} '
+                    f'bytes per row using cache of {row_cnt:,} rows'
                 )
                 
                 self._row_size = new_row_size     
@@ -220,9 +223,9 @@ class Lookup(object):
                 self.init_cache()
             if not allow_update:
                 if lk_tuple in self._cache:
-                    raise ValueError('Key value {} already in cache and allow_update was False.'
-                                     ' Possible error with the keys defined for this lookup {} {}.'
-                                     .format(lk_tuple, self.lookup_name, self.lookup_keys)
+                    raise ValueError(
+                        f'Key value {lk_tuple} already in cache and allow_update was False.'
+                        f' Possible error with the keys defined for this lookup {self.lookup_name} {self.lookup_keys}.'
                     )
             self._cache[lk_tuple] = row
             
@@ -232,7 +235,12 @@ class Lookup(object):
             else:
                 self.check_estimate_row_size()
 
-    def cache_set(self, lk_tuple: tuple, version_collection: MutableMapping[datetime, Row], allow_update: bool = True):
+    def cache_set(
+            self,
+            lk_tuple: tuple,
+            version_collection: typing.MutableMapping[datetime, Row],
+            allow_update: bool = True
+            ):
         """
         Adds the given set of rows to the cache for this lookup.
 
@@ -290,28 +298,43 @@ class Lookup(object):
             except KeyError:
                 # This lookup uses columns not in the row provided.
                 # That means it's dirty beyond repair. Wipe it out.
-                warnings.warn(
-                    "uncache_row called on {lookup} with insufficient values {row}".format(
-                        lookup=self,
-                        row=row
-                    )
-                )
+                warnings.warn(f"uncache_row called on {self} with insufficient values {row}")
                 del self._cache
                 self._cache = None
 
     def uncache_set(self, row: ROW_TYPES):
         self.uncache_row(row)
 
-    def __iter__(self):
+    def __iter__(self) -> typing.Iterable[Row]:
         """
-        Iterates over rows in the lookup cache
+        Iterates over rows in the lookup cache.  Returns clones of rows in case they are modified.
+
         The rows will come out in any order.
+        """
+        if self._cache is not None:
+            for row in self._cache.values():
+                # Do not return the actual instance of the row since the caller might modify it to no longer be
+                # compatible with the parent table
+                yield row.clone()
+
+    def _iter_raw(self) -> typing.Iterable[Row]:
+        """
+        Iterates over rows in the lookup cache. Returns actual cached rows. Be careful! Direct modifications to
+        the cached rows could break the later use of the cache.
+
+        The rows will come out in any order.
+        :return:
         """
         if self._cache is not None:
             for row in self._cache.values():
                 yield row
 
-    def find_where(self, key_names: list, key_values_dict: dict, limit: int = None):
+    def find_where(
+            self,
+            key_names: typing.Sequence,
+            key_values_dict: typing.Mapping,
+            limit: int = None
+            ):
         """
         Scan all cached rows (expensive) to find list of rows that match criteria.
         """
@@ -328,7 +351,10 @@ class Lookup(object):
                     break
         return results
             
-    def uncache_where(self, key_names: list, key_values_dict: dict):
+    def uncache_where(
+            self,
+            key_names: typing.Sequence,
+            key_values_dict: typing.Mapping):
         """
         Scan all cached rows (expensive) to find rows to remove.
         """
@@ -336,7 +362,10 @@ class Lookup(object):
         for row in deletes:
             self.uncache_row(row)
 
-    def get_versions_collection(self, row: ROW_TYPES) -> MutableMapping[datetime, Row]:
+    def get_versions_collection(
+            self,
+            row: ROW_TYPES
+            ) -> typing.MutableMapping[datetime, Row]:
         """
         This method exists for compatibility with range caches
 
@@ -360,7 +389,7 @@ class Lookup(object):
         except KeyError as e:
             raise NoResultFound(e)
 
-    def find_in_cache(self, row: ROW_TYPES, **kwargs):
+    def find_in_cache(self, row: ROW_TYPES, **kwargs) -> Row:
         """
         Find a matching row in the lookup based on the lookup index (keys)
         """
@@ -368,7 +397,10 @@ class Lookup(object):
         versions_collection = self.get_versions_collection(row)
         return versions_collection[Lookup.COLLECTION_INDEX]
 
-    def has_row(self, row: ROW_TYPES):
+    def find_matches_in_cache(self, row: ROW_TYPES, **kwargs) -> typing.Sequence[Row]:
+        return list(self.find_in_cache(row, **kwargs))
+
+    def has_row(self, row: ROW_TYPES) -> bool:
         """
         Does the row exist in the cache (for any date if it's a date range cache)
 
@@ -386,7 +418,7 @@ class Lookup(object):
             return False
         return True
             
-    def _add_remote_stmt_where_clause(self, stmt):
+    def _add_remote_stmt_where_clause(self, stmt: Selectable) -> Selectable:
         """
         Only works if parent_component is based on bi_etl.components.readonlytable
         """
@@ -398,7 +430,11 @@ class Lookup(object):
             col_num += 1
         return stmt
 
-    def _get_remote_stmt_where_values(self, row: ROW_TYPES, effective_date: datetime = None) -> dict:
+    def _get_remote_stmt_where_values(
+            self,
+            row: ROW_TYPES,
+            effective_date: datetime = None,
+            ) -> dict:
         values_dict = dict()
         col_num = 1
         values_list = self.get_list_of_lookup_column_values(row)
@@ -408,7 +444,11 @@ class Lookup(object):
             col_num += 1
         return values_dict
 
-    def find_in_remote_table(self, row: ROW_TYPES, **kwargs) -> Row:
+    def find_in_remote_table(
+            self,
+            row: ROW_TYPES,
+            **kwargs
+            ) -> Row:
         """
         Find a matching row in the lookup based on the lookup index (keys)
         

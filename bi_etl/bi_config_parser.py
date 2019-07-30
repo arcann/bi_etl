@@ -1,7 +1,7 @@
 """
 Created on Apr 8, 2014
 
-@author: woodd
+@author: Derek Wood
 """
 import getpass
 import inspect
@@ -285,6 +285,9 @@ class BIConfigParser(ConfigParser):
         return str_value
 
     def get_list(self, section: str, option: str, delimiter: str = '\n', fallback: str = None):
+        # Fallback should be a string value to get processed into a list below
+        if isinstance(fallback, list):
+            fallback = delimiter.join(fallback)
         str_value = self.get(
             section=section,
             option=option,
@@ -355,13 +358,13 @@ class BIConfigParser(ConfigParser):
                 msg = "user_section not provided, and no default_user_id exists for {}".format(database_name)
                 raise KeyError(msg)
         user_id = self.get(user_section, 'userid', fallback=user_section)
+        key_ring_system = database_name
         if self.has_section(user_section) and 'password' in self[user_section]:
             password = self.get(user_section, 'password', raw=True)
         else:
             try:
                 # noinspection PyUnresolvedReferences
                 import keyring
-                key_ring_system = database_name
                 if self.has_section(database_name):
                     key_ring_system = self.get(database_name, 'key_ring_system', fallback=database_name)
                 key_ring_userid = self.get(user_section, 'key_ring_userid', fallback=user_id)
@@ -373,11 +376,7 @@ class BIConfigParser(ConfigParser):
                 raise KeyError(msg)
 
             if password is None:
-                msg = "Both config.ini and Keyring did not have password for {} {} os_user={}".format(
-                    database_name,
-                    user_id,
-                    getpass.getuser()
-                )
+                msg = f"Both config.ini and Keyring did not have password for {key_ring_system} {user_id} stored for os_user={getpass.getuser()}"
                 raise KeyError(msg)
 
         return user_id, password
@@ -409,7 +408,7 @@ class BIConfigParser(ConfigParser):
         """
         self.set('logging', 'log_file_name', log_file_name)
 
-    def set_dated_log_file_name(self, prefix='', suffix='', date_time_format='_%Y_%m_%d_at_%H_%M_%S'):
+    def set_dated_log_file_name(self, prefix='', suffix='.log', date_time_format='_%Y_%m_%d_at_%H_%M_%S'):
         """
         Sets the log file name in the config (memory copy only) using the current date and time.
         Specifically that is ``log_file_name`` in the ``logging`` section.
@@ -469,10 +468,18 @@ class BIConfigParser(ConfigParser):
         if filename is None:
             filename = self.get_log_file_name()
         log = self.rootLogger
+        removed_list = list()
         for handler in list(log.handlers):
             if isinstance(handler, logging.FileHandler):
                 if filename in handler.baseFilename:
                     log.removeHandler(handler)
+                    removed_list.append(handler)
+                    handler.close()
+        if len(removed_list) == 0:
+            self.log.warning(f'remove_log_file_handler could not find log for {filename} to remove from {log.handlers}')
+        elif len(removed_list) > 1:
+            self.log.warning(f'remove_log_file_handler removed more than one handler for {filename} handlers removed = {removed_list}')
+        self.log.debug(f'Remaining log handlers = {log.handlers}')
 
     def replace_log_file_handler(self, filename=None):
         log = self.rootLogger
@@ -538,8 +545,11 @@ class BIConfigParser(ConfigParser):
         Based on the [logging] and [loggers] sections of the configuration file.
         """
 
-        if not self.logging_setup:
-            self.logging_setup = True
+        if not hasattr(self.rootLogger, 'bi_config_setup_done'):
+            # Store info that we have already setup logging in the root logger.
+            # This used to be stored in the config, but in too many instances sub tasks
+            # opened their own configs and thus didn't know the logging had already been setup.
+            self.rootLogger.bi_config_setup_done = True
 
             # Close out any existing handlers
             for handler in self.rootLogger.handlers:

@@ -1,7 +1,7 @@
 """
 Created on Apr 1, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 import unittest
 from bi_etl.utility import dict_to_str

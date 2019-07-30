@@ -2,12 +2,12 @@
 """
 Created on Apr 18, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 """
 Created on Dec 23, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 import logging
 import unittest

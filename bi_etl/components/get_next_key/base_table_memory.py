@@ -3,13 +3,6 @@ import logging
 from sqlalchemy import Column
 
 
-def main():
-    pass
-
-if __name__ == '__main__':
-    main()
-
-
 class BaseTableMemory(object):
     def __init__(self, table):
         self.table = table

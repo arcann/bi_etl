@@ -2,7 +2,7 @@
 """
 Created on Dec 23, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 import logging
 import sqlalchemy
@@ -34,13 +34,32 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         self._table_inventory = None
         self.database_name = database_name
         self._uses_bytes_length_limits = uses_bytes_length_limits
+        self._connection = None
 
     def _set_parent(self, parent):
         pass
 
-    def execute(self, sql):        
-        with self.bind.connect() as connection:
-            return connection.execute(sql)
+    def connect(self):
+        if self.dialect_name == 'sqlite':
+            if self._connection is None or self._connection.closed:
+                self._connection = self.bind.connect()
+            return self._connection
+        else:
+            return self.bind.connect()
+
+    def begin(self):
+        return self.connect().begin()
+
+    def execute(self, sql, transaction: bool = True):
+        if transaction:
+            with self.connect() as connection:
+                with connection.begin() as transaction:
+                    result = connection.execute(sql)
+                    transaction.commit()
+                    return result
+        else:
+            with self.connect() as connection:
+                return connection.execute(sql)
     
     def execute_procedure(self, procedure_name, *args, return_results=False, dpapi_connection=None):
         """
@@ -56,6 +75,9 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         return_results:
             Needs to be a keyword param. Should we try and get result rows
             from the procedure.
+
+        dpapi_connection:
+            A raw dpapi connection to use. Optional.
             
         Raises
         ------

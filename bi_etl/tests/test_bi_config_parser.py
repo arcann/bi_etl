@@ -1,7 +1,7 @@
 """
 Created on Apr 8, 2014
 
-@author: woodd
+@author: Derek Wood
 """
 import configparser
 from datetime import datetime

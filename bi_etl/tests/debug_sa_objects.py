@@ -1,7 +1,7 @@
 """
 Created on Mar 27, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 import operator
 import sqlalchemy

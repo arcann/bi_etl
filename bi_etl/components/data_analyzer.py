@@ -1,9 +1,10 @@
 """
 Created on Oct 9, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 import io
+import typing
 from collections import defaultdict
 from sys import stdout
 from decimal import Context, ROUND_HALF_EVEN
@@ -68,7 +69,7 @@ class DataAnalyzer(ETLComponent):
                 return "{}({},{})".format(self.name, self.length, self.precision)
 
     def __init__(self,
-                 task: ETLTask = None,
+                 task: typing.Optional[ETLTask] = None,
                  logical_name: str = 'DataAnalyzer',
                  **kwargs
                  ):
@@ -149,6 +150,7 @@ class DataAnalyzer(ETLComponent):
                                       "%Y-%m-%d %I:%M %p", "%m-%d-%Y %I:%M %p", "%d-%m-%Y %I:%M %p",
                                       "%Y-%m-%d %I:%M:%S %p", "%m-%d-%Y %I:%M:%S %p", "%d-%m-%Y %I:%M:%S %p",
                                       ]:
+                    # noinspection PyBroadException
                         try:
                             _ = str2date(value, dt_format=dt_format)
                             dt_type = DataAnalyzer.DataType(name="Date")

@@ -2,13 +2,14 @@
 """
 Created on Jan 20, 2016
 
-@author: woodd
+@author: Derek Wood
 """
+import typing
 
 
 class ColumnDifference(object):
     def __init__(self, 
-                 column_name: str=None,
+                 column_name: typing.Optional[str] = None,
                  old_value=None,
                  new_value=None,
                  ):
@@ -17,7 +18,7 @@ class ColumnDifference(object):
         self.new_value = new_value
 
     def __str__(self):
-        return "{self.column_name} changed from {self.old_value} to {self.new_value}".format(self=self)
+        return f"{self.column_name} changed from {self.old_value} to {self.new_value}"
 
     def __repr__(self):
         return str(self)

@@ -2,7 +2,7 @@
 """
 Created on Jan 22, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 from unittest.mock import Mock
 

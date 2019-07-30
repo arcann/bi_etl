@@ -1,7 +1,7 @@
 """
 Created on Mar 20, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 from collections import OrderedDict
 import sys

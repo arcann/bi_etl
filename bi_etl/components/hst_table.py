@@ -1,25 +1,26 @@
 """
 Created on Nov 4, 2014
 
-@author: woodd
+@author: Derek Wood
 """
-from datetime import datetime, timedelta
 import traceback
+import typing
 import warnings
+from datetime import datetime, timedelta
 from typing import Union, Callable, List, Iterable
 
-from bi_etl.components.row.column_difference import ColumnDifference
-from bi_etl.components.row.row_iteration_header import RowIterationHeader
-from bi_etl.database import DatabaseMetadata
-from bi_etl.scheduler.task import ETLTask
-from bi_etl.statistics import Statistics
-from bi_etl.components.row.row_status import RowStatus
-from bi_etl.conversions import ensure_datetime, ensure_datetime_dict
+from bi_etl.database.database_metadata import DatabaseMetadata
 
-from bi_etl.components.table import Table
+from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row import Row
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
+from bi_etl.components.row.row_status import RowStatus
+from bi_etl.components.table import Table
+from bi_etl.conversions import ensure_datetime
 from bi_etl.exceptions import AfterExisting, NoResultFound, BeforeAllExisting
 from bi_etl.lookups.autodisk_range_lookup import AutoDiskRangeLookup
+from bi_etl.scheduler.task import ETLTask
+from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 
 __all__ = ['HistoryTable']
@@ -179,7 +180,7 @@ class HistoryTable(Table):
     """
 
     def __init__(self,
-                 task: ETLTask,
+                 task: typing.Optional[ETLTask],
                  database: DatabaseMetadata,
                  table_name: str,
                  table_name_case_sensitive: bool = False,
@@ -426,6 +427,7 @@ class HistoryTable(Table):
                                          effective_date,
                                          stats_id='get_by_lookup_and_effective_date',
                                          parent_stats=None,
+                                         fallback_to_db: bool = False,
                                          ):
         """
         Get by an alternate key. Returns a row.
@@ -443,6 +445,8 @@ class HistoryTable(Table):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
+        fallback_to_db:
+            Should we check the DB if a record is not found in the cache
         
         Raises
         ------
@@ -459,14 +463,22 @@ class HistoryTable(Table):
         stats = self.get_stats_entry(stats_id, parent_stats=parent_stats)
         stats.timer.start()
 
+        fallback_to_db = fallback_to_db or self.always_fallback_to_db or not self.cache_clean
+
         return lookup.find(row=source_row,
-                           fallback_to_db=self.always_fallback_to_db or not self.cache_clean,
+                           fallback_to_db=fallback_to_db,
                            maintain_cache=self.maintain_cache_during_load,
                            effective_date=effective_date,
                            stats=stats,
                            )
 
-    def get_by_lookup(self, lookup_name, source_row, stats_id='get_by_lookup', parent_stats=None):
+    def get_by_lookup(self,
+                      lookup_name: str,
+                      source_row: Row,
+                      stats_id: str = 'get_by_lookup',
+                      parent_stats: typing.Optional[Statistics] = None,
+                      fallback_to_db: bool = False,
+                      ) -> Row:
         """
         Get by an alternate key. Returns a row.
 
@@ -481,6 +493,8 @@ class HistoryTable(Table):
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
+        fallback_to_db:
+            Should we check the DB if a record is not found in the cache
 
         Raises
         ------
@@ -493,11 +507,13 @@ class HistoryTable(Table):
             effective_date = source_row[self.begin_date_column]
         else:
             effective_date = self.default_effective_date
+
         return self.get_by_lookup_and_effective_date(lookup_name=lookup_name,
                                                      source_row=source_row,
                                                      effective_date=effective_date,
                                                      stats_id=stats_id,
                                                      parent_stats=parent_stats,
+                                                     fallback_to_db=fallback_to_db,
                                                      )
 
     def sanity_check_source_mapping(self,
@@ -510,7 +526,6 @@ class HistoryTable(Table):
                                     raise_on_source_not_in_target=None,
                                     raise_on_target_not_in_source=None,
                                     ):
-        self.sanity_check_done = True
         if target_excludes is None:
             target_excludes = list()
         # include update begin or end dates like normal columns
@@ -594,9 +609,8 @@ class HistoryTable(Table):
 
         # Generate a new type 1 key value
         if (self.type_1_surrogate is not None
-            and self.auto_generate_key
-            and new_row.get(self.type_1_surrogate, None) is None
-            ):
+                and self.auto_generate_key
+                and new_row.get(self.type_1_surrogate, None) is None):
             if new_row[self.begin_date_column] == self.default_begin_date:
                 self.autogenerate_sequence(new_row, seq_column=self.type_1_surrogate, force_override=False)
             else:
@@ -614,7 +628,7 @@ class HistoryTable(Table):
 
     def apply_updates(self,
                       row,
-                      changes_list: List[ColumnDifference] = None,
+                      changes_list: typing.MutableSequence[ColumnDifference] = None,
                       additional_update_values: Union[dict, Row] = None,
                       stat_name: str = 'update',
                       parent_stats: Statistics = None,
@@ -644,9 +658,11 @@ class HistoryTable(Table):
             effective_date: datetime
                 The effective date to use for the update
         """
-        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
-        ensure_datetime_dict(row, self.begin_date_column)
-        ensure_datetime_dict(row, self.end_date_column)
+        end_date_coerce = self.get_coerce_method(self.end_date_column)
+        begin_date_coerce = self.get_coerce_method(self.begin_date_column)
+        effective_date = begin_date_coerce(kwargs.get('effective_date', self.default_effective_date))
+        row[self.begin_date_column] = end_date_coerce(row[self.begin_date_column])
+        row[self.end_date_column] = end_date_coerce(row[self.end_date_column])
         if row[self.begin_date_column] > row[self.end_date_column]:
             raise ValueError("Begin date {} greater than end date {} for row {}".format(
                 row[self.begin_date_column],
@@ -704,13 +720,13 @@ class HistoryTable(Table):
             # Retire the existing row (after clone so that the existing end_date is passed on to the new row)
             # Note: The parent class apply_updates will check to only send update statement if the row is in the
             #       database, otherwise it will update the record that's pending insert
-            date_coerce = getattr(self, f'_coerce_{self.end_date_column}')
             super().apply_updates(row,
                                   stat_name=stat_name,
                                   parent_stats=parent_stats,
                                   changes_list=[ColumnDifference(self.end_date_column,
                                                                  old_value=row[self.end_date_column],
-                                                                 new_value=date_coerce(effective_date - timedelta(seconds=1)))]
+                                                                 new_value=end_date_coerce(
+                                                                     effective_date - timedelta(seconds=1)))]
                                   )
             if self.trace_data:
                 self.log.debug("retiring row with begin effective {begin} with new end date of {end}".format(
@@ -735,7 +751,7 @@ class HistoryTable(Table):
         return target_excludes
 
     def build_row(self,
-                  source_row: Row,
+                  source_row: typing.MutableMapping,
                   additional_values: dict = None,
                   source_excludes: Iterable = None,
                   target_excludes: Iterable = None,
@@ -752,11 +768,11 @@ class HistoryTable(Table):
             build_method=build_method,
             stat_name=stat_name,
             parent_stats=parent_stats
-            )
+        )
 
-        if self.delete_flag is not None and (self.delete_flag not in source_mapped_as_target_row
-                                             or source_mapped_as_target_row[self.delete_flag] is None
-                                             ):
+        if self.delete_flag is not None and (
+                self.delete_flag not in source_mapped_as_target_row
+                or source_mapped_as_target_row[self.delete_flag] is None):
             source_mapped_as_target_row[self.delete_flag] = self.delete_flag_no
         return source_mapped_as_target_row
 
@@ -817,11 +833,14 @@ class HistoryTable(Table):
                 The effective date to use for the update
         """
         effective_date = kwargs.get('effective_date')
+        begin_date_coerce = self.get_coerce_method(self.begin_date_column)
         if effective_date is None:
             if self.begin_date_column in source_row and source_row[self.begin_date_column] is not None:
-                effective_date = ensure_datetime(source_row[self.begin_date_column])
+                effective_date = begin_date_coerce(source_row[self.begin_date_column])
             else:
-                effective_date = self.default_effective_date
+                effective_date = begin_date_coerce(self.default_effective_date)
+        else:
+            effective_date = begin_date_coerce(effective_date)
 
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.ensure_exists('upsert source row count')
@@ -842,9 +861,9 @@ class HistoryTable(Table):
                                                      parent_stats=stats,
                                                      )
 
-        if self.delete_flag is not None and (self.delete_flag not in source_mapped_as_target_row
-                                             or source_mapped_as_target_row[self.delete_flag] is None
-                                             ):
+        if self.delete_flag is not None and (
+                self.delete_flag not in source_mapped_as_target_row
+                or source_mapped_as_target_row[self.delete_flag] is None):
             source_mapped_as_target_row[self.delete_flag] = self.delete_flag_no
 
         if self.track_source_rows:
@@ -890,7 +909,9 @@ class HistoryTable(Table):
                                                                  )
 
             changes_list = existing_row.compare_to(source_mapped_as_target_row,
-                                                   exclude=do_not_update + skip_update_check_on)
+                                                   exclude=do_not_update + skip_update_check_on,
+                                                   coerce_types=False,
+                                                   )
             delayed_changes = existing_row.compare_to(source_mapped_as_target_row, compare_only=skip_update_check_on)
             if self.track_update_columns:
                 col_stats = self.get_stats_entry('updated columns', parent_stats=stats)
@@ -902,7 +923,7 @@ class HistoryTable(Table):
                             name=chg.column_name,
                             old=chg.old_value,
                             new=chg.new_value
-                            )
+                        )
                         )
                 if len(changes_list) > 0:
                     for chg in delayed_changes:
@@ -913,14 +934,14 @@ class HistoryTable(Table):
                                 name=chg.column_name,
                                 old=chg.old_value,
                                 new=chg.new_value
-                                )
+                            )
                             )
 
             if len(changes_list) > 0:
                 stats['apply_updates called'] += 1
                 self.apply_updates(existing_row,
                                    effective_date=effective_date,
-                                   changes_list=changes_list + delayed_changes,
+                                   changes_list=list(changes_list) + list(delayed_changes),
                                    additional_update_values=additional_update_values,
                                    parent_stats=stats)
                 # For testing commit each update
@@ -1027,7 +1048,8 @@ class HistoryTable(Table):
             effective_date:
                 The effective date to use for this operation.
         """
-        effective_date = ensure_datetime(kwargs.get('effective_date', self.default_effective_date))
+        begin_date_coerce = self.get_coerce_method(self.begin_date_column)
+        effective_date = begin_date_coerce(kwargs.get('effective_date', self.default_effective_date))
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.timer.start()
         self.begin()
@@ -1041,7 +1063,7 @@ class HistoryTable(Table):
 
         try:
             existing_row = self.get_by_key(source_row)
-            changes_list = existing_row.compare_to(source_row)
+            changes_list = existing_row.compare_to(source_row, coerce_types=False)
             if len(changes_list) > 0:
                 self.apply_updates(
                     existing_row,
@@ -1387,7 +1409,7 @@ class HistoryTable(Table):
             effective_date: datetime
                 The effective date to use for the update
         """
-        date_coerce = getattr(self, f'_coerce_{self.begin_date_column}')
+        date_coerce = self.get_coerce_method(self.begin_date_column)
         effective_date = date_coerce(kwargs.get('effective_date', self.default_effective_date))
         if criteria_list is None:
             criteria_list = []
@@ -1775,9 +1797,8 @@ class HistoryTable(Table):
 
                             # Delete the last row if it's a delete, and this following one is not
                             if (remove_spurious_deletes
-                                and prior_row[self.delete_flag] == self.delete_flag_yes
-                                and row[self.delete_flag] == self.delete_flag_no
-                                ):
+                                    and prior_row[self.delete_flag] == self.delete_flag_yes
+                                    and row[self.delete_flag] == self.delete_flag_no):
                                 if trace_delete_data:
                                     self.log.debug("deleting spurious logical delete row {}".format(prior_row))
                                 # Note: We pass del_remove_from_cache since can't let physically_delete_version
@@ -1803,8 +1824,7 @@ class HistoryTable(Table):
                                 # this if all values are the same (and this is not a delete)
                             elif (remove_redundant_versions
                                   and prior_row is not None
-                                  and prior_row.status != RowStatus.deleted
-                                  ):
+                                  and prior_row.status != RowStatus.deleted):
                                 differences = row.compare_to(prior_row,
                                                              exclude=exclude_from_compare,
                                                              coerce_types=False)

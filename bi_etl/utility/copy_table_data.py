@@ -54,10 +54,7 @@ class CopyTableData(ETLTask):
                          cols=cols)
 
                 self.log.debug(sql)
-                # database.begin()
-                database.execute("begin tran")
-                database.execute(sql)
 
-                database.execute("commit tran")
+                database.execute(sql, transaction=True)
 
         self.log.info("Done")

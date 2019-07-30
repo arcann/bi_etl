@@ -1,7 +1,7 @@
 """
 Created on Dec 12, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 from bi_etl.scheduler.task import Status
 def getFromString(reason_string):

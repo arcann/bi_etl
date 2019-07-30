@@ -1,7 +1,7 @@
 """
 Created on May 5, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 
 import logging

@@ -1,9 +1,9 @@
 """
 Created on Nov 17, 2014
 
-@author: woodd
+@author: Derek Wood
 """
-
+import typing
 from datetime import date, timedelta
 from datetime import datetime
 from datetime import time
@@ -18,7 +18,7 @@ def strip(s: str):
         return s.strip()
 
 
-def str2int(s):
+def str2int(s: str):
     """
     String to integer
     """
@@ -28,7 +28,7 @@ def str2int(s):
         return int(s.replace(',', ''))
 
 
-def str2float(s):
+def str2float(s: str):
     """
     String to floating point
     """
@@ -45,7 +45,7 @@ def str2float(s):
                 raise e
 
 
-def str2float_end_sign(s):
+def str2float_end_sign(s: str):
     """
     String to integer
     This version is almost 4 times faster than str2float 
@@ -56,7 +56,7 @@ def str2float_end_sign(s):
     else:
         try:    
             if s[-1] in ['-', '+']:
-                s2 = s[-1] + s[:-1].replace(',','')
+                s2 = s[-1] + s[:-1].replace(',', '')
                 return float(s2)
             else:
                 return float(s.replace(',', ''))
@@ -64,7 +64,7 @@ def str2float_end_sign(s):
             return float(s.replace(',', ''))
 
 
-def str2decimal(s):
+def str2decimal(s: str):
     """
     String to decimal (AKA numeric)
     """
@@ -82,7 +82,7 @@ def str2decimal(s):
                 raise e
 
 
-def str2decimal_end_sign(s):
+def str2decimal_end_sign(s: str):
     """
     String to decimal (AKA numeric).
     This version is almost 4 times faster than tr2decimal 
@@ -91,15 +91,18 @@ def str2decimal_end_sign(s):
     if s is None or s == '':
         return None
     else:
-        if s[-1] in ['-','+']:
-            s2 = s[-1] + s[:-1].replace(',','')
+        if s[-1] in ['-', '+']:
+            s2 = s[-1] + s[:-1].replace(',', '')
             return Decimal(s2)
         else:
             s = s.replace(',', '')
             return Decimal(s)
 
 
-def str2date(s, dt_format='%m/%d/%Y'):
+def str2date(
+        s: str,
+        dt_format: str = '%m/%d/%Y',
+        ):
     """
     Parse a date (no time) value stored in a string. 
     
@@ -117,7 +120,10 @@ def str2date(s, dt_format='%m/%d/%Y'):
         return None
 
 
-def str2time(s, dt_format='%H:%M:%S'):
+def str2time(
+        s: str,
+        dt_format: str = '%H:%M:%S',
+        ):
     """
     Parse a time of day value stored in a string. 
     
@@ -130,17 +136,21 @@ def str2time(s, dt_format='%H:%M:%S'):
     """
     tm = str2datetime(s, dt_format)
     if tm is not None:
-        return time(tm.hour, 
-                    tm.minute, 
-                    tm.second,
-                    tm.microsecond,
-                    tm.tzinfo
-                    )
+        return time(
+            tm.hour,
+            tm.minute,
+            tm.second,
+            tm.microsecond,
+            tm.tzinfo
+            )
     else:
         return None
 
 
-def str2datetime(s, dt_format='%m/%d/%Y %H:%M:%S'):
+def str2datetime(
+        s: str,
+        dt_format: str = '%m/%d/%Y %H:%M:%S',
+        ):
     """ 
     Parse a date + time value stored in a string. 
     
@@ -180,7 +190,10 @@ def str2datetime(s, dt_format='%m/%d/%Y %H:%M:%S'):
         return datetime.strptime(s, dt_format)
 
 
-def round_datetime_ms(source_datetime, digits_to_keep):
+def round_datetime_ms(
+        source_datetime: typing.Optional[datetime],
+        digits_to_keep: int,
+        ):
     if source_datetime is None:
         return None
     new_microseconds = round(source_datetime.microsecond, digits_to_keep-6)
@@ -192,7 +205,11 @@ def round_datetime_ms(source_datetime, digits_to_keep):
     return source_datetime
 
 
-def change_tz(source_datetime, from_tzone, to_tzone):
+def change_tz(
+        source_datetime: typing.Optional[datetime],
+        from_tzone,
+        to_tzone
+        ):
     """
     Change time-zones in dates that have no time-zone info, or incorrect time-zone info
     
@@ -225,7 +242,10 @@ def ensure_datetime(dt: Union[datetime, date]) -> datetime:
         raise ValueError('expected datetime, got {}'.format(dt))
 
 
-def ensure_datetime_dict(d: dict, key: str):
+def ensure_datetime_dict(
+        d: typing.Union[dict, typing.MutableMapping],
+        key: str,
+        ):
     """
     Takes a date or a datetime as input, outputs a datetime
     """
@@ -266,15 +286,14 @@ def nullif(v, value_to_null):
     else:
         return v
 
-
-def defaultMissing(v):
+def default_to_missing(v):
     """
     Same as nvl(v, 'Missing')
     """
     return nvl(v, 'Missing')    
 
 
-def defaultInvalid(v):
+def default_to_invalid(v):
     """
     Same as nvl(v, 'Invalid')
     """
@@ -295,7 +314,7 @@ def defaultNines(v):
     return nvl(v, -9999)
 
 
-def str2bytes_size(str_size):
+def str2bytes_size(str_size: str):
     """
     Parses a string containing a size in bytes including KB, MB, GB, TB codes
     into an integer with the actual number of bytes (using 1 KB = 1024). 
@@ -317,7 +336,7 @@ def str2bytes_size(str_size):
             result = int(str_size[:-1]) * pow(2, 30)
         # Check for TB
         elif str_size[-1] == 'T':
-            result = int(str_size[:-1]) * pow(2,30)
+            result = int(str_size[:-1]) * pow(2, 30)
         else:
             result = int(str_size)
     elif str_size is None:
@@ -326,6 +345,7 @@ def str2bytes_size(str_size):
         # return what we were given, just making sure it was an int
         result = int(str_size)
     return result
+
 
 """
 http://code.activestate.com/recipes/578019/
@@ -348,7 +368,11 @@ SYMBOLS = {
 }
 
 
-def bytes2human(n, format_str='%(value).1f %(symbol)s', symbols='customary'):
+def bytes2human(
+        n: int,
+        format_str='%(value).1f %(symbol)s',
+        symbols='customary'
+        ):
     """
     Convert n bytes into a human readable string based on format_str.
     symbols can be either "customary", "customary_ext", "iec" or "iec_ext",
@@ -399,7 +423,7 @@ def bytes2human(n, format_str='%(value).1f %(symbol)s', symbols='customary'):
     return format_str % dict(symbol=symbols[0], value=n)
 
 
-def human2bytes(s):
+def human2bytes(s: str):
     """
     Attempts to guess the string format based on default symbols
     set and return the corresponding bytes as an integer.

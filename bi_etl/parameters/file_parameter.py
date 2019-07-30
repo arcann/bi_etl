@@ -1,7 +1,7 @@
 """
 Created on Apr 16, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 from os.path import os
 

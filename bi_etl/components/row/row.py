@@ -2,8 +2,11 @@
 """
 Created on Sep 17, 2014
 
-@author: woodd
+@author: Derek Wood
 """
+# https://www.python.org/dev/peps/pep-0563/
+from __future__ import annotations
+
 import typing
 import warnings
 from collections import OrderedDict
@@ -36,9 +39,9 @@ class Row(typing.MutableMapping):
 
     def __init__(self,
                  iteration_header: RowIterationHeader,
-                 data=None,
-                 status: RowStatus = None,
-                 allocate_space=True):
+                 data: typing.Union[typing.MutableMapping, list, None] = None,
+                 status: typing.Optional[RowStatus] = None,
+                 allocate_space: bool = True):
         # Whatever we store here we need to either store on disk for a lookup,
         # or have a way of retrieving in __setstate__
         super().__init__()
@@ -61,7 +64,7 @@ class Row(typing.MutableMapping):
 
     @staticmethod
     @functools.lru_cache(maxsize=1000)
-    def _get_name(input_name) -> str:
+    def _get_name(input_name: str) -> str:
         if input_name in Row.__name_map_db:
             return Row.__name_map_db[input_name]
         else:
@@ -120,22 +123,22 @@ class Row(typing.MutableMapping):
         # Restore column values
         self._data_values = incoming_dict['v']
 
-    def update_from_dict(self, source_dict):
+    def update_from_dict(self, source_dict: dict):
         for column_specifier, value in source_dict.items():
             column_name = self._get_name(column_specifier)
             self._raw_setitem(column_name, value)
 
-    def update_from_row_proxy(self, source_row):
+    def update_from_row_proxy(self, source_row: Row):
         for column_specifier, value in source_row.items():
             column_name = self._get_name(column_specifier)
             self._raw_setitem(column_name, value)
 
-    def update_from_tuples(self, tuples_list):
+    def update_from_tuples(self, tuples_list: typing.List[tuple]):
         for column_specifier, value in tuples_list:
             column_name = self._get_name(column_specifier)
             self._raw_setitem(column_name, value)
 
-    def update_from_values(self, values_list):
+    def update_from_values(self, values_list: list):
         if len(self.columns_in_order) >= len(values_list):
             self._data_values = values_list.copy()
         else:
@@ -161,11 +164,12 @@ class Row(typing.MutableMapping):
                 if hasattr(source_data, '__iter__') and not isinstance(source_data, str):
                     try:
                         source_data = list(source_data)
-                        # List of tuples (column_name, value) or list of values (only if we have column names already)
-                        if isinstance(source_data[0], tuple):
-                            self.update_from_tuples(source_data)
-                        else:
-                            self.update_from_values(source_data)
+                        if len(source_data) > 0:
+                            # List of tuples (column_name, value) or list of values (only if we have column names already)
+                            if isinstance(source_data[0], tuple):
+                                self.update_from_tuples(source_data)
+                            else:
+                                self.update_from_values(source_data)
                     except TypeError as e1:
                         try:
                             # noinspection PyProtectedMember
@@ -261,6 +265,7 @@ class Row(typing.MutableMapping):
             return None
 
     def get(self, column_specifier, default_value=None):
+        # TODO: Try and get column position before using _get_name
         column_name = self._get_name(column_specifier)
         try:
             position = self.iteration_header.get_column_position(column_name)
@@ -439,11 +444,12 @@ class Row(typing.MutableMapping):
         sub_row._data_values = self._data_values.copy()
         return sub_row
 
-    def subset(self,
-               exclude: Iterable = None,
-               rename_map: Union[dict, List[tuple]] = None,
-               keep_only: Iterable = None,
-               )-> 'Row':
+    def subset(
+            self,
+            exclude: typing.Optional[Iterable] = None,
+            rename_map: typing.Optional[Union[dict, List[tuple]]] = None,
+            keep_only: typing.Optional[Iterable] = None,
+            ) -> 'Row':
         """
         Return a new row instance with a subset of the columns. Original row is not modified
         Excludes are done first, then renames and finally keep_only.
@@ -535,7 +541,7 @@ class Row(typing.MutableMapping):
         return self.columns_in_order.index(normalized_name) + 1  # index is 0 based, positions are 1 based
 
     @property
-    def columns_in_order(self):
+    def columns_in_order(self) -> typing.Sequence:
         """
         A list of the columns of this row in the order they were defined.
 
@@ -570,9 +576,9 @@ class Row(typing.MutableMapping):
 
     def compare_to(self,
                    other_row: 'Row',
-                   exclude: list = None,
-                   compare_only: list = None,
-                   coerce_types: bool = True) -> list:
+                   exclude: typing.Iterable = None,
+                   compare_only: typing.Iterable = None,
+                   coerce_types: bool = True) -> typing.MutableSequence[ColumnDifference]:
         """
         Compare one RowCaseInsensitive to another. Returns a list of differences.
 

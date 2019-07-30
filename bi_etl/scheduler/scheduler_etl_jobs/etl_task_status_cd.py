@@ -1,7 +1,7 @@
 """
 Created on Aug 28, 2014
 
-@author: woodd
+@author: Derek Wood
 """
 
 from bi_etl.scheduler.task import ETLTask, Status

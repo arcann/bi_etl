@@ -147,7 +147,7 @@ class CSVReader(ETLComponent):
             Enable support for csv columns bigger than 131,072 default limit.
     """
     def __init__(self,
-                 task: ETLTask,
+                 task: typing.Optional[ETLTask],
                  filedata: typing.Union[typing.TextIO, str],
                  encoding: str = None,
                  errors: str = 'strict',

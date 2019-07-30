@@ -1,12 +1,19 @@
 """
 Created on May 15, 2015
 
-@author: woodd
+@author: Derek Wood
 """
+# https://www.python.org/dev/peps/pep-0563/
+from __future__ import annotations
+
+import typing
 from configparser import ConfigParser
 
 from bi_etl.lookups.disk_lookup import DiskLookup
 from bi_etl.lookups.range_lookup import RangeLookup
+
+if typing.TYPE_CHECKING:
+    from bi_etl.components.etlcomponent import ETLComponent
 
 __all__ = ['DiskRangeLookup']
 
@@ -15,7 +22,7 @@ class DiskRangeLookup(RangeLookup, DiskLookup):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
+                 parent_component: ETLComponent,
                  begin_date,
                  end_date,
                  use_value_cache: bool = True,

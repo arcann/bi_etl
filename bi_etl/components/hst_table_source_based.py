@@ -1,6 +1,5 @@
 import textwrap
-
-from typing import Union, List, Callable
+import typing
 
 from bi_etl.components.hst_table import HistoryTable
 from bi_etl.components.row.row import Row
@@ -187,7 +186,7 @@ class HistoryTableSourceBased(HistoryTable):
     """
 
     def __init__(self,
-                 task: ETLTask,
+                 task: typing.Optional[ETLTask],
                  database: DatabaseMetadata,
                  table_name: str,
                  table_name_case_sensitive: bool = True,
@@ -225,8 +224,8 @@ class HistoryTableSourceBased(HistoryTable):
             do_not_update: list = None,
             additional_update_values: dict = None,
             additional_insert_values: dict = None,
-            update_callback: Callable[[list, Row], None] = None,
-            insert_callback: Callable[[Row], None] = None,
+            update_callback: typing.Callable[[list, Row], None] = None,
+            insert_callback: typing.Callable[[Row], None] = None,
             source_excludes: list = None,
             target_excludes: list = None,
             build_method: HistoryTable.RowBuildMethod = HistoryTable.RowBuildMethod.safe,
@@ -284,8 +283,9 @@ class HistoryTableSourceBased(HistoryTable):
             self.prior_upsert_row = None
             self.prior_upsert_key = nk_tuple
             self.prior_upsert_lookup_name = lookup_name
+            fallback_to_db = self.always_fallback_to_db or not self.cache_clean
             try:
-                existing_rows = lookup.find_versions_list(self.prior_upsert_key)
+                existing_rows = lookup.find_versions_list(self.prior_upsert_key, fallback_to_db=fallback_to_db)
             except NoResultFound:
                 # No existing rows were found, insert
                 new_row = source_mapped_as_target_row
@@ -295,7 +295,7 @@ class HistoryTableSourceBased(HistoryTable):
                 if additional_insert_values:
                     for colName, value in additional_insert_values.items():
                         new_row[colName] = value
-                self.insert(
+                self.insert_row(
                     new_row,
                     build_method=build_method,
                     parent_stats=parent_stats,
@@ -424,14 +424,14 @@ class HistoryTableSourceBased(HistoryTable):
             pass
 
     def upsert(self,
-               source_row: Union[Row, List[Row]],
+               source_row: typing.Union[Row, typing.List[Row]],
                lookup_name: str = None,
                skip_update_check_on: list = None,
                do_not_update: list = None,
                additional_update_values: dict = None,
                additional_insert_values: dict = None,
-               update_callback: Callable[[list, Row], None] = None,
-               insert_callback: Callable[[Row], None] = None,
+               update_callback: typing.Callable[[list, Row], None] = None,
+               insert_callback: typing.Callable[[Row], None] = None,
                source_excludes: list = None,
                target_excludes: list = None,
                build_method: HistoryTable.RowBuildMethod = HistoryTable.RowBuildMethod.safe,
@@ -487,7 +487,7 @@ class HistoryTableSourceBased(HistoryTable):
             else:
                 source_row[self.begin_date_column] = self.default_effective_date
         else:
-            date_coerce = getattr(self, f'_coerce_{self.begin_date_column}')
+            date_coerce = self.get_coerce_method(self.begin_date_column)
             source_row[self.begin_date_column] = date_coerce(effective_date)
 
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
@@ -544,7 +544,7 @@ class HistoryTableSourceBased(HistoryTable):
 
     def update_not_in_set(
             self,
-            updates_to_make: Union[dict, Row],
+            updates_to_make: typing.Union[dict, Row],
             set_of_key_tuples: set,
             lookup_name: str = None,
             criteria_list: list = None,
@@ -614,17 +614,15 @@ class HistoryTableSourceBased(HistoryTable):
         else:
             lookup = self.get_lookup(lookup_name)
 
-        # Turn off cache updates
-        saved_maintain_cache_during_load = self.maintain_cache_during_load
-        self.maintain_cache_during_load = False
-        self.cache_clean = False
-
         # Note, here we select only lookup columns from self
-        for row in self.where(column_list=lookup.lookup_keys,
+        row_iter = self.where(column_list=lookup.lookup_keys,
                               criteria_list=criteria_list,
                               criteria_dict=criteria_dict,
                               use_cache_as_source=use_cache_as_source,
-                              parent_stats=stats):
+                              parent_stats=stats)
+        # Save the iterator aa a list since we'll be modifying the cache as we run through it
+        rows_list = [row for row in row_iter]
+        for row in rows_list:
             if row.status == RowStatus.unknown:
                 pass
             stats['rows read'] += 1
@@ -662,7 +660,6 @@ class HistoryTableSourceBased(HistoryTable):
 
         # Restore saved progress_frequency
         self.progress_frequency = saved_progress_frequency
-        self.maintain_cache_during_load = saved_maintain_cache_during_load
 
     def commit(self,
                stat_name='commit',

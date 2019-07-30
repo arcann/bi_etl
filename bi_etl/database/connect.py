@@ -2,9 +2,11 @@
 """
 Created on Jan 22, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 import logging
+
+from sqlalchemy.pool import QueuePool, NullPool
 
 from bi_etl.bi_config_parser import BIConfigParser
 from sqlalchemy import create_engine
@@ -43,6 +45,7 @@ class Connect(object):
         else:
             default_dsn = None
         dsn = config.get(database_name, 'dsn', fallback=default_dsn)
+        port = config.get(database_name, 'port', fallback=None)
 
         if not dialect.startswith('sqlite'):
             (userid, password) = config.get_database_connection_tuple(database_name, usersection)
@@ -83,6 +86,10 @@ class Connect(object):
             next_part = '@' + dsn
             url += next_part
             no_pw_url += next_part
+        if port is not None:
+            next_part = ':' + port
+            url += next_part
+            no_pw_url += next_part
         if override_port is not None:
             next_part = ':' + str(override_port)
             url += next_part
@@ -101,7 +108,28 @@ class Connect(object):
             kwargs['fast_executemany'] = True
             log.info('Using fast_executemany')
 
+        key_word_arguments_list = config.get_list(database_name, 'key_word_arguments')
+        for pair in key_word_arguments_list:
+            keyword, value = pair.split('=')
+            keyword = keyword.strip()
+            value = eval(value)  # This will convert int, bool etc to the correct type
+            kwargs[keyword] = value
+
         log.debug('Connecting to {}'.format(no_pw_url))
+
+        create_engine_args_list = config.get_list(database_name, 'create_engine_args', fallback='')
+        for arg in create_engine_args_list:
+            arg_name, arg_value = arg.split('=')
+            arg_name = arg_name.strip()
+            arg_value = arg_value.strip()
+            try:
+                arg_value_int = int(arg_value)
+                arg_value = arg_value_int
+            except ValueError:
+                pass
+            kwargs[arg_name] = arg_value
+
+        create_pool_type = config.get(database_name, 'create_pool_type', fallback='QueuePool')
 
         if dialect == 'oracle':
             if 'arraysize' not in kwargs:
@@ -114,6 +142,20 @@ class Connect(object):
                 kwargs['encoding'] = encoding
         if 'encoding' in kwargs:
             log.debug('{} using encoding={}'.format(database_name, kwargs['encoding']))
+
+        if 'poolclass' in kwargs:
+            log.debug(f"poolclass already set to {kwargs['poolclass']} not using config setting of {create_pool_type}")
+        if create_pool_type == 'QueuePool':
+            kwargs['poolclass'] = QueuePool
+        elif create_pool_type == 'NullPool':
+            kwargs['poolclass'] = NullPool
+        else:
+            raise ValueError(f'Unexpected create_pool_type {create_pool_type}')
+
+        if len(kwargs) > 0:
+            for keyword, value in kwargs.items():
+                log.debug(f'{database_name} using keyword argument {keyword} = {value}')
+
         engine = create_engine(url, **kwargs)
         if config.getboolean(database_name, 'fast_numeric', fallback=True):
             engine.dialect.colspecs[sqltypes.Numeric] = _FastNumeric

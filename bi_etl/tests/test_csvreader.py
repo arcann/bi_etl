@@ -2,7 +2,7 @@
 """
 Created on Nov 30, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 import unittest
 import inspect

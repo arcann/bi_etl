@@ -31,14 +31,21 @@ def get_cursor(
 def psycopg2_extract_using_bind(
         bind,
         table_name,
-        output_file_path, delimiter='\013',
+        output_file_path,  # delimiter='\013',
+        delimiter='|',
         null='',
         encoding='UTF-8'):
     conn = bind.engine.raw_connection()
     conn.set_client_encoding(encoding)
     cur = conn.cursor()
+    copy_stmt = "COPY {tbl} TO STDOUT WITH CSV DELIMITER '{delimiter}' NULL '{null}'".format(
+        tbl=table_name,
+        delimiter=delimiter,
+        null=null,
+    )
     with open(output_file_path, 'wt', encoding=encoding, newline='\n') as output_file:
-        cur.copy_to(output_file, table_name, sep=delimiter, null=null)
+        cur.copy_expert(copy_stmt, output_file)
+        # cur.copy_to(output_file, table_name, sep=delimiter, null=null)
     conn.close()
 
 
@@ -46,14 +53,15 @@ def psycopg2_sql_extract(
         bind,
         sql,
         output_file_path,
-        delimiter='\013',
+        # delimiter='\013',
+        delimiter='|',
         null='',
         encoding='UTF-8'):
     conn = bind.engine.raw_connection()
     conn.set_client_encoding(encoding)
     cur = conn.cursor()
 
-    copy_stmt = "COPY ({sql}) TO STDOUT WITH DELIMITER '{delimiter}' NULL '{null}'".format(
+    copy_stmt = "COPY ({sql}) TO STDOUT WITH CSV DELIMITER '{delimiter}' NULL '{null}'".format(
         sql=sql,
         delimiter=delimiter,
         null=null,

@@ -2,7 +2,7 @@
 """
 Created on Feb 13, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 
 _frozenset_cache = dict()

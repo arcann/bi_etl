@@ -2,11 +2,13 @@
 Created on Apr 2, 2015
 """
 import os
-
-from bi_etl.scheduler.task import ETLTask
-from openpyxl import load_workbook
-from bi_etl.components.etlcomponent import ETLComponent
+import typing
 from datetime import datetime, time
+
+from openpyxl import load_workbook
+
+from bi_etl.components.etlcomponent import ETLComponent
+from bi_etl.scheduler.task import ETLTask
 
 __all__ = ['XLSXReader']
 
@@ -69,9 +71,9 @@ class XLSXReader(ETLComponent):
         not present in a given row (missing values).     
     """
     def __init__(self,
-                 task: ETLTask,
+                 task: typing.Optional[ETLTask],
                  file_name: str,
-                 logical_name: str=None,
+                 logical_name: typing.Optional[str] = None,
                  **kwargs
                  ):
         self.file_name = file_name

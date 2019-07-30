@@ -1,7 +1,7 @@
 """
 Created on Apr 23, 2015
 
-@author: woodd
+@author: Derek Wood
 """
 
 

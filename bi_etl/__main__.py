@@ -1,7 +1,7 @@
 """
 Created on Sep 18, 2014
 
-@author: woodd
+@author: Derek Wood
 """
 from bi_etl.scheduler.task import run_task
 from argparse import ArgumentParser

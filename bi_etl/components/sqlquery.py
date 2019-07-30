@@ -1,8 +1,9 @@
 """
 Created on Sep 17, 2014
 
-@author: woodd
+@author: Derek Wood
 """
+import typing
 from enum import IntEnum, unique
 
 from bi_etl.components.etlcomponent import ETLComponent
@@ -27,10 +28,10 @@ class SQLQuery(ETLComponent):
         format = 2
 
     def __init__(self,
-                 task: ETLTask,
+                 task: typing.Optional[ETLTask],
                  database: DatabaseMetadata,
                  sql: str,
-                 logical_name: str=None,
+                 logical_name: typing.Optional[str] = None,
                  **kwargs
                  ):
         # Don't pass kwargs up. They should be set here at the end

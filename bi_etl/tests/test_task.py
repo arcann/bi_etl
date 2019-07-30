@@ -1,7 +1,7 @@
 """
 Created on Apr 18, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 import logging
 import unittest

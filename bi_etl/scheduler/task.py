@@ -1,7 +1,7 @@
 """
 Created on Sep 15, 2014
 
-@author: woodd
+@author: Derek Wood
 """
 import errno
 import logging
@@ -968,7 +968,9 @@ class ETLTask(object):
             if not handle_exceptions:
                 raise e
             self.log.exception(e)
-            self.log.error(utility.dict_to_str(e.__dict__))
+            self.log.error(e)
+            self.log.info(repr(e))
+            self.log.info(utility.dict_to_str(e.__dict__))
             if not self.suppress_notifications:
                 environment = self.config.get('environment', 'name', fallback='Unknown_ENVT')
                 message_list = list()

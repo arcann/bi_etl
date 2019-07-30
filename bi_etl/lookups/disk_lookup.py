@@ -1,28 +1,32 @@
 """
 Created on May 15, 2015
 
-@author: woodd
+@author: Derek Wood
 """
+# https://www.python.org/dev/peps/pep-0563/
+from __future__ import annotations
+
 import dbm
-import math
 import os
 import pickle
 import shelve
 import string
 import sys
 import tempfile
+import typing
 import weakref
 from configparser import ConfigParser
-from datetime import datetime
-from typing import MutableMapping
 
+import math
 import semidbm
 
-from bi_etl.components.row.row import Row
-from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.memory_size import get_dir_size
 from bi_etl.memory_size import get_size_gc
+
+if typing.TYPE_CHECKING:
+    from bi_etl.components.etlcomponent import ETLComponent
+
 
 __all__ = ['DiskLookup']
 
@@ -33,7 +37,7 @@ class DiskLookup(Lookup):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
+                 parent_component: ETLComponent,
                  use_value_cache: bool = True,
                  config: ConfigParser = None,
                  path=None,
@@ -58,9 +62,9 @@ class DiskLookup(Lookup):
         self.use_value_cache = False
         self._finalizer = None
         # Shelf requires str keys
-        self._hashble_key_type = str
+        self._hashable_key_type = str
         
-    def _set_path(self, path):
+    def _set_path(self, path: str):
         if path is not None:
             self.path = path
         else:
@@ -95,12 +99,12 @@ class DiskLookup(Lookup):
         else:
             return 0
         
-    def _get_first_row_size(self, row):
+    def _get_first_row_size(self, row: Lookup.ROW_TYPES):
         if self.dbm:
             # Slow but shouldn't be too bad twice
             self._row_size = get_size_gc(self.dbm)
         
-    def check_estimate_row_size(self, force_now=False):
+    def check_estimate_row_size(self, force_now: bool = False):
         if force_now or not self._done_get_estimate_row_size:
             row_cnt = min(len(self), 1000)
             total_row_sizes = 0

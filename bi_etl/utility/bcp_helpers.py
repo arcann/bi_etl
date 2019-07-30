@@ -92,7 +92,7 @@ def create_bcp_format_file(table, bcp_format_path, encoding=None, delimiter=None
         bcp_fmt.write(textwrap.dedent("""\
                         <?xml version="1.0"?>
                         <BCPFORMAT xmlns="http://schemas.microsoft.com/sqlserver/2004/bulkload/format" 
-                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
                         <RECORD>
                         """))
         bcp_fmt.write('\n'.join(field_list))

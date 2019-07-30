@@ -1,7 +1,7 @@
 """
 Created on Jan 22, 2016
 
-@author: woodd
+@author: Derek Wood
 """
 import enum
 import logging
@@ -90,7 +90,7 @@ class TestTable(unittest.TestCase):
             self.assertIn('col3', tbl.column_names)
             self.assertIn('col4', tbl.column_names)
             self.assertIn('col5', tbl.column_names)
-            self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+            # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testInitExcludeCol(self):
         tbl_name = 'testInitExcludeCol'
@@ -116,7 +116,7 @@ class TestTable(unittest.TestCase):
             self.assertIn('col3', tbl.column_names)
             self.assertNotIn('col4', tbl.column_names)
             self.assertIn('col5', tbl.column_names)
-            self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+            # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testInitExcludeCol2(self):
         tbl_name = 'testInitExcludeCol2'
@@ -144,7 +144,7 @@ class TestTable(unittest.TestCase):
             self.assertNotIn('col3', tbl.column_names)
             self.assertNotIn('col4', tbl.column_names)
             self.assertIn('col5', tbl.column_names)
-            self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+            # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testDoesNotExist(self):
         self.assertRaises(exc.NoSuchTableError, Table, task=self.task, database=self.mock_database,
@@ -195,7 +195,7 @@ class TestTable(unittest.TestCase):
                 self.assertEqual(row['col4'], i / 100000000.0)
                 self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testInsertAndIterateWithKey(self):
         tbl_name = 'testInsertAndIterateWithKey'
@@ -248,7 +248,7 @@ class TestTable(unittest.TestCase):
             except KeyError:
                 raise KeyError('Row key {} did not exist'.format(i))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testInsertDuplicate(self):
         tbl_name = 'testInsertDuplicate'
@@ -382,20 +382,20 @@ class TestTable(unittest.TestCase):
                 print(dict_to_str(row))
                 rows_dict[row['col1']] = row
 
-            self.assertEqual(len(rows_dict), rows_to_insert1 + rows_to_insert2)
+            self.assertEqual(len(rows_dict), rows_to_insert1 + rows_to_insert2, 'row count check')
 
             for i in range(rows_to_insert1 + rows_to_insert2):
                 try:
                     row = rows_dict[i]
-                    self.assertEqual(row['col1'], i)
-                    self.assertEqual(row['col2'], 'this is row {}'.format(i))
-                    self.assertEqual(row['col3'], i / 1000.0)
-                    self.assertEqual(row['col4'], i / 100000000.0)
-                    self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
+                    self.assertEqual(row['col1'], i, 'col1 check')
+                    self.assertEqual(row['col2'], 'this is row {}'.format(i), 'col2 check')
+                    self.assertEqual(row['col3'], i / 1000.0, 'col3 check')
+                    self.assertEqual(row['col4'], i / 100000000.0, 'col4 check')
+                    self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'), 'col5 check')
                 except KeyError:
                     raise KeyError('Row key {} did not exist'.format(i))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testInsertAutogenerateContinueNegative(self):
         tbl_name = 'testInsertAutogenerateContinue'
@@ -465,7 +465,7 @@ class TestTable(unittest.TestCase):
                 except KeyError:
                     raise KeyError('Row key {} did not exist'.format(i))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testUpdate_partial_by_alt_key(self):
         tbl_name = 'testUpdate_by_alt_key'
@@ -523,7 +523,7 @@ class TestTable(unittest.TestCase):
             self.assertEqual(row['col4'], i / 100000000.0)
             self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testUpdate_partial_by_key(self):
         tbl_name = 'testUpdate_partial_by_key'
@@ -587,7 +587,7 @@ class TestTable(unittest.TestCase):
             self.assertEqual(row['col4'], i / 100000000.0)
             self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testUpdate_whole_by_key(self):
         tbl_name = 'testUpdate_whole_by_key'
@@ -649,7 +649,7 @@ class TestTable(unittest.TestCase):
             self.assertEqual(row['col4'], i / 100000000.0)
             self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def test_update_where_pk(self):
         tbl_name = 'test_update_where_pk'
@@ -710,7 +710,7 @@ class TestTable(unittest.TestCase):
             self.assertEqual(row['col4'], i / 100000000.0)
             self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def test_upsert_int_pk(self):
         tbl_name = 'test_upsert_int_pk'
@@ -793,7 +793,7 @@ class TestTable(unittest.TestCase):
                 self.assertEqual(row['col4'], i / 100000000.0)
             self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def test_upsert_int_dual_pk(self):
         tbl_name = 'test_upsert_int_dual_pk'
@@ -826,6 +826,7 @@ class TestTable(unittest.TestCase):
 
         # Do the updates / inserts
         iteration_header = RowIterationHeader()
+        rows_generated = list()
         for i in range(rows_to_insert):
             # only update even rows            
             # self.task.debug_sql()
@@ -835,12 +836,17 @@ class TestTable(unittest.TestCase):
             row['col1'] = i
             row['col2'] = 'this is row {}'.format(i)
             if i % 2 == 0:
-                row['col3'] = i * 1 / 10000.0
+                row['col3'] = i * 10
             else:
                 row['col3'] = i * 1 / 1000.0
             # leave out col 4
             row['col5'] = 'this is row {} blob'.format(i).encode('ascii')
             tbl.upsert(row)
+
+            # Add col4 to the saved list for validation
+            saved_row = row.clone()
+            saved_row['col4'] = i / 100000000.0
+            rows_generated.append(saved_row)
             # self.task.debug_sql(False)
         tbl.commit()
 
@@ -852,18 +858,17 @@ class TestTable(unittest.TestCase):
 
         self.assertEqual(len(rows_dict), rows_to_insert)
 
-        for i in range(rows_to_insert):
-            row = rows_dict[i]
-            self.assertEqual(row['col1'], i)
-            self.assertEqual(row['col2'], 'this is row {}'.format(i))
-            if i % 2 == 0:
-                self.assertEqual(row['col3'], i * 1 / 10000.0)
+        for expected_row in rows_generated:
+            row = rows_dict[expected_row['col1']]
+            self.assertEqual(row['col2'], expected_row['col2'], 'col2 check')
+            if expected_row['col1'] % 2 == 0:
+                self.assertEqual(row['col3'], expected_row['col3'], 'col3 check even')
             else:
-                self.assertEqual(row['col3'], i * 1 / 1000.0)
-            self.assertEqual(row['col4'], i / 100000000.0)
-            self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
+                self.assertEqual(row['col3'], expected_row['col3'], 'col3 check odd')
+            self.assertEqual(row['col4'], expected_row['col4'], 'col4 check')
+            self.assertEqual(row['col5'], expected_row['col5'], 'col5 check')
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def test_delete_int_pk(self):
         tbl_name = 'test_delete_int_pk'
@@ -920,7 +925,7 @@ class TestTable(unittest.TestCase):
                 self.assertEqual(row['col4'], i / 100000000.0)
                 self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def test_delete_int_pk_no_batch(self):
         tbl_name = 'test_delete_int_pk_no_batch'
@@ -978,7 +983,7 @@ class TestTable(unittest.TestCase):
                 self.assertEqual(row['col4'], i / 100000000.0)
                 self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testSanityCheck1(self):
         src_tbl_name = 'testSanityCheck1s'
@@ -1076,8 +1081,8 @@ class TestTable(unittest.TestCase):
                                      'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
                     log.reset_mock()
 
-        self.mock_database.execute('DROP TABLE {}'.format(src_tbl_name))
-        self.mock_database.execute('DROP TABLE {}'.format(tgt_tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(src_tbl_name))
+        # self.mock_database.execute('DROP TABLE {}'.format(tgt_tbl_name))
 
     def testBuildRow1(self):
         src_tbl_name = 'testBuildRow1s'
@@ -1303,7 +1308,7 @@ class TestTable(unittest.TestCase):
 
                     # Test string too long
                     src_row['strin_10_col'] = '12345678901'
-                    self.assertRaises(ValueError, tgt_tbl.build_row, src_row, "Test string too long")
+                    self.assertRaises(ValueError, tgt_tbl.build_row, src_row)
                     src_row['strin_10_col'] = '12345678'
 
                     # Test number too long from int
@@ -1367,15 +1372,17 @@ class TestTable(unittest.TestCase):
 
     def test_upsert_special_values_rows(self):
         tbl_name = 'testInsertAndIterateWithKey'
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT  PRIMARY KEY,
-              col2 TEXT,
-              col3 REAL,
-              col4 NUMERIC,
-              col5 BLOB
-           )
-        """.format(tbl_name))
+        self.mock_database.execute(
+            f"""
+               CREATE TABLE {tbl_name} (
+                  col1 INT  PRIMARY KEY,
+                  col2 TEXT,
+                  col3 REAL,
+                  col4 NUMERIC,
+                  col5 BLOB
+               )
+            """,
+        )
         self._test_upsert_special_values_rows_check(tbl_name)
         # Run a second time to make sure rows stay the same
         self._test_upsert_special_values_rows_check(tbl_name)

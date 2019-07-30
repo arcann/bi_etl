@@ -1,8 +1,11 @@
 """
 Created on Sep 17, 2014
 
-@author: woodd
+@author: Derek Wood
 """
+# https://www.python.org/dev/peps/pep-0563/
+from __future__ import annotations
+
 import functools
 import typing
 from datetime import datetime
@@ -109,7 +112,7 @@ class ReadOnlyTable(ETLComponent):
     DEFAULT_CONNECTION_NAME = 'default'
 
     def __init__(self,
-                 task: ETLTask,
+                 task: typing.Optional[ETLTask],
                  database: DatabaseMetadata,
                  table_name: str,
                  table_name_case_sensitive: bool = False,
@@ -124,7 +127,7 @@ class ReadOnlyTable(ETLComponent):
                                             )
         self.trace_sql = False
         self.always_fallback_to_db = True
-        self.maintain_cache_during_load = True
+        self._maintain_cache_during_load = True
 
         self.__compile_cache = {}
         self.__delete_flag = None
@@ -154,7 +157,13 @@ class ReadOnlyTable(ETLComponent):
 
             if not table_name_case_sensitive:
                 table_name = table_name.lower()
-            self.table = sqlalchemy.schema.Table(table_name, database, schema=self.schema, autoload=True, quote=False)
+            try:
+                self.table = sqlalchemy.schema.Table(table_name, database, schema=self.schema, autoload=True, quote=False)
+            except Exception as e:
+                try:
+                    self.log.error(f"Exception {repr(e)} occurred while obtaining definition of {table_name} from the database schema {self.schema}")
+                finally:
+                    raise
 
         self.__natural_key_override = False
         self.__natural_key = None
@@ -242,6 +251,14 @@ class ReadOnlyTable(ETLComponent):
     def connection_pool(self):
         return self.__connection_pool.copy()
 
+    @property
+    def maintain_cache_during_load(self) -> bool:
+        return True
+
+    @maintain_cache_during_load.setter
+    def maintain_cache_during_load(self, value: bool):
+        self._maintain_cache_during_load = value
+
     def set_columns(self, columns):
         # Remove columns from the table
         for col in self._columns:
@@ -310,38 +327,58 @@ class ReadOnlyTable(ETLComponent):
         columns_to_include : list
             A list of columns to include when reading the table/view.
         """
-        columns_to_exclude = set(self.column_names).difference(columns_to_include)
+        columns_to_exclude = self.column_names_set.difference(columns_to_include)
         self.exclude_columns(columns_to_exclude)
 
-    def is_connected(self, connection_name: str = None) -> bool:
+    def _get_usable_connection_name(self, connection_name: typing.Optional[str] = None) -> str:
         if connection_name is None:
             connection_name = self.DEFAULT_CONNECTION_NAME
-        if connection_name in self.__connection_pool:
-            return not self.__connection_pool[connection_name].closed
-        else:
+        # When using sqlite don't make new connections, reuse the existing one
+        if self.database.dialect_name == 'sqlite':
+            connection_name = 'sqlite'
+        return connection_name
+
+    def is_connected(self, connection_name: typing.Optional[str] = None) -> bool:
+        try:
+            con = self.connection(connection_name, open_if_not_exist=False, open_if_closed=False)
+            return con.closed
+        except ValueError:
             return False
 
-    def connection(self, connection_name: str = None, open_if_closed: bool = True) -> sqlalchemy.engine.base.Connection:
+    def connection(
+            self,
+            connection_name: typing.Optional[str] = None,
+            open_if_not_exist: bool = True,
+            open_if_closed: bool = True,
+    ) -> sqlalchemy.engine.base.Connection:
         if self.table is None:
             raise ValueError("connection called with no table defined")
-        if connection_name is None:
-            connection_name = self.DEFAULT_CONNECTION_NAME
+        connection_name = self._get_usable_connection_name(connection_name)
+
         if connection_name in self.__connection_pool:
             con = self.__connection_pool[connection_name]
             if con.closed and open_if_closed:
-                con = self.table.metadata.bind.connect()
+                con = self.database.connect()
                 self.__connection_pool[connection_name] = con
         else:
-            con = self.table.metadata.bind.connect()
-            self.__connection_pool[connection_name] = con
+            if open_if_not_exist:
+                con = self.database.connect()
+                self.__connection_pool[connection_name] = con
+            else:
+                raise ValueError(f'Connection {connection_name} does not exist, and open_if_not_exist = False')
         return con
 
     def set_connection(self, connection, connection_name: str = None):
-        if connection_name is None:
-            connection_name = self.DEFAULT_CONNECTION_NAME
+        connection_name = self._get_usable_connection_name(connection_name)
         if connection_name in self.__connection_pool:
             self.__connection_pool[connection_name].close()
         self.__connection_pool[connection_name] = connection
+
+    def close_connection(self, connection_name: str = None):
+        connection_name = self._get_usable_connection_name(connection_name)
+        if connection_name in self.__connection_pool:
+            con = self.__connection_pool[connection_name]
+            con.close()
 
     def close_connections(self):
         for con in self.__connection_pool.values():
@@ -433,6 +470,8 @@ class ReadOnlyTable(ETLComponent):
         if row1 is None:
             raise NoResultFound()
         row2 = results.fetchone()
+        if connection_name == 'get_one':
+            self.close_connection(connection_name)
         if row2 is not None:
             raise MultipleResultsFound([row1, row2])
         return self.Row(row1)
@@ -516,6 +555,26 @@ class ReadOnlyTable(ETLComponent):
             for key_name, key_value in zip(key_names, key_values):
                 key_values_dict[key_name] = key_value
         return key_values_dict
+
+    def cache_iterator(self):
+        pk_lookup = None
+        try:
+            pk_lookup = self.get_pk_lookup()
+            if not pk_lookup.cache_enabled:
+                for lookup_name in self.__lookups:
+                    lookup = self.get_lookup(lookup_name)
+                    if lookup.cache_enabled:
+                        pk_lookup = lookup
+                        break
+        except KeyError:
+            pass
+
+        if pk_lookup is None:
+            raise LookupError("Unable to find filled lookup for cache_iterator")
+        else:
+            # Note in this case the outer call where / iter_result will process the criteria
+            self.log.debug(f"Using lookup {pk_lookup} as source for cache_iterator")
+            return pk_lookup
 
     # We add the following args at this level
     #   criteria: so they can be passed down to the database
@@ -804,6 +863,8 @@ class ReadOnlyTable(ETLComponent):
             else:
                 stmt = stmt.where(where)
         max_row = self.get_one(stmt, connection_name=connection_name)
+        if connection_name == 'max':
+            self.close_connection(connection_name)
         max_value = max_row['max_1']
         return max_value
 
@@ -980,23 +1041,27 @@ class ReadOnlyTable(ETLComponent):
             if self.primary_key:
                 self.define_lookup(ReadOnlyTable.PK_LOOKUP, self.primary_key)
 
-    def fill_cache(self,
-                   progress_frequency: float = 10,
-                   progress_message="{component} fill_cache current row # {row_number:,}",
-                   criteria_list: list = None,
-                   criteria_dict: dict = None,
-                   column_list: list = None,
-                   exclude_cols: list = None,
-                   order_by: list = None,
-                   assume_lookup_complete: bool = None,
-                   row_limit: int = None,
-                   parent_stats: Statistics = None,
-                   ):
+    def fill_cache_from_source(
+            self,
+            source: ETLComponent,
+            progress_frequency: float = 10,
+            progress_message="{component} fill_cache current row # {row_number:,}",
+            criteria_list: list = None,
+            criteria_dict: dict = None,
+            column_list: list = None,
+            exclude_cols: list = None,
+            order_by: list = None,
+            assume_lookup_complete: bool = None,
+            row_limit: int = None,
+            parent_stats: Statistics = None,
+            ):
         """
         Fill all lookup caches from the table.
 
         Parameters
         ----------
+        source:
+            Source compontent to get rows from.
         progress_frequency : int, optional
             How often (in seconds) to output progress messages. Default 10. None for no progress messages.
         progress_message : str, optional
@@ -1024,8 +1089,8 @@ class ReadOnlyTable(ETLComponent):
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """
-
-        super().fill_cache(
+        super().fill_cache_from_source(
+            source=source,
             progress_frequency=progress_frequency,
             progress_message=progress_message,
             criteria_list=criteria_list,
@@ -1060,11 +1125,11 @@ class ReadOnlyTable(ETLComponent):
     def get_pk_lookup(self):
         return self.get_lookup(ReadOnlyTable.PK_LOOKUP)
 
-    def get_primary_key_value_list(self, row):
+    def get_primary_key_value_list(self, row) -> list:
         self._check_pk_lookup()
         return self.lookups[ReadOnlyTable.PK_LOOKUP].get_list_of_lookup_column_values(row)
 
-    def get_primary_key_value_tuple(self, row):
+    def get_primary_key_value_tuple(self, row) -> tuple:
         self._check_pk_lookup()
         return self.lookups[ReadOnlyTable.PK_LOOKUP].get_hashable_combined_key(row)
 
@@ -1078,7 +1143,11 @@ class ReadOnlyTable(ETLComponent):
     @natural_key.setter
     def natural_key(self, value: list):
         self.__natural_key_override = True
-        self.__natural_key = value
+        nk = list()
+        for colname in value:
+            k = self.get_column_name(colname)
+            nk.append(k)
+        self.__natural_key = nk
         self.ensure_nk_lookup()
 
     def _get_nk_lookup_name(self):
@@ -1102,18 +1171,14 @@ class ReadOnlyTable(ETLComponent):
         nk_lookup_name = self._get_nk_lookup_name()
         return self.get_lookup(nk_lookup_name)
 
-    def get_natural_key_value_list(self, row):
+    def get_natural_key_value_list(self, row: Row) -> list:
         if self.natural_key is None:
             return self.get_primary_key_value_list(row)
         else:
-            natural_key_values = list()
-
-            for k in self.natural_key:
-                k = self.get_column_name(k)
-                natural_key_values.append(row[k])
+            natural_key_values = [row[k] for k in self.natural_key]
             return natural_key_values
 
-    def get_natural_key_tuple(self, row):
+    def get_natural_key_tuple(self, row) -> tuple:
         return tuple(self.get_natural_key_value_list(row))
 
     def get_by_key(self,

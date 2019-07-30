@@ -1,12 +1,16 @@
 """
 Created on Feb 27, 2015
 
-@author: woodd
+@author: Derek Wood
 """
+# https://www.python.org/dev/peps/pep-0563/
+from __future__ import annotations
+
+import typing
 from configparser import ConfigParser
 from datetime import datetime
-from typing import Union, MutableMapping
 
+from sqlalchemy.sql import Selectable
 from sqlalchemy.sql.expression import bindparam
 
 from bi_etl.components.row.row import Row
@@ -15,6 +19,10 @@ from bi_etl.exceptions import BeforeAllExisting, AfterExisting, NoResultFound
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.utility import dict_to_str
 
+if typing.TYPE_CHECKING:
+    from bi_etl.components.etlcomponent import ETLComponent
+
+
 __all__ = ['RangeLookup']
 
 
@@ -22,7 +30,7 @@ class RangeLookup(Lookup):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
+                 parent_component: ETLComponent,
                  begin_date,
                  end_date,
                  use_value_cache: bool = True,
@@ -101,7 +109,7 @@ class RangeLookup(Lookup):
 
     def uncache_set(self, row: Lookup.ROW_TYPES):
         if self._cache is not None:
-            if isinstance(row, self._hashble_key_type):
+            if isinstance(row, self._hashable_key_type):
                 lk_tuple = row
             else:
                 lk_tuple = self.get_hashable_combined_key(row)
@@ -116,7 +124,7 @@ class RangeLookup(Lookup):
                 for row in versions_collection.values():
                     yield row
 
-    def get_versions_collection(self, row: Lookup.ROW_TYPES) -> MutableMapping[datetime, Row]:
+    def get_versions_collection(self, row: Lookup.ROW_TYPES) -> typing.MutableMapping[datetime, Row]:
         """
         This method exists for compatibility with range caches
 
@@ -130,7 +138,7 @@ class RangeLookup(Lookup):
         A MutableMapping of rows
         """
 
-        if isinstance(row, self._hashble_key_type):
+        if isinstance(row, self._hashable_key_type):
             lk_tuple = row
         else:
             lk_tuple = self.get_hashable_combined_key(row)
@@ -146,7 +154,7 @@ class RangeLookup(Lookup):
         except KeyError:
             raise NoResultFound()
 
-    def find_in_cache(self, row: Lookup.ROW_TYPES, **kwargs):
+    def find_in_cache(self, row: Lookup.ROW_TYPES, **kwargs) -> Row:
         """
         Find an existing row in the cache effective on the date provided.
         Can raise ValueError if the cache is not setup.
@@ -168,7 +176,7 @@ class RangeLookup(Lookup):
             msg += "\neffective_date = {}".format(effective_date)
             raise TypeError(msg)
                 
-    def _add_remote_stmt_where_clause(self, stmt):
+    def _add_remote_stmt_where_clause(self, stmt: Selectable) -> Selectable:
         stmt = super(RangeLookup, self)._add_remote_stmt_where_clause(stmt)
         # noinspection PyUnresolvedReferences
         stmt = stmt.where(bindparam('eff_date') >= self.parent_component.get_column(self.begin_date))
@@ -176,7 +184,11 @@ class RangeLookup(Lookup):
         stmt = stmt.where(bindparam('eff_date') <= self.parent_component.get_column(self.end_date))
         return stmt
 
-    def _get_remote_stmt_where_values(self, row: Lookup.ROW_TYPES, effective_date: datetime = None) -> dict:
+    def _get_remote_stmt_where_values(
+            self,
+            row: Lookup.ROW_TYPES,
+            effective_date: datetime = None,
+            ) -> dict:
         values_dict = super(RangeLookup, self)._get_remote_stmt_where_values(row)
         if effective_date is None:
             if isinstance(row, tuple) or isinstance(row, list):
@@ -188,7 +200,11 @@ class RangeLookup(Lookup):
         values_dict['eff_date'] = effective_date
         return values_dict
     
-    def find_in_remote_table(self, row: Lookup.ROW_TYPES, **kwargs) -> Row:
+    def find_in_remote_table(
+            self,
+            row: Lookup.ROW_TYPES,
+            **kwargs
+            ) -> Row:
         """
         Find a matching row in the lookup based on the lookup index (keys)
         

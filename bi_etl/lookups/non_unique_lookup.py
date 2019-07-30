@@ -1,13 +1,20 @@
 """
 Created on Feb 27, 2015
 
-@author: woodd
+@author: Derek Wood
 """
+# https://www.python.org/dev/peps/pep-0563/
+from __future__ import annotations
+
+import typing
 from configparser import ConfigParser
 
 from bi_etl.components.row.row import Row
 from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.lookup import Lookup
+
+if typing.TYPE_CHECKING:
+    from bi_etl.components.etlcomponent import ETLComponent
 
 __all__ = ['NonUniqueLookup']
 
@@ -16,7 +23,7 @@ class NonUniqueLookup(Lookup):
     def __init__(self,
                  lookup_name: str,
                  lookup_keys: list,
-                 parent_component: 'bi_etl.components.etlcomponent.ETLComponent',
+                 parent_component: ETLComponent,
                  use_value_cache: bool = True,
                  config: ConfigParser = None,
                  value_for_none='<None>',  # Needs to be comparable to datatypes in the key actual None is not.
@@ -83,7 +90,7 @@ class NonUniqueLookup(Lookup):
                 else:
                     self._len += 1
                     matching_rows[primary_key] = row
-            except TypeError as e:
+            except TypeError:
                 raise
 
             # Capture memory usage snapshots
@@ -112,7 +119,7 @@ class NonUniqueLookup(Lookup):
 
     def uncache_set(self, row: Lookup.ROW_TYPES):
         if self._cache is not None:
-            if isinstance(row, self._hashble_key_type):
+            if isinstance(row, self._hashable_key_type):
                 lk_tuple = row
             else:
                 lk_tuple = self.get_hashable_combined_key(row)
@@ -127,7 +134,20 @@ class NonUniqueLookup(Lookup):
                 for row in row_list.values():
                     yield row
 
-    def find_in_cache(self, row: Lookup.ROW_TYPES, **kwargs):
+    def find_in_cache(self, row: Lookup.ROW_TYPES, **kwargs) -> Row:
+        """
+        Find an existing row in the cache effective on the date provided.
+        Can raise ValueError if the cache is not setup.
+        Can raise NoResultFound if the key is not in the cache.
+        Can raise BeforeAllExisting is the effective date provided is before all existing records.
+        """
+        matches = self.find_matches_in_cache(row, **kwargs)
+        if len(matches) != 1:
+            raise ValueError(f"Multiple matches ({len(matches)}) found for find_in_cache. Matches are {matches}")
+        else:
+            return matches[0]
+
+    def find_matches_in_cache(self, row: Lookup.ROW_TYPES, **kwargs) -> typing.Sequence[Row]:
         """
         Find an existing row in the cache effective on the date provided.
         Can raise ValueError if the cache is not setup.
@@ -136,11 +156,11 @@ class NonUniqueLookup(Lookup):
         """
         assert self.cache_enabled, f"Cache not enabled for {self}"
         assert self._cache is not None, f"Cache not created for {self}"
-        if isinstance(row, self._hashble_key_type):
+        if isinstance(row, self._hashable_key_type):
             lk_tuple = row
             primary_key = None
         elif isinstance(row, list) or isinstance(row, tuple):
-            lk_tuple = self._hashble_key_type(row)
+            lk_tuple = self._hashable_key_type(row)
             primary_key = None
         else:
             lk_tuple = self.get_hashable_combined_key(row)
@@ -150,11 +170,10 @@ class NonUniqueLookup(Lookup):
             raise NoResultFound()
 
         if primary_key is None:
-            # Note: We are violating the documentation on this method by returning a list instead of a single row
             return list(matching_rows.values())
         else:
             try:
-                return matching_rows[primary_key]
+                return [matching_rows[primary_key]]
             except KeyError as e:
                 msg = str(e)
                 msg += "\nmatching_rows = {}".format(matching_rows)
@@ -171,7 +190,7 @@ class NonUniqueLookup(Lookup):
         """
         raise NotImplementedError()
 
-    def find_versions_list_in_remote_table(self, row: Lookup.ROW_TYPES) -> list:
+    def find_versions_list_in_remote_table(self, row: Lookup.ROW_TYPES) -> typing.Sequence[Row]:
         """
         Find a matching row in the lookup based on the lookup index (keys)
 

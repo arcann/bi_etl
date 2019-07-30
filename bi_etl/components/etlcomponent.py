@@ -1,11 +1,15 @@
 """
 Created on Sep 25, 2014
 
-@author: woodd
+@author: Derek Wood
 """
+# https://www.python.org/dev/peps/pep-0563/
+from __future__ import annotations
+
 import logging
 import typing
 import warnings
+from enum import unique, IntEnum
 from operator import attrgetter
 from typing import Iterable
 
@@ -14,6 +18,7 @@ from sqlalchemy.sql.schema import Column
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
+from bi_etl.exceptions import ColumnMappingError
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.scheduler.task import ETLTask
@@ -59,11 +64,22 @@ class ETLComponent(Iterable):
     FULL_ITERATION_HEADER = 'full'
     logging_level_reported = False
 
-    def __init__(self,
-                 task: ETLTask,
-                 logical_name: str = None,
-                 **kwargs
-                 ):        
+    @unique
+    class RowBuildMethod(IntEnum):
+        """
+        Methods of building a Row instance from source data
+        """
+        none = 0
+        clone = 1
+        full_target = 2
+        safe = 3
+
+    def __init__(
+            self,
+            task: typing.Optional[ETLTask],
+            logical_name: typing.Optional[str] = None,
+            **kwargs
+                ):
         self.default_stats_id = 'read'
         self.task = task            
         self.logical_name = logical_name or "{cls}#{id}".format(cls=self.__class__.__name__,
@@ -75,6 +91,7 @@ class ETLComponent(Iterable):
         self.log_first_row = True
         if not hasattr(self, '_column_names'):
             self._column_names = None
+        self._column_names_set = None
         # Note this calls the property setter
         self.__trace_data = False
         self._stats = Statistics(stats_id=self.logical_name)
@@ -105,6 +122,13 @@ class ETLComponent(Iterable):
         self.default_lookup_class_kwargs = dict()
         if self.task is not None:
             self.default_lookup_class_kwargs['config'] = self.task.config
+
+        self.sanity_check_default_iterator_done = False
+        self.sanity_checked_sources = set()
+        self.ignore_source_not_in_target = False
+        self.ignore_target_not_in_source = False
+        self.raise_on_source_not_in_target = False
+        self.raise_on_target_not_in_source = False
 
         self.cache_filled = False
         self.cache_clean = False
@@ -137,7 +161,10 @@ class ETLComponent(Iterable):
         else:
             return repr(self)
     
-    def debug_log(self, state=True):
+    def debug_log(
+            self,
+            state: bool = True
+            ):
         if state:
             self.log.setLevel(logging.DEBUG)
             self.task.log_logging_level()
@@ -155,7 +182,11 @@ class ETLComponent(Iterable):
         else:
             return False
     
-    def log_progress(self, row: Row, stats):
+    def log_progress(
+            self,
+            row: Row,
+            stats: Statistics,
+            ):
         try:
             self.log.info(self.progress_message.format(row_number=stats['rows_read'],
                                                        logical_name=self.logical_name,
@@ -184,8 +215,12 @@ class ETLComponent(Iterable):
         return self._column_names
 
     @column_names.setter
-    def column_names(self, value: typing.List[str]):
+    def column_names(
+            self,
+            value: typing.List[str],
+            ):
         self._column_names = list(value)
+        self._column_names_set = None
         # Ensure names are unique
         name_dict = dict()
         duplicates = dict()
@@ -212,7 +247,13 @@ class ETLComponent(Iterable):
                     instance_index,
                     new_name,
                     ))
-                self._column_names[instance_index] = new_name     
+                self._column_names[instance_index] = new_name
+
+    @property
+    def column_names_set(self) -> set:
+        if self._column_names_set is None:
+            self._column_names_set = set(self.column_names)
+        return self._column_names_set
     
     @property
     def primary_key(self) -> list:
@@ -289,14 +330,16 @@ class ETLComponent(Iterable):
     def _raw_rows(self):
         pass
                 
-    def iter_result(self,
-                    result_list: object,
-                    columns_in_order: list = None,
-                    criteria_dict: dict = None,
-                    logical_name=None,
-                    progress_frequency: int = None,
-                    stats_id: str = None,
-                    parent_stats: Statistics = None) -> Iterable[Row]:
+    def iter_result(
+            self,
+            result_list: object,
+            columns_in_order: typing.Optional[list] = None,
+            criteria_dict: typing.Optional[dict] = None,
+            logical_name: typing.Optional[str] = None,
+            progress_frequency: typing.Optional[int] = None,
+            stats_id: typing.Optional[str] = None,
+            parent_stats: typing.Optional[Statistics] = None,
+            ) -> Iterable[Row]:
         """
         yields
         ------
@@ -356,11 +399,14 @@ class ETLComponent(Iterable):
                     # Log every row
                     self.log_progress(row, stats)
             if self.trace_data:
-                self.log.debug("READ {name}:\n{row}".format(name=self,
-                                                            row=dict_to_str(row).encode('utf-8',
-                                                                                        errors='replace')
-                                                            )
-                              )
+                self.log.debug("READ {name}:\n{row}".format(
+                    name=self,
+                    row=dict_to_str(row).encode(
+                        'utf-8',
+                        errors='replace'
+                    )
+                )
+                )
             stats.timer.stop()
 
             yield row
@@ -372,7 +418,7 @@ class ETLComponent(Iterable):
         stats.timer.stop()
 
     # noinspection PyProtocol
-    def __iter__(self)-> Iterable[Row]:
+    def __iter__(self) -> Iterable[Row]:
         """
         Iterate over all rows.
         
@@ -385,17 +431,18 @@ class ETLComponent(Iterable):
         # So we use that on top of _raw_rows 
         return self.iter_result(self._raw_rows()) 
         
-    def where(self,
-              criteria_list: list = None,
-              criteria_dict: dict = None,
-              order_by: list = None,
-              column_list: typing.List[typing.Union[Column, str]] = None,
-              exclude_cols: typing.List[typing.Union[Column, str]] = None,
-              use_cache_as_source: bool = None,
-              progress_frequency: int = None,
-              stats_id: str = None,
-              parent_stats: Statistics = None,
-              ) -> Iterable[Row]:
+    def where(
+            self,
+            criteria_list: typing.Optional[list] = None,
+            criteria_dict: typing.Optional[dict] = None,
+            order_by: typing.Optional[list] = None,
+            column_list: typing.List[typing.Union[Column, str]] = None,
+            exclude_cols: typing.List[typing.Union[Column, str]] = None,
+            use_cache_as_source: typing.Optional[bool] = None,
+            progress_frequency: typing.Optional[int] = None,
+            stats_id: typing.Optional[str] = None,
+            parent_stats: typing.Optional[Statistics] = None,
+            ) -> Iterable[Row]:
         """
 
         Parameters
@@ -444,17 +491,22 @@ class ETLComponent(Iterable):
         # Close the any connections
         self.close()
         
-    def _get_stats_parent(self, parent_stats=None):
+    def _get_stats_parent(
+            self,
+            parent_stats: typing.Optional[Statistics] = None,
+    ):
         if parent_stats is None:
             # Set parent stats as etl_components root stats entry
             return self.statistics
         else:
             return parent_stats
         
-    def get_stats_entry(self,
-                        stats_id: str,
-                        parent_stats: Statistics = None,
-                        print_start_stop_times: bool = None):
+    def get_stats_entry(
+            self,
+            stats_id: str,
+            parent_stats: typing.Optional[Statistics] = None,
+            print_start_stop_times: typing.Optional[bool] = None
+            ):
         parent_stats = self._get_stats_parent(parent_stats)
         
         # Default to showing start stop times if parent_stats is self stats
@@ -470,7 +522,12 @@ class ETLComponent(Iterable):
              
         return stats
 
-    def get_unique_stats_entry(self, stats_id, parent_stats=None, print_start_stop_times=None):
+    def get_unique_stats_entry(
+            self,
+            stats_id: str,
+            parent_stats: typing.Optional[Statistics] = None,
+            print_start_stop_times: typing.Optional[bool] = None,
+            ):
         parent_stats = self._get_stats_parent(parent_stats)
         stats_id = parent_stats.get_unique_stats_id(stats_id)
         new_stats = Statistics(stats_id=stats_id, parent=parent_stats, print_start_stop_times=print_start_stop_times)
@@ -481,7 +538,12 @@ class ETLComponent(Iterable):
         return self._stats
 
     # noinspection PyPep8Naming
-    def Row(self, data=None, logical_name: str = None, iteration_header: typing.Union[RowIterationHeader, str] = None):
+    def Row(
+            self,
+            data: typing.Union[typing.MutableMapping, typing.Iterator, None] = None,
+            logical_name: typing.Optional[str] = None,
+            iteration_header: typing.Union[RowIterationHeader, str, None] = None,
+            ):
         """
         Make a new empty row with this components structure.
         """
@@ -489,11 +551,15 @@ class ETLComponent(Iterable):
             iteration_header = self.generate_iteration_header(logical_name=logical_name)
         elif iteration_header == self.FULL_ITERATION_HEADER:
             if self._full_iteration_header is None:
-                self._full_iteration_header = self.generate_iteration_header(logical_name=logical_name)
+                self._full_iteration_header = self.generate_iteration_header(logical_name=logical_name, columns_in_order=self.column_names)
             iteration_header = self._full_iteration_header
         return self.row_object(iteration_header=iteration_header, data=data)
 
-    def generate_iteration_header(self, logical_name: str = None, columns_in_order: list = None) -> RowIterationHeader:
+    def generate_iteration_header(
+            self,
+            logical_name: typing.Optional[str] = None,
+            columns_in_order: typing.Optional[list] = None,
+            ) -> RowIterationHeader:
         if logical_name is None:
             logical_name = self.row_name
 
@@ -508,18 +574,22 @@ class ETLComponent(Iterable):
                                   columns_in_order=columns_in_order,
                                   )
 
-    def get_column_name(self, column):
+    def get_column_name(
+            self,
+            column: str,
+            ):
         if column in self.column_names:
             return column
         else:
             raise KeyError(f'{self} does not have a column named {column}, it does have {self.column_names}')
 
-    def define_lookup(self,
-                      lookup_name: str,
-                      lookup_keys: list,
-                      lookup_class=None,
-                      lookup_class_kwargs=None,
-                      ):
+    def define_lookup(
+            self,
+            lookup_name: str,
+            lookup_keys: list,
+            lookup_class: typing.Optional[Lookup] = None,
+            lookup_class_kwargs: typing.Optional[dict] = None,
+            ):
         """
         Define a new lookup.
 
@@ -566,7 +636,10 @@ class ETLComponent(Iterable):
     def lookups(self):
         return self.__lookups
 
-    def get_lookup(self, lookup_name) -> Lookup:
+    def get_lookup(
+            self,
+            lookup_name: str,
+            ) -> Lookup:
         self._check_pk_lookup()
 
         try:
@@ -574,10 +647,17 @@ class ETLComponent(Iterable):
         except KeyError:
             raise KeyError("{} does not contain a lookup named {}".format(self, lookup_name))
 
-    def get_lookup_keys(self, lookup_name):
+    def get_lookup_keys(
+            self,
+            lookup_name: str,
+            ) -> list:
         return self.get_lookup(lookup_name).lookup_keys
 
-    def get_lookup_tuple(self, lookup_name, row):
+    def get_lookup_tuple(
+            self,
+            lookup_name: str,
+            row: Row,
+            ) -> tuple:
         return self.__lookups[lookup_name].get_hashable_combined_key(row)
 
     def init_cache(self):
@@ -597,7 +677,11 @@ class ETLComponent(Iterable):
         for lookup in self.__lookups.values():
             lookup.clear_cache()
 
-    def cache_row(self, row, allow_update=False):
+    def cache_row(
+            self,
+            row: Row,
+            allow_update: bool = False
+            ):
         for lookup in self.__lookups.values():
             if lookup.cache_enabled:
                 lookup.cache_row(row, allow_update)
@@ -623,23 +707,219 @@ class ETLComponent(Iterable):
         """
         pass
 
-    def fill_cache(self,
-                   progress_frequency: float = 10,
-                   progress_message="{component} fill_cache current row # {row_number:,}",
-                   criteria_list: list = None,
-                   criteria_dict: dict = None,
-                   column_list: list = None,
-                   exclude_cols: list = None,
-                   order_by: list = None,
-                   assume_lookup_complete: bool = None,
-                   row_limit: int = None,
-                   parent_stats: Statistics = None,
-                   ):
+    def sanity_check_source_mapping(
+            self,
+            source_definition: ETLComponent,
+            source_name: str = None,
+            source_excludes: set = None,
+            target_excludes: set = None,
+            ignore_source_not_in_target: bool = None,
+            ignore_target_not_in_source: bool = None,
+            raise_on_source_not_in_target: bool = None,
+            raise_on_target_not_in_source: bool = None,
+    ):
+        if ignore_source_not_in_target is None:
+            ignore_source_not_in_target = self.ignore_source_not_in_target
+        if ignore_target_not_in_source is None:
+            ignore_target_not_in_source = self.ignore_target_not_in_source
+        if raise_on_source_not_in_target is None:
+            raise_on_source_not_in_target = self.raise_on_source_not_in_target
+        if raise_on_target_not_in_source is None:
+            raise_on_target_not_in_source = self.raise_on_target_not_in_source
+
+        target_set = set(self.column_names)
+        target_col_list = list(self.column_names)
+        if target_excludes is not None:
+            for exclude in target_excludes:
+                if exclude is not None:
+                    if exclude in target_set:
+                        target_set.remove(exclude)
+
+        if isinstance(source_definition, ETLComponent):
+            source_col_list = source_definition.column_names
+            if source_name is None:
+                source_name = str(source_definition)
+        elif isinstance(source_definition, Row):
+            source_col_list = source_definition
+        elif isinstance(source_definition, set):
+            source_col_list = list(source_definition)
+        elif isinstance(source_definition, list):
+            source_col_list = source_definition
+        else:
+            self.log.error(
+                "check_column_mapping source_definition needs to be ETLComponent, Row, set, or list. "
+                f"Got {type(source_definition)}"
+            )
+            return False
+
+        if source_name is None:
+            source_name = ''
+
+        source_set = set(source_col_list)
+        if not ignore_source_not_in_target:
+            if source_excludes is None:
+                source_excludes = list()
+            pos = 0
+            for src_col in source_col_list:
+                pos += 1
+                if src_col not in source_excludes:
+                    if src_col not in target_set:
+                        if isinstance(source_definition, set):
+                            pos = 'N/A'
+                        msg = f"Sanity Check: Source {source_name} contains column {src_col}({pos}) not in target {self}"
+                        if raise_on_source_not_in_target:
+                            raise ColumnMappingError(msg)
+                        else:
+                            self.log.warning(msg)
+
+        if not ignore_target_not_in_source:
+            for tgtCol in target_set:
+                if tgtCol not in source_set:
+                    pos = target_col_list.index(tgtCol)
+                    msg = f"Sanity Check: Target {self} contains column {tgtCol}(col {pos}) not in source {source_name}"
+                    if raise_on_target_not_in_source:
+                        raise ColumnMappingError(msg)
+                    else:
+                        self.log.warning(msg)
+
+    def sanity_check_example_row(self,
+                                 example_source_row,
+                                 source_excludes=None,
+                                 target_excludes=None,
+                                 ignore_source_not_in_target=None,
+                                 ignore_target_not_in_source=None,
+                                 ):
+        self.sanity_check_source_mapping(example_source_row.columns,
+                                         example_source_row.name,
+                                         source_excludes=source_excludes,
+                                         target_excludes=target_excludes,
+                                         ignore_source_not_in_target=ignore_source_not_in_target,
+                                         ignore_target_not_in_source=ignore_target_not_in_source,
+                                         )
+
+    def build_row(
+            self,
+            source_row: typing.MutableMapping,
+            additional_values: dict = None,
+            source_excludes: typing.Optional[set] = None,
+            target_excludes: typing.Optional[set] = None,
+            build_method: RowBuildMethod = RowBuildMethod.safe,
+            stat_name: str = 'build rows',
+            parent_stats: Statistics = None,
+            ) -> Row:
+        """
+        Use a source row to build a row with correct data columns for this source.
+
+        Parameters
+        ----------
+        source_row
+        additional_values
+        source_excludes
+        target_excludes
+        build_method:
+            none, clone, or safe (default is safe)
+            None means use the row as is
+            Clone means create a subset clone
+            Safe does a clone and then checks each column type to ensure it matches the target
+        stat_name
+            Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
+        parent_stats
+
+        Returns
+        -------
+            row
+        """
+        build_row_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
+        build_row_stats.print_start_stop_times = False
+        build_row_stats.timer.start()
+        build_row_stats['method'] = build_method
+        build_row_stats['calls'] += 1
+
+        if source_excludes is None:
+            source_excludes = set()
+        elif not isinstance(source_excludes, set):
+            # noinspection PyTypeChecker
+            source_excludes = set(source_excludes)
+
+        target_set = set(self.column_names)
+
+        if build_method == self.RowBuildMethod.full_target:
+            new_row = self.Row(iteration_header=self.FULL_ITERATION_HEADER)
+            source_set = set(source_row.keys())
+
+            for col in source_set & target_set:
+                new_row[col] = source_row[col]
+        else:
+
+            # First make sure we have an instance of Row as a source
+            default_iteration_header_used = False
+            if not isinstance(source_row, Row):
+                # This will be slow if passed a lot of these non-Row objects
+                # TODO: Count non Row objects passed in and give warning if it exceeds 100 or so
+                iteration_header = RowIterationHeader(logical_name='default')
+                source_row = self.row_object(iteration_header, data=source_row)
+                default_iteration_header_used = True
+
+            if target_excludes is not None:
+                target_set -= set(target_excludes)
+
+            if build_method == self.RowBuildMethod.none:
+                new_row = source_row
+            else:
+                # clone or safe modes
+                new_row = source_row.subset(exclude=source_excludes, keep_only=target_set)
+
+                if build_method == self.RowBuildMethod.safe:
+                    # Safe type mode is slower, but gives better error messages than the
+                    # database that will likely give a not-so helpful message or silently truncate a value.
+                    # Non safe type mode can also lead to a failure of the lookups since type differences
+                    # will cause the lookup key to look different from the existing value.
+                    if default_iteration_header_used:
+                        if not self.sanity_check_default_iterator_done:
+                            self.sanity_check_example_row(example_source_row=source_row,
+                                                          source_excludes=source_excludes,
+                                                          target_excludes=target_excludes,
+                                                          )
+                            self.sanity_check_default_iterator_done = True
+                            header = source_row.iteration_header.iteration_id
+                            self.sanity_checked_sources.add(header)
+                    else:
+                        header = source_row.iteration_header.iteration_id
+                        if header not in self.sanity_checked_sources:
+                            self.sanity_check_example_row(example_source_row=source_row,
+                                                          source_excludes=source_excludes,
+                                                          target_excludes=target_excludes,
+                                                          )
+                            self.sanity_checked_sources.add(header)
+
+            if additional_values:
+                for colName, value in additional_values.items():
+                    new_row[colName] = value
+
+            build_row_stats.timer.stop()
+        return new_row
+
+    def fill_cache_from_source(
+            self,
+            source: ETLComponent,
+            progress_frequency: float = 10,
+            progress_message="{component} fill_cache current row # {row_number:,}",
+            criteria_list: list = None,
+            criteria_dict: dict = None,
+            column_list: list = None,
+            exclude_cols: list = None,
+            order_by: list = None,
+            assume_lookup_complete: bool = None,
+            row_limit: int = None,
+            parent_stats: Statistics = None,
+            ):
         """
         Fill all lookup caches from the table.
 
         Parameters
         ----------
+        source:
+            Source compontent to get rows from.
         progress_frequency : int, optional
             How often (in seconds) to output progress messages. Default 10. None for no progress messages.
         progress_message : str, optional
@@ -684,21 +964,22 @@ class ETLComponent(Iterable):
 
         self.clear_cache()
         progress_timer = Timer()
-        # Temporarily turn off read progress messages
-        saved_read_progress = self.__progress_frequency
-        self.__progress_frequency = None
+        # # Temporarily turn off read progress messages
+        # saved_read_progress = self.__progress_frequency
+        # self.__progress_frequency = None
         rows_read = 0
         limit_reached = False
 
         self.init_cache()
 
-        for row in self.where(
+        for row in source.where(
                 criteria_list=criteria_list,
                 criteria_dict=criteria_dict,
                 column_list=column_list,
                 exclude_cols=exclude_cols,
                 order_by=order_by,
                 use_cache_as_source=False,
+                progress_frequency=86400,
                 parent_stats=stats
         ):
             rows_read += 1
@@ -712,6 +993,10 @@ class ETLComponent(Iterable):
                 self.cache_filled = False
                 self.cache_clean = False
                 break
+
+            if source != self:
+                row = self.build_row(row, build_method=self.RowBuildMethod.full_target)
+
             # Actually cache the row now
             row.status = RowStatus.existing
             self.cache_row(row, allow_update=False)
@@ -759,7 +1044,65 @@ class ETLComponent(Iterable):
         self.cache_commit()
         stats.timer.stop()
         # Restore read progress messages
-        self.__progress_frequency = saved_read_progress
+        # self.__progress_frequency = saved_read_progress
+
+    def fill_cache(self,
+                   progress_frequency: float = 10,
+                   progress_message="{component} fill_cache current row # {row_number:,}",
+                   criteria_list: list = None,
+                   criteria_dict: dict = None,
+                   column_list: list = None,
+                   exclude_cols: list = None,
+                   order_by: list = None,
+                   assume_lookup_complete: bool = None,
+                   row_limit: int = None,
+                   parent_stats: Statistics = None,
+                   ):
+        """
+        Fill all lookup caches from the table.
+
+        Parameters
+        ----------
+        progress_frequency : int, optional
+            How often (in seconds) to output progress messages. Default 10. None for no progress messages.
+        progress_message : str, optional
+            The progress message to print.
+            Default is ``"{component} fill_cache current row # {row_number:,}"``. Note ``logical_name`` and ``row_number``
+            substitutions applied via :func:`format`.
+        criteria_list : string or list of strings
+            Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
+            https://goo.gl/JlY9us
+        criteria_dict : dict
+            Dict keys should be columns, values are set using = or in
+        column_list:
+            List of columns to include
+        exclude_cols: list
+            Optional. Columns to exclude when filling the cache
+        order_by: list
+            list of columns to sort by when filling the cache (helps range caches)
+        assume_lookup_complete: boolean
+            Should later lookup calls assume the cache is complete?
+            If so, lookups will raise an Exception if a key combination is not found.
+            Default to False if filtering criteria was used, otherwise defaults to True.
+        row_limit: int
+            limit on number of rows to cache.
+        parent_stats: bi_etl.statistics.Statistics
+            Optional Statistics object to nest this steps statistics in.
+            Default is to place statistics in the ETLTask level statistics.
+        """
+        self.fill_cache_from_source(
+            source=self,
+            progress_frequency=progress_frequency,
+            progress_message=progress_message,
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            column_list=column_list,
+            exclude_cols=exclude_cols,
+            order_by=order_by,
+            assume_lookup_complete=assume_lookup_complete,
+            row_limit=row_limit,
+            parent_stats=parent_stats,
+            )
 
     def get_by_lookup(self,
                       lookup_name: str,

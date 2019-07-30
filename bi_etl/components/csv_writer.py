@@ -3,17 +3,17 @@ Created on Sep 17, 2014
 
 """
 import csv
+import io
+import logging
 import os
 import typing
 
-from bi_etl.components.row.row import Row
-from bi_etl.statistics import Statistics
-from bi_etl.timer import Timer
-from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.etlcomponent import ETLComponent
-import logging
+from bi_etl.components.row.row import Row
+from bi_etl.scheduler.task import ETLTask
+from bi_etl.statistics import Statistics
 
-__all__ = ['CSVWriter']
+__all__ = ['CSVWriter', 'QUOTE_NONE', 'QUOTE_MINIMAL']
 
 # Only quote none is really needed here, QUOTE_MINIMAL is the default.
 # The other quoting levels are only relevant to the Writer
@@ -149,17 +149,17 @@ class CSVWriter(ETLComponent):
             Enable support for csv columns bigger than 131,072 default limit.
     """
     def __init__(self,
-                 task: ETLTask,
+                 task: typing.Optional[ETLTask],
                  file_data: typing.Union[typing.TextIO, str],
                  column_names: typing.List[str],
-                 include_header: bool=True,
-                 append: bool=False,
-                 encoding: str = None,
+                 include_header: typing.Optional[bool] = True,
+                 append: bool = False,
+                 encoding: typing.Optional[str] = None,
                  errors: str = 'strict',
-                 logical_name: str = None,
+                 logical_name: typing.Optional[str] = None,
                  **kwargs
                  ):
-        
+
         self.log = logging.getLogger("{mod}.{cls}".format(
             mod=self.__class__.__module__,
             cls=self.__class__.__name__
@@ -191,7 +191,8 @@ class CSVWriter(ETLComponent):
                 )
             self.__close_file = True            
         else:
-            self.log.info("Treating input as file object {}".format(file_data))
+            if not isinstance(file_data, io.IOBase):
+                self.log.info("Treating input as file object {}".format(file_data))
             self.file = file_data
 
         if logical_name is None:
@@ -219,6 +220,8 @@ class CSVWriter(ETLComponent):
         self.large_field_support = False
         self.lineterminator = '\n'
         # End csv module params
+
+        self.fix_blank_strings = True
 
         self.trace_data = False
 
@@ -265,7 +268,8 @@ class CSVWriter(ETLComponent):
         Write the header row. This is a function so it can be overridden with more
         complex header parsing.
         """
-        self.get_writer().writeheader()
+        if self.include_header:
+            self.get_writer().writeheader()
         self._header_written = True
 
     def close(self):
@@ -313,6 +317,12 @@ class CSVWriter(ETLComponent):
 
         if self.trace_data:
             self.log.debug("{} Raw row being inserted:\n{}".format(self, new_row.str_formatted()))
+
+        # Set blank strings to single space so they differ from None values
+        if self.fix_blank_strings:
+            for colName, value in new_row.items():
+                if value == '':
+                    new_row[colName] = ' '
 
         stats.add_to_stat('inserts', 1)
         self.get_writer().writerow(new_row)

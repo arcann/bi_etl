@@ -1,7 +1,7 @@
 """
 Created on Nov 18, 2014
 
-@author: woodd
+@author: Derek Wood
 """
 import collections
 import math
