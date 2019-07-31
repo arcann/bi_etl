@@ -2633,7 +2633,7 @@ class Table(ReadOnlyTable):
         try:
             # We'll default to using the primary key provided
             if lookup_name is None:
-                lookup_name = Table.PK_LOOKUP
+                lookup_name = self.get_nk_lookup_name()
                 if not self.primary_key:
                     raise AssertionError("upsert needs a lookup_key or a table with a primary key!")
 
