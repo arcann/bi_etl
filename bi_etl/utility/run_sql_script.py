@@ -181,7 +181,7 @@ class RunSQLScript(ETLTask):
                                     pass
                                 else:
                                     self.log.error(part_sql)
-                                    raise e
+                                    raise
 
                             self.log.info("Statement took {} seconds".format(timer.seconds_elapsed_formatted))
                             # noinspection PyBroadException

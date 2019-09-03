@@ -134,6 +134,7 @@ class ETLTask(object):
         self.pending_log_msgs = list()
         self.warning_messages = set()
         self.last_log_msg = ""
+        self.exception = None
         # set initial default value for waiting_for_workflow
         self.waiting_for_workflow = False
         # Try and get waiting_for_workflow from the parent
@@ -153,6 +154,7 @@ class ETLTask(object):
         self.load_timer = Timer(start_running=False)
         self.finish_timer = Timer(start_running=False)
         self.suppress_notifications = False
+        self.log_handler = None
 
     def __getstate__(self):
         odict = dict()
@@ -687,9 +689,10 @@ class ETLTask(object):
         )
 
     def run_sql_script(self, script_name: str, database_entry: str=None):
-        ok = self.get_sql_script_runner(script_name=script_name, database_entry=database_entry).run()
+        runner = self.get_sql_script_runner(script_name=script_name, database_entry=database_entry)
+        ok = runner.run()
         if not ok:
-            raise ValueError(script_name + " failed")
+            raise ValueError(f"{script_name} {runner} failed with error {runner.exception}")
 
     def get_setting(self, setting_name, assignments=None):
         return self.config.get(section=self.name, option=setting_name, vars=assignments)
@@ -756,7 +759,7 @@ class ETLTask(object):
         if self.log_file_name is None:
             self.log_file_name = self.name
         config.set_dated_log_file_name(self.log_file_name, '.log')
-        config.setup_logging()
+        self.log_handler = config.setup_logging()
 
         self.log_logging_level()
         self.log.debug("externally_provided_scheduler = {}".format(self._externally_provided_scheduler))
@@ -960,10 +963,9 @@ class ETLTask(object):
             stats_formatted = Statistics.format_statistics(stats)
             self.log.info("{} statistics=\n{stats}".format(self, stats=stats_formatted))
 
-            self.config.remove_log_file_handler(self.log_file_name)
-
             self.start_following_tasks()
         except Exception as e:  # pylint: disable=broad-except
+            self.exception = e
             self.status = Status.failed
             if not handle_exceptions:
                 raise e
@@ -987,6 +989,8 @@ class ETLTask(object):
             self.log.info("{} FAILED.".format(self))
             if self.child_to_parent is not None:
                 self.child_to_parent.put(e)
+        finally:
+            self.config.remove_log_handler(self.log_handler)
 
         self.log.info("Status = {}".format(repr(self.status)))
 

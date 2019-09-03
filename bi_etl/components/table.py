@@ -2631,7 +2631,7 @@ class Table(ReadOnlyTable):
                 source_mapped_as_target_row[self.delete_flag] = self.delete_flag_no
 
         try:
-            # We'll default to using the primary key provided
+            # We'll default to using the natural key or primary key provided
             if lookup_name is None:
                 lookup_name = self.get_nk_lookup_name()
                 if not self.primary_key:

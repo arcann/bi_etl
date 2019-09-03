@@ -15,7 +15,7 @@ from bi_etl.tests.etl_jobs.etl_task_d3 import ETL_Task_D3
 class TestTask(unittest.TestCase):
 
     def setUp(self):
-        self.log = logging.getLogger( "TestTask" )
+        self.log = logging.getLogger("TestTask")
         self.config = BIConfigParser()
         self.config['Scheduler'] = dict()
         self.config['Scheduler']['base_module'] = 'bi_etl.tests.etl_jobs'
@@ -23,7 +23,6 @@ class TestTask(unittest.TestCase):
         self.config['loggers']['root'] = 'DEBUG'
         self.config.setup_logging()
         self.log.setLevel(logging.DEBUG)        
-         
 
     def tearDown(self):
         pass
@@ -46,5 +45,4 @@ class TestTask(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()

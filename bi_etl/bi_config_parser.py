@@ -148,7 +148,9 @@ class BIConfigParser(ConfigParser):
         if files_read is None or len(files_read) == 0:
             raise FileNotFoundError('None of the expected config files where found: {}'.format(expected_config_files))
 
-        self.config_file_read = files_read
+        if self.config_file_read is None:
+            self.config_file_read = list()
+        self.config_file_read.extend(files_read)
 
         read_dirs = [os.path.dirname(file) for file in files_read]
 
@@ -156,6 +158,39 @@ class BIConfigParser(ConfigParser):
 
         self.log.info('Read config file(s) {}'.format(self.config_file_read))
         return self.config_file_read
+
+    def read(self, filenames, encoding=None):
+        """Read and parse a filename or an iterable of filenames.
+
+        Files that cannot be opened are silently ignored; this is
+        designed so that you can specify an iterable of potential
+        configuration file locations (e.g. current directory, user's
+        home directory, systemwide directory), and all existing
+        configuration files in the iterable will be read.  A single
+        filename may also be given.
+
+        Return list of successfully read files.
+        """
+        files_read = super().read(filenames)
+        if self.config_file_read is None:
+            self.config_file_read = list()
+        self.config_file_read.extend(files_read)
+        self.log.info('Read config file(s) {}'.format(self.config_file_read))
+        return self.config_file_read
+
+    def read_file(self, f, source=None):
+        """Like read() but the argument must be a file-like object.
+
+        The `f' argument must be iterable, returning one line at a time.
+        Optional second argument is the `source' specifying the name of the
+        file being read. If not given, it is taken from f.name. If `f' has no
+        `name' attribute, `<???>' is used.
+        """
+        super().read_file(f, source=source)
+        if self.config_file_read is None:
+            self.config_file_read = list()
+        source = source or 'string'
+        self.config_file_read.extend(source)
 
     @staticmethod
     def get_package_root(obj: object = None) -> str:
@@ -425,7 +460,7 @@ class BIConfigParser(ConfigParser):
         log_file_name = prefix + datetime.now().strftime(date_time_format) + suffix
         self.set_log_file_name(log_file_name)
 
-    def add_log_file_handler(self, filename=None):
+    def add_log_file_handler(self, filename: str = None) -> logging.Handler:
         if filename is None:
             filename = self.get_log_file_name()
         file_handler = None
@@ -464,29 +499,33 @@ class BIConfigParser(ConfigParser):
                 self.log.info('No log filename defined. File logging skipped.')
         return file_handler
 
+    def remove_log_handler(self, handler: logging.Handler):
+        if handler is not None:
+            self.rootLogger.removeHandler(handler)
+            handler.close()
+
     def remove_log_file_handler(self, filename=None):
         if filename is None:
             filename = self.get_log_file_name()
-        log = self.rootLogger
+        root = self.rootLogger
         removed_list = list()
-        for handler in list(log.handlers):
+        for handler in list(root.handlers):
             if isinstance(handler, logging.FileHandler):
                 if filename in handler.baseFilename:
-                    log.removeHandler(handler)
+                    self.remove_log_handler(handler)
                     removed_list.append(handler)
-                    handler.close()
         if len(removed_list) == 0:
-            self.log.warning(f'remove_log_file_handler could not find log for {filename} to remove from {log.handlers}')
+            self.log.warning(f'remove_log_file_handler could not find log for {filename} to remove from {root.handlers}')
         elif len(removed_list) > 1:
             self.log.warning(f'remove_log_file_handler removed more than one handler for {filename} handlers removed = {removed_list}')
-        self.log.debug(f'Remaining log handlers = {log.handlers}')
+        self.log.debug(f'Remaining log handlers = {root.handlers}')
 
     def replace_log_file_handler(self, filename=None):
         log = self.rootLogger
         for handler in list(log.handlers):
             if isinstance(handler, logging.FileHandler):
                 log.removeHandler(handler)
-        self.add_log_file_handler(filename=filename)
+        return self.add_log_file_handler(filename=filename)
 
     def setup_log_levels(self):
         no_loggers_found = False
@@ -614,10 +653,11 @@ class BIConfigParser(ConfigParser):
             self.log.info('Config file in use = {}'.format(self.config_file_read))
 
         if use_log_file_setting:
-            self.add_log_file_handler()
+            return self.add_log_file_handler()
         else:
             if self.trace_logging_setup:
                 self.log.info('use_log_file_setting = False. setup_log_file not called.')
+            return None
 
 
 def build_example(config: BIConfigParser=None, config_file_name: str='config.ini', example_config_dir: str='example_config_files'):

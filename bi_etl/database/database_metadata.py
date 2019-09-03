@@ -56,10 +56,17 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
                 with connection.begin() as transaction:
                     result = connection.execute(sql)
                     transaction.commit()
-                    return result
+                    if result.returns_rows:
+                        return list(result)
+                    else:
+                        return result
         else:
             with self.connect() as connection:
-                return connection.execute(sql)
+                result = connection.execute(sql)
+                if result.returns_rows:
+                    return list(result)
+                else:
+                    return result
     
     def execute_procedure(self, procedure_name, *args, return_results=False, dpapi_connection=None):
         """

@@ -6,11 +6,20 @@ from bi_etl.notifiers.notifier import Notifier
 
 class Slack(Notifier):
     def __init__(self, config: ConfigParser, config_section: str):
-        # noinspection PyUnresolvedReferences
-        from slackclient import SlackClient
-
         super().__init__(config=config,
                          config_section=config_section)
+
+        try:
+            # noinspection PyUnresolvedReferences
+            from slack import WebClient as SlackClient
+            self.log.debug("Using slackclient v2+ import")
+            self._client_version = 2
+        except ImportError:
+            self.log.debug("Trying slackclient v1 import")
+            # noinspection PyUnresolvedReferences
+            from slackclient import SlackClient
+            self._client_version = 1
+
         slack_token = config[config_section]['token']
         self.slack_client = SlackClient(slack_token)
         self.slack_channel = config.get(config_section, 'channel', fallback=None)
@@ -43,17 +52,25 @@ class Slack(Notifier):
             retry = True
 
             while retry:
-                result = self.slack_client.api_call(
-                    "chat.postMessage",
-                    channel=self.slack_channel,
-                    text=message_to_send,
-                    link_names=link_names
-                )
+                if self._client_version == 1:
+                    result = self.slack_client.api_call(
+                        "chat.postMessage",
+                        channel=self.slack_channel,
+                        text=message_to_send,
+                        link_names=link_names,
+                    )
+                else:
+                    # https://api.slack.com/methods/chat.postMessage
+                    result = self.slack_client.chat_postMessage(
+                        channel=self.slack_channel,
+                        text=message_to_send,
+                        link_names=link_names,
+                    )
                 if result['ok']:
                     retry = False
                 else:
                     if result['error'] == 'ratelimited':
-                        self.log.info('Waiting for ratelimited to clear')
+                        self.log.info('Waiting for slack ratelimited to clear')
                         sleep(1.5)
                         retry = True
                     else:
