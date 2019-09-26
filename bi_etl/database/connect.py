@@ -6,8 +6,11 @@ Created on Jan 22, 2016
 """
 import logging
 from urllib.parse import quote_plus
-import boto3
-import keyring
+try:
+    import boto3
+except ImportError:
+    boto3 = None
+
 from sqlalchemy.pool import QueuePool, NullPool
 
 from bi_etl.bi_config_parser import BIConfigParser
@@ -86,6 +89,9 @@ class Connect(object):
             # aws_secret_access_key = keyring.get_password(database_name, 'access_key')
             aws_secret_access_key = password
             duration_seconds = config.getint(database_name, 'duration_seconds', fallback=3600)
+
+            if boto3 is None:
+                raise ImportError('boto3 not imported')
 
             rs = boto3.client('redshift',
                               region_name=region_name,
