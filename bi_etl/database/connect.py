@@ -5,7 +5,9 @@ Created on Jan 22, 2016
 @author: Derek Wood
 """
 import logging
-
+from urllib.parse import quote_plus
+import boto3
+import keyring
 from sqlalchemy.pool import QueuePool, NullPool
 
 from bi_etl.bi_config_parser import BIConfigParser
@@ -72,6 +74,37 @@ class Connect(object):
                     log.warning(f'Parts of database options specified in both dbname and db_options. ({db_options_legacy}) and ({db_options})')
                 else:
                     log.warning(f'Identical database options specified in both dbname and db_options. ({db_options_legacy}) and ({db_options})')
+
+        if config.getboolean(database_name, 'use_get_cluster_credentials', fallback=False):
+            db_groups = config.get_list(database_name, 'rs_db_groups', fallback=None)
+            cluster_id = config.get(database_name, 'rs_cluster_id', fallback=None)
+            region_name = config.get(database_name, 'rs_region_name', fallback='us-east-1')
+            aws_access_key_id = userid
+            rs_db_user_id = config.get(database_name, 'rs_db_user_id', fallback=None)
+            if rs_db_user_id is None:
+                raise ValueError(f'rs_db_user_id required for db section {database_name}')
+            # aws_secret_access_key = keyring.get_password(database_name, 'access_key')
+            aws_secret_access_key = password
+            duration_seconds = config.getint(database_name, 'duration_seconds', fallback=3600)
+
+            rs = boto3.client('redshift',
+                              region_name=region_name,
+                              aws_access_key_id=aws_access_key_id,
+                              aws_secret_access_key=aws_secret_access_key,
+                              aws_session_token=None,
+                              )
+
+            creds = rs.get_cluster_credentials(DbUser=rs_db_user_id,
+                                               DbName=dbname,
+                                               DbGroups=db_groups,
+                                               DurationSeconds=duration_seconds,
+                                               ClusterIdentifier=cluster_id,
+                                               AutoCreate=True
+                                               )
+
+            # Overwrite the access key & secret key with the temp DB user id and password
+            userid = quote_plus(creds['DbUser'])
+            password = quote_plus(creds['DbPassword'])
 
         # dialect://user:pass@dsn/dbname
         # mssql+pyodbc://{user}:{password}@{server}:1433/{database_name}?driver=ODBC+Driver+17+for+SQL+Server

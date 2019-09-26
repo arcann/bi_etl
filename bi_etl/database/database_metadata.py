@@ -10,6 +10,8 @@ import sqlalchemy
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.sql.schema import DEFAULT_NAMING_CONVENTION
 
+from bi_etl.utility.case_insentive_set import CaseInsentiveSet
+
 
 class DatabaseMetadata(sqlalchemy.schema.MetaData):
     """
@@ -172,7 +174,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             self._table_inventory = dict()
         if schema not in self._table_inventory or force_reload:
             inspector = Inspector.from_engine(self.bind)
-            self._table_inventory[schema] = inspector.get_table_names(schema=schema)
+            self._table_inventory[schema] = CaseInsentiveSet(inspector.get_table_names(schema=schema))
         return self._table_inventory[schema]
 
     @property

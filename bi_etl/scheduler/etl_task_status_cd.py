@@ -30,12 +30,12 @@ class ETL_Task_Status_CD(ETLTask):
                    delete_flag = 'delete_flag',
                    track_source_rows=True,
                    ) as etl_task_status_cd:
-            #cdlist.trace = True        
-            #etl_task_status_cd.trace_data = True
+            # cdlist.trace = True
+            # etl_task_status_cd.trace_data = True
             etl_task_status_cd.fill_cache()
             
             for status in Status:
-                row = etl_task_status_cd.Row(name='Status')
+                row = etl_task_status_cd.Row(logical_name='Status')
                 row['status_id'] = status.value
                 status_name = status.name.replace('_',' ').title()
                 status_name = status_name.replace('Cpu','CPU')

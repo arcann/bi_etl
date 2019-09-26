@@ -25,5 +25,6 @@ class CheckPointTask(ETLTask):
             suppress_notifications=None,
             parent_to_child=None,
             child_to_parent=None,
+            handle_exceptions=True,
             ):
         pass

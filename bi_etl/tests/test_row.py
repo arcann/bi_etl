@@ -463,8 +463,8 @@ class TestRow(unittest.TestCase):
 
 @unittest.skip("Not ready yet")
 class TestRowCaseInsensitive(TestRow):
-    def setUp(self):
-        super().setUp(row_object=RowCaseInsensitive)
+    def setUp(self, row_object=RowCaseInsensitive):
+        super().setUp(row_object=row_object)
 
     def test_as_dict(self):
         d = self.row1a.as_dict
@@ -797,8 +797,9 @@ class TestRowCaseInsensitive(TestRow):
         timer.stop()
         dict_seconds = timer.seconds_elapsed
         timer.reset()
+        iteration_header = RowIterationHeader(logical_name='_test_set_new_performance')
         for _ in range(self.set_new_performance_rows):
-            row = RowCaseInsensitive()
+            row = RowCaseInsensitive(iteration_header=iteration_header)
             for i in range(self.set_new_performance_columns):
                 row['new key {}'.format(i)] = 'new value {}'.format(i)
         timer.stop()
