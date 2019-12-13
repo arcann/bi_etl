@@ -20,6 +20,9 @@ from typing import Iterable, Callable, List, Union
 
 import math
 import sqlalchemy
+from gevent import spawn, sleep
+from gevent._queue import Queue
+from sqlalchemy import CHAR
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.sql import ColumnElement
 from sqlalchemy.sql.dml import UpdateBase
@@ -199,18 +202,29 @@ class Table(ReadOnlyTable):
                                     exclude_columns=exclude_columns,
                                     )
         self.support_multiprocessing = False
+        self._special_row_header = None
         self._insert_method = Table.InsertMethod.execute_many
         self._update_method = Table.UpdateMethod.execute_many
         self._delete_method = Table.DeleteMethod.execute_many
         self.bulk_loader = None
+        self._bulk_load_performed = False
+        self._bulk_iter_sentinel = None
+        self._bulk_iter_queue = None
+        self._bulk_iter_worker = None
+        self._bulk_defaulted_columns = set()
+
         self.track_update_columns = True
 
         self.track_source_rows = False
         self.auto_generate_key = False
+        self.upsert_called = False
         self.last_update_date = None
         self.default_date_format = '%Y-%m-%d'
         self.default_date_time_format = '%Y-%m-%d %H:%M:%S'
         self.default_time_format = '%H:%M:%S'
+        self.default_long_text = 'Not Available'
+        self.default_medium_text = 'N/A'
+        self.default_char1_text = '?'
         self.force_ascii = False
         codecs.register_error('replace_tilda', replace_tilda)
         self.autocommit = False
@@ -258,8 +272,12 @@ class Table(ReadOnlyTable):
         self.set_kwattrs(**kwargs)
 
     def close(self):
-        for connection_name in self.connection_pool:
-            self.commit(connection_name, begin_new=False)
+        if self.in_bulk_mode and not self._bulk_load_performed:
+            self.bulk_load_from_cache()
+        for connection_name, transaction in self.__transaction_pool.items():
+            if transaction.is_active:
+                self.log.info(f'Committing {self} {connection_name} not explicitly committed.')
+                transaction.commit()
         super(Table, self).close()
         self.clear_cache()
 
@@ -297,13 +315,7 @@ class Table(ReadOnlyTable):
             self,
             bulk_loader: BulkLoader
             ):
-        self.log.info('Changing to bulk load method')
-        pk_lookup = self.get_pk_lookup()
-        pk_lookup.cache_enabled = True
-
-        self.cache_filled = True
-        self.cache_clean = True
-        self.always_fallback_to_db = False
+        self.log.info(f'Changing {self} to bulk load method')
 
         self.__batch_size = sys.maxsize
         self._insert_method = Table.InsertMethod.bulk_load
@@ -317,9 +329,28 @@ class Table(ReadOnlyTable):
             allow_update: bool = False
     ):
         if self.in_bulk_mode:
-            if row.column_set != self.column_names_set:
-                raise ValueError(f'Bulk loader requires cache to have all columns. '
-                                 f'Missing {self.column_names_set -  row.column_set}')
+            self._bulk_load_performed = False
+            if self.bulk_loader.needs_all_columns:
+                if row.column_set != self.column_names_set:
+                    # Add missing columns setting to default value
+                    for column_name in self.column_names_set - row.column_set:
+                        if column_name not in self._bulk_defaulted_columns:
+                            self.log.warning(f'defaulted column {column_name}')
+                            self._bulk_defaulted_columns.add(column_name)
+                        column = self.get_column(column_name)
+                        default = column.default
+                        if not column.nullable and default is None:
+                            if column.type.python_type == str:
+                                col_len = column.type.length
+                                if col_len is None:
+                                    col_len = 4000
+                                if col_len >= len(self.default_long_text):
+                                    default = self.default_long_text
+                                elif col_len >= len(self.default_medium_text):
+                                    default = self.default_medium_text
+                                else:
+                                    default = self.default_char1_text
+                        row[column_name] = default
         super().cache_row(row, allow_update=allow_update)
 
     @property
@@ -354,14 +385,11 @@ class Table(ReadOnlyTable):
 
     @property
     def maintain_cache_during_load(self) -> bool:
-        return True
+        return self._maintain_cache_during_load
 
     @maintain_cache_during_load.setter
     def maintain_cache_during_load(self, value: bool):
-        if self.in_bulk_mode and not value:
-            raise ValueError('Bulk loader requires maintain_cache_during_load')
-        else:
-            self._maintain_cache_during_load = value
+        self._maintain_cache_during_load = value
 
     def autogenerate_sequence(
             self,
@@ -507,7 +535,8 @@ class Table(ReadOnlyTable):
                         # Encode the str as uft-8 to get the byte length
                         code += textwrap.dedent(f"""\
                             # base indent
-                                if len(target_column_value.encode('utf-8')) > {t_type.length}:
+                                value_len = len(target_column_value.encode('utf-8'))
+                                if value_len > {t_type.length}:
                                     msg = ("{self}.{target_name} has type {str(t_type).replace('"', "'")} "
                                            f"which cannot accept value '{{target_column_value}}' because "
                                            f"byte length of {{len(target_column_value.encode('utf-8'))}} > {t_type.length} limit (_make_str_coerce)"
@@ -518,7 +547,8 @@ class Table(ReadOnlyTable):
                     else:
                         code += textwrap.dedent(f"""\
                             # base indent
-                                if len(target_column_value) > {t_type.length}:
+                                value_len = len(target_column_value) 
+                                if value_len > {t_type.length}:
                                     msg = ("{self}.{target_name} has type {str(t_type).replace('"', "'")} "
                                            f"which cannot accept value '{{target_column_value}}' because "
                                            f"char length of {{len(target_column_value)}} > {t_type.length} limit (_make_str_coerce)"
@@ -528,6 +558,12 @@ class Table(ReadOnlyTable):
             except TypeError:
                 # t_type.length is not a comparable type
                 pass
+        if isinstance(t_type, CHAR):
+            code += textwrap.dedent(f"""\
+                                    # base indent
+                                        if value_len < {t_type.length}:
+                                            target_column_value += ' ' * ({t_type.length} -  len(target_column_value))                    
+                                    """)
         code += str(self._generate_null_check(target_column_object))
         code += textwrap.dedent("""
         # base indent
@@ -1438,7 +1474,7 @@ class Table(ReadOnlyTable):
                 try:
                     pending_insert_statements.execute_singly(self.connection())
                     # If that didn't cause the error... re raise the original error
-                    self.log.error("Single inserts did not produce the error. Original error will be issued below.")
+                    self.log.error(f"Single inserts on {self} did not produce the error. Original error will be issued below.")
                     self.rollback()
                     raise
                 except Exception as e_single:
@@ -1487,16 +1523,15 @@ class Table(ReadOnlyTable):
                 db_stats['rows inserted'] += rows_affected
                 del self.pending_insert_rows
                 self.pending_insert_rows = list()
-            except SQLAlchemyError:
-                self.log.error(traceback.format_exc())
-                self.log.error("Bulk insert failed. Applying as single inserts to find error row...")
+            except SQLAlchemyError as e:
+                self.log.error(f"Bulk insert on {self} failed with error {e}. Applying as single inserts to find error row...")
                 self.rollback()
                 self.begin()
                 # Retry one at a time
                 try:
                     pending_insert_statements.execute_singly(self.connection())
                     # If that didn't cause the error... re raise the original error
-                    self.log.error("Single inserts did not produce the error. Original error will be issued below.")
+                    self.log.error(f"Single inserts on {self} did not produce the error. Original error will be issued below.")
                     self.rollback()
                     raise
                 except Exception as e_single:
@@ -1563,7 +1598,25 @@ class Table(ReadOnlyTable):
         if self.trace_data:
             self.log.debug("{} Raw row being inserted:\n{}".format(self, new_row.str_formatted()))
 
-        if not self.in_bulk_mode:
+        if self.in_bulk_mode:
+            if not self.upsert_called:
+                if self._bulk_iter_sentinel is None:
+                    self.log.info(f"Setting up {self} worker to collect insert_row rows")
+                    self.maintain_cache_during_load = False
+                    self._bulk_iter_sentinel = StopIteration
+                    self._bulk_iter_queue = Queue()
+                    # row_iter = iter(self._bulk_iter_queue.get, self._bulk_iter_sentinel)
+                    row_iter = self._bulk_iter_queue
+                    self._bulk_iter_worker = spawn(
+                        self.bulk_loader.load_from_iterator,
+                        row_iter,
+                        table_object=self,
+                        progress_frequency=None,
+                    )
+                self._bulk_iter_queue.put(new_row)
+                # Allow worker to act if it is ready
+                sleep()
+        else:
             if self.batch_size > 1:
                 new_row.status = RowStatus.insert
                 self.pending_insert_rows.append(new_row)
@@ -1809,11 +1862,17 @@ class Table(ReadOnlyTable):
             lookup = self.get_nk_lookup()
         else:
             lookup = self.get_lookup(lookup_name)
+        # Builds static list of cache content so that we can modify (physically delete) cache rows
+        # while iterating over
 
-        for row in self.where(criteria_list=criteria_list,
-                              criteria_dict=criteria_dict,
-                              use_cache_as_source=use_cache_as_source,
-                              parent_stats=stats):
+        row_list = list(self.where(
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            use_cache_as_source=use_cache_as_source,
+            parent_stats=stats
+            )
+        )
+        for row in row_list:
             stats['rows read'] += 1
             existing_key = lookup.get_hashable_combined_key(row)
 
@@ -1825,10 +1884,7 @@ class Table(ReadOnlyTable):
                 stats['rows deleted'] += 1
 
                 deleted_rows.append(row)
-                self.delete(key_values=row,
-                            maintain_cache=False,
-                            # We can't maintain cache here because we might be iterating over the cache
-                            )
+                self.delete(key_values=row)
 
         for row in deleted_rows:
             self.uncache_row(row)
@@ -2116,7 +2172,7 @@ class Table(ReadOnlyTable):
             # len(self.pending_update_rows)
         except Exception as e:
             # Retry one at a time
-            self.log.error("Bulk update failed. Applying as single updates to find error row...")
+            self.log.error(f"Bulk update on {self} failed with error {e}. Applying as single updates to find error row...")
             connection = self.connection(connection_name='singly')
             for (stmt, row_dict) in pending_update_statements.iter_single_statements():
                 try:
@@ -2125,7 +2181,7 @@ class Table(ReadOnlyTable):
                     self.log.error("Error with row {}".format(dict_to_str(row_dict)))
                     raise e
             # If that didn't cause the error... re-raise the original error
-            self.log.error("Single updates did not produce the error. Original error will be issued below.")
+            self.log.error(f"Single updates on {self} did not produce the error. Original error will be issued below.")
             self.rollback()
             raise e
         del self.pending_update_rows
@@ -2548,6 +2604,19 @@ class Table(ReadOnlyTable):
                                parent_stats=parent_stats)
         self.source_keys_processed = set()
 
+    def _set_upert_mode(self):
+        if self._bulk_iter_sentinel is not None:
+            raise ValueError("Upsert called on a table that is using insert_row method.  Please manually set upsert_called = True before load operations.")
+        if self.in_bulk_mode and not self.upsert_called:
+            # One time setup
+            pk_lookup = self.get_pk_lookup()
+            pk_lookup.cache_enabled = True
+
+            self.cache_filled = True
+            self.cache_clean = True
+            self.always_fallback_to_db = False
+        self.upsert_called = True
+
     def upsert(
             self,
             source_row: Union[Row, List[Row]],
@@ -2610,6 +2679,8 @@ class Table(ReadOnlyTable):
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.ensure_exists('upsert source row count')
 
+        self._set_upert_mode()
+
         stats.timer.start()
         self.begin()
 
@@ -2643,6 +2714,9 @@ class Table(ReadOnlyTable):
                 lookup_object = self.get_lookup(lookup_name)
             if not lookup_object.cache_enabled and self.maintain_cache_during_load and self.batch_size > 1:
                 raise AssertionError("Caching needs to be turned on if batch mode is on!")
+            if self.in_bulk_mode and not(lookup_object.cache_enabled and self.maintain_cache_during_load):
+                raise AssertionError("Caching needs to be turned on if bulk mode is on!")
+            del lookup_object
 
             existing_row = self.get_by_lookup(lookup_name, source_mapped_as_target_row, parent_stats=stats)
             if self.trace_data:
@@ -2807,7 +2881,7 @@ class Table(ReadOnlyTable):
         ]
 
         for source_row in special_rows:
-            self.upsert(source_row, parent_stats=stats)
+            self.upsert(source_row, parent_stats=stats, lookup_name=self.PK_LOOKUP)
 
         if not self.in_bulk_mode:
             self.commit(parent_stats=stats)
@@ -2882,11 +2956,27 @@ class Table(ReadOnlyTable):
                 stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
                 stats.timer.start()
                 assert isinstance(self.bulk_loader, BulkLoader), f'bulk_loader property needs to be instance of bulk_loader not {type(self.bulk_loader)}'
-                if temp_table is None:
-                    temp_table = self.qualified_table_name
                 self.close_connections()
-                self.bulk_loader.load_table_from_cache(self, temp_table)
+                if self._bulk_iter_sentinel is None:
+                    if self.upsert_called:
+                        self.log.info(f"Bulk load from lookup cache for {self}")
+                        if temp_table is None:
+                            temp_table = self.qualified_table_name
+                        row_count = self.bulk_loader.load_table_from_cache(self, temp_table)
+                        stats['rows_loaded'] = row_count
+                    else:
+                        self.log.info(f"Bulk for {self} -- nothing to do. Neither Upsert nor insert_row was called.")
+                else:
+                    self.log.info(f"Bulk load from insert_row for {self}")
+                    # Finish the iterator on the queue
+                    self._bulk_iter_queue.put(self._bulk_iter_sentinel)
+                    self.log.info("Waiting for bulk loader")
+                    self._bulk_iter_worker.join()
+                    stats['rows_loaded'] = self._bulk_iter_worker.value
+                    if self._bulk_iter_worker.exception is not None:
+                        raise self._bulk_iter_worker.exception
                 stats.timer.stop()
+                self._bulk_load_performed = True
             else:
                 raise ValueError('bulk_loader not set')
         else:
@@ -2934,14 +3024,17 @@ class Table(ReadOnlyTable):
                 # Check if a transaction is still active.
                 if transaction.is_active:
                     if print_to_log:
-                        self.log.info(f'Committing {connection_name} connection')
+                        self.log.info(f'Committing {self} {connection_name} connection')
+                    # Close all connections except this one. If in serializable mode (Redshift only has that)
+                    # then this is required to release the read locks those connections might have.
+                    self.close_connections(exceptions={connection_name})
                     transaction.commit()
                     if print_to_log:
-                        self.log.debug(f'Commit on {connection_name} connection done')
+                        self.log.debug(f'Commit on {self} {connection_name} connection done')
                 else:
-                    self.log.debug(f'Connection {connection_name} transaction not active (commit called)')
+                    self.log.debug(f'Connection {self} {connection_name} transaction not active (commit called)')
             else:
-                self.log.debug(f'Connection {connection_name} has no transaction defined (commit called)')
+                self.log.debug(f'Connection {self} {connection_name} has no transaction defined (commit called)')
             if begin_new:
                 self.begin(connection_name=connection_name)
             stats.timer.stop()

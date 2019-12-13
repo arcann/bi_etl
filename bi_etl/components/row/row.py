@@ -13,6 +13,7 @@ from collections import OrderedDict
 import collections.abc
 from decimal import Decimal
 from typing import Union, List, Iterable
+from bi_etl.conversions import nvl
 
 import functools
 
@@ -184,7 +185,7 @@ class Row(typing.MutableMapping):
                                              .format(e1=e1, e2=e2, args=source_data)
                                              )
                 else:
-                    args = source_data.__str__()
+                    args = str(source_data)
                     raise ValueError("Row instance couldn't be built with source type {atype} value={args}."
                                      " Error was {e}."
                                      .format(e=e, args=args, atype=type(args))
@@ -573,6 +574,56 @@ class Row(typing.MutableMapping):
             )
             warnings.warn(msg)
             return str(val1) == str(val2)
+
+    def compare_to_rs(self,
+                   other_row: 'Row',
+                   exclude: typing.Iterable = None,
+                   compare_only: typing.Iterable = None,
+                   coerce_types: bool = True) -> typing.MutableSequence[ColumnDifference]:
+        """
+        Cloned & modified from compare_to, just for doing table level compares between Redshift and SQL Server
+
+        Compare one RowCaseInsensitive to another. Returns a list of differences.
+
+        Parameters
+        ----------
+        other_row
+        exclude
+        compare_only
+        coerce_types
+
+        Returns
+        -------
+        List of differences
+        """
+        if compare_only is not None:
+            compare_only = set([other_row.get_column_name(c, raise_on_not_exist=False) for c in compare_only])
+
+        if exclude is None:
+            exclude = []
+        else:
+            exclude = set([other_row.get_column_name(c, raise_on_not_exist=False) for c in exclude])
+
+        differences_list = list()
+        for other_col_name, other_col_value in other_row.items():
+            if other_col_name not in exclude:
+                if compare_only is None or other_col_name in compare_only:
+                    existing_column_value = self[other_col_name]
+                    if coerce_types:
+                        values_equal = self._values_equal_coerce(existing_column_value, other_col_value, other_col_name)
+                    else:
+                        values_equal = (existing_column_value == other_col_value)
+                    if not values_equal:
+                        if isinstance(existing_column_value, Decimal) and round((nvl(existing_column_value, 0) - nvl(other_col_value, 0)), 2) < 0.01:
+                            # Ignore difference
+                            pass
+                        else:
+                            differences_list.append(ColumnDifference(column_name=other_col_name,
+                                                                     old_value=existing_column_value,
+                                                                     new_value=other_col_value,
+                                                                     )
+                                                    )
+        return differences_list
 
     def compare_to(self,
                    other_row: 'Row',

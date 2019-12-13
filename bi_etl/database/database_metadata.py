@@ -177,6 +177,22 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             self._table_inventory[schema] = CaseInsentiveSet(inspector.get_table_names(schema=schema))
         return self._table_inventory[schema]
 
+    @staticmethod
+    def qualified_name(schema, table):
+        return schema + '.' + table
+
+    def rename_table(self, schema, table_name, new_table_name):
+        if self.dialect_name == 'mssql':
+            self.execute_procedure(
+                'sp_rename',
+                self.qualified_name(schema, table_name),
+                new_table_name
+            )
+        else:
+            sql = f"alter table {self.qualified_name(schema, table_name)} rename to {new_table_name}"
+            self.log.debug(sql)
+            self.execute(sql)
+
     @property
     def dialect(self):
         return self.bind.dialect

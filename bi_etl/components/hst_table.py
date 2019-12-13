@@ -447,7 +447,7 @@ class HistoryTable(Table):
             Default is to place statistics in the ETLTask level statistics.
         fallback_to_db:
             Should we check the DB if a record is not found in the cache
-        
+
         Raises
         ------
         NoResultFound:
@@ -832,6 +832,17 @@ class HistoryTable(Table):
             effective_date: datetime
                 The effective date to use for the update
         """
+        stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
+        stats.ensure_exists('upsert source row count')
+        stats.ensure_exists('apply_updates called')
+        stats.ensure_exists('insert new called')
+
+        stats.timer.start()
+        stats['upsert source row count'] += 1
+        self.begin()
+
+        self._set_upert_mode()
+
         effective_date = kwargs.get('effective_date')
         begin_date_coerce = self.get_coerce_method(self.begin_date_column)
         if effective_date is None:
@@ -841,16 +852,6 @@ class HistoryTable(Table):
                 effective_date = begin_date_coerce(self.default_effective_date)
         else:
             effective_date = begin_date_coerce(effective_date)
-
-        stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
-        stats.ensure_exists('upsert source row count')
-        stats.ensure_exists('apply_updates called')
-        stats.ensure_exists('insert new called')
-
-        stats.timer.start()
-        self.begin()
-
-        stats['upsert source row count'] += 1
 
         skip_update_check_on = self._target_excludes_for_updates(skip_update_check_on)
 
@@ -1720,7 +1721,8 @@ class HistoryTable(Table):
 
                             # Check first begin date
                             if self.default_begin_date is not None:
-                                if row[self.begin_date_column] != self.default_begin_date:
+                                if row[self.begin_date_column] > self.default_begin_date:
+                                    clean_pass = False
                                     begin_date_warnings += 1
                                     if begin_date_warnings < max_begin_date_warnings:
                                         self.log.warning(
@@ -1776,6 +1778,7 @@ class HistoryTable(Table):
                             # Check that end dates are correct
                             correct_prior_end_date = row[self.begin_date_column] - timedelta(seconds=1)
                             if prior_row[self.end_date_column] != correct_prior_end_date:
+                                clean_pass = False
                                 # If not correct update the prior row end date
                                 end_date_warnings += 1
                                 if end_date_warnings < max_end_date_warnings:

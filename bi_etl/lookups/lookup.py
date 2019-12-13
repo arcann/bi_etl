@@ -38,6 +38,7 @@ __all__ = ['Lookup']
 class Lookup(object):
     COLLECTION_INDEX = datetime(year=1900, month=1, day=1, hour=0, minute=0, second=0)
     ROW_TYPES = typing.Union[Row, typing.Sequence]
+    DB_LOOKUP_WARNING = 1000
 
     def __init__(self,
                  lookup_name: str,
@@ -73,6 +74,7 @@ class Lookup(object):
         # self.version_collection_type = SortedDict
         self.version_collection_type = OOBTree
         self._hashable_key_type = tuple
+        self._fallback_to_db_count = 0
 
     # noinspection PyUnresolvedReferences
     def _get_version(self, versions_collection: MutableMapping[datetime, Row], effective_date: datetime):
@@ -294,13 +296,13 @@ class Lookup(object):
         if self._cache is not None:
             try:
                 lk_tuple = self.get_hashable_combined_key(row)
-                del self._cache[lk_tuple]
-            except KeyError:
+            except KeyError as e:
                 # This lookup uses columns not in the row provided.
-                # That means it's dirty beyond repair. Wipe it out.
-                warnings.warn(f"uncache_row called on {self} with insufficient values {row}")
-                del self._cache
-                self._cache = None
+                raise ValueError(f"uncache_row called on {self} with insufficient values {row}. {e}")
+            try:
+                del self._cache[lk_tuple]
+            except KeyError as e:
+                pass
 
     def uncache_set(self, row: ROW_TYPES):
         self.uncache_row(row)
@@ -385,7 +387,7 @@ class Lookup(object):
 
         lk_tuple = self.get_hashable_combined_key(row)
         try:
-            return {Lookup.COLLECTION_INDEX: self._cache[lk_tuple]}
+            return self.version_collection_type({Lookup.COLLECTION_INDEX: self._cache[lk_tuple]})
         except KeyError as e:
             raise NoResultFound(e)
 
@@ -587,7 +589,11 @@ class Lookup(object):
             except NoResultFound as e:
                 if stats is not None:
                     stats['Not in cache'] += 1
-                if not fallback_to_db:
+                if fallback_to_db:
+                    self._fallback_to_db_count += 1
+                    if (self._fallback_to_db_count % self.DB_LOOKUP_WARNING) == 0:
+                        self.log.warning(f"{self} has done {self._fallback_to_db_count} lookups on the DB due to fallback_to_db")
+                else:
                     #  Don't pass onto SQL if the lookup cache has initialized but the value isn't there
                     if stats is not None:
                         stats.timer.stop()
@@ -606,7 +612,12 @@ class Lookup(object):
                 stats['After all in cache'] += 1
                 if stats is not None:
                     stats['Not in cache'] += 1
-                if not fallback_to_db:
+
+                if fallback_to_db:
+                    if (stats['Not in cache'] % self.DB_LOOKUP_WARNING) == 0:
+                        self.log.warning(
+                            f"{self} has done {stats['Not in cache']} lookups on the DB due to fallback_to_db")
+                else:
                     #  Don't pass onto SQL if the lookup cache has initialized but the value isn't there
                     stats.timer.stop()
                     # return the last existing row since that what we'll update

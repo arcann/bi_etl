@@ -49,6 +49,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             file_compression: str = '',
             options: str = '',
             analyze_compression: str = None,
+            has_header: bool = True,
     ):
         s3_full_folder = self._get_table_specific_folder_name(self.s3_folder, table_object)
         self._upload_files_to_s3(local_files, s3_full_folder)
@@ -59,6 +60,11 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
 
         table_to_load = table_to_load or table_object.qualified_table_name
 
+        if has_header:
+            header_cmd = 'IGNOREHEADER 1'
+        else:
+            header_cmd = ''
+
         copy_sql = f"""\
                     COPY {table_to_load} 
                          FROM 's3://{self.s3_bucket_name}/{s3_full_folder}'
@@ -66,7 +72,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                          delimiter '{self.s3_file_delimiter}'
                          null '{self.null_value}' 
                          credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'
-                         IGNOREHEADER 1 
+                         {header_cmd} 
                          {file_compression}
                          {options}; commit;
                     """
@@ -89,8 +95,9 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                progress_frequency: int = 10,
                analyze_compression: str = None,
                parent_task: typing.Optional[ETLTask] = None,
-               ):
+               ) -> int:
 
+        row_count = 0
         with TemporaryDirectory() as temp_dir:
             writer_pool_size = self.s3_files_to_generate
             local_files = []
@@ -119,6 +126,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
 
                 progress_timer = Timer()
                 for row_number, row in enumerate(iterator):
+                    row_count += 1
                     writer = writer_pool[row_number % writer_pool_size]
                     writer.insert(row)
                     if progress_frequency is not None:
@@ -126,6 +134,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                         if 0 < progress_frequency < progress_timer.seconds_elapsed:
                             self.log.info(f"Wrote row {row_number:,}")
                             progress_timer.reset()
+                self.log.info(f"Wrote {row_number:,} rows to bulk loader file")
 
             finally:
                 for writer in writer_pool:
@@ -145,3 +154,4 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 perform_rename=perform_rename,
                 analyze_compression=analyze_compression,
             )
+            return row_count

@@ -16,7 +16,7 @@ class SQLServerBCP(BulkLoader):
                  bcp_encoding: str = 'utf-8',
                  ):
         super().__init__(config=config)
-        self.delimiter = '|'
+        self.delimiter = '\013'
         self._bcp_encoding = bcp_encoding
 
     def load_from_files(
@@ -43,6 +43,7 @@ class SQLServerBCP(BulkLoader):
                         file_path=file_name,
                         format_file_path=format_file_path,
                         start_line=1,
+                        delimiter=self.delimiter,
                     )
                     self.log.info(f"{rows_inserted} rows inserted from {file_name}")
                 except BCPError:
@@ -60,12 +61,18 @@ class SQLServerBCP(BulkLoader):
             progress_frequency: int = 10,
             analyze_compression: str = None,
             parent_task: typing.Optional[ETLTask] = None,
-    ):
+    ) -> int:
+        row_count = 0
         with tempfile.TemporaryDirectory() as temp_dir:
             format_file_path = os.path.join(temp_dir, f'data_{table_object.table_name}.fmt')
             data_file_path = os.path.join(temp_dir, f'data_{table_object.table_name}.data')
 
-            create_bcp_format_file(table_object, format_file_path, delimiter=self.delimiter, row_terminator='\\n')
+            create_bcp_format_file(
+                table_object,
+                format_file_path,
+                delimiter=f'\\{ord(self.delimiter):03o}',
+                row_terminator='\\n'
+            )
 
             with CSVWriter(
                 parent_task,
@@ -77,7 +84,8 @@ class SQLServerBCP(BulkLoader):
                 escapechar='\\',
                 quoting=QUOTE_MINIMAL,
             ) as target_file:
-                for row in table_object.cache_iterator():
+                for row in iterator:
+                    row_count += 1
                     target_file.insert_row(row)
 
             self.load_from_files(
@@ -88,3 +96,4 @@ class SQLServerBCP(BulkLoader):
                 perform_rename=perform_rename,
                 analyze_compression=analyze_compression,
             )
+            return row_count

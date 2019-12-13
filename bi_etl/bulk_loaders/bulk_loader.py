@@ -23,6 +23,10 @@ class BulkLoader(object):
         self.config = config
         self.log = logging.getLogger("{mod}.{cls}".format(mod=self.__class__.__module__, cls=self.__class__.__name__))
 
+    @property
+    def needs_all_columns(self):
+        return True
+
     @staticmethod
     def _get_table_specific_folder_name(
             base_folder: str,
@@ -52,7 +56,7 @@ class BulkLoader(object):
             progress_frequency: int = 10,
             analyze_compression: str = None,
             parent_task: typing.Optional[ETLTask] = None,
-    ):
+    ) -> int:
         raise NotImplementedError()
 
     def load_table_from_cache(
@@ -62,8 +66,8 @@ class BulkLoader(object):
             perform_rename: bool = False,
             progress_frequency: int = 10,
             analyze_compression: str = None,
-    ):
-        self.load_from_iterator(
+    ) -> int:
+        row_count = self.load_from_iterator(
             iterator=table_object.cache_iterator(),
             table_object=table_object,
             perform_rename=False,  # False since we do it here
@@ -71,6 +75,7 @@ class BulkLoader(object):
         )
         if perform_rename:
             self.rename_table(table_to_load, table_object)
+        return row_count
 
     def rename_table(
             self,

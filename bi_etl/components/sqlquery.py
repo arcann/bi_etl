@@ -6,6 +6,8 @@ Created on Sep 17, 2014
 import typing
 from enum import IntEnum, unique
 
+import sqlalchemy
+
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
@@ -73,7 +75,10 @@ class SQLQuery(ETLComponent):
         """
         stats = self.get_stats_entry(stats_id=self.default_stats_id)
         stats.timer.start()
-        select_result = self.engine.execute(self.sql, **parameters)
+        try:
+            select_result = self.engine.execute(sqlalchemy.text(self.sql), **parameters)
+        except TypeError as e:
+            raise TypeError(f'Error {e} with SQL {self.sql} and params {parameters} on {self.engine}')
         return select_result
 
     def _raw_rows_format_parameters(self, *args, **kwargs):

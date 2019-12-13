@@ -28,7 +28,7 @@ class MockConnect(Connect):
         return MockConnect._return_or_make(MockConnect.engines_created, database_name)
     
     @staticmethod
-    def get_sqlachemy_session(config, database_name, usersection=None, **kwargs):
+    def get_sqlachemy_session(config, database_name, usersection = None):
         return MockConnect._return_or_make(MockConnect.session_created, database_name)     
     
     @staticmethod

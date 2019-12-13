@@ -34,6 +34,7 @@ def psycopg2_extract_using_bind(
         output_file_path: str,
         delimiter: str = '|',
         csv_mode: bool = True,
+        header: bool = True,
         null: str = '',
         encoding='UTF-8',
     ):
@@ -41,7 +42,11 @@ def psycopg2_extract_using_bind(
     conn.set_client_encoding(encoding)
     cur = conn.cursor()
     if csv_mode:
-        copy_stmt = f"COPY {table_name} TO STDOUT WITH CSV DELIMITER '{delimiter}' NULL '{null}'"
+        if header:
+            header_cmd = 'HEADER'
+        else:
+            header_cmd = ''
+        copy_stmt = f"COPY {table_name} TO STDOUT WITH CSV {header_cmd} DELIMITER '{delimiter}' NULL '{null}'"
     else:
         copy_stmt = f"COPY {table_name} TO STDOUT WITH DELIMITER '{delimiter}' NULL '{null}'"
     with open(output_file_path, 'wt', encoding=encoding, newline='\n') as output_file:
@@ -56,6 +61,7 @@ def psycopg2_sql_extract(
         output_file_path: str,
         delimiter: str = '|',
         csv_mode: bool = True,
+        header: bool = True,
         null: str = '',
         encoding='UTF-8'):
     conn = bind.engine.raw_connection()
@@ -63,7 +69,11 @@ def psycopg2_sql_extract(
     cur = conn.cursor()
 
     if csv_mode:
-        copy_stmt = f"COPY ({sql}) TO STDOUT WITH CSV DELIMITER '{delimiter}' NULL '{null}'"
+        if header:
+            header_cmd = 'HEADER'
+        else:
+            header_cmd = ''
+        copy_stmt = f"COPY ({sql}) TO STDOUT WITH CSV {header_cmd} DELIMITER '{delimiter}' NULL '{null}'"
     else:
         copy_stmt = f"COPY ({sql}) TO STDOUT WITH DELIMITER '{delimiter}' NULL '{null}'"
 

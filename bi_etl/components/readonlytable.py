@@ -161,7 +161,7 @@ class ReadOnlyTable(ETLComponent):
                 self.table = sqlalchemy.schema.Table(table_name, database, schema=self.schema, autoload=True, quote=False)
             except Exception as e:
                 try:
-                    self.log.error(f"Exception {repr(e)} occurred while obtaining definition of {table_name} from the database schema {self.schema}")
+                    self.log.debug(f"Exception {repr(e)} occurred while obtaining definition of {table_name} from the database schema {self.schema}")
                 finally:
                     raise
 
@@ -377,12 +377,17 @@ class ReadOnlyTable(ETLComponent):
     def close_connection(self, connection_name: str = None):
         connection_name = self._get_usable_connection_name(connection_name)
         if connection_name in self.__connection_pool:
+            self.log.debug(f'Closing connection {self} {connection_name}')
             con = self.__connection_pool[connection_name]
             con.close()
 
-    def close_connections(self):
-        for con in self.__connection_pool.values():
-            con.close()
+    def close_connections(self, exceptions: typing.Optional[set] = None):
+        if exceptions is None:
+            exceptions = set()
+        for connection_name, con in self.__connection_pool.items():
+            if connection_name not in exceptions:
+                self.log.debug(f'Closing connection {self} {connection_name}')
+                con.close()
 
     def close(self):
         for lookup in self.lookups.values():
@@ -924,7 +929,9 @@ class ReadOnlyTable(ETLComponent):
                         int_value,
                         date_value,
                         ):
-        row = self.Row()
+        if self._special_row_header is None:
+            self._special_row_header = self.generate_iteration_header(logical_name='get_special_row')
+        row = self.Row(iteration_header=self._special_row_header)
         for column in self.columns:
             target_type = column.type
             if self.custom_special_values and column.name in self.custom_special_values:

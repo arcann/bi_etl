@@ -11,7 +11,7 @@ from datetime import datetime
 
 class Timer(object):
 
-    def __init__(self, task_name: str = None, start_running: bool = True)-> None:
+    def __init__(self, task_name: str = None, start_running: bool = True) -> None:
         self.task_name = task_name
         self.stored_time = 0
         self.start_time = None
@@ -116,4 +116,7 @@ class Timer(object):
 
     def reset(self) -> None:
         """Resets the clock statistics and restarts it."""        
-        self.__init__()
+        self.start_time = datetime.now()
+        self.first_start_time = self.start_time
+        self.start_time_precise = Timer.now()
+        self.running = True

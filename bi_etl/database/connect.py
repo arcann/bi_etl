@@ -79,7 +79,6 @@ class Connect(object):
                     log.warning(f'Identical database options specified in both dbname and db_options. ({db_options_legacy}) and ({db_options})')
 
         if config.getboolean(database_name, 'use_get_cluster_credentials', fallback=False):
-            db_groups = config.get_list(database_name, 'rs_db_groups', fallback=None)
             cluster_id = config.get(database_name, 'rs_cluster_id', fallback=None)
             region_name = config.get(database_name, 'rs_region_name', fallback='us-east-1')
             aws_access_key_id = userid
@@ -102,10 +101,8 @@ class Connect(object):
 
             creds = rs.get_cluster_credentials(DbUser=rs_db_user_id,
                                                DbName=dbname,
-                                               DbGroups=db_groups,
                                                DurationSeconds=duration_seconds,
-                                               ClusterIdentifier=cluster_id,
-                                               AutoCreate=True
+                                               ClusterIdentifier=cluster_id
                                                )
 
             # Overwrite the access key & secret key with the temp DB user id and password

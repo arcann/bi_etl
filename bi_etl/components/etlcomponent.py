@@ -101,6 +101,8 @@ class ETLComponent(Iterable):
         self.read_batch_size = 1000
         self._iterator_applied_filters = False
         self._full_iteration_header = None
+        self.time_first_read = True
+        self.time_all_reads = False
         self.warnings_issued = 0
         self.warnings_limit = 100
 
@@ -351,7 +353,8 @@ class ETLComponent(Iterable):
             if stats_id is None:
                 stats_id = 'read'
         stats = self.get_unique_stats_entry(stats_id=stats_id, parent_stats=parent_stats)
-        stats.timer.start()
+        if self.time_all_reads or (self._rows_read == 0 and self.time_first_read):
+            stats.timer.start()
         if progress_frequency is None:
             progress_frequency = self.__progress_frequency
         progress_timer = Timer()
@@ -386,11 +389,13 @@ class ETLComponent(Iterable):
             self._rows_read += 1 
             # Add to current stat counter
             stats['rows_read'] += 1
-            if stats['rows_read'] == 1:
-                stats['first row seconds'] = stats.timer.seconds_elapsed_formatted
-                if self.log_first_row:
-                    self.log_progress(row, stats)
-            elif progress_frequency is not None:
+            if self.time_first_read:
+                if stats['rows_read'] == 1:
+                    stats['first row seconds'] = stats.timer.seconds_elapsed_formatted
+                    if self.log_first_row:
+                        self.log_progress(row, stats)
+
+            if progress_frequency is not None:
                 # noinspection PyTypeChecker
                 if 0 < progress_frequency < progress_timer.seconds_elapsed:
                     self.log_progress(row, stats)
@@ -407,15 +412,18 @@ class ETLComponent(Iterable):
                     )
                 )
                 )
-            stats.timer.stop()
+            if self.time_all_reads:
+                stats.timer.stop()
 
             yield row
-            stats.timer.start()
+            if self.time_all_reads:
+                stats.timer.start()
             if self.check_row_limit():
                 break
         if hasattr(result_list, 'close'):
             result_list.close()
-        stats.timer.stop()
+        if self.time_all_reads:
+            stats.timer.stop()
 
     # noinspection PyProtocol
     def __iter__(self) -> Iterable[Row]:
@@ -773,6 +781,7 @@ class ETLComponent(Iterable):
                             self.log.warning(msg)
 
         if not ignore_target_not_in_source:
+            show_source_defn = False
             for tgtCol in target_set:
                 if tgtCol not in source_set:
                     pos = target_col_list.index(tgtCol)
@@ -780,7 +789,10 @@ class ETLComponent(Iterable):
                     if raise_on_target_not_in_source:
                         raise ColumnMappingError(msg)
                     else:
+                        show_source_defn = True
                         self.log.warning(msg)
+            if show_source_defn:
+                self.log.warning(f"Source {source_name} definition {source_definition}")
 
     def sanity_check_example_row(self,
                                  example_source_row,

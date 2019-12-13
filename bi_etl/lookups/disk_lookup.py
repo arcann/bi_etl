@@ -163,6 +163,10 @@ def test():
     start_time = Timer()
     for row in parent_component:
         dc.cache_row(row)
+
+    for row in parent_component:
+        found_row = dc.find_in_cache(row)
+
     print(start_time.seconds_elapsed_formatted)
 
 

@@ -30,15 +30,15 @@ class RedShiftS3Base(BulkLoader):
             config=config
         )
         self.s3_user_id = s3_user_id or self.config.get('s3_bulk', 'user_id')
-        self.s3_keyring_password_section = s3_keyring_password_section or self.config.get('s3_bulk', 'keyring_password_section', fallback='s3')
+        self.s3_keyring_service_name = s3_keyring_password_section or self.config.get('s3_bulk', 'keyring_service_name', fallback='s3')
         self.s3_bucket_name = s3_bucket_name or self.config.get('s3_bulk', 'bucket_name')
         self.s3_folder = s3_folder or self.config.get('s3_bulk', 's3_folder')
         self.s3_files_to_generate = s3_files_to_generate or self.config.getint('s3_bulk', 's3_files_to_generate')
         self.s3_clear_before = True
         self.s3_clear_when_done = True
         self.analyze_compression = None
-        self.s3_password = keyring.get_password(self.s3_keyring_password_section, self.s3_user_id)
-        assert self.s3_password is not None, f'Password for s3 {self.s3_keyring_password_section} {self.s3_user_id} not found in keyring'
+        self.s3_password = keyring.get_password(self.s3_keyring_service_name, self.s3_user_id)
+        assert self.s3_password is not None, f'Password for s3 {self.s3_keyring_service_name} {self.s3_user_id} not found in keyring'
         self.session = boto3.session.Session(
             aws_access_key_id=self.s3_user_id,
             aws_secret_access_key=self.s3_password
@@ -114,15 +114,19 @@ class RedShiftS3Base(BulkLoader):
                 )
                 for row in results:
                     self.log.error('!' * 80)
+                    self.log.error(f'!! Details for {e} below:')
+                    self.log.error('!' * 80)
                     filename = strip(row.filename)
                     colname = strip(row.colname)
                     c_type = strip(row.type)
                     col_length = strip(row.col_length)
-                    self.log.error(f'{filename} had an error at line {row.line_number} '
-                                   f'with column {colname} {c_type} {col_length}'
-                                   f'character pos {row.position}')
-                    self.log.error(f'raw_field_value ={row.raw_field_value}')
-                    self.log.error(f'err_reason and code={row.err_reason} {row.err_code}')
+                    self.log.error(f'{filename} had an error')
+                    self.log.error(f'err_reason={str(row.err_reason).strip()}')
+                    self.log.error(f'err_code={row.err_code}')
+                    self.log.error(f'error with column = {colname} {c_type} {col_length}')
+                    self.log.error(f'raw_field_value = "{str(row.raw_field_value).strip()}"')
+                    self.log.error(f'line number = {row.line_number}')
+                    self.log.error(f'character pos = {row.position}')
                     self.log.error(f'raw_line={row.raw_line}')
                     self.log.error('!' * 80)
             except Exception as e2:
@@ -130,7 +134,7 @@ class RedShiftS3Base(BulkLoader):
             # Ensure we don't leak the password
             if hasattr(e, 'statement'):
                 e.statement = e.statement.replace(self.s3_password, '*' * 8)
-            raise
+            raise e
 
         # Commit added to avoid VACUUM inside any transaction
         table_object.execute(f"COMMIT; VACUUM {table_object.qualified_table_name};")
@@ -170,8 +174,8 @@ class RedShiftS3Base(BulkLoader):
             perform_rename: bool = False,
             progress_frequency: int = 10,
             analyze_compression: str = None,
-    ):
-        self.load_from_iterator(
+    ) -> int:
+        row_count = self.load_from_iterator(
             iterator=table_object.cache_iterator(),
             table_object=table_object,
             analyze_compression=analyze_compression,
@@ -181,3 +185,4 @@ class RedShiftS3Base(BulkLoader):
             table_object.execute(f'DROP TABLE IF EXISTS {old_name} CASCADE')
             table_object.execute(f'ALTER TABLE {table_object.qualified_table_name} RENAME TO {old_name}')
             table_object.execute(f'ALTER TABLE {table_to_load} RENAME TO {table_object.qualified_table_name}')
+        return row_count

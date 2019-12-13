@@ -479,6 +479,13 @@ class HistoryTableSourceBased(HistoryTable):
             effective_date: datetime
                 The effective date to use for the update
         """
+        stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
+        stats.timer.start()
+        stats['upsert source row count'] += 1
+
+        self._set_upert_mode()
+
+        self.begin()
 
         effective_date = kwargs.get('effective_date')
         if effective_date is None:
@@ -489,12 +496,6 @@ class HistoryTableSourceBased(HistoryTable):
         else:
             date_coerce = self.get_coerce_method(self.begin_date_column)
             source_row[self.begin_date_column] = date_coerce(effective_date)
-
-        stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
-        stats.timer.start()
-        self.begin()
-
-        stats['upsert source row count'] += 1
 
         target_excludes = self._target_excludes_for_updates(target_excludes)
 

@@ -22,6 +22,7 @@ install_requires = [
     'sphinx',
     'sphinx-autodoc-annotation',
     'btrees',
+    'gevent',
     ]
 
 extras_require = {

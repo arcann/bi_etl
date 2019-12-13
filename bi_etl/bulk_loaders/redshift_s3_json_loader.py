@@ -7,6 +7,7 @@ import json
 import os.path
 import os.path
 import typing
+from datetime import datetime
 from tempfile import TemporaryDirectory
 
 from bi_etl.bi_config_parser import BIConfigParser
@@ -41,6 +42,10 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
         self.s3_clear_when_done = True
         self.analyze_compression = None
 
+    @property
+    def needs_all_columns(self):
+        return False
+
     def load_from_files(
             self,
             local_files: list,
@@ -62,9 +67,9 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
 
         # TODO: This SQL gets syntax error at or near "credentials"
         copy_sql = f"""\
-                COPY {table_to_load} FROM 's3://{self.s3_bucket_name}/{s3_full_folder}'
-                     JSON 
+                COPY {table_to_load} FROM 's3://{self.s3_bucket_name}/{s3_full_folder}'                      
                      credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'
+                     JSON 'auto'
                      {file_compression}  
                      {options}
                 """
@@ -77,6 +82,15 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
         if perform_rename:
             self.rename_table(table_to_load, table_object)
 
+
+    @staticmethod
+    def json_serializer(value):
+        if isinstance(value, datetime):
+            return str(value)
+        else:
+            # raise ValueError(f'No json_serializer support for {repr(value)}')
+            str(value)
+
     def load_from_iterator(
             self,
             iterator: typing.Iterator,
@@ -86,12 +100,15 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
             progress_frequency: int = 10,
             analyze_compression: str = None,
             parent_task: typing.Optional[ETLTask] = None,
-    ):
+    ) -> int:
+        row_count = 0
         with TemporaryDirectory() as temp_dir:
-            writer_pool_size = self.s3_files_to_generate
             local_files = []
             zip_pool = []
             text_wrapper_pool = []
+
+            writer_pool_size = self.s3_files_to_generate
+
             for file_number in range(writer_pool_size):
                 filepath = os.path.join(temp_dir, f'data_{file_number}.json.gz')
                 local_files.append(filepath)
@@ -100,16 +117,12 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
                 text_wrapper_pool.append(text_wrapper)
                 zip_pool.append(zip_file)
 
-            for text_wrapper in text_wrapper_pool:
-                text_wrapper.write('[')
-
-            list_delimiter = ''
             progress_timer = Timer()
             for row_number, row in enumerate(iterator):
+                row_count += 1
                 text_wrapper = text_wrapper_pool[row_number % writer_pool_size]
-                text_wrapper.write(list_delimiter)
-                text_wrapper.write(json.dumps(row.as_dict))
-                list_delimiter = ','
+                text_wrapper.write(json.dumps(row.as_dict, default=self.json_serializer))
+                text_wrapper.write("\n")
                 if progress_frequency is not None:
                     # noinspection PyTypeChecker
                     if 0 < progress_frequency < progress_timer.seconds_elapsed:
@@ -117,7 +130,6 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
                         progress_timer.reset()
 
             for text_wrapper in text_wrapper_pool:
-                text_wrapper.write(']')
                 text_wrapper.close()
 
             for zip_file in zip_pool:
@@ -131,3 +143,5 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
                 perform_rename=perform_rename,
                 analyze_compression=analyze_compression,
             )
+
+            return  row_count

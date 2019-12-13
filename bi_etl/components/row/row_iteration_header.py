@@ -67,11 +67,31 @@ class RowIterationHeader(object):
         self.action_id = None
         self.action_count = 0
 
+    def get_action_header(
+            self,
+            action: tuple,
+            start_empty: bool = False,
+            ) -> RowIterationHeader:
+        """
+        Get the header after performing a manipulation on the set of columns.
+
+        Parameters
+        ----------
+        action:
+            A hashable action ID
+        start_empty:
+            Should the new header start empty (vs transferring the columns)
+
+        Returns
+        -------
+
+        """
+        return self._actions_to_next_headers[action]
+
     def get_next_header(
             self,
             action: tuple,
-            start_empty:
-            bool = False,
+            start_empty: bool = False,
             ) -> RowIterationHeader:
         """
         Get the next header after performing a manipulation on the set of columns.
@@ -352,16 +372,24 @@ class RowIterationHeader(object):
                 in which case you won't want to call this method again.
         """
         new_header = self
-        if isinstance(rename_map, typing.Mapping):
-            for k in rename_map.keys():
-                new_header = new_header.rename_column(k, rename_map[k],
-                                                      ignore_missing=ignore_missing,
-                                                      no_new_header=no_new_header)
-        elif rename_map is not None:  # assume it's a list of tuples
-            for (old, new) in rename_map:
-                new_header = new_header.rename_column(old, new,
-                                                      ignore_missing=ignore_missing,
-                                                      no_new_header=no_new_header)
+        action = tuple(['rc', str(rename_map)])
+        try:
+            new_header = self._actions_to_next_headers[action]
+        except KeyError:
+            # Results of rename not already stored, perform the renames one by one
+            if isinstance(rename_map, typing.Mapping):
+                for k in rename_map.keys():
+                    new_header = new_header.rename_column(k, rename_map[k],
+                                                          ignore_missing=ignore_missing,
+                                                          no_new_header=no_new_header)
+            elif rename_map is not None:  # assume it's a list of tuples
+                for (old, new) in rename_map:
+                    new_header = new_header.rename_column(old, new,
+                                                          ignore_missing=ignore_missing,
+                                                          no_new_header=no_new_header)
+            # Now store the shortcut
+            self._actions_to_next_headers[action] = new_header
+
         return new_header
 
     def row_remove_column(
@@ -477,11 +505,9 @@ class RowIterationHeader(object):
             # on the column_set or positioned_column_set properties.
             new_iteration_header._clear_caches()
         # Build the new row based on the _action_position details
-        for old_pos in new_iteration_header._action_position:
-            # Protected access is required here since we can't call setitem it calls this method.
-            # We append to what should be an empty list since we chose allocate_space = False
-            # noinspection PyProtectedMember
-            sub_row._data_values.append(row._data_values[old_pos])
+        # Protected access is required here since we can't call setitem it calls this method.
+        # noinspection PyProtectedMember
+        sub_row._data_values = [row._data_values[old_pos] for old_pos in new_iteration_header._action_position]
         return sub_row
 
     def _add_column(
