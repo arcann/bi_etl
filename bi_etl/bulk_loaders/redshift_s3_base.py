@@ -3,7 +3,7 @@ from __future__ import annotations
 import os.path
 import textwrap
 import typing
-
+import time
 import boto3
 import keyring
 import sqlalchemy
@@ -20,6 +20,7 @@ if typing.TYPE_CHECKING:
 class RedShiftS3Base(BulkLoader):
     def __init__(self,
                  config: BIConfigParser,
+                 config_section: str = 's3_bulk',
                  s3_user_id: typing.Optional[str] = None,
                  s3_keyring_password_section: typing.Optional[str] = None,
                  s3_bucket_name: typing.Optional[str] = None,
@@ -29,11 +30,11 @@ class RedShiftS3Base(BulkLoader):
         super().__init__(
             config=config
         )
-        self.s3_user_id = s3_user_id or self.config.get('s3_bulk', 'user_id')
-        self.s3_keyring_service_name = s3_keyring_password_section or self.config.get('s3_bulk', 'keyring_service_name', fallback='s3')
-        self.s3_bucket_name = s3_bucket_name or self.config.get('s3_bulk', 'bucket_name')
-        self.s3_folder = s3_folder or self.config.get('s3_bulk', 's3_folder')
-        self.s3_files_to_generate = s3_files_to_generate or self.config.getint('s3_bulk', 's3_files_to_generate')
+        self.s3_user_id = s3_user_id or self.config.get(config_section, 'user_id')
+        self.s3_keyring_service_name = s3_keyring_password_section or self.config.get(config_section, 'keyring_service_name', fallback='s3')
+        self.s3_bucket_name = s3_bucket_name or self.config.get(config_section, 'bucket_name')
+        self.s3_folder = s3_folder or self.config.get(config_section, 's3_folder')
+        self.s3_files_to_generate = s3_files_to_generate or self.config.getint(config_section, 's3_files_to_generate')
         self.s3_clear_before = True
         self.s3_clear_when_done = True
         self.analyze_compression = None
@@ -89,6 +90,24 @@ class RedShiftS3Base(BulkLoader):
                 local_path,
                 s3_path,
             )
+
+            response = None
+            t_start = time.time()
+            t_end = time.time() + 60 * 3
+            while response is None:
+                key = s3_path
+                objs = list(self.bucket.objects.filter(Prefix=key))
+                if len(objs) > 0 and objs[0].key == key:
+                    # self.log.info(f'{key} exists. {t_end}')
+                    response = True
+                else:
+                    if time.time() > t_end:
+                        self.log.info(f'{key} is not available for loading. 3 minute wait is over. FATAL. {t_end}')
+                        response = False
+                    else:
+                        self.log.info(f'{key} is probably not finished syncing among AWS S3 nodes, we will retry again after 5 second. {time.time()}')
+                        time.sleep(5)
+                        response = self.bucket.Object(s3_path).get()
 
     def _run_copy_sql(
             self,

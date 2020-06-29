@@ -639,16 +639,14 @@ class ReadOnlyTable(ETLComponent):
             if not (self.cache_filled and self.cache_clean):
                 use_cache_as_source = False
                 if use_cache_as_source_requested:
-                    self.log.debug("Cache not filled requires using database as source for {}".format(stats))
+                    self.log.warning("Cache not filled requires using database as source for {}".format(stats))
             elif order_by is not None:
                 use_cache_as_source = False
                 if use_cache_as_source_requested:
                     self.log.warning("where had to use DB source to honor order_by (and possibly criteria)")
             elif criteria_list is not None:
-                use_cache_as_source = False
                 if use_cache_as_source_requested:
-                    self.log.debug("Non dict criteria requires using database as source for {} with {}".format(
-                        stats, criteria_list))
+                    raise ValueError(f"Non dict criteria ({criteria_list}) requires using database as source for {stats} on {self}")
             else:
                 # Find the filled cache
                 try:
@@ -1186,7 +1184,12 @@ class ReadOnlyTable(ETLComponent):
             return natural_key_values
 
     def get_natural_key_tuple(self, row) -> tuple:
-        return tuple(self.get_natural_key_value_list(row))
+        if self.natural_key is None:
+            return self.get_primary_key_value_tuple(row)
+        else:
+            return self.get_nk_lookup().get_hashable_combined_key(row)
+            # # We need to make sure to rstrip any string values to that it matches what Lookup uses
+            # return tuple([Lookup.rstrip_key_value(row[k]) for k in self.natural_key])
 
     def get_by_key(self,
                    source_row: Row,

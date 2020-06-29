@@ -21,7 +21,7 @@ from typing import Iterable, Callable, List, Union
 import math
 import sqlalchemy
 from gevent import spawn, sleep
-from gevent._queue import Queue
+from gevent.queue import Queue
 from sqlalchemy import CHAR
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.sql import ColumnElement
@@ -252,6 +252,8 @@ class Table(ReadOnlyTable):
 
         self.source_keys_processed = set()
 
+        self._bind_name_map = None
+
         self.insert_hint = None
         # A list of any pending rows to be inserted
         self.pending_insert_stats = None
@@ -273,6 +275,7 @@ class Table(ReadOnlyTable):
 
     def close(self):
         if self.in_bulk_mode and not self._bulk_load_performed:
+            self.log.info("Doing bulk load automatically from table.close(). An explicit call to bulk_load_from_cache would be better.")
             self.bulk_load_from_cache()
         for connection_name, transaction in self.__transaction_pool.items():
             if transaction.is_active:
@@ -334,14 +337,14 @@ class Table(ReadOnlyTable):
                 if row.column_set != self.column_names_set:
                     # Add missing columns setting to default value
                     for column_name in self.column_names_set - row.column_set:
-                        if column_name not in self._bulk_defaulted_columns:
-                            self.log.warning(f'defaulted column {column_name}')
-                            self._bulk_defaulted_columns.add(column_name)
                         column = self.get_column(column_name)
                         default = column.default
                         if not column.nullable and default is None:
                             if column.type.python_type == str:
                                 col_len = column.type.length
+                                if col_len > 4 and self.database.uses_bytes_length_limits:
+                                    col_len = int(col_len / 4)
+
                                 if col_len is None:
                                     col_len = 4000
                                 if col_len >= len(self.default_long_text):
@@ -351,6 +354,9 @@ class Table(ReadOnlyTable):
                                 else:
                                     default = self.default_char1_text
                         row[column_name] = default
+                        if column_name not in self._bulk_defaulted_columns:
+                            self.log.warning(f'defaulted column {column_name} to {default}')
+                            self._bulk_defaulted_columns.add(column_name)
         super().cache_row(row, allow_update=allow_update)
 
     @property
@@ -862,7 +868,7 @@ class Table(ReadOnlyTable):
                 raise ValueError(msg)
             """).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
-        if self.table.bind.dialect.dialect_description == 'mssql+pyodbc' and self.table.bind.dialect.fast_executemany:
+        if self.table.bind.dialect.dialect_description == 'mssql+pyodbc':
             # fast_executemany Currently causes this error on datetime update (dimension load)
             # [Microsoft][ODBC Driver 17 for SQL Server]Datetime field overflow. Fractional second precision exceeds the scale specified in the parameter binding. (0)
             # Also see https://github.com/sqlalchemy/sqlalchemy/issues/4418
@@ -1155,7 +1161,7 @@ class Table(ReadOnlyTable):
                 elif t_type.python_type == datetime:
                     # If we already have a date or datetime value
                     if isinstance(target_column_value, datetime):
-                        if self.table.bind.dialect.dialect_description == 'mssql+pyodbc' and self.table.bind.dialect.fast_executemany:
+                        if 'mssql' in self.table.bind.dialect.dialect_description:
                             # fast_executemany Currently causes this error on datetime update (dimension load)
                             # [Microsoft][ODBC Driver 17 for SQL Server]Datetime field overflow. Fractional second precision exceeds the scale specified in the parameter binding. (0)
                             # Also see https://github.com/sqlalchemy/sqlalchemy/issues/4418
@@ -1338,6 +1344,9 @@ class Table(ReadOnlyTable):
             stat_name=stat_name,
             parent_stats=parent_stats,
         )
+        new_row_columns = new_row.keys()
+        if len(new_row_columns) == 0:
+            raise ValueError(f'No columns mapped to target from source columns {source_row.columns}')
 
         build_row_stats = self.get_stats_entry(stat_name + 'coerce_types', parent_stats=parent_stats)
         build_row_stats.print_start_stop_times = False
@@ -1360,7 +1369,7 @@ class Table(ReadOnlyTable):
                     # Call method
                 except AttributeError:
                     code = "def {name}(self, new_row):\n".format(name=build_row_method_name)
-                    for target_name in new_row.keys():
+                    for target_name in new_row_columns:
                         target_column_object = self.get_column(target_name)
                         coerce_method_name = self._get_coerce_method_name(target_column_object)
                         code += "    new_row.transform('{target_name}', self.{coerce_method_name})\n".format(
@@ -1384,20 +1393,6 @@ class Table(ReadOnlyTable):
 
         build_row_stats.timer.stop()
         return new_row
-
-    # ===========================================================================
-    # def make_bind_name(self, prefix, column_name, limit=30):
-    #     full_name = prefix + column_name        
-    #     if full_name in self._bind_names:
-    #         result = self._bind_names[full_name]
-    #     else:
-    #         result = prefix + column_name[:limit-len(column_name)].upper()
-    #         cnt = 2
-    #         while result in self._bind_names:
-    #             result = prefix + column_name[:limit-len(column_name)-len(str(cnt))].upper() + str(cnt)
-    #             cnt += 1
-    #     return result     
-    # ===========================================================================
 
     def _insert_stmt(self):
         # pylint: disable=no-value-for-parameter
@@ -1709,9 +1704,9 @@ class Table(ReadOnlyTable):
                     stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
             stats['rows batch deleted'] += self.pending_delete_statements.execute(self.connection())
 
-    def _delete_stmt(self):
+    def _delete_stmt(self, autocommit: bool = False):
         # pylint: disable=no-value-for-parameter
-        return self.table.delete().execution_options(autocommit=self.autocommit)
+        return self.table.delete().execution_options(autocommit=self.autocommit or autocommit)
 
     def delete(
             self,
@@ -2091,6 +2086,30 @@ class Table(ReadOnlyTable):
         last_update_coerce = self.get_coerce_method(last_update_date_col)
         last_update_value = last_update_coerce(datetime.now())
         row[last_update_date_col] = last_update_value
+
+    def get_bind_name(self, column_name: str) -> str:
+        if self._bind_name_map is None:
+            max_len = self.database.dialect.max_identifier_length
+            self._bind_name_map = dict()
+            bind_names = set()
+            for other_column_name in self.column_names:
+                bind_name = f'b_{other_column_name}'
+                if len(bind_name) > max_len:
+                    bind_name = bind_name[:max_len - 2]
+                unique_name_found = False
+                next_disamb = 0
+                while not unique_name_found:
+                    if next_disamb >= 1:
+                        bind_name = bind_name[:max_len - len(str(next_disamb))] + str(next_disamb)
+                    if bind_name in bind_names:
+                        next_disamb += 1
+                    else:
+                        unique_name_found = True
+                bind_names.add(bind_name)
+                self._bind_name_map[other_column_name] = bind_name
+            return self._bind_name_map[column_name]
+        else:
+            return self._bind_name_map[column_name]
 
     def _update_pending_batch(
             self,
@@ -2511,15 +2530,12 @@ class Table(ReadOnlyTable):
         else:
             lookup = self.get_lookup(lookup_name)
 
-        if criteria_list is None:
-            criteria_list = []
-
-        if self.delete_flag is not None:
-            criteria_list.extend(
-                [
-                    self.get_column(self.delete_flag) == self.delete_flag_no,
-                ]
-            )
+        if criteria_dict is None:
+            # Default to not processing rows that are already deleted
+            criteria_dict = {self.delete_flag: self.delete_flag_no}
+        else:
+            # Add rule to avoid processing rows that are already deleted
+            criteria_dict[self.delete_flag] = self.delete_flag_no
 
         # Note, here we select only lookup columns from self
         for row in self.where(column_list=lookup.lookup_keys,
@@ -2914,10 +2930,11 @@ class Table(ReadOnlyTable):
         if database_type == 'oracle':
             self.execute('alter session set ddl_lock_timeout={}'.format(timeout))
             self.execute("TRUNCATE TABLE {}".format(self.qualified_table_name))
-        elif database_type in ['mssql', 'mysql', 'postgresql', 'sybase']:
+        elif database_type in ['mssql', 'mysql', 'postgresql', 'sybase', 'redshift']:
             self.database.execute_direct("TRUNCATE TABLE {}".format(self.qualified_table_name))
         else:
-            self.execute(self._delete_stmt())
+            self.execute(self._delete_stmt(autocommit=True))
+
         stats.timer.stop()
 
     def transaction(

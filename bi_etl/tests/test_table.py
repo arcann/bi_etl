@@ -288,45 +288,6 @@ class TestTable(unittest.TestCase):
                 self.assertRegex(full_output, "col1'?:.*0", 'col1: 0 not found in log output')
                 self.assertIn('stmt_values', full_output)
 
-    def testInsertDuplicateCanNotReplicate(self):
-        tbl_name = 'testInsertDuplicate'
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT  PRIMARY KEY,
-              col2 TEXT,
-              col3 REAL,
-              col4 NUMERIC,
-              col5 BLOB
-           )
-        """.format(tbl_name))
-
-        rows_to_insert = 10
-        tbl = Table(self.task,
-                    self.mock_database,
-                    table_name=tbl_name)
-
-        # By setting the batch size the the same as the repeat interval the rollback will undo all records
-        # vs the redo will only do the current batch. So the failure won't be replicated. 
-        tbl.batch_size = int(rows_to_insert / 2)
-
-        with self.assertLogs() as log:
-            try:
-                for i in range(rows_to_insert):
-                    # Use full table row
-                    row = tbl.Row()
-                    row['col1'] = i % int(rows_to_insert / 2)
-                    row['col2'] = 'this is row {}'.format(i)
-                    row['col3'] = i / 1000.0
-                    row['col4'] = i / 100000000.0
-                    row['col5'] = 'this is row {} blob'.format(i).encode('ascii')
-
-                    tbl.insert(row)
-                tbl.commit()
-                self.fail('Error not raised (or passed on) on duplicate key')
-            except (DatabaseError, sqlalchemy.exc.StatementError):
-                full_output = '\n'.join(log.output)
-                self.assertIn('Single inserts did not produce the error', full_output)
-
     def testInsertAutogenerateContinue(self):
         tbl_name = 'testInsertAutogenerateContinue'
         self.mock_database.execute("""

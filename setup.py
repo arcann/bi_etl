@@ -11,16 +11,11 @@ with open(os.path.join(here, 'README.md')) as f:
 install_requires = [
     'SQLAlchemy',
     'semidbm',
-    'sortedcontainers',
     'psutil >= 5.2.2',
     'openpyxl',
     'psutil',
-    'pyodbc',
     'CaseInsensitiveDict',
     'pyramid',
-    # For Docs build
-    'sphinx',
-    'sphinx-autodoc-annotation',
     'btrees',
     'gevent',
     ]
@@ -28,12 +23,17 @@ install_requires = [
 extras_require = {
         'mem_debug': ['pympler'],
         'password_mgt': ['keyring'],
+        'docs': [
+            # For Docs build
+            'sphinx',
+            'sphinx-autodoc-annotation',
+        ]
     }
 
 tests_require = [
-    'pytest',
     'coverage',
-    'pytest-cov',
+    # 'pytest',
+    # 'pytest-cov',
 ]
 
 setup(name='bi_etl',

@@ -214,25 +214,27 @@ class XLSXReader(ETLComponent):
         return value
     
     @staticmethod
-    def _get_cell_values(row_cells):
+    def _get_cell_values(row_cells) -> list:
         # Convert empty strings to None to be consistent with DB reads
         return list(map(XLSXReader._get_cell_value, row_cells))
         
     def read_header_row(self):
         # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
-        row = next(self.active_worksheet.get_squared_range(1,
-                                                           self.header_row,
-                                                           None,
-                                                           self.header_row,
-                                                           )
-                   )
-        return XLSXReader._get_cell_values(row) 
+        row = next(self.active_worksheet.iter_rows(
+            min_col=1,
+            min_row=self.header_row,
+            max_col=None,
+            max_row=self.header_row,
+            )
+        )
+        column_names = [value or f'un_named_col_{col_num}' for col_num, value in enumerate(XLSXReader._get_cell_values(row))]
+        return column_names
 
     def _raw_rows(self):
         # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
         self.__active_row = self.start_row
         this_iteration_header = self.generate_iteration_header()
-        for row in self.active_worksheet.iter_rows(row_offset=self.start_row-1):
+        for row in self.active_worksheet.iter_rows(min_row=self.start_row):
             self.__active_row += 1
             row_values = XLSXReader._get_cell_values(row)           
             d = self.Row(list(zip(self.column_names, row_values)), iteration_header=this_iteration_header)
@@ -247,4 +249,6 @@ class XLSXReader(ETLComponent):
             yield d 
             
     def close(self):
+        if self._workbook is not None:
+            self._workbook.close()
         super(XLSXReader, self).close()

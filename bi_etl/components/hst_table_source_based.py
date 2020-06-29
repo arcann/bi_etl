@@ -585,15 +585,10 @@ class HistoryTableSourceBased(HistoryTable):
             effective_date: datetime
                 The effective date to use for the update
         """
-        if criteria_list is None:
-            criteria_list = []
+        if criteria_dict is None:
+            criteria_dict = {}
 
-        criteria_list.extend(
-            [
-                self.get_column(self.delete_flag) == self.delete_flag_no,
-                self.get_column(self.primary_key[0]) > 0,
-            ]
-        )
+        criteria_dict[self.get_column(self.delete_flag)] = self.delete_flag_no
         stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
         stats['rows read'] = 0
         stats['updates count'] = 0
@@ -624,6 +619,9 @@ class HistoryTableSourceBased(HistoryTable):
         # Save the iterator aa a list since we'll be modifying the cache as we run through it
         rows_list = [row for row in row_iter]
         for row in rows_list:
+            if row[self.primary_key[0]] < 0:
+                # Skip special rows
+                continue
             if row.status == RowStatus.unknown:
                 pass
             stats['rows read'] += 1

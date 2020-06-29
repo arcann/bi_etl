@@ -22,6 +22,7 @@ if typing.TYPE_CHECKING:
 class RedShiftS3JSONBulk(RedShiftS3Base):
     def __init__(self,
                  config: BIConfigParser,
+                 config_section: str = 's3_bulk',
                  s3_user_id: typing.Optional[str] = None,
                  s3_keyring_password_section: typing.Optional[str] = None,
                  s3_bucket_name: typing.Optional[str] = None,
@@ -30,6 +31,7 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
                  ):
         super().__init__(
             config=config,
+            config_section=config_section,
             s3_user_id=s3_user_id,
             s3_keyring_password_section=s3_keyring_password_section,
             s3_bucket_name=s3_bucket_name,

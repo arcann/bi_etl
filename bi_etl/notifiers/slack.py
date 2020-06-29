@@ -33,7 +33,7 @@ class Slack(Notifier):
             self.log.warning("Slack channel not set. No slack messages will be sent.")
             self.slack_channel = None
 
-    def send(self, subject, message, throw_exception=False):
+    def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):
         if self.slack_channel is not None and self.slack_channel != '':
             if subject and message:
                 message_to_send = "{}: {}".format(subject, message)

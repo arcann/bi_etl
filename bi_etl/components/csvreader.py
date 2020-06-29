@@ -2,6 +2,7 @@
 Created on Sep 17, 2014
 
 """
+import codecs
 import csv
 import os
 import typing
@@ -166,6 +167,16 @@ class CSVReader(ETLComponent):
         # We have to check / open the file here to get the name for the logical name
         if isinstance(filedata, str):
             self.log.info("Opening file {}".format(filedata))
+
+            if encoding is None or encoding in {'utf8', 'utf-8'}:
+                with open(filedata, 'rb') as binary_file:
+                    begin_of_file = binary_file.read(3)
+                    if begin_of_file == codecs.BOM_UTF8:
+                        encoding = 'utf-8-sig'
+                        self.log.warning(f'BOM found for {filedata} using encoding {encoding}')
+                    else:
+                        self.log.debug(f'No BOM found for {filedata} ')
+
             self.file = open(filedata, 
                              mode='rt',
                              newline='', 

@@ -17,9 +17,7 @@ from CaseInsensitiveDict import CaseInsensitiveDict
 from bi_etl import utility
 from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.database.connect import Connect, DatabaseMetadata
-from bi_etl.notifiers.email import Email
-from bi_etl.notifiers.log_notifier import LogNotifier
-from bi_etl.notifiers.slack import Slack
+from bi_etl.notifiers import NOTIFIER_CLASES
 from bi_etl.scheduler import models
 from bi_etl.scheduler import queue_io
 from bi_etl.scheduler.exceptions import ParameterError, TaskStopRequested
@@ -715,7 +713,7 @@ class ETLTask(object):
         self.object_registry.append(obj)
         return obj
 
-    def make_statistics_entry(self, stats_id):
+    def make_statistics_entry(self, stats_id) -> Statistics:
         stats = Statistics(stats_id=stats_id)
         self.register_object(stats)
         return stats
@@ -1000,26 +998,20 @@ class ETLTask(object):
 
         return self.status == Status.succeeded
 
-    NOTIFIER_CLASES = {
-        'Email': Email,
-        'LogNotifier': LogNotifier,
-        'Slack': Slack
-    }
-
     def get_notifiers(self, channel_name, auto_include_log=True) -> list:
         config_sections_str = self.config.get('Notifiers', channel_name, fallback=None)
         config_sections = list()
         if config_sections_str is not None and config_sections_str != '':
             for config_section in re.split(r'\W+', config_sections_str):
                 notifier_class_str = self.config.get(config_section, 'notifier_class', fallback=None)
-                if notifier_class_str in self.NOTIFIER_CLASES:
+                if notifier_class_str in NOTIFIER_CLASES:
                     config_sections.append(config_section)
                 else:
                     self.log.warning('Channel {} set to unknown notifier_class {}. Logging notification instead'.format(
                         channel_name,
                         notifier_class_str,
                     ))
-                    self.log.warning('Accepted notifier_class values are {}'.format(self.NOTIFIER_CLASES.keys()))
+                    self.log.warning('Accepted notifier_class values are {}'.format(NOTIFIER_CLASES.keys()))
                     if 'LogNotifier' not in config_sections:
                         config_sections.append('LogNotifier')
         elif config_sections_str == '':
@@ -1044,18 +1036,23 @@ class ETLTask(object):
             else:
                 notifier_class_str = self.config.get(config_section, 'notifier_class', fallback=None)
 
-            notifier_class = self.NOTIFIER_CLASES[notifier_class_str]
+            notifier_class = NOTIFIER_CLASES[notifier_class_str]
             notifiers_list.append(notifier_class(self.config, config_section))
         return notifiers_list
 
-    def notify(self, channel_name, subject, message=None):
+    def notify(self, channel_name, subject, message=None, sensitive_message=None, attachment=None):
         if not self.suppress_notifications:
             # Note: all exceptions are caught since we don't want notifications to kill the load
             try:
                 notifiers_list = self.get_notifiers(channel_name)
                 for notifier in notifiers_list:
                     try:
-                        notifier.send(subject=subject, message=message)
+                        notifier.send(
+                            subject=subject,
+                            message=message,
+                            sensitive_message=sensitive_message,
+                            attachment=attachment,
+                        )
                     except Exception as e:
                         self.log.exception(e)
             except Exception as e:

@@ -1,10 +1,10 @@
 import os
 import tempfile
 import typing
+import re
 
 from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
-from bi_etl.components.csv_writer import CSVWriter, QUOTE_MINIMAL
 from bi_etl.components.table import Table
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.utility.bcp_helpers import create_bcp_format_file, run_bcp, BCPError
@@ -18,6 +18,13 @@ class SQLServerBCP(BulkLoader):
         super().__init__(config=config)
         self.delimiter = '\013'
         self._bcp_encoding = bcp_encoding
+
+    @staticmethod
+    def multiple_replace_safe(string, rep_dict):
+        if string == '':
+            return '\000'
+        pattern = re.compile("|".join([re.escape(k) for k in sorted(rep_dict, key=len, reverse=True)]), flags=re.DOTALL)
+        return pattern.sub(lambda x: rep_dict[x.group(0)], string)
 
     def load_from_files(
             self,
@@ -52,6 +59,19 @@ class SQLServerBCP(BulkLoader):
         if perform_rename:
             self.rename_table(table_to_load, table_object)
 
+    @staticmethod
+    def value_for_bcp(column_value):
+        if column_value is None:
+            return ''
+        else:
+            column_value = str(column_value)
+            # Line delimiter default is \r\n so we'll replace that with just \n
+            column_value = column_value.replace('\r\n', '\n')
+            if column_value == '':
+                # ASCII null should be for an empty string
+                column_value = '\000'
+            return column_value
+
     def load_from_iterator(
             self,
             iterator: typing.Iterator,
@@ -71,22 +91,29 @@ class SQLServerBCP(BulkLoader):
                 table_object,
                 format_file_path,
                 delimiter=f'\\{ord(self.delimiter):03o}',
-                row_terminator='\\n'
+                row_terminator='\\r\\n'
             )
 
-            with CSVWriter(
-                parent_task,
-                data_file_path,
-                delimiter=self.delimiter,
-                column_names=table_object.column_names,
-                include_header=False,
-                encoding='utf-8',
-                escapechar='\\',
-                quoting=QUOTE_MINIMAL,
-            ) as target_file:
+            with open(data_file_path, 'w+', encoding="utf-8") as file:
                 for row in iterator:
-                    row_count += 1
-                    target_file.insert_row(row)
+                    line = self.delimiter.join([self.value_for_bcp(row[col_name]) for col_name in table_object.columns])
+                    file.write(line + '\n')
+
+            # with CSVWriter(
+                # parent_task,
+                # data_file_path,
+                # delimiter=self.delimiter,
+                # column_names=table_object.column_names,
+                # include_header=False,
+                # encoding='utf-8',
+                # escapechar='\\',
+                # doublequote=False,
+                # quotechar='\000',
+                # quoting=QUOTE_NONE,
+            # ) as target_file:
+                # for row in iterator:
+                    # row_count += 1
+                    # target_file.insert_row(row)
 
             self.load_from_files(
                 [format_file_path, data_file_path],

@@ -342,7 +342,7 @@ class RowIterationHeader(object):
             if ignore_missing:
                 return self
             else:
-                raise e
+                raise ValueError(f'{old_name} is not a column. Valid columns are {self._columns_positions.keys()}')
         return new_header
 
     def rename_columns(
@@ -372,7 +372,10 @@ class RowIterationHeader(object):
                 in which case you won't want to call this method again.
         """
         new_header = self
-        action = tuple(['rc', str(rename_map)])
+        # Note: By using id(rename_map) we assume that the calling code will not change
+        # the rename map after we first see it. This seems like a reasonable assumption
+        # for the performance gained.
+        action = tuple(['rc', id(rename_map)])
         try:
             new_header = self._actions_to_next_headers[action]
         except KeyError:

@@ -129,6 +129,9 @@ class XLSXWriter(XLSXReader):
         if sheet_name not in self.workbook:
             self._active_worksheet = self.workbook.create_sheet(sheet_name)
             self._insert_cnt_this_sheet = 0
+            if self.headers_written:
+                self._column_names = None
+                self.headers_written = False
         else:
             self._active_worksheet = self.workbook[sheet_name]
             self._column_names = None
@@ -171,8 +174,15 @@ class XLSXWriter(XLSXReader):
             self.write_header()
 
         # Remove invalid XML characters
-        values = [self._illegal_xml_chars_RE.sub('\\?', x) if isinstance(x, str) else x for x in source_row.values()]
-        # values = source_row.values()
+        values = []
+        for column_name in self.column_names:
+            try:
+                col_value = source_row[column_name]
+                if isinstance(col_value, str):
+                    col_value = self._illegal_xml_chars_RE.sub('\\?', col_value)
+            except KeyError:
+                col_value = None
+            values.append(col_value)
 
         self.active_worksheet.append(values)
 
@@ -232,4 +242,5 @@ class XLSXWriter(XLSXReader):
             # self.active_worksheet.add_table(tab)
 
             self.workbook.save(filename=self.file_name)
+            self.workbook.close()
         super().close()

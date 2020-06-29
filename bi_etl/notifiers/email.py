@@ -12,7 +12,7 @@ class Email(Notifier):
         super().__init__(config=config,
                          config_section=config_section)
 
-    def send(self, message, subject, throw_exception=False):
+    def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):
         smtp_to = self.config.get(self.config_section, 'distro_list', fallback=None)
         if not smtp_to:
             self.log.warning("{} distro_list option not found. No mail sent.".format(self.config_section))

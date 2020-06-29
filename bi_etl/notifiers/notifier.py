@@ -9,7 +9,7 @@ class Notifier(object):
         assert(isinstance(config, ConfigParser))
         self.config_section = config_section
 
-    def send(self, subject, message, throw_exception=False):
+    def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):
         pass
 
 

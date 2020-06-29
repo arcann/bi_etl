@@ -5,9 +5,12 @@ Created on Dec 23, 2015
 @author: Derek Wood
 """
 import logging
+import textwrap
+
 import sqlalchemy
 
 from sqlalchemy.engine.reflection import Inspector
+from sqlalchemy.orm import Session
 from sqlalchemy.sql.schema import DEFAULT_NAMING_CONVENTION
 
 from bi_etl.utility.case_insentive_set import CaseInsentiveSet
@@ -37,6 +40,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         self.database_name = database_name
         self._uses_bytes_length_limits = uses_bytes_length_limits
         self._connection = None
+        self.log = logging.getLogger("{mod}.{cls}".format(mod=self.__class__.__module__, cls=self.__class__.__name__))
 
     def _set_parent(self, parent):
         pass
@@ -49,6 +53,9 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         else:
             return self.bind.connect()
 
+    def session(self, autocommit: bool = False):
+        return Session(bind=self.bind, autocommit=autocommit)
+
     def begin(self):
         return self.connect().begin()
 
@@ -57,11 +64,10 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             with self.connect() as connection:
                 with connection.begin() as transaction:
                     result = connection.execute(sql)
-                    transaction.commit()
                     if result.returns_rows:
-                        return list(result)
-                    else:
-                        return result
+                        result = list(result)
+                    transaction.commit()
+                    return result
         else:
             with self.connect() as connection:
                 result = connection.execute(sql)
@@ -179,7 +185,10 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
 
     @staticmethod
     def qualified_name(schema, table):
-        return schema + '.' + table
+        if schema is not None:
+            return schema + '.' + table
+        else:
+            return table
 
     def rename_table(self, schema, table_name, new_table_name):
         if self.dialect_name == 'mssql':
@@ -192,6 +201,29 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             sql = f"alter table {self.qualified_name(schema, table_name)} rename to {new_table_name}"
             self.log.debug(sql)
             self.execute(sql)
+
+    def drop_table_if_exists(self, table_name, schema=None):
+        if schema is None:
+            if '.' in table_name:
+                schema, table_name = table_name.split('.')
+        # SQL Server 2016+ can use IF EXISTS but rather than checking version use compatible mode
+        if self.dialect_name == 'mssql':
+            if table_name[0] == '#':
+                # Temp table
+                sql = textwrap.dedent(f"""\
+                    IF OBJECT_ID('tempdb.dbo.{table_name}', 'U') IS NOT NULL 
+                    DROP TABLE {self.qualified_name(schema, table_name)}; 
+                """)
+            else:
+                sql = textwrap.dedent(f"""\
+                    IF OBJECT_ID('{self.qualified_name(schema, table_name)}', 'U') IS NOT NULL 
+                    DROP TABLE {self.qualified_name(schema, table_name)}; 
+                """)
+        else:
+            sql = f"drop table IF EXISTS {self.qualified_name(schema, table_name)}"
+        self.log.debug(sql)
+        self.execute(sql)
+
 
     @property
     def dialect(self):

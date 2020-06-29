@@ -134,18 +134,42 @@ class Lookup(object):
             lookup_values = [row[k] for k in self.lookup_keys]
             return lookup_values
 
+    @staticmethod
+    def rstrip_key_value(val: object) -> object:
+        """
+        Since most, if not all, DBs consider two strings that only differ in trailing blanks to
+        be equal, we need to rstrip any string values so that the lookup does the same.
+
+        :param val:
+        :return:
+        """
+
+        if isinstance(val, str):
+            return val.rstrip()
+        else:
+            return val
+
+    def _hashable_key_stripped_non_str(self, row) -> typing.Sequence:
+        return self._hashable_key_type(
+            tuple(
+                [Lookup.rstrip_key_value(val) for val in row]
+            )
+        )
+
+    def _hashable_key_stripped(self, row) -> typing.Sequence:
+        if isinstance(row, str):
+            return row
+        else:
+            return self._hashable_key_stripped_non_str(row)
+
     def get_hashable_combined_key(self, row: ROW_TYPES) -> typing.Sequence:
         if isinstance(row, self._hashable_key_type):
-            return row
-        elif isinstance(row, tuple):
-            return self._hashable_key_type(row)
-        elif isinstance(row, list):
-            return self._hashable_key_type(tuple(row))
-        else:
-            if self._hashable_key_type == tuple:
-                return self._hashable_key_type(self.get_list_of_lookup_column_values(row))
+            if not isinstance(row, str):
+                return self._hashable_key_stripped_non_str(row)
             else:
-                return self._hashable_key_type(tuple(self.get_list_of_lookup_column_values(row)))
+                return row
+        else:
+            return self._hashable_key_stripped_non_str(self.get_list_of_lookup_column_values(row))
 
     def clear_cache(self) -> None:
         """
