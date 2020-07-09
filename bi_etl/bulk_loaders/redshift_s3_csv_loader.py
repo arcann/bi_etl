@@ -4,6 +4,7 @@ from __future__ import annotations
 import gzip
 import io
 import os.path
+import time
 import typing
 from tempfile import TemporaryDirectory
 
@@ -54,39 +55,55 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             has_header: bool = True,
     ):
         s3_full_folder = self._get_table_specific_folder_name(self.s3_folder, table_object)
-        self._upload_files_to_s3(local_files, s3_full_folder)
 
-        analyze_compression = analyze_compression or self.analyze_compression
-        if analyze_compression:
-            options += f' COMPUPDATE {self.analyze_compression} '
+        wait_seconds = 120
+        t_end = time.time() + wait_seconds
+        done = False
+        while not done:
+            try:
+                self._upload_files_to_s3(local_files, s3_full_folder)
 
-        table_to_load = table_to_load or table_object.qualified_table_name
+                analyze_compression = analyze_compression or self.analyze_compression
+                if analyze_compression:
+                    options += f' COMPUPDATE {self.analyze_compression} '
 
-        if has_header:
-            header_cmd = 'IGNOREHEADER 1'
-        else:
-            header_cmd = ''
+                table_to_load = table_to_load or table_object.qualified_table_name
 
-        copy_sql = f"""\
-                    COPY {table_to_load} 
-                         FROM 's3://{self.s3_bucket_name}/{s3_full_folder}'
-                         CSV 
-                         delimiter '{self.s3_file_delimiter}'
-                         null '{self.null_value}' 
-                         credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'
-                         {header_cmd} 
-                         {file_compression}
-                         {options}; commit;
-                    """
+                if has_header:
+                    header_cmd = 'IGNOREHEADER 1'
+                else:
+                    header_cmd = ''
 
-        self._run_copy_sql(
-            copy_sql=copy_sql,
-            s3_full_folder=s3_full_folder,
-            table_object=table_object,
-        )
+                copy_sql = f"""\
+                            COPY {table_to_load} 
+                                 FROM 's3://{self.s3_bucket_name}/{s3_full_folder}'
+                                 CSV 
+                                 delimiter '{self.s3_file_delimiter}'
+                                 null '{self.null_value}' 
+                                 credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'
+                                 {header_cmd} 
+                                 {file_compression}
+                                 {options}; commit;
+                            """
 
-        if perform_rename:
-            self.rename_table(table_to_load, table_object)
+                self._run_copy_sql(
+                    copy_sql=copy_sql,
+                    s3_full_folder=s3_full_folder,
+                    table_object=table_object,
+                )
+
+                if perform_rename:
+                    self.rename_table(table_to_load, table_object)
+                done = True
+            except sqlalchemy.exc.SQLAlchemyError as e:
+                if time.time() > t_end:
+                    self.log.info(f'{wait_seconds} seconds wait is over. File cannot be loaded. {t_end}')
+                    raise
+                elif 'S3ServiceException' in str(e):
+                    self.log.info(f'Re-upload files to S3 to resolve {e} in 5 seconds')
+                    time.sleep(5)
+                else:
+                    raise
 
     def load_from_iterator(
                self,

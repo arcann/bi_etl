@@ -31,6 +31,8 @@ class Jira(Notifier):
             if 'CAPTCHA_CHALLENGE' in e.text:
                 raise RuntimeError(f'Jira Login requests passing CAPTCHA CHALLENGE.  {e.text}')
             else:
+                self.log.error(f'Error connecting to JIRA')
+                self.log.exception(e)
                 raise
         priority_name = config.get(self.config_section, 'priority', fallback=None)
         if priority_name is not None:

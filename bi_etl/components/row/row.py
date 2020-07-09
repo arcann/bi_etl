@@ -9,19 +9,14 @@ from __future__ import annotations
 
 import typing
 import warnings
-from collections import OrderedDict
 import collections.abc
 from decimal import Decimal
 from typing import Union, List, Iterable
-from bi_etl.conversions import nvl
-
-import functools
 
 from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.utility import dict_to_str
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
-from sqlalchemy.sql.schema import Column
 
 
 class Row(typing.MutableMapping):
@@ -30,13 +25,16 @@ class Row(typing.MutableMapping):
     Handles column names that are SQL Alchemy column objects.
     Keeps order of the columns (see columns_in_order)
     """
+
+    # Using slots to fix the attributes to just these allows CPython to create Row objects 10% faster
+    __slots__ = [
+        '_data_values',
+        'iteration_header',
+        'status',
+    ]
     NUMERIC_TYPES = {int, float, Decimal}
     RAISE_ON_NOT_EXIST_NAME = 'raise_on_not_exist'
     # For performance with the Column to str conversion we keep a cache of converted values
-    __name_map_db = dict()
-
-    class KeysView(collections.abc.KeysView):
-        pass
 
     def __init__(self,
                  iteration_header: RowIterationHeader,
@@ -62,23 +60,6 @@ class Row(typing.MutableMapping):
         # Populate our data
         if data is not None:
             self.update(data)
-
-    @staticmethod
-    @functools.lru_cache(maxsize=1000)
-    def _get_name(input_name: str) -> str:
-        if input_name in Row.__name_map_db:
-            return Row.__name_map_db[input_name]
-        else:
-            # If the input_name is an SA Column use it's name.
-            # In Python 2.7 to 3.4, isinstance is a lot faster than try-except or hasattr (which does a try)
-            if isinstance(input_name, Column):
-                name_str = input_name.name
-            else:
-                if not isinstance(input_name, str):
-                    raise ValueError("Row column name must be str, unicode, or Column. Got {}".format(type(input_name)))
-                name_str = input_name
-                Row.__name_map_db[input_name] = name_str
-            return name_str
 
     def __reduce__(self):
         # TODO: Experiment with different formats for performance and compactness
@@ -114,7 +95,6 @@ class Row(typing.MutableMapping):
                 outgoing_dict,
                 )
 
-    # pylint: disable=attribute-defined-outside-init
     def __setstate_v1__(self, incoming_dict):
         self.__dict__ = incoming_dict
         if incoming_dict['s'] is not None:
@@ -126,17 +106,17 @@ class Row(typing.MutableMapping):
 
     def update_from_dict(self, source_dict: dict):
         for column_specifier, value in source_dict.items():
-            column_name = self._get_name(column_specifier)
+            column_name = self.iteration_header.get_column_name(column_specifier)
             self._raw_setitem(column_name, value)
 
     def update_from_row_proxy(self, source_row: Row):
         for column_specifier, value in source_row.items():
-            column_name = self._get_name(column_specifier)
+            column_name = self.iteration_header.get_column_name(column_specifier)
             self._raw_setitem(column_name, value)
 
     def update_from_tuples(self, tuples_list: typing.List[tuple]):
         for column_specifier, value in tuples_list:
-            column_name = self._get_name(column_specifier)
+            column_name = self.iteration_header.get_column_name(column_specifier)
             self._raw_setitem(column_name, value)
 
     def update_from_values(self, values_list: list):
@@ -192,13 +172,13 @@ class Row(typing.MutableMapping):
                                      )
 
     def get_column_position(self, column_specifier):
-        column_name = self._get_name(column_specifier)
+        column_name = self.iteration_header.get_column_name(column_specifier)
         return self.iteration_header.get_column_position(column_name)
 
     def get_column_name(self, column_specifier, raise_on_not_exist=True):
         if column_specifier is None:
             return None
-        column_name = self._get_name(column_specifier)
+        column_name = self.iteration_header.get_column_name(column_specifier)
         if raise_on_not_exist and not self.iteration_header.has_column(column_name):
             raise KeyError("{cls} {name} has no item {column_name} it does have {cols}"
                            .format(cls=self.__class__.__name__,
@@ -254,39 +234,40 @@ class Row(typing.MutableMapping):
         return self._data_values
 
     def __contains__(self, column_specifier):
-        column_name = self._get_name(column_specifier)
+        column_name = self.iteration_header.get_column_name(column_specifier)
         return self.iteration_header.has_column(column_name)
 
     def __getitem__(self, column_specifier):
-        column_name = self._get_name(column_specifier)
+        column_name = self.iteration_header.get_column_name(column_specifier)
         position = self.iteration_header.get_column_position(column_name)
-        if position < len(self._data_values):
+        try:
             return self._data_values[position]
-        else:
+        except IndexError:
             return None
 
     def get(self, column_specifier, default_value=None):
-        # TODO: Try and get column position before using _get_name
-        column_name = self._get_name(column_specifier)
+        column_name = self.iteration_header.get_column_name(column_specifier)
         try:
             position = self.iteration_header.get_column_position(column_name)
-            if position < len(self._data_values):
+            try:
                 return self._data_values[position]
+            except IndexError:
+                return default_value
         except KeyError:
-            pass
-        return default_value
+            return default_value
 
     @property
     def as_dict(self) -> dict:
-        return OrderedDict(zip(self.columns_in_order, self._data_values))
+        return dict(zip(self.columns_in_order, self._data_values))
 
     @property
     def as_key_value_list(self) -> list:
         return list(zip(self.columns_in_order, self._data_values))
 
-    def items(self):
-        for column_name, column_value in zip(self.columns_in_order, self._data_values):
-            yield column_name, column_value
+    def items(self) -> collections.abc.ItemsView:
+        return collections.abc.ItemsView(
+            self.as_dict
+        )
 
     def __len__(self):
         return len(self.columns_in_order)
@@ -299,8 +280,9 @@ class Row(typing.MutableMapping):
         return self.clone()
 
     def keys(self) -> collections.abc.KeysView:
-        # noinspection PyArgumentList
-        return self.KeysView(self.columns_in_order)
+        return collections.abc.KeysView(
+            {k: None for k in self.iteration_header.columns_in_order}
+        )
 
     def _extend_to_size(self, desired_size):
         current_length = len(self._data_values)
@@ -311,7 +293,7 @@ class Row(typing.MutableMapping):
         self.iteration_header = self.iteration_header.row_set_item(column_name, value, self)
 
     def __setitem__(self, key, value):
-        key_name = self._get_name(key)
+        key_name = self.iteration_header.get_column_name(key)
         self._raw_setitem(key_name, value)
 
     def get_name_by_position(self, position):
@@ -386,8 +368,8 @@ class Row(typing.MutableMapping):
             Ignore (don't raise error) if we don't have a column with the name in old_name.
             Defaults to False
         """
-        old_name = self._get_name(old_name)
-        new_name = self._get_name(new_name)
+        old_name = self.iteration_header.get_column_name(old_name)
+        new_name = self.iteration_header.get_column_name(new_name)
         self.iteration_header = self.iteration_header.rename_column(old_name,
                                                                     new_name,
                                                                     ignore_missing=ignore_missing)
@@ -411,7 +393,7 @@ class Row(typing.MutableMapping):
         self.iteration_header = self.iteration_header.rename_columns(rename_map, ignore_missing=ignore_missing)
 
     def __delitem__(self, column_specifier):
-        column_name = self._get_name(column_specifier)
+        column_name = self.iteration_header.get_column_name(column_specifier)
         self.iteration_header = self.iteration_header.row_remove_column(column_name, self)
 
     def remove_columns(self,
@@ -430,7 +412,7 @@ class Row(typing.MutableMapping):
             Defaults to False
         """
         for column_specifier in remove_list:
-            column_name = self._get_name(column_specifier)
+            column_name = self.iteration_header.get_column_name(column_specifier)
             self.iteration_header = self.iteration_header.row_remove_column(column_name,
                                                                             row=self,
                                                                             ignore_missing=ignore_missing)
@@ -473,13 +455,13 @@ class Row(typing.MutableMapping):
         doing_clone = True
 
         if keep_only is not None:
-            keep_only = set([self._get_name(c) for c in keep_only])
+            keep_only = set([self.iteration_header.get_column_name(c) for c in keep_only])
             doing_clone = False
 
         if exclude is None:
             exclude = []
         else:
-            exclude = set([self._get_name(c) for c in exclude])
+            exclude = set([self.iteration_header.get_column_name(c) for c in exclude])
             doing_clone = False
 
         if rename_map is not None:
@@ -494,14 +476,6 @@ class Row(typing.MutableMapping):
                                                        rename_map=rename_map,
                                                        keep_only=keep_only)
         return sub_row
-
-    @property
-    def columns(self):
-        """
-        A list of the columns of this row (order not guaranteed in child instances).
-        """
-        # noinspection PyProtectedMember
-        return self.iteration_header._columns_in_order
 
     @property
     def column_set(self):
@@ -531,14 +505,14 @@ class Row(typing.MutableMapping):
 
     def column_position(self, column_name):
         """
-        Get the column position given a column name.
+        Get the column position (1 based) given a column name.
 
         Parameters
         ----------
         column_name: str
             The column name to find the position of
         """
-        normalized_name = self._get_name(column_name)
+        normalized_name = self.iteration_header.get_column_name(column_name)
         return self.columns_in_order.index(normalized_name) + 1  # index is 0 based, positions are 1 based
 
     @property
@@ -574,56 +548,6 @@ class Row(typing.MutableMapping):
             )
             warnings.warn(msg)
             return str(val1) == str(val2)
-
-    def compare_to_rs(self,
-                   other_row: 'Row',
-                   exclude: typing.Iterable = None,
-                   compare_only: typing.Iterable = None,
-                   coerce_types: bool = True) -> typing.MutableSequence[ColumnDifference]:
-        """
-        Cloned & modified from compare_to, just for doing table level compares between Redshift and SQL Server
-
-        Compare one RowCaseInsensitive to another. Returns a list of differences.
-
-        Parameters
-        ----------
-        other_row
-        exclude
-        compare_only
-        coerce_types
-
-        Returns
-        -------
-        List of differences
-        """
-        if compare_only is not None:
-            compare_only = set([other_row.get_column_name(c, raise_on_not_exist=False) for c in compare_only])
-
-        if exclude is None:
-            exclude = []
-        else:
-            exclude = set([other_row.get_column_name(c, raise_on_not_exist=False) for c in exclude])
-
-        differences_list = list()
-        for other_col_name, other_col_value in other_row.items():
-            if other_col_name not in exclude:
-                if compare_only is None or other_col_name in compare_only:
-                    existing_column_value = self[other_col_name]
-                    if coerce_types:
-                        values_equal = self._values_equal_coerce(existing_column_value, other_col_value, other_col_name)
-                    else:
-                        values_equal = (existing_column_value == other_col_value)
-                    if not values_equal:
-                        if isinstance(existing_column_value, Decimal) and round((nvl(existing_column_value, 0) - nvl(other_col_value, 0)), 2) < 0.01:
-                            # Ignore difference
-                            pass
-                        else:
-                            differences_list.append(ColumnDifference(column_name=other_col_name,
-                                                                     old_value=existing_column_value,
-                                                                     new_value=other_col_value,
-                                                                     )
-                                                    )
-        return differences_list
 
     def compare_to(self,
                    other_row: 'Row',
@@ -714,7 +638,7 @@ class Row(typing.MutableMapping):
             del kwargs[Row.RAISE_ON_NOT_EXIST_NAME]
 
         try:
-            column_name = self._get_name(column_specifier)
+            column_name = self.iteration_header.get_column_name(column_specifier)
             position = self.iteration_header.get_column_position(column_name)
             value = self._data_values[position]
         except KeyError as e:
@@ -726,7 +650,7 @@ class Row(typing.MutableMapping):
             new_value = transform_function(value, *args, **kwargs)
             self._data_values[position] = new_value
         except Exception as e:
-            raise ValueError(f"{transform_function} on {column_name} with value {value} yielded {e}")
+            raise ValueError(f"{transform_function} on {column_name} with value {value} yielded exception {e}")
 
         return self
 

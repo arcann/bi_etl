@@ -233,11 +233,15 @@ class XLSXReader(ETLComponent):
     def _raw_rows(self):
         # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
         self.__active_row = self.start_row
-        this_iteration_header = self.generate_iteration_header()
+        len_column_names = len(self.column_names)
+        this_iteration_header = self.generate_iteration_header(
+            columns_in_order=self.column_names,
+            columns_can_vary_by_row=True,
+        )
         for row in self.active_worksheet.iter_rows(min_row=self.start_row):
             self.__active_row += 1
             row_values = XLSXReader._get_cell_values(row)           
-            d = self.Row(list(zip(self.column_names, row_values)), iteration_header=this_iteration_header)
+            d = self.Row(data=row_values[:len_column_names], iteration_header=this_iteration_header)
             len_column_names = len(self.column_names)
             len_row = len(row_values)
             if len_column_names < len_row:

@@ -9,6 +9,8 @@ from pprint import pformat
 
 from sqlalchemy.dialects.mssql import BIT
 
+from bi_etl.components.table import Table
+
 log = logging.getLogger('etl.utils.bcp_helpers')
 
 
@@ -16,7 +18,7 @@ class BCPError(Exception):
     pass
 
 
-def create_bcp_format_file(table, bcp_format_path, encoding=None, delimiter=None, row_terminator=None):
+def create_bcp_format_file(table: Table, bcp_format_path, encoding=None, delimiter=None, row_terminator=None):
     with open(bcp_format_path, "w", encoding="utf-8") as bcp_fmt:
         field_list = list()
         column_list = list()

@@ -119,44 +119,60 @@ class RedShiftS3Base(BulkLoader):
         sql_safe_pw = copy_sql.replace(self.s3_password, '*' * 8)
         self.log.debug(sql_safe_pw)
 
-        try:
-            table_object.execute(copy_sql)
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            # noinspection PyBroadException
+        response = True
+        wait_seconds = 15
+        t_end = time.time() + wait_seconds
+        while response:
             try:
-                results = table_object.execute(
-                    """
-                    SELECT TOP 1 *
-                    FROM stl_load_errors
-                    ORDER BY starttime DESC
-                    """
-                )
-                for row in results:
-                    self.log.error('!' * 80)
-                    self.log.error(f'!! Details for {e} below:')
-                    self.log.error('!' * 80)
-                    filename = strip(row.filename)
-                    colname = strip(row.colname)
-                    c_type = strip(row.type)
-                    col_length = strip(row.col_length)
-                    self.log.error(f'{filename} had an error')
-                    self.log.error(f'err_reason={str(row.err_reason).strip()}')
-                    self.log.error(f'err_code={row.err_code}')
-                    self.log.error(f'error with column = {colname} {c_type} {col_length}')
-                    self.log.error(f'raw_field_value = "{str(row.raw_field_value).strip()}"')
-                    self.log.error(f'line number = {row.line_number}')
-                    self.log.error(f'character pos = {row.position}')
-                    self.log.error(f'raw_line={row.raw_line}')
-                    self.log.error('!' * 80)
-            except Exception as e2:
-                self.log.error(f'Error {e2} when getting stl_load_errors contents')
-            # Ensure we don't leak the password
-            if hasattr(e, 'statement'):
-                e.statement = e.statement.replace(self.s3_password, '*' * 8)
-            raise e
+                table_object.execute(copy_sql)
+                response = False
+            except sqlalchemy.exc.SQLAlchemyError as e:
+                # noinspection PyBroadException
+                try:
+                    results = table_object.execute(
+                        """
+                        SELECT TOP 1 *
+                        FROM stl_load_errors
+                        ORDER BY starttime DESC
+                        """
+                    )
+                    for row in results:
+                        self.log.error('!' * 80)
+                        self.log.error(f'!! Details for {e} below:')
+                        self.log.error('!' * 80)
+                        filename = strip(row.filename)
+                        colname = strip(row.colname)
+                        c_type = strip(row.type)
+                        col_length = strip(row.col_length)
+                        self.log.error(f'{filename} had an error')
+                        self.log.error(f'err_reason={str(row.err_reason).strip()}')
+                        self.log.error(f'err_code={row.err_code}')
+                        self.log.error(f'error with column = {colname} {c_type} {col_length}')
+                        self.log.error(f'raw_field_value = "{str(row.raw_field_value).strip()}"')
+                        self.log.error(f'line number = {row.line_number}')
+                        self.log.error(f'character pos = {row.position}')
+                        self.log.error(f'raw_line={row.raw_line}')
+                        self.log.error('!' * 80)
 
-        # Commit added to avoid VACUUM inside any transaction
-        table_object.execute(f"COMMIT; VACUUM {table_object.qualified_table_name};")
+                    if time.time() > t_end:
+                        self.log.info(f'{wait_seconds} seconds wait is over. File cannot be loaded. {t_end}')
+                        raise
+                    elif 'S3ServiceException' in str(e):
+                        self.log.info(f'Will retry in 5 seconds file copy after S3ServiceException failure - {e}')
+                        time.sleep(5)
+                    else:
+                        raise
+
+                except Exception as e2:
+                    self.log.error(f'Error {e2} when getting stl_load_errors contents')
+                # Ensure we don't leak the password
+                if hasattr(e, 'statement'):
+                    e.statement = e.statement.replace(self.s3_password, '*' * 8)
+                raise e
+
+        # TODO: Consider removing this commit the called should do that.
+        #       However, requires extensive testing
+        table_object.execute(f"COMMIT;")
 
         if self.s3_clear_when_done:
             self.clean_s3_folder(s3_full_folder)

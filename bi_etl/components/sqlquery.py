@@ -76,7 +76,8 @@ class SQLQuery(ETLComponent):
         stats = self.get_stats_entry(stats_id=self.default_stats_id)
         stats.timer.start()
         try:
-            select_result = self.engine.execute(sqlalchemy.text(self.sql), **parameters)
+            sql = sqlalchemy.text(self.sql)
+            select_result = self.engine.execute(sql, **parameters)
         except TypeError as e:
             raise TypeError(f'Error {e} with SQL {self.sql} and params {parameters} on {self.engine}')
         return select_result

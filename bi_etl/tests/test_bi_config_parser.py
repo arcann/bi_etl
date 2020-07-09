@@ -54,9 +54,10 @@ class Test(unittest.TestCase):
         self.generated_child_ini_file = 'config.ini'
         os.mkdir(os.path.join(self.tempDir, 'child'))
         self.generated_child_ini_file_path = os.path.join(self.tempDir, 'child', self.generated_child_ini_file)
-        self.generated_parent_ini_file = 'shared_config.ini'
-        os.mkdir(os.path.join(self.tempDir, 'parent'))
-        self.generated_parent_ini_file_path = os.path.join(self.tempDir, self.generated_parent_ini_file)
+        generated_parent_ini_file = 'test_shared_config.ini'
+        generated_parent_dir = os.path.join(self.tempDir, 'parent')
+        os.mkdir(generated_parent_dir)
+        self.generated_parent_ini_file_path = os.path.join(generated_parent_dir, generated_parent_ini_file)
         child_cp = configparser.ConfigParser()
         child_cp.add_section('Config')
         child_cp['Config']['parent'] = self.generated_parent_ini_file_path

@@ -336,13 +336,16 @@ class CSVReader(ETLComponent):
         len_column_names = len(self.column_names)
         try:
             self.seek_row(self.start_row)
-            this_iteration_header = self.generate_iteration_header()
+            this_iteration_header = self.generate_iteration_header(
+                columns_in_order=self.column_names,
+                columns_can_vary_by_row=True,
+            )
             # noinspection PyTypeChecker
             for row in self.reader:
                 if len(row) != 0:     
                     # Convert empty strings to None to be consistent with DB reads
                     row = [None if s == '' else s for s in row]
-                    d = self.Row(list(zip(self.column_names, row)), iteration_header=this_iteration_header)
+                    d = self.Row(data=row[:len_column_names], iteration_header=this_iteration_header)
                     
                     len_row = len(row)
                     if len_column_names < len_row:

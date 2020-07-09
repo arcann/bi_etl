@@ -6,27 +6,28 @@ Created on Dec 23, 2015
 """
 from enum import IntEnum, unique
 
+
 @unique
 class Status(IntEnum):
-    ### Note: The scheduler uses the lowest valued status as the summary status for a parent task
+    # Note: The scheduler uses the lowest valued status as the summary status for a parent task
     
     new = 0
-    ## Waiting to run
+    # Waiting to run
     waiting_for_cpu = 1
     waiting_for_dependencies = 2
     waiting_for_workflow = 3
-    ## Running
+    # Running
     running = 10
-    ancestors_running = 11 ## Not actually running in a thread but ancestors haven't is_finished yet
-    ## Stop steps
+    ancestors_running = 11  # Not actually running in a thread but ancestors haven't finished yet
+    # Stop steps
     stop_requested = 21
     stop_signal_sent = 22    
     stopped = -20
-    ## Kill steps
+    # Kill steps
     kill_requested = 31
     kill_signal_sent = 32
-    killed  = -30
-    ## Completed statuses
+    killed = -30
+    # Completed statuses
     succeeded = 100
     failed = -99
     ancestor_failed = -98
@@ -41,7 +42,7 @@ class Status(IntEnum):
             return 'Waiting'
     
     def is_finished(self):
-        return (self.value == Status.succeeded or self.value < 0)
+        return self.value == Status.succeeded or self.value < 0
     
     def is_active(self):
         if self.is_finished():
@@ -58,7 +59,7 @@ class Status(IntEnum):
         return self.value in [Status.new, Status.waiting_for_dependencies, Status.waiting_for_cpu, Status.waiting_for_workflow]
     
     def is_alive(self):
-        return (self.value >= Status.running.value and self != Status.succeeded)
+        return self.value >= Status.running.value and self != Status.succeeded
     
     def is_terminated(self):
         return self in [Status.killed, Status.stopped]
@@ -83,4 +84,4 @@ class Status(IntEnum):
                              terminated=s.is_terminated(), 
                              termination_pending= s.is_termination_pending(),
                             )
-                 )         
+                 )

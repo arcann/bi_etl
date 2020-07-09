@@ -14,10 +14,14 @@ class Slack(Notifier):
             from slack import WebClient as SlackClient
             self.log.debug("Using slackclient v2+ import")
             self._client_version = 2
+            from slack.errors import SlackApiError
+            self.SlackApiError = SlackApiError
         except ImportError:
             self.log.debug("Trying slackclient v1 import")
             # noinspection PyUnresolvedReferences
             from slackclient import SlackClient
+            from slack.errors import SlackApiError
+            self.SlackApiError = SlackApiError
             self._client_version = 1
 
         slack_token = config[config_section]['token']
@@ -59,25 +63,35 @@ class Slack(Notifier):
                         text=message_to_send,
                         link_names=link_names,
                     )
+                    # Slack API v1 doeesn't raise errors instead returns error result
+                    if result['ok']:
+                        retry = False
+                    else:
+                        if result['error'] == 'ratelimited':
+                            self.log.info('Waiting for slack ratelimited to clear')
+                            sleep(1.5)
+                            retry = True
+                        else:
+                            self.log.error('slack error: {} for channel {}'.format(
+                                result,
+                                self.slack_channel,
+                            ))
+                            retry = False
                 else:
                     # https://api.slack.com/methods/chat.postMessage
-                    result = self.slack_client.chat_postMessage(
-                        channel=self.slack_channel,
-                        text=message_to_send,
-                        link_names=link_names,
-                    )
-                if result['ok']:
-                    retry = False
-                else:
-                    if result['error'] == 'ratelimited':
-                        self.log.info('Waiting for slack ratelimited to clear')
-                        sleep(1.5)
-                        retry = True
-                    else:
-                        self.log.error('slack error: {} for channel {}'.format(
-                            result,
-                            self.slack_channel,
-                        ))
+                    try:
+                        self.slack_client.chat_postMessage(
+                            channel=self.slack_channel,
+                            text=message_to_send,
+                            link_names=link_names,
+                        )
                         retry = False
+                    except self.SlackApiError as e:
+                        self.log.error(e)
+                        if e.response['error'] == 'ratelimited':
+                            self.log.info('Waiting for slack ratelimited to clear')
+                            sleep(1.5)
+                        else:
+                            raise
         else:
             self.log.info("Slack message not sent: {}".format(message))

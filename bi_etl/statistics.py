@@ -5,6 +5,9 @@ Created on Mar 20, 2015
 """
 from collections import OrderedDict
 import sys
+
+import typing
+
 OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
 from typing import List
 
@@ -101,7 +104,7 @@ class Statistics(object):
     def iteritems(self):
         # Needs to be based on keys() because we force extra special keys
         for k in list(self.keys()):
-            yield (k, self[k])
+            yield k, self[k]
 
     def items(self):
         # Needs to be based on keys() because we force extra special keys
@@ -143,15 +146,17 @@ class Statistics(object):
                                                  parent=self)
                     self[stats_key].merge(value)
                 else:
-                    raise ValueError("Can't merge {path}:{key} type {type} "
-                                     "with {opath}:{okey} type {otype}".format(
-                        path=self.path,
-                        key=stats_key,
-                        type=type(self[stats_key]),
-                        opath=other.path,
-                        okey=stats_key,
-                        otype=type(value),
-                    ))
+                    raise ValueError(
+                        "Can't merge {path}:{key} type {type} "
+                        "with {opath}:{okey} type {otype}".format(
+                            path=self.path,
+                            key=stats_key,
+                            type=type(self[stats_key]),
+                            opath=other.path,
+                            okey=stats_key,
+                            otype=type(value),
+                        )
+                    )
 
     def __contains__(self, key):
         return self._stats_data.__contains__(key)
@@ -186,7 +191,7 @@ class Statistics(object):
                            )
 
     @staticmethod
-    def find_item(obj, key):
+    def find_item(obj: typing.Union[str, dict, list], key: str):
         if isinstance(obj, str):
             return None
         elif hasattr(obj, 'values'):

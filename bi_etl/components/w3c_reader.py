@@ -163,7 +163,8 @@ class W3CReader(ETLComponent):
     def _raw_rows(self):
         len_column_names = len(self.column_names)
         try:
-            this_iteration_header = self.generate_iteration_header()
+            len_column_names = len(self.column_names)
+            this_iteration_header = self.generate_iteration_header(columns_in_order=self.column_names)
             # noinspection PyTypeChecker
             done = False
             while not done:
@@ -174,7 +175,7 @@ class W3CReader(ETLComponent):
                     if line != '':
                         # Convert empty strings to None to be consistent with DB reads
                         row = line.split(' ')
-                        d = self.Row(list(zip(self.column_names, row)), iteration_header=this_iteration_header)
+                        d = self.Row(data=row[:len_column_names], iteration_header=this_iteration_header)
 
                         len_row = len(row)
                         if len_column_names < len_row:

@@ -1293,7 +1293,7 @@ class Table(ReadOnlyTable):
             ignore_target_not_in_source: typing.Optional[bool] = None,
             ):
         self.sanity_check_source_mapping(
-            example_source_row.columns,
+            example_source_row,
             example_source_row.name,
             source_excludes=source_excludes,
             target_excludes=target_excludes,
@@ -1539,8 +1539,8 @@ class Table(ReadOnlyTable):
             source_row: typing.MutableMapping,  # Must be a single row as Row or similar
             additional_insert_values: typing.Optional[dict] = None,
             build_method: ETLComponent.RowBuildMethod = ETLComponent.RowBuildMethod.safe,
-            source_excludes: typing.Optional[list] = None,
-            target_excludes: typing.Optional[list] = None,
+            source_excludes: typing.Optional[set] = None,
+            target_excludes: typing.Optional[set] = None,
             stat_name: str = 'insert',
             parent_stats: typing.Optional[Statistics] = None,
             ) -> Row:
@@ -2157,7 +2157,7 @@ class Table(ReadOnlyTable):
                         bind_name = key.name
                         # Note SQLAlchemy takes care of converting to positional “qmark” bind parameters as needed
                         update_stmt = update_stmt.where(key == bindparam(bind_name, type_=key.type))
-                    for c in row_dict.columns:
+                    for c in row_dict.columns_in_order:
                         # Since we know we aren't updating the key, don't send the keys in the values clause
                         if c not in self.primary_key:
                             col_obj = self.get_column(c)
@@ -2172,7 +2172,7 @@ class Table(ReadOnlyTable):
                     bind_name = key.name
                     stmt_values[bind_name] = row_dict[key_column]
 
-                for c in row_dict.columns:
+                for c in row_dict.columns_in_order:
                     # Since we know we aren't updating the key, don't send the keys in the values clause
                     if c not in self.primary_key:
                         col_obj = self.get_column(c)
@@ -2322,8 +2322,8 @@ class Table(ReadOnlyTable):
             self,
             updates_to_make: typing.MutableMapping,
             key_values: Union[Row, dict, list] = None,
-            source_excludes: typing.Optional[Iterable] = None,
-            target_excludes: typing.Optional[Iterable] = None,
+            source_excludes: typing.Optional[set] = None,
+            target_excludes: typing.Optional[set] = None,
             stat_name: str = 'update_where_pk',
             parent_stats: typing.Optional[Statistics] = None,
             ):
@@ -2376,8 +2376,8 @@ class Table(ReadOnlyTable):
             key_values: typing.Optional[Iterable] = None,
             lookup_name: typing.Optional[str] = None,
             update_all_rows: bool = False,
-            source_excludes: typing.Optional[Iterable] = None,
-            target_excludes: typing.Optional[Iterable] = None,
+            source_excludes: typing.Optional[set] = None,
+            target_excludes: typing.Optional[set] = None,
             stat_name: str = 'direct update',
             parent_stats: typing.Optional[Statistics] = None,
             connection_name: typing.Optional[str] = None,

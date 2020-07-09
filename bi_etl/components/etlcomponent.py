@@ -567,6 +567,7 @@ class ETLComponent(Iterable):
             self,
             logical_name: typing.Optional[str] = None,
             columns_in_order: typing.Optional[list] = None,
+            columns_can_vary_by_row: typing.Optional[bool] = None,
             ) -> RowIterationHeader:
         if logical_name is None:
             logical_name = self.row_name
@@ -580,6 +581,7 @@ class ETLComponent(Iterable):
                                   primary_key=result_primary_key,
                                   parent=self,
                                   columns_in_order=columns_in_order,
+                                  columns_can_vary_by_row=columns_can_vary_by_row,
                                   )
 
     def get_column_name(
@@ -801,7 +803,7 @@ class ETLComponent(Iterable):
                                  ignore_source_not_in_target=None,
                                  ignore_target_not_in_source=None,
                                  ):
-        self.sanity_check_source_mapping(example_source_row.columns,
+        self.sanity_check_source_mapping(example_source_row,
                                          example_source_row.name,
                                          source_excludes=source_excludes,
                                          target_excludes=target_excludes,
@@ -859,6 +861,7 @@ class ETLComponent(Iterable):
             new_row = self.Row(iteration_header=self.FULL_ITERATION_HEADER)
             source_set = set(source_row.keys())
 
+            # TODO: This is slower than ideal in many cases (e.g. source & target are the same)
             for col in source_set & target_set:
                 new_row[col] = source_row[col]
         else:
@@ -984,6 +987,7 @@ class ETLComponent(Iterable):
 
         self.init_cache()
 
+        # TODO: Identify row building actions before we start looping over rows
         for row in source.where(
                 criteria_list=criteria_list,
                 criteria_dict=criteria_dict,

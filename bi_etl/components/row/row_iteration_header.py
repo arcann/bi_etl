@@ -26,6 +26,7 @@ class RowIterationHeader(object):
     """
     next_iteration_id = 0
     instance_dict = dict()
+    __shared_name_map_db = dict()
 
     @staticmethod
     def get_by_id(iteration_id):
@@ -36,7 +37,8 @@ class RowIterationHeader(object):
             logical_name: typing.Optional[str] = None,
             primary_key: typing.Optional[typing.Iterable] = None,
             parent: typing.Optional[ETLComponent] = None,
-            columns_in_order=None,
+            columns_in_order: typing.Optional[typing.Iterable] = None,
+            columns_can_vary_by_row: typing.Optional[bool] = None,
             ):
         # Note this is not thread safe. However, we aren't threading yet.
         RowIterationHeader.next_iteration_id += 1
@@ -47,6 +49,17 @@ class RowIterationHeader(object):
             self._column_count = len(columns_in_order)
         else:
             self._column_count = 0
+        if columns_can_vary_by_row is not None:
+            self.columns_can_vary_by_row = columns_can_vary_by_row
+        else:
+            if self._column_count == 0:
+                # If we got no columns we have to assume varibable rows
+                self.columns_can_vary_by_row = True
+            else:
+                # If we got did get columns we'll assume fixed rows
+                # If the source could still be variable (e.g. a CSV file)
+                # The caller should pass in columns_can_vary_by_row = True
+                self.columns_can_vary_by_row = False
         self.row_count = 0
         self.logical_name = logical_name or id(self)
         self._primary_key = None
@@ -57,8 +70,11 @@ class RowIterationHeader(object):
         if columns_in_order is not None:
             self._columns_in_order = None
             self.columns_in_order = columns_in_order
+            self.__name_map_db = RowIterationHeader.__shared_name_map_db
+            self.__name_map_db.update({col: col for col in columns_in_order})
         else:
             self._columns_in_order = list()
+            self.__name_map_db = RowIterationHeader.__shared_name_map_db
         self.columns_frozen = False
         self._cached_column_set = None
         self._cached_positioned_column_set = None
@@ -66,6 +82,21 @@ class RowIterationHeader(object):
         self._action_position = None
         self.action_id = None
         self.action_count = 0
+
+    def get_column_name(self, input_name: str) -> str:
+        try:
+            return self.__name_map_db[input_name]
+        except KeyError:
+            # If the input_name is an SA Column use it's name.
+            # In Python 2.7 to 3.4, isinstance is a lot faster than try-except or hasattr (which does a try)
+            if isinstance(input_name, str):
+                name_str = input_name
+            elif isinstance(input_name, Column):
+                name_str = input_name.name
+            else:
+                raise ValueError("Row column name must be str, unicode, or Column. Got {}".format(type(input_name)))
+            self.__name_map_db[input_name] = name_str
+            return name_str
 
     def get_action_header(
             self,
@@ -266,12 +297,12 @@ class RowIterationHeader(object):
         if column_name in self._columns_positions:
             position = self._columns_positions[column_name]
             # noinspection PyProtectedMember
-            row._data_values[position] = value
+            row.set_by_zposition(position, value)
             new_header = self
         else:
             # Modification of columns required
-            action = tuple(['+:', column_name])
-            new_header = self.get_next_header(action)
+            action_tuple = ('+:', column_name)
+            new_header = self.get_next_header(action_tuple)
             new_header.add_row(row)
             if new_header._action_position is None:
                 new_header._action_position = new_header._add_column(column_name)
@@ -323,8 +354,8 @@ class RowIterationHeader(object):
             assert new_name not in self._columns_positions, "Target column name {} already exists".format(new_name)
             # Modification of columns required
             if not no_new_header:
-                action = tuple(['r', old_name, new_name])
-                new_header = self.get_next_header(action)
+                action_tuple = ('r', old_name, new_name)
+                new_header = self.get_next_header(action_tuple)
                 new_header.row_count = self.row_count
             else:
                 new_header = self
@@ -375,9 +406,9 @@ class RowIterationHeader(object):
         # Note: By using id(rename_map) we assume that the calling code will not change
         # the rename map after we first see it. This seems like a reasonable assumption
         # for the performance gained.
-        action = tuple(['rc', id(rename_map)])
+        action_tuple = ('rc', id(rename_map))
         try:
-            new_header = self._actions_to_next_headers[action]
+            new_header = self._actions_to_next_headers[action_tuple]
         except KeyError:
             # Results of rename not already stored, perform the renames one by one
             if isinstance(rename_map, typing.Mapping):
@@ -391,7 +422,7 @@ class RowIterationHeader(object):
                                                           ignore_missing=ignore_missing,
                                                           no_new_header=no_new_header)
             # Now store the shortcut
-            self._actions_to_next_headers[action] = new_header
+            self._actions_to_next_headers[action_tuple] = new_header
 
         return new_header
 
@@ -408,8 +439,8 @@ class RowIterationHeader(object):
         else:
             # Modification of columns required
             self.get_column_position.cache_clear()
-            action = tuple(['-:', column_name])
-            new_header = self.get_next_header(action)
+            action_tuple = ('-:', column_name)
+            new_header = self.get_next_header(action_tuple)
             new_header.add_row(row)
             if new_header._action_position is None:
                 position = new_header._columns_positions[column_name]
@@ -461,27 +492,17 @@ class RowIterationHeader(object):
             The second item in the list will be the index of that item in the old list.
             etc
         """
-        action_list = [tuple('s')]
+        action_1 = 's'
+        action_2 = frozenset(exclude or {})
+        action_3 = frozenset(keep_only or {})
+        # Note: By using id(rename_map) we assume that the calling code will not change
+        # the rename map after we first see it. This seems like a reasonable assumption
+        # for the performance gained.
+        action_4 = id(rename_map)
 
-        if exclude is not None:
-            action_list.append(tuple(exclude))
-        else:
-            action_list.append(tuple())
+        action_tuple = (action_1, action_2, action_3, action_4)
 
-        if keep_only is not None:
-            action_list.append(tuple(keep_only))
-        else:
-            action_list.append(tuple())
-
-        if isinstance(rename_map, typing.Mapping):
-            for k in rename_map.keys():
-                action_list.append(tuple([k, rename_map[k]]))
-        elif rename_map is not None:  # assume it's a list of tuples
-            for (old, new) in rename_map:
-                action_list.append(tuple([old, new]))
-
-        action = tuple(action_list)
-        new_iteration_header = self.get_next_header(action)
+        new_iteration_header = self.get_next_header(action_tuple)
         sub_row = row.__class__(iteration_header=new_iteration_header, allocate_space=False)
 
         if new_iteration_header._action_position is None:

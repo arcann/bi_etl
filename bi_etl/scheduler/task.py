@@ -152,6 +152,7 @@ class ETLTask(object):
         self.load_timer = Timer(start_running=False)
         self.finish_timer = Timer(start_running=False)
         self.suppress_notifications = False
+        self.notification_fallback_channel = 'failed_notifications'
         self.log_handler = None
 
     def __getstate__(self):
@@ -638,6 +639,12 @@ class ETLTask(object):
         self._database_pool.append(database_object)
 
     def get_database_name(self):
+        """
+        Returns the database name (entry in config) to use for calls to get_database where
+        no name is provided.
+
+        :return:
+        """
         return NotImplementedError()
 
     def get_database(
@@ -1030,14 +1037,31 @@ class ETLTask(object):
                 config_sections.append('LogNotifier')
 
         notifiers_list = list()
+        notifier_class_str = 'unset'
         for config_section in config_sections:
-            if config_section == 'LogNotifier':
-                notifier_class_str = config_section
-            else:
-                notifier_class_str = self.config.get(config_section, 'notifier_class', fallback=None)
+            try:
+                if config_section == 'LogNotifier':
+                    notifier_class_str = config_section
+                else:
+                    notifier_class_str = self.config.get(config_section, 'notifier_class', fallback=None)
 
-            notifier_class = NOTIFIER_CLASES[notifier_class_str]
-            notifiers_list.append(notifier_class(self.config, config_section))
+                notifier_class = NOTIFIER_CLASES[notifier_class_str]
+                notifier_instance = notifier_class(self.config, config_section)
+                notifiers_list.append(notifier_instance)
+            except Exception as e:
+                self.log.exception(e)
+                if self.notification_fallback_channel is not None and channel_name != self.notification_fallback_channel:
+                    fallback_message = f'Notification to {config_section} {notifier_class_str} failed with error={e}'
+                    fallback_notifiers_list = self.get_notifiers(self.notification_fallback_channel)
+                    for fallback_notifier in fallback_notifiers_list:
+                        try:
+                            fallback_notifier.send(
+                                subject=f'Failed to send to {config_section}',
+                                message=fallback_message,
+                            )
+                            notifiers_list.append(fallback_notifier)
+                        except Exception as e:
+                            self.log.exception(e)
         return notifiers_list
 
     def notify(self, channel_name, subject, message=None, sensitive_message=None, attachment=None):
@@ -1055,6 +1079,20 @@ class ETLTask(object):
                         )
                     except Exception as e:
                         self.log.exception(e)
+                        if self.notification_fallback_channel is not None:
+                            fallback_message = f'error={e} original_subject={subject} original_message={message}'
+                            fallback_notifiers_list = self.get_notifiers(self.notification_fallback_channel)
+                            for fallback_notifier in fallback_notifiers_list:
+                                try:
+                                    fallback_notifier.send(
+                                        subject=f'Failed to send to {notifier}',
+                                        message=fallback_message,
+                                        sensitive_message=sensitive_message,
+                                        attachment=attachment,
+                                    )
+                                except Exception as e:
+                                    self.log.exception(e)
+
             except Exception as e:
                 self.log.exception(e)
 

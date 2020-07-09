@@ -128,7 +128,7 @@ class BulkLoader(object):
                         # Create a new temp table
                         table_name = "tmp_" + str(datetime.now().toordinal()) + str(tmp_id)
                         try:
-                            row_columns = [table_object.get_column(col_name).copy() for col_name in row.columns]
+                            row_columns = [table_object.get_column(col_name).copy() for col_name in row.columns_in_order]
                             sa_table = sqlalchemy.schema.Table(
                                 table_name,
                                 table_object.database,

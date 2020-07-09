@@ -24,6 +24,7 @@ class RunSQLScript(ETLTask):
                  datbase_entry: Union[str, DatabaseMetadata],
                  script_path: str,
                  script_name: str,
+                 sql_replacements: dict = None,
                  task_id=None,
                  parent_task_id=None,
                  root_task_id=None,
@@ -40,6 +41,7 @@ class RunSQLScript(ETLTask):
         self.datbase_entry = datbase_entry
         self.script_path = script_path
         self.script_name = script_name
+        self.sql_replacements = sql_replacements
 
         root_path, _ = os.path.split(os.getcwd())
         paths_tried = list()
@@ -102,7 +104,10 @@ class RunSQLScript(ETLTask):
         else:
             database = self.get_database(self.datbase_entry)
         sql_replacements_str = self.config.get(database.database_name, 'SQL_Replacements', fallback='')
-        sql_replacements = dict()
+        if self.sql_replacements is None:
+            sql_replacements = dict()
+        else:
+            sql_replacements = self.sql_replacements
         for replacement_line in sql_replacements_str.split('\n'):
             replacement_line = replacement_line.strip()
             if ':' in replacement_line:
