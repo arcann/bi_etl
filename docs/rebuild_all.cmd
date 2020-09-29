@@ -1,0 +1,1 @@
+sphinx-build -b html -E -w issues.log source build

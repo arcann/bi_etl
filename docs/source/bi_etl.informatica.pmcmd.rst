@@ -1,7 +1,7 @@
-bi_etl.informatica.pmcmd module
-===============================
+bi\_etl.informatica.pmcmd module
+================================
 
 .. automodule:: bi_etl.informatica.pmcmd
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :show-inheritance:

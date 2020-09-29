@@ -1,7 +1,7 @@
-bi_etl.timer module
-===================
+bi\_etl.timer module
+====================
 
 .. automodule:: bi_etl.timer
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :show-inheritance:

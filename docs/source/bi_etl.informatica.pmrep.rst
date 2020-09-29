@@ -1,7 +1,7 @@
-bi_etl.informatica.pmrep module
-===============================
+bi\_etl.informatica.pmrep module
+================================
 
 .. automodule:: bi_etl.informatica.pmrep
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :show-inheritance:

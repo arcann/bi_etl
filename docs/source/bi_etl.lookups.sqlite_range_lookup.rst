@@ -1,7 +1,8 @@
-bi_etl.lookups.sqlite_range_lookup module
-=========================================
+bi\_etl.lookups.sqlite\_range\_lookup module
+============================================
 
 .. automodule:: bi_etl.lookups.sqlite_range_lookup
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:

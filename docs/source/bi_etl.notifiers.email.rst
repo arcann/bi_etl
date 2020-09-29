@@ -1,7 +1,8 @@
-bi_etl.notifiers.email module
-=============================
+bi\_etl.notifiers.email module
+==============================
 
 .. automodule:: bi_etl.notifiers.email
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:

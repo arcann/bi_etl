@@ -1,10 +1,11 @@
-bi_etl.informatica package
-==========================
+bi\_etl.informatica package
+===========================
 
 Submodules
 ----------
 
 .. toctree::
+   :maxdepth: 4
 
    bi_etl.informatica.exceptions
    bi_etl.informatica.pmcmd
@@ -15,6 +16,6 @@ Module contents
 ---------------
 
 .. automodule:: bi_etl.informatica
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :show-inheritance:

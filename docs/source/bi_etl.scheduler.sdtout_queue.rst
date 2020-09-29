@@ -1,7 +1,7 @@
-bi_etl.scheduler.sdtout_queue module
-====================================
+bi\_etl.scheduler.sdtout\_queue module
+======================================
 
 .. automodule:: bi_etl.scheduler.sdtout_queue
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,7 +1,8 @@
-bi_etl.scheduler.scheduler_interface module
-===========================================
+bi\_etl.scheduler.scheduler\_interface module
+=============================================
 
 .. automodule:: bi_etl.scheduler.scheduler_interface
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:

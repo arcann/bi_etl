@@ -44,10 +44,16 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.todo',
     'sphinx.ext.viewcode',
-    'sphinxcontrib.restbuilder',
+    #'sphinxcontrib.restbuilder',
 ]
-
-autodoc_default_flags = ['members', 'undoc-members', 'inherited-members', 'show-inheritance']
+autodoc_default_options = {
+    'members': 'var1, var2',
+    'special-members': '__init__',
+    'undoc-members': True,
+    'inherited-members': True,
+    'show-inheritance': True,
+    'exclude-members': '__weakref__'
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

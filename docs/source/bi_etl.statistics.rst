@@ -1,7 +1,8 @@
-bi_etl.statistics module
-========================
+bi\_etl.statistics module
+=========================
 
 .. automodule:: bi_etl.statistics
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:

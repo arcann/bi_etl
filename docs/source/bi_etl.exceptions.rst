@@ -1,10 +1,10 @@
-bi_etl.exceptions package
-=========================
+bi\_etl.exceptions package
+==========================
 
 Module contents
 ---------------
 
 .. automodule:: bi_etl.exceptions
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :show-inheritance:

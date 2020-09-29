@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "bi_etl"
+version = "0.7.5"
+description = "Python ETL Framework"
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.7"
+SQLAlchemy = "^1.3.19"
+semidbm = "^0.5.1"
+psutil = "^5.7.2"
+openpyxl = "^3.0.5"
+CaseInsensitiveDict = "^1.0.0"
+btrees = "^4.7.2"
+gevent = "^20.9.0"
+keyring = "^21.4.0"
+
+[tool.poetry.dev-dependencies]
+Sphinx = "^3.2.1"
+sphinx-autodoc-annotation = "^1.0-1"
+fastavro = "^1.0.0"
+boto3 = "^1.15.7"
+pathos = "^0.2.6"
+gevent = "^20.9.0"
+psycopg2 = "^2.8.6"
+sqlparse = "^0.3.1"
+toml = "^0.10.1"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"

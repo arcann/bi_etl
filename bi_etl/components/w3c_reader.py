@@ -6,6 +6,10 @@ import csv
 import os
 import typing
 
+from sqlalchemy import Column
+
+from bi_etl.components.row.row import Row
+from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.etlcomponent import ETLComponent
@@ -159,6 +163,53 @@ class W3CReader(ETLComponent):
                 raise ValueError("Data lines started before column names")
         if self.trace_data:
             self.log.debug("Column names read: {}".format(self.column_names))
+
+    def where(
+            self,
+            criteria_list: typing.Optional[list] = None,
+            criteria_dict: typing.Optional[dict] = None,
+            order_by: typing.Optional[list] = None,
+            column_list: typing.List[typing.Union[Column, str]] = None,
+            exclude_cols: typing.List[typing.Union[Column, str]] = None,
+            use_cache_as_source: typing.Optional[bool] = None,
+            progress_frequency: typing.Optional[int] = None,
+            stats_id: typing.Optional[str] = None,
+            parent_stats: typing.Optional[Statistics] = None,
+            ) -> typing.Iterable[Row]:
+        """
+
+        Parameters
+        ----------
+        criteria_list:
+            *Not Supported for this component.*
+        criteria_dict:
+            Dict keys should be column names, values are checked for equality with the column on each row.
+        order_by:
+            *Not Supported for this component.*
+        column_list:
+            List of columns names
+        exclude_cols
+        use_cache_as_source
+        progress_frequency
+        stats_id
+        parent_stats
+
+        Returns
+        -------
+        rows
+
+        """
+        return super().where(
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            order_by=order_by,
+            column_list=column_list,
+            exclude_cols=exclude_cols,
+            use_cache_as_source=use_cache_as_source,
+            progress_frequency=progress_frequency,
+            stats_id=stats_id,
+            parent_stats=parent_stats,
+        )
     
     def _raw_rows(self):
         len_column_names = len(self.column_names)

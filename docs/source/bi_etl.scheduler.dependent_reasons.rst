@@ -1,7 +1,7 @@
-bi_etl.scheduler.dependent_reasons module
-=========================================
+bi\_etl.scheduler.dependent\_reasons module
+===========================================
 
 .. automodule:: bi_etl.scheduler.dependent_reasons
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :show-inheritance:

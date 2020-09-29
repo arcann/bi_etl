@@ -1,8 +1,3 @@
-.. bi_etl documentation master file, created by
-   sphinx-quickstart on Fri Nov 06 14:18:50 2015.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
 ################################
 BI ETL Python Framework (bi_etl)
 ################################
@@ -124,7 +119,11 @@ Component Class                                                     Usable as  U
 :class:`~bi_etl.components.csvreader.CSVReader`                     Yes        No         Can read *any* delimited file (see ''delimiter'' parameter) 
                                                                                           It is based on the Python csv module.
                                                                                           See https://docs.python.org/3.5/library/csv.html
+:class:`~bi_etl.components.csv_writer.CSVWriter`                    No         Yes        Can write *any* delimited file (see ''delimiter'' parameter)
+                                                                                          It is based on the Python csv module.
+                                                                                          See https://docs.python.org/3.5/library/csv.html
 :class:`~bi_etl.components.xlsx_reader.XLSXReader`                  Yes        No         Reads from Excel files; although only those in xlsx format.
+:class:`~bi_etl.components.xlsx_writer.XLSXWriter`                  Yes        Yes        Writes to Excel xlsx files (can also read files).
 :class:`~bi_etl.components.sqlquery.SQLQuery`                       Yes        No         Reads from the result of a SQL query.
 :class:`~bi_etl.components.readonlytable.ReadOnlyTable`             Yes        No         Useful when reading all columns from a database table or view.
                                                                                           Rows can be filtered using the where method.
@@ -134,23 +133,19 @@ Component Class                                                     Usable as  U
                                                                                           * delete_not_in_set, and delete_not_processed
                                                                                           * logically_delete_not_in_set, and not_processed
                                                                                           * update_not_in_set, update_not_processed
-:class:`~bi_etl.components.hst_table.Hst_Table`                     Yes        Yes        Inherits from Table. Adds ability to correctly load versioned
+:class:`~bi_etl.components.hst_table.HistoryTable`                  Yes        Yes        Inherits from Table. Adds ability to correctly load versioned
                                                                                           tables. Supports both type 2 dimensions and date versioned
                                                                                           warehouse tables. Also has cleanup_versions method
                                                                                           to remove version rows that are not needed (due to being
                                                                                           redundant).
+
+:class:`~bi_etl.components.w3c_reader.W3CReader`                    Yes        No         Reads W3C based log files (web server logs).
+
 :class:`~bi_etl.components.data_analyzer.DataAnalyzer`              No         Yes        Produces a summary of the columns in the data rows passed to the
                                                                                           :meth:`~bi_etl.components.data_analyzer.DataAnalyzer.analyze_row`
                                                                                           method.
                                                                                           The output currently goes to the task log.
 =================================================================== ========== ========== ====================================================================                                                                                          
-
-.. note::                                                                                          
-   There are not yet components for *writing* delimited files or Excel files.
-   
-   However, csv.DictWriter works well for writing delimited files. The added statistics tracking features of an ETLComponent do not seem critical.
-   
-   openpyxl can be used for directly writing Excel files. 
 
 Functionality common to all sources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -375,3 +370,6 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
+------------
+
+.. [*] Beetle icon from <a href="https://www.freeiconspng.com/img/28142">Beetle For Windows Icons</a>

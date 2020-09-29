@@ -1,17 +1,19 @@
-bi_etl.scheduler package
-========================
+bi\_etl.scheduler package
+=========================
 
 Subpackages
 -----------
 
 .. toctree::
+   :maxdepth: 4
 
-    bi_etl.scheduler.scheduler_etl_jobs
+   bi_etl.scheduler.scheduler_etl_jobs
 
 Submodules
 ----------
 
 .. toctree::
+   :maxdepth: 4
 
    bi_etl.scheduler.dependent_reasons
    bi_etl.scheduler.etl_task_status_cd
@@ -30,6 +32,6 @@ Module contents
 ---------------
 
 .. automodule:: bi_etl.scheduler
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :show-inheritance:

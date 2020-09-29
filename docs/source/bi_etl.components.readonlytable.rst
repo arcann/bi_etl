@@ -1,7 +1,8 @@
-bi_etl.components.readonlytable module
-======================================
+bi\_etl.components.readonlytable module
+=======================================
 
 .. automodule:: bi_etl.components.readonlytable
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :inherited-members:
+   :show-inheritance:

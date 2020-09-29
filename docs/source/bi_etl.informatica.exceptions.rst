@@ -1,7 +1,7 @@
-bi_etl.informatica.exceptions module
-====================================
+bi\_etl.informatica.exceptions module
+=====================================
 
 .. automodule:: bi_etl.informatica.exceptions
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :show-inheritance:
