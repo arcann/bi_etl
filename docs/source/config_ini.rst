@@ -8,11 +8,14 @@ The file will be searched for in the following locations.
 +------------+-----------------------------------------------+
 | OS         |  File location                                |
 +============+===============================================+
-| Windows:   | -``C:\bi_etl_config\config.ini``              |
+| Windows:   | Current working directory, parent directories |
+|            | -``C:\bi_etl_config\config.ini``              |
+|            | -``D:\bi_etl_config\config.ini``              |
 |            | -``E:\bi_etl_config\config.ini``              |
 |            | -``%USERPROFILE%\bi_etl_config\config.ini``   |
 +------------+-----------------------------------------------+
-| Linux:   ``~/bi_etl_config/config.ini``                    |
+| Linux:     | Current working directory, parent directories |
+|            |  ``~/bi_etl_config/config.ini``               |
 +------------+-----------------------------------------------+
 
 A sample file can be found in the code repository
