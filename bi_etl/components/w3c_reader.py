@@ -10,7 +10,6 @@ from sqlalchemy import Column
 
 from bi_etl.components.row.row import Row
 from bi_etl.statistics import Statistics
-from bi_etl.timer import Timer
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.etlcomponent import ETLComponent
 import logging
@@ -24,34 +23,35 @@ QUOTE_MINIMAL = csv.QUOTE_MINIMAL
 
 
 class W3CReader(ETLComponent):
-    """ 
+    """
     W3CReader reads W3c based log files
 
     Args:
         task: The  instance to register in (if not None)
-        
-        filedata: 
-            The file to parse as delimited. If str then it's assumed to be a filename. 
+
+        filedata:
+            The file to parse as delimited. If str then it's assumed to be a filename.
             Otherwise it's assumed to be a file object.
-    
-        encoding: 
-            The encoding to use when opening the file, 
+
+        encoding:
+            The encoding to use when opening the file,
             if it was a filename and not already opened.
-            Default is None which becomes the Python default encoding 
-            
-        errors: 
-            The error handling to use when opening the file 
+            Default is None which becomes the Python default encoding
+
+        errors:
+            The error handling to use when opening the file
             (if it was a filename and not already opened)
             Default is 'strict'
-            See above for valid errors values.            
-            
+            See above for valid errors values.
+
         logical_name:
-            The logical name of this source. Used for log messages.  
-    
+            The logical name of this source. Used for log messages.
+
     Attributes:
         column_names: list
             The names to use for columns
     """
+
     def __init__(self,
                  task: ETLTask,
                  filedata: typing.Union[typing.TextIO, str],
@@ -60,31 +60,31 @@ class W3CReader(ETLComponent):
                  logical_name: str = None,
                  **kwargs
                  ):
-        
+
         self.log = logging.getLogger("{mod}.{cls}".format(
             mod=self.__class__.__module__,
             cls=self.__class__.__name__
-            )
         )
-        
+        )
+
         self.__close_file = False
-        
+
         # We have to check / open the file here to get the name for the logical name
         if isinstance(filedata, str):
             self.log.info("Opening file {}".format(filedata))
-            self.file = open(filedata, 
+            self.file = open(filedata,
                              mode='rt',
-                             newline='', 
-                             encoding=encoding, 
+                             newline='',
+                             encoding=encoding,
                              errors=errors
                              )
-            self.__close_file = True            
+            self.__close_file = True
         else:
             self.log.info("Treating input as file object {}".format(filedata))
             self.file = filedata
-        
+
         if logical_name is None:
-            try: 
+            try:
                 logical_name = os.path.basename(self.file.name)
             except AttributeError:
                 logical_name = str(self.file)
@@ -94,7 +94,7 @@ class W3CReader(ETLComponent):
 
         self._line_num = 0
         self._pending_lines = list()
-        
+
         # Don't pass kwargs up. They should be set here at the end
         super().__init__(
             task=task,
@@ -105,15 +105,10 @@ class W3CReader(ETLComponent):
         self.set_kwattrs(**kwargs)
 
     def __repr__(self):
-        return "{cls}(task={task},logical_name={logical_name},filedata={file},primary_key={primary_key}," \
-               "column_names={column_names})".format(
-                    cls=self.__class__.__name__,
-                    task=self.task,
-                    logical_name=self.logical_name,
-                    file=self.file,
-                    primary_key=self.primary_key,
-                    column_names=self.column_names,
-                    )
+        return (
+            f"{self.__class__.__name__}(task={self.task},logical_name={self.logical_name}," 
+            f"filedata={self.file},primary_key={self.primary_key},column_names={self.column_names})"
+        )
 
     @property
     def line_num(self):
@@ -146,7 +141,7 @@ class W3CReader(ETLComponent):
         while line is not None and line[0] == '#':
             line = self._read_line()
         return line
-        
+
     def _obtain_column_names(self):
         """
         Get the column names from the file. ETLComponent only call this if self._column_names is None:
@@ -175,7 +170,7 @@ class W3CReader(ETLComponent):
             progress_frequency: typing.Optional[int] = None,
             stats_id: typing.Optional[str] = None,
             parent_stats: typing.Optional[Statistics] = None,
-            ) -> typing.Iterable[Row]:
+    ) -> typing.Iterable[Row]:
         """
 
         Parameters
@@ -210,11 +205,10 @@ class W3CReader(ETLComponent):
             stats_id=stats_id,
             parent_stats=parent_stats,
         )
-    
+
     def _raw_rows(self):
         len_column_names = len(self.column_names)
         try:
-            len_column_names = len(self.column_names)
             this_iteration_header = self.generate_iteration_header(columns_in_order=self.column_names)
             # noinspection PyTypeChecker
             done = False
@@ -230,17 +224,19 @@ class W3CReader(ETLComponent):
 
                         len_row = len(row)
                         if len_column_names < len_row:
-                            raise ValueError(f'Row {self.line_num} has extra columns Row has {len_row} > Header has {len_column_names}: "{line}"')
+                            raise ValueError(
+                                f'Row {self.line_num} has extra columns Row has {len_row} > Header has {len_column_names}: "{line}"')
                         elif len_column_names > len_row:
                             if self.warnings_issued < self.warnings_limit:
                                 self.warnings_issued += 1
-                                self.log.warning(f'Row {self.line_num} is missing columns. Row has {len_row} < Header has {len_column_names}: "{line}"')
+                                self.log.warning(
+                                    f'Row {self.line_num} is missing columns. Row has {len_row} < Header has {len_column_names}: "{line}"')
                             for key in self.column_names[len_row:]:
                                 d[key] = None
                         yield d
         finally:
             pass
-        
+
     def close(self):
         """
         Close the file
