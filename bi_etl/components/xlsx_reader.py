@@ -236,7 +236,6 @@ class XLSXReader(ETLComponent):
         len_column_names = len(self.column_names)
         this_iteration_header = self.generate_iteration_header(
             columns_in_order=self.column_names,
-            columns_can_vary_by_row=True,
         )
         for row in self.active_worksheet.iter_rows(min_row=self.start_row):
             self.__active_row += 1
@@ -246,8 +245,11 @@ class XLSXReader(ETLComponent):
             len_row = len(row_values)
             if len_column_names < len_row:
                 if self.restkey is not None:
+                    # Note: Adding restkey to the row will create a new iteration header
+                    #      (shared by subsequent rows with extra values)
                     d[self.restkey] = row_values[len_column_names:]
             elif len_column_names > len_row:
+                # This could be done in a faster way, but hopefully is rare so not worth optimizing
                 for key in self.column_names[len_row]:
                     d[key] = self.restval
             yield d 

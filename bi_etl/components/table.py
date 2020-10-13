@@ -353,7 +353,7 @@ class Table(ReadOnlyTable):
                                     default = self.default_medium_text
                                 else:
                                     default = self.default_char1_text
-                        row[column_name] = default
+                        row.set_keeping_parent(column_name, default)
                         if column_name not in self._bulk_defaulted_columns:
                             self.log.warning(f'defaulted column {column_name} to {default}')
                             self._bulk_defaulted_columns.add(column_name)
@@ -408,7 +408,7 @@ class Table(ReadOnlyTable):
         # If key value is not already set, or we are supposed to force override                    
         if row.get(seq_column_obj.name) is None or force_override:
             next_key = self.table_key_memory.get_next_key(seq_column)
-            row[seq_column_obj] = next_key
+            row.set_keeping_parent(seq_column_obj.name, next_key)
             return next_key
 
     def autogenerate_key(
@@ -467,14 +467,19 @@ class Table(ReadOnlyTable):
                 """)
         return code
 
-    def _get_coerce_method_name(self, target_column_object: typing.Union[str, 'sqlalchemy.sql.expression.ColumnElement']) -> str:
-        target_column_name = self.get_column_name(target_column_object)
+    def _get_coerce_method_name_by_str(self, target_column_name: str) -> str:
+        if not self._coerce_methods_built:
+            self._build_coerce_methods()
         return f"_coerce_{target_column_name}"
+
+    def _get_coerce_method_name_by_object(self, target_column_object: typing.Union[str, 'sqlalchemy.sql.expression.ColumnElement']) -> str:
+        target_column_name = self.get_column_name(target_column_object)
+        return self._get_coerce_method_name_by_str(target_column_name)
 
     def get_coerce_method(self, target_column_object: typing.Union[str, 'sqlalchemy.sql.expression.ColumnElement']) -> typing.Callable:
         if not self._coerce_methods_built:
             self._build_coerce_methods()
-        method_name = self._get_coerce_method_name(target_column_object)
+        method_name = self._get_coerce_method_name_by_object(target_column_object)
         try:
             return getattr(self, method_name)
         except AttributeError:
@@ -484,7 +489,7 @@ class Table(ReadOnlyTable):
             self,
             target_column_object: ColumnElement,
             ):
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = f"def {name}(self, target_column_value):"
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent("""
@@ -504,7 +509,7 @@ class Table(ReadOnlyTable):
             ):
         target_name = target_column_object.name
         t_type = target_column_object.type
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = f"def {name}(self, target_column_value):"
         code += textwrap.dedent("""\
         # base indent
@@ -588,7 +593,7 @@ class Table(ReadOnlyTable):
             ):
         target_name = target_column_object.name
         t_type = target_column_object.type
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         code += textwrap.dedent("""\
         # base indent            
@@ -641,7 +646,7 @@ class Table(ReadOnlyTable):
             self,
             target_column_object: ColumnElement,
             ):
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         code += textwrap.dedent("""\
         # base indent
@@ -677,7 +682,7 @@ class Table(ReadOnlyTable):
             self,
             target_column_object: ColumnElement,
             ):
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
@@ -724,7 +729,7 @@ class Table(ReadOnlyTable):
             ):
         target_name = target_column_object.name
         t_type = target_column_object.type
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
 
         code += textwrap.dedent("""\
@@ -797,7 +802,7 @@ class Table(ReadOnlyTable):
             self,
             target_column_object: ColumnElement,
             ):
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
@@ -842,7 +847,7 @@ class Table(ReadOnlyTable):
             self,
             target_column_object: ColumnElement,
             ):
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         code += textwrap.dedent("""\
         # base indent
@@ -898,7 +903,7 @@ class Table(ReadOnlyTable):
             self,
             target_column_object: ColumnElement,
             ):
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
@@ -944,7 +949,7 @@ class Table(ReadOnlyTable):
             self,
             target_column_object: ColumnElement,
             ):
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
@@ -979,7 +984,7 @@ class Table(ReadOnlyTable):
 
     def _make_bool_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
         target_name = target_column_object.name
-        name = self._get_coerce_method_name(target_column_object)
+        name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
@@ -1026,6 +1031,7 @@ class Table(ReadOnlyTable):
         exec("self.{name} = {name}.__get__(self)".format(name=name))
 
     def _build_coerce_methods(self):
+        self._coerce_methods_built = True
         for column in self.columns:
             if column.name in self.skip_coercion_on:
                 self._make_generic_coerce(column)
@@ -1057,7 +1063,6 @@ class Table(ReadOnlyTable):
                         self._make_generic_coerce(column)
                 except NotImplementedError:
                     raise ValueError("Column {} has type {} with no python_type".format(column, t_type))
-        self._coerce_methods_built = True
 
     def column_coerce_type(
             self,
@@ -1250,8 +1255,8 @@ class Table(ReadOnlyTable):
             self,
             source_definition: ETLComponent,
             source_name: str = None,
-            source_excludes: typing.Optional[set] = None,
-            target_excludes: typing.Optional[set] = None,
+            source_excludes: typing.Optional[frozenset] = None,
+            target_excludes: typing.Optional[frozenset] = None,
             ignore_source_not_in_target: typing.Optional[bool] = None,
             ignore_target_not_in_source: typing.Optional[bool] = None,
             raise_on_source_not_in_target: typing.Optional[bool] = None,
@@ -1272,6 +1277,7 @@ class Table(ReadOnlyTable):
 
         target_excludes.add(self.delete_flag)
         target_excludes.add(self.last_update_date)
+        target_excludes = frozenset(target_excludes)
 
         super().sanity_check_source_mapping(
             source_definition=source_definition,
@@ -1287,8 +1293,8 @@ class Table(ReadOnlyTable):
     def sanity_check_example_row(
             self,
             example_source_row,
-            source_excludes: typing.Optional[set] = None,
-            target_excludes: typing.Optional[set] = None,
+            source_excludes: typing.Optional[frozenset] = None,
+            target_excludes: typing.Optional[frozenset] = None,
             ignore_source_not_in_target: typing.Optional[bool] = None,
             ignore_target_not_in_source: typing.Optional[bool] = None,
             ):
@@ -1302,97 +1308,6 @@ class Table(ReadOnlyTable):
         )
         # TODO: Sanity check primary key data types.
         # Lookups might fail if the types don't match (although build_row in safe_mode should fix it)
-
-    def build_row(
-            self,
-            source_row: typing.MutableMapping,
-            additional_values: dict = None,
-            source_excludes: typing.Optional[set] = None,
-            target_excludes: typing.Optional[set] = None,
-            build_method: ETLComponent.RowBuildMethod = ETLComponent.RowBuildMethod.safe,
-            stat_name: str = 'build rows',
-            parent_stats: typing.Optional[Statistics] = None,
-            ) -> Row:
-        """
-        Use a source row to build a row with correct data types for this table.
-
-        Parameters
-        ----------
-        source_row
-        additional_values
-        source_excludes
-        target_excludes
-        build_method:
-            none, clone, or safe (default is safe)
-            None means use the row as is
-            Clone means create a subset clone
-            Safe does a clone and then checks each column type to ensure it matches the target
-        stat_name
-            Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
-        parent_stats
-
-        Returns
-        -------
-            row
-        """
-        new_row = super().build_row(
-            source_row=source_row,
-            additional_values=additional_values,
-            source_excludes=source_excludes,
-            target_excludes=target_excludes,
-            build_method=build_method,
-            stat_name=stat_name,
-            parent_stats=parent_stats,
-        )
-        new_row_columns = new_row.keys()
-        if len(new_row_columns) == 0:
-            raise ValueError(f'No columns mapped to target from source columns {source_row.columns}')
-
-        build_row_stats = self.get_stats_entry(stat_name + 'coerce_types', parent_stats=parent_stats)
-        build_row_stats.print_start_stop_times = False
-        build_row_stats.timer.start()
-        build_row_stats['method'] = build_method
-        build_row_stats['calls'] += 1
-
-        if build_method != Table.RowBuildMethod.none:
-            if not self._coerce_methods_built:
-                self._build_coerce_methods()
-
-            if build_method == Table.RowBuildMethod.safe and self.safe_type_mode:
-                # Safe type mode is slower, but gives better error messages than the
-                # database that will likely give a not-so helpful message or silently truncate a value.
-                # Non safe type mode can also lead to a failure of the lookups since type differences
-                # will cause the lookup key to look different from the existing value.
-                build_row_method_name = self._get_build_row_name(new_row)
-                try:
-                    build_row_method = getattr(self, build_row_method_name)
-                    # Call method
-                except AttributeError:
-                    code = "def {name}(self, new_row):\n".format(name=build_row_method_name)
-                    for target_name in new_row_columns:
-                        target_column_object = self.get_column(target_name)
-                        coerce_method_name = self._get_coerce_method_name(target_column_object)
-                        code += "    new_row.transform('{target_name}', self.{coerce_method_name})\n".format(
-                            target_name=target_name,
-                            coerce_method_name=coerce_method_name,
-                        )
-                    try:
-                        code = compile(code, filename=build_row_method_name, mode='exec')
-                        exec(code)
-                    except SyntaxError as e:
-                        self.log.exception("{e} from code\n{code}".format(e=e, code=code))
-                    # Add the new function as a method in this class
-                    exec("self.{name} = {name}.__get__(self)".format(name=build_row_method_name))
-                    build_row_method = getattr(self, build_row_method_name)
-                    # Call method
-                build_row_method(new_row)
-
-        if additional_values:
-            for colName, value in additional_values.items():
-                new_row[colName] = value
-
-        build_row_stats.timer.stop()
-        return new_row
 
     def _insert_stmt(self):
         # pylint: disable=no-value-for-parameter
@@ -1536,11 +1451,10 @@ class Table(ReadOnlyTable):
 
     def insert_row(
             self,
-            source_row: typing.MutableMapping,  # Must be a single row as Row or similar
+            source_row: Row,
             additional_insert_values: typing.Optional[dict] = None,
-            build_method: ETLComponent.RowBuildMethod = ETLComponent.RowBuildMethod.safe,
-            source_excludes: typing.Optional[set] = None,
-            target_excludes: typing.Optional[set] = None,
+            source_excludes: typing.Optional[frozenset] = None,
+            target_excludes: typing.Optional[frozenset] = None,
             stat_name: str = 'insert',
             parent_stats: typing.Optional[Statistics] = None,
             ) -> Row:
@@ -1552,14 +1466,10 @@ class Table(ReadOnlyTable):
         source_row
             The row with values to insert
         additional_insert_values
-        build_method:
-            RowBuildMethod.safe matches source to tagret column by column.
-            RowBuildMethod.clone makes a clone of the source row. Prevents possible issues with outside changes to the row.
-            RowBuildMethod.none uses the row as is.
         source_excludes:
-            list of source columns to exclude
+            set of source columns to exclude
         target_excludes
-            list of target columns to exclude
+            set of target columns to exclude
         stat_name
         parent_stats
 
@@ -1573,10 +1483,8 @@ class Table(ReadOnlyTable):
 
         new_row = self.build_row(
             source_row=source_row,
-            additional_values=additional_insert_values,
             source_excludes=source_excludes,
             target_excludes=target_excludes,
-            build_method=build_method,
             parent_stats=stats,
             )
 
@@ -1584,7 +1492,7 @@ class Table(ReadOnlyTable):
 
         if self.delete_flag is not None:
             if self.delete_flag not in new_row or new_row[self.delete_flag] is None:
-                new_row[self.delete_flag] = self.delete_flag_no
+                new_row.set_keeping_parent(self.delete_flag, self.delete_flag_no)
 
         # Set the last update date
         if self.last_update_date is not None:
@@ -1642,8 +1550,8 @@ class Table(ReadOnlyTable):
             self,
             source_row: Union[typing.MutableMapping, typing.Iterable[typing.MutableMapping]],
             additional_insert_values: typing.Optional[dict] = None,
-            source_excludes: typing.Optional[set] = None,
-            target_excludes: typing.Optional[set] = None,
+            source_excludes: typing.Optional[frozenset] = None,
+            target_excludes: typing.Optional[frozenset] = None,
             parent_stats: typing.Optional[Statistics] = None,
             **kwargs
             ):
@@ -1666,6 +1574,9 @@ class Table(ReadOnlyTable):
         """
 
         if isinstance(source_row, typing.MutableMapping):
+            if not isinstance(source_row, self.row_object):
+                warnings.warn('Passing types other than Row to insert is slower.')
+                source_row = self.row_object(data=source_row, iteration_header=self.empty_iteration_header)
             return self.insert_row(
                 source_row,
                 additional_insert_values=additional_insert_values,
@@ -1676,6 +1587,9 @@ class Table(ReadOnlyTable):
             )
         else:
             for row in source_row:
+                if not isinstance(row, self.row_object):
+                    warnings.warn('Passing types other than Row to insert is slower.')
+                    row = self.row_object(data=row, iteration_header=self.empty_iteration_header)
                 self.insert_row(
                     row,
                     additional_insert_values=additional_insert_values,
@@ -1743,7 +1657,7 @@ class Table(ReadOnlyTable):
         """
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.timer.start()
-        key_values_dict = self._generate_key_values_dict(key_names, key_values, lookup_name)
+        key_values_dict, lookup_name = self._generate_key_values_dict(key_names, key_values, lookup_name)
         # Don't use key_names or key_values anymore, use key_values_dict
         del key_names
         del key_values
@@ -1754,7 +1668,7 @@ class Table(ReadOnlyTable):
             self.begin()
 
             if maintain_cache is None:
-                maintain_cache = self.maintain_cache_during_load
+                maintain_cache = self.maintain_cache_during_load and self.cache_clean
 
             if not maintain_cache:
                 self.cache_clean = False
@@ -1794,7 +1708,19 @@ class Table(ReadOnlyTable):
                 full_row = self.get_by_lookup(lookup_name, key_values_dict, parent_stats=stats)
                 self.uncache_row(full_row)
             else:
-                self.uncache_where(key_names=key_values_dict.keys(), key_values_dict=key_values_dict)
+                key_columns_set = set(key_values_dict.keys())
+                found_matching_lookup = False
+                for lookup in self.lookups.values():
+                    if set(lookup.lookup_keys) == key_columns_set:
+                        found_matching_lookup = True
+                        full_row = lookup.find(key_values_dict, stats=stats)
+                        self.uncache_row(full_row)
+                if not found_matching_lookup:
+                    warnings.warn(
+                        f'{self}.delete called with maintain_cache=True and a set of keys that do not match any lookup.'
+                        f'This will be very slow. Keys used = {key_columns_set}'
+                    )
+                    self.uncache_where(key_names=key_values_dict.keys(), key_values_dict=key_values_dict)
 
         stats.timer.stop()
 
@@ -1879,7 +1805,10 @@ class Table(ReadOnlyTable):
                 stats['rows deleted'] += 1
 
                 deleted_rows.append(row)
-                self.delete(key_values=row)
+                # In bulk mode we just need to remove them from the cache,
+                # which is done below where we loop over deleted_rows
+                if not self.in_bulk_mode:
+                    self.delete(key_values=row, lookup_name=self.PK_LOOKUP, maintain_cache=False)
 
         for row in deleted_rows:
             self.uncache_row(row)
@@ -1894,6 +1823,7 @@ class Table(ReadOnlyTable):
             criteria_list: typing.Optional[list] = None,
             criteria_dict: typing.Optional[dict] = None,
             use_cache_as_source: bool = True,
+            allow_delete_all: bool = False,
             stat_name: str = 'delete_not_processed',
             parent_stats: typing.Optional[Statistics] = None,
             **kwargs
@@ -1912,18 +1842,21 @@ class Table(ReadOnlyTable):
             Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
+        allow_delete_all:
+            Allow this method to delete ALL rows if no source rows were processed
         stat_name: string
             Name of this step for the ETLTask statistics.
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.        
+
         """
         assert self.track_source_rows, "delete_not_processed can't be used if we don't track source rows"
-        if self.source_keys_processed is None or len(self.source_keys_processed) == 0:
+        if not allow_delete_all and (self.source_keys_processed is None or len(self.source_keys_processed) == 0):
             # We don't want to logically delete all the rows
             # But that's only an issue if there are target rows
             if any(True for _ in self.where(criteria_list=criteria_list, criteria_dict=criteria_dict, )):
-                raise RuntimeError("{} called before any source rows were processed.".format(stat_name))
+                raise RuntimeError(f"{stat_name} called before any source rows were processed on {self}.")
         self.delete_not_in_set(set_of_key_tuples=self.source_keys_processed,
                                criteria_list=criteria_list,
                                criteria_dict=criteria_dict,
@@ -1960,6 +1893,8 @@ class Table(ReadOnlyTable):
             Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
+        allow_delete_all:
+            Allow this method to delete ALL rows if no source rows were processed
         stat_name: string
             Name of this step for the ETLTask statistics. Default = 'delete_not_in_set'    
         progress_frequency: int
@@ -1990,6 +1925,7 @@ class Table(ReadOnlyTable):
             criteria_list: typing.Optional[list] = None,
             criteria_dict: typing.Optional[dict] = None,
             use_cache_as_source: bool = True,
+            allow_delete_all: bool = False,
             stat_name='logically_delete_not_processed',
             parent_stats: typing.Optional[Statistics] = None,
             **kwargs
@@ -2015,9 +1951,11 @@ class Table(ReadOnlyTable):
         assert self.track_source_rows, """
             logically_delete_not_processed can't be used if we don't track source rows
             """
-        assert self.source_keys_processed, """
-            logically_delete_not_processed called before any source rows were processed.
-            """
+        if not allow_delete_all and (self.source_keys_processed is None or len(self.source_keys_processed) == 0):
+            # We don't want to logically delete all the rows
+            # But that's only an issue if there are target rows
+            if any(True for _ in self.where(criteria_list=criteria_list, criteria_dict=criteria_dict, )):
+                raise RuntimeError(f"{stat_name} called before any source rows were processed on {self}.")
         self.logically_delete_not_in_set(
             set_of_key_tuples=self.source_keys_processed,
             criteria_list=criteria_list,
@@ -2085,7 +2023,7 @@ class Table(ReadOnlyTable):
         last_update_date_col = self.get_column_name(self.last_update_date)
         last_update_coerce = self.get_coerce_method(last_update_date_col)
         last_update_value = last_update_coerce(datetime.now())
-        row[last_update_date_col] = last_update_value
+        row.set_keeping_parent(last_update_date_col, last_update_value)
 
     def get_bind_name(self, column_name: str) -> str:
         if self._bind_name_map is None:
@@ -2320,10 +2258,10 @@ class Table(ReadOnlyTable):
 
     def update_where_pk(
             self,
-            updates_to_make: typing.MutableMapping,
+            updates_to_make: Row,
             key_values: Union[Row, dict, list] = None,
-            source_excludes: typing.Optional[set] = None,
-            target_excludes: typing.Optional[set] = None,
+            source_excludes: typing.Optional[frozenset] = None,
+            target_excludes: typing.Optional[frozenset] = None,
             stat_name: str = 'update_where_pk',
             parent_stats: typing.Optional[Statistics] = None,
             ):
@@ -2340,10 +2278,10 @@ class Table(ReadOnlyTable):
         key_values:
             Optional. dict or list of key to apply as criteria
         source_excludes:
-            Optional. list of :class:`~bi_etl.components.row.row_case_insensitive.Row`
+            Optional. set of column names to exclude from the source row
             source columns to exclude when mapping to this Table.
         target_excludes:
-            Optional. list of Table columns to exclude when mapping from the source
+            Optional. set of target column names to exclude when mapping from the source to target
             :class:`~bi_etl.components.row.row_case_insensitive.Row` (s)
         stat_name:
             Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
@@ -2361,7 +2299,7 @@ class Table(ReadOnlyTable):
             )
 
         key_names = self.primary_key
-        key_values_dict = self._generate_key_values_dict(key_names, key_values, other_values_dict=updates_to_make)
+        key_values_dict, _ = self._generate_key_values_dict(key_names, key_values, other_values_dict=updates_to_make)
         # Don't use key_names or key_values anymore, use key_values_dict
         del key_names
         del key_values
@@ -2376,8 +2314,8 @@ class Table(ReadOnlyTable):
             key_values: typing.Optional[Iterable] = None,
             lookup_name: typing.Optional[str] = None,
             update_all_rows: bool = False,
-            source_excludes: typing.Optional[set] = None,
-            target_excludes: typing.Optional[set] = None,
+            source_excludes: typing.Optional[frozenset] = None,
+            target_excludes: typing.Optional[frozenset] = None,
             stat_name: str = 'direct update',
             parent_stats: typing.Optional[Statistics] = None,
             connection_name: typing.Optional[str] = None,
@@ -2419,6 +2357,12 @@ class Table(ReadOnlyTable):
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.timer.start()
 
+        try:
+            _ = updates_to_make.columns_in_order
+        except AttributeError:
+            warnings.warn('Passing types other than Row to update is slower.')
+            updates_to_make = self.row_object(data=updates_to_make, iteration_header=self.empty_iteration_header)
+
         # Check if we can pass this of to update_where_pk
         if key_names is None and not update_all_rows:
             self.update_where_pk(updates_to_make=updates_to_make,
@@ -2436,10 +2380,12 @@ class Table(ReadOnlyTable):
 
         stmt = self._update_stmt()
         if not update_all_rows:
-            key_values_dict = self._generate_key_values_dict(key_names,
-                                                             key_values,
-                                                             lookup_name=lookup_name,
-                                                             other_values_dict=updates_to_make)
+            key_values_dict, lookup_name = self._generate_key_values_dict(
+                key_names,
+                key_values,
+                lookup_name=lookup_name,
+                other_values_dict=updates_to_make
+            )
             # Don't use key_names or key_values anymore, use key_values_dict
             del key_names
             del key_values
@@ -2637,15 +2583,14 @@ class Table(ReadOnlyTable):
             self,
             source_row: Union[Row, List[Row]],
             lookup_name: typing.Optional[str] = None,
-            skip_update_check_on: typing.Optional[typing.Iterable] = None,
+            skip_update_check_on: typing.Optional[frozenset] = None,
             do_not_update: typing.Optional[typing.Iterable] = None,
             additional_update_values: typing.Optional[dict] = None,
             additional_insert_values: typing.Optional[dict] = None,
             update_callback: typing.Optional[Callable[[list, Row], None]] = None,
             insert_callback: typing.Optional[Callable[[Row], None]] = None,
-            source_excludes: typing.Optional[set] = None,
-            target_excludes: typing.Optional[set] = None,
-            build_method: ETLComponent.RowBuildMethod = ETLComponent.RowBuildMethod.safe,
+            source_excludes: typing.Optional[frozenset] = None,
+            target_excludes: typing.Optional[frozenset] = None,
             stat_name: str = 'upsert',
             parent_stats: Statistics = None,
             **kwargs
@@ -2681,11 +2626,6 @@ class Table(ReadOnlyTable):
             list of Row source columns to exclude when mapping to this Table.
         target_excludes
             list of Table columns to exclude when mapping from the source Row(s)
-        build_method:
-            none, clone, or safe (default is safe)
-            None means use the row as is
-            Clone means create a subset clone
-            Safe does a clone and then checks each column type to ensure it matches the target
         stat_name
             Name of this step for the ETLTask statistics. Default = 'upsert'
         parent_stats
@@ -2703,19 +2643,17 @@ class Table(ReadOnlyTable):
         stats['upsert source row count'] += 1
 
         # Check for existing row
-        target_row = None
         source_mapped_as_target_row = self.build_row(
             source_row=source_row,
             source_excludes=source_excludes,
             target_excludes=target_excludes,
-            build_method=build_method,
             parent_stats=stats,
             )
 
         if self.delete_flag is not None:
             if self.delete_flag not in source_mapped_as_target_row \
                     or source_mapped_as_target_row[self.delete_flag] is None:
-                source_mapped_as_target_row[self.delete_flag] = self.delete_flag_no
+                source_mapped_as_target_row.set_keeping_parent(self.delete_flag, self.delete_flag_no)
 
         try:
             # We'll default to using the natural key or primary key provided
@@ -2741,18 +2679,18 @@ class Table(ReadOnlyTable):
                 lookup_keys = None
 
             if do_not_update is None:
-                do_not_update = []
+                do_not_update = set()
             if skip_update_check_on is None:
-                skip_update_check_on = []
+                skip_update_check_on = set()
 
             # In case cache was built using an incomplete row, set those missing columns to None before compare
             cache_missing_columns = self.column_names_set - existing_row.column_set
             for missing_column in cache_missing_columns:
-                existing_row[missing_column] = None
+                existing_row.set_keeping_parent(missing_column, None)
 
             changes_list = existing_row.compare_to(
                 source_mapped_as_target_row,
-                exclude=do_not_update + skip_update_check_on,
+                exclude=do_not_update | skip_update_check_on,
                 coerce_types=False,
             )
             conditional_changes = existing_row.compare_to(
@@ -2791,13 +2729,14 @@ class Table(ReadOnlyTable):
                         )
 
             if len(changes_list) > 0:
+                changes_list = list(changes_list) + list(conditional_changes)
                 self.apply_updates(row=existing_row,
-                                   changes_list=list(changes_list) + list(conditional_changes),
+                                   changes_list=changes_list,
                                    additional_update_values=additional_update_values,
                                    parent_stats=stats
                                    )
-            if update_callback:
-                update_callback(target_row)
+                if update_callback:
+                    update_callback(changes_list, existing_row)
             target_row = existing_row
         except NoResultFound:
             new_row = source_mapped_as_target_row
@@ -2805,7 +2744,7 @@ class Table(ReadOnlyTable):
                 for colName, value in additional_insert_values.items():
                     new_row[colName] = value
             self.autogenerate_key(new_row, force_override=True)
-            self.insert_row(new_row, build_method=self.RowBuildMethod.none, parent_stats=stats)
+            self.insert_row(new_row, parent_stats=stats)
             stats['insert new called'] += 1
             if insert_callback:
                 insert_callback(new_row)

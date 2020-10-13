@@ -54,7 +54,7 @@ class ReadOnlyTable(ETLComponent):
         Optional. A list of specific columns to include when reading the table/view.
         All other columns are excluded.
 
-    exclude_columns : list, optional
+    exclude_columns :
         Optional. A list of columns to exclude when reading the table/view.
          
     Attributes
@@ -117,8 +117,8 @@ class ReadOnlyTable(ETLComponent):
                  table_name: str,
                  table_name_case_sensitive: bool = False,
                  schema: str = None,
-                 exclude_columns: list = None,
-                 include_only_columns: list = None,
+                 exclude_columns: set = None,
+                 include_only_columns: set = None,
                  **kwargs
                  ):
         # Don't pass kwargs up. They should be set here at the end
@@ -136,6 +136,7 @@ class ReadOnlyTable(ETLComponent):
 
         self.special_values_descriptive_columns = set()
         self.special_values_descriptive_min_length = 14  # Long enough to hold 'Not Applicable'
+        self._special_row_header = None
 
         self.database = database
         self.__connection_pool = dict()
@@ -272,11 +273,11 @@ class ReadOnlyTable(ETLComponent):
         self.database.remove(self.table)
         self.table = sqlalchemy.schema.Table(self.table_name, self.database, *self._columns, schema=self.schema, quote=False)
 
-    def exclude_columns(self, columns_to_exclude):
+    def exclude_columns(self, columns_to_exclude: set):
         """
         Exclude columns from the table. Removes them from all SQL statements.
         
-        columns_to_exclude : list
+        columns_to_exclude :
             A list of columns to exclude when reading the table/view.
         """
 
@@ -303,9 +304,9 @@ class ReadOnlyTable(ETLComponent):
         if columns_to_exclude is not None:
             # This method builds a new Table object with the non-excluded columns.
             if self._excluded_columns is None:
-                self._excluded_columns = set(columns_to_exclude)
+                self._excluded_columns = frozenset(columns_to_exclude)
             else:
-                self._excluded_columns.update(columns_to_exclude)
+                self._excluded_columns = self._excluded_columns | columns_to_exclude
 
         # noinspection PyTypeChecker
         for ex_name in self._excluded_columns:
@@ -319,7 +320,7 @@ class ReadOnlyTable(ETLComponent):
                 pass
         self.set_columns(self._columns)
 
-    def include_only_columns(self, columns_to_include):
+    def include_only_columns(self, columns_to_include: set):
         """
         Include only specified columns in the table definition.
         Columns that are non included are removed them from all SQL statements.
@@ -328,7 +329,7 @@ class ReadOnlyTable(ETLComponent):
             A list of columns to include when reading the table/view.
         """
         columns_to_exclude = self.column_names_set.difference(columns_to_include)
-        self.exclude_columns(columns_to_exclude)
+        self.exclude_columns(set(columns_to_exclude))
 
     def _get_usable_connection_name(self, connection_name: typing.Optional[str] = None) -> str:
         if connection_name is None:
@@ -400,7 +401,11 @@ class ReadOnlyTable(ETLComponent):
         super(ReadOnlyTable, self).close()
 
     def __del__(self):
-        self.close_connections()
+        # noinspection PyBroadException
+        try:
+            self.close_connections()
+        except Exception:
+            pass
 
     def __exit__(self, exit_type, exit_value, exit_traceback):  # @ReservedAssignment
         # Close the database connection
@@ -481,8 +486,11 @@ class ReadOnlyTable(ETLComponent):
             raise MultipleResultsFound([row1, row2])
         return self.Row(row1)
 
-    def select(self, column_list: typing.Optional[list] = None,
-               exclude_cols: typing.Optional[set] = None) -> sqlalchemy.sql.expression.Select:
+    def select(
+            self,
+            column_list: typing.Optional[list] = None,
+            exclude_cols: typing.Optional[frozenset] = None
+    ) -> sqlalchemy.sql.expression.Select:
         """
         Builds a select statement for this table. 
         
@@ -498,10 +506,7 @@ class ReadOnlyTable(ETLComponent):
                 return sqlalchemy.select(self.columns)
             else:
                 # Make sure all entries are column objects
-                if isinstance(exclude_cols, str):
-                    exclude_cols = [exclude_cols]
-                # noinspection PyTypeChecker
-                exclude_col_objs = set([self.get_column(c) for c in exclude_cols])
+                exclude_col_objs = frozenset([self.get_column(c) for c in exclude_cols])
                 filtered_column_list = [c for c in self.columns if c not in exclude_col_objs]
                 return sqlalchemy.select(filtered_column_list)
         else:
@@ -525,6 +530,7 @@ class ReadOnlyTable(ETLComponent):
                 key_names = self.get_lookup(lookup_name).lookup_keys
             else:
                 self._check_pk_lookup()
+                lookup_name = self.PK_LOOKUP
                 key_names = self.primary_key
         else:
             # Handle case where we have a single key name item and not a list or dict
@@ -559,7 +565,7 @@ class ReadOnlyTable(ETLComponent):
             assert len(key_names) == len(key_names), 'key values list does not match length of key names list'
             for key_name, key_value in zip(key_names, key_values):
                 key_values_dict[key_name] = key_value
-        return key_values_dict
+        return key_values_dict, lookup_name
 
     def cache_iterator(self):
         pk_lookup = None
@@ -590,7 +596,7 @@ class ReadOnlyTable(ETLComponent):
                   criteria_dict: dict = None,
                   order_by: list = None,
                   column_list: list = None,
-                  exclude_cols: list = None,
+                  exclude_cols: frozenset = None,
                   use_cache_as_source: bool = None,
                   connection_name: str = None,
                   stats_id: str = None,
@@ -607,7 +613,7 @@ class ReadOnlyTable(ETLComponent):
             Dict keys should be columns, values are set using = or in
         order_by: string or list of strings
             Each value should represent a column to order by.
-        exclude_cols: list
+        exclude_cols:
             List of columns to exclude from the results. (Only if getting from the database)
         use_cache_as_source: bool
             Should we read rows from the cache instead of the table
@@ -705,7 +711,7 @@ class ReadOnlyTable(ETLComponent):
                     stmt = stmt.order_by(*order_by)
                 else:
                     stmt = stmt.order_by(order_by)
-            self.log.debug(stmt)
+            self.log.debug(f'Fill cache SQL=\n{stmt}\n---End Fill cache SQL')
             stats.timer.start()
             select_result = self.execute(stmt, connection_name=connection_name)
             stats.timer.stop()
@@ -716,7 +722,7 @@ class ReadOnlyTable(ETLComponent):
               criteria_dict: dict = None,
               order_by: list = None,
               column_list: typing.List[typing.Union[Column, str]] = None,
-              exclude_cols: typing.List[typing.Union[Column, str]] = None,
+              exclude_cols: typing.FrozenSet[typing.Union[Column, str]] = None,
               use_cache_as_source: bool = None,
               connection_name: str = 'select',
               progress_frequency: int = None,
@@ -928,7 +934,12 @@ class ReadOnlyTable(ETLComponent):
                         date_value,
                         ):
         if self._special_row_header is None:
-            self._special_row_header = self.generate_iteration_header(logical_name='get_special_row')
+            self._special_row_header = RowIterationHeader(
+                logical_name='get_special_row',
+                primary_key=self.primary_key,
+                parent=None,
+                columns_in_order=self.column_names
+            )
         row = self.Row(iteration_header=self._special_row_header)
         for column in self.columns:
             target_type = column.type
@@ -1054,7 +1065,7 @@ class ReadOnlyTable(ETLComponent):
             criteria_list: list = None,
             criteria_dict: dict = None,
             column_list: list = None,
-            exclude_cols: list = None,
+            exclude_cols: frozenset = None,
             order_by: list = None,
             assume_lookup_complete: bool = None,
             row_limit: int = None,
@@ -1080,7 +1091,7 @@ class ReadOnlyTable(ETLComponent):
             Dict keys should be columns, values are set using = or in
         column_list:
             List of columns to include
-        exclude_cols: list
+        exclude_cols:
             Optional. Columns to exclude when filling the cache
         order_by: list
             list of columns to sort by when filling the cache (helps range caches)
@@ -1187,7 +1198,7 @@ class ReadOnlyTable(ETLComponent):
         if self.natural_key is None:
             return self.get_primary_key_value_tuple(row)
         else:
-            return self.get_nk_lookup().get_hashable_combined_key(row)
+            return tuple(self.get_nk_lookup().get_hashable_combined_key(row))
             # # We need to make sure to rstrip any string values to that it matches what Lookup uses
             # return tuple([Lookup.rstrip_key_value(row[k]) for k in self.natural_key])
 

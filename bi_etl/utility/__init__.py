@@ -7,6 +7,8 @@ import collections
 import math
 import logging
 
+import typing
+
 
 def dict_to_list(obj,
                  depth=0,
@@ -300,3 +302,19 @@ def get_integer_places(number):
     else:
         # str tested as faster than trying to count digits via exponentiation
         return len(str(abs_number))
+
+
+def single_quote_value(value) -> str:
+    return f"'{value}'"
+
+
+def double_quote_value(value) -> str:
+    return f'"{value}"'
+
+
+def quote_delimited_list(
+        value_list,
+        delimiter=', ',
+        quote_function: typing.Callable[[object], str] = single_quote_value,
+        ) -> str:
+    return delimiter.join([quote_function(v) for v in value_list])

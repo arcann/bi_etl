@@ -5,7 +5,9 @@ Created on Jan 22, 2016
 @author: Derek Wood
 """
 import logging
+from datetime import datetime, timedelta
 from urllib.parse import quote_plus
+
 try:
     import boto3
 except ImportError:
@@ -14,7 +16,7 @@ except ImportError:
 from sqlalchemy.pool import QueuePool, NullPool
 
 from bi_etl.bi_config_parser import BIConfigParser
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy import types as sqltypes
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.orm import sessionmaker, Session
@@ -78,7 +80,8 @@ class Connect(object):
                 else:
                     log.warning(f'Identical database options specified in both dbname and db_options. ({db_options_legacy}) and ({db_options})')
 
-        if config.getboolean(database_name, 'use_get_cluster_credentials', fallback=False):
+        use_get_cluster_credentials = config.getboolean(database_name, 'use_get_cluster_credentials', fallback=False)
+        if use_get_cluster_credentials:
             cluster_id = config.get(database_name, 'rs_cluster_id', fallback=None)
             region_name = config.get(database_name, 'rs_region_name', fallback='us-east-1')
             aws_access_key_id = userid
@@ -92,22 +95,26 @@ class Connect(object):
             if boto3 is None:
                 raise ImportError('boto3 not imported')
 
-            rs = boto3.client('redshift',
-                              region_name=region_name,
-                              aws_access_key_id=aws_access_key_id,
-                              aws_secret_access_key=aws_secret_access_key,
-                              aws_session_token=None,
-                              )
+            # noinspection PyUnresolvedReferences
+            rs = boto3.client(
+                'redshift',
+                region_name=region_name,
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                aws_session_token=None,
+            )
 
-            creds = rs.get_cluster_credentials(DbUser=rs_db_user_id,
-                                               DbName=dbname,
-                                               DurationSeconds=duration_seconds,
-                                               ClusterIdentifier=cluster_id
-                                               )
+            credentials = rs.get_cluster_credentials(
+                DbUser=rs_db_user_id,
+                DbName=dbname,
+                DurationSeconds=duration_seconds,
+                ClusterIdentifier=cluster_id
+            )
 
             # Overwrite the access key & secret key with the temp DB user id and password
-            userid = quote_plus(creds['DbUser'])
-            password = quote_plus(creds['DbPassword'])
+            # Note: These go into the URL string so they need quote_plus for any special chars
+            userid = quote_plus(credentials['DbUser'])
+            password = quote_plus(credentials['DbPassword'])
 
         # dialect://user:pass@dsn/dbname
         # mssql+pyodbc://{user}:{password}@{server}:1433/{database_name}?driver=ODBC+Driver+17+for+SQL+Server
@@ -192,10 +199,39 @@ class Connect(object):
             for keyword, value in kwargs.items():
                 log.debug(f'{database_name} using keyword argument {keyword} = {value}')
 
+        # creator=get_new_connection
         engine = create_engine(url, **kwargs)
         if config.getboolean(database_name, 'fast_numeric', fallback=True):
             engine.dialect.colspecs[sqltypes.Numeric] = _FastNumeric
             log.info('Using fast_numeric')
+
+        engine.last_get_cluster_credentials = datetime.now()
+
+        @event.listens_for(engine, 'do_connect', named=True)
+        def engine_do_connect(**kw):
+            """
+            listen for the 'do_connect' event
+            """
+            # from bi_etl.utility import dict_to_str
+            # print(dict_to_str(kw))
+            if use_get_cluster_credentials:
+                rs_new_credentials_seconds = config.getint(database_name, 'rs_new_credentials_seconds', fallback=duration_seconds/2)
+                if datetime.now() - engine.last_get_cluster_credentials > timedelta(seconds=rs_new_credentials_seconds):
+                    log.info('Getting new Redshift cluster credentials')
+                    new_credentials = rs.get_cluster_credentials(
+                        DbUser=rs_db_user_id,
+                        DbName=dbname,
+                        DurationSeconds=duration_seconds,
+                        ClusterIdentifier=cluster_id
+                    )
+                    # Note: Since we are not building a URL here we don't need/want to use quote_plus
+                    kw['cparams']['user'] = new_credentials['DbUser']
+                    kw['cparams']['password'] = new_credentials['DbPassword']
+                    engine.last_get_cluster_credentials = datetime.now()
+
+            # Return None to allow control to pass to the next event handler and ultimately to allow the dialect to connect normally, given the updated arguments.
+            return None
+
         return engine
 
     @staticmethod

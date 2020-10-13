@@ -38,7 +38,12 @@ class Email(Notifier):
                         message = ''
                     message = MIMEText(message)
                     if subject is not None:
-                        message['subject'] = subject
+                        subject_escaped = subject
+                        reserved_list = ['\n', '\r']
+                        for reserved in reserved_list:
+                            subject_escaped = subject_escaped.replace(reserved, ' ')
+
+                        message['subject'] = subject_escaped
                     message['Sender'] = self.config.get('SMTP', 'from')
                     message['To'] = ','.join(to_addresses)
 

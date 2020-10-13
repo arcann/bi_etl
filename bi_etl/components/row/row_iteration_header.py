@@ -38,7 +38,6 @@ class RowIterationHeader(object):
             primary_key: typing.Optional[typing.Iterable] = None,
             parent: typing.Optional[ETLComponent] = None,
             columns_in_order: typing.Optional[typing.Iterable] = None,
-            columns_can_vary_by_row: typing.Optional[bool] = None,
             ):
         # Note this is not thread safe. However, we aren't threading yet.
         RowIterationHeader.next_iteration_id += 1
@@ -46,20 +45,10 @@ class RowIterationHeader(object):
         RowIterationHeader.instance_dict[self.iteration_id] = self
         self.column_definition_locked = False
         if columns_in_order:
+            columns_in_order = list(columns_in_order)
             self._column_count = len(columns_in_order)
         else:
             self._column_count = 0
-        if columns_can_vary_by_row is not None:
-            self.columns_can_vary_by_row = columns_can_vary_by_row
-        else:
-            if self._column_count == 0:
-                # If we got no columns we have to assume varibable rows
-                self.columns_can_vary_by_row = True
-            else:
-                # If we got did get columns we'll assume fixed rows
-                # If the source could still be variable (e.g. a CSV file)
-                # The caller should pass in columns_can_vary_by_row = True
-                self.columns_can_vary_by_row = False
         self.row_count = 0
         self.logical_name = logical_name or id(self)
         self._primary_key = None
@@ -83,7 +72,7 @@ class RowIterationHeader(object):
         self.action_id = None
         self.action_count = 0
 
-    def get_column_name(self, input_name: str) -> str:
+    def get_column_name(self, input_name: typing.Union[str, Column]) -> str:
         try:
             return self.__name_map_db[input_name]
         except KeyError:

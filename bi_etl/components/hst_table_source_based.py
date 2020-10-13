@@ -48,7 +48,7 @@ class HistoryTableSourceBased(HistoryTable):
     table_name : str
         The name of the table/view.
 
-    exclude_columns : list
+    exclude_columns : frozenset
         Optional. A list of columns to exclude from the table/view. These columns will not be included in SELECT, INSERT, or UPDATE statements.
 
     Attributes
@@ -191,7 +191,7 @@ class HistoryTableSourceBased(HistoryTable):
                  table_name: str,
                  table_name_case_sensitive: bool = True,
                  schema: str = None,
-                 exclude_columns: list = None,
+                 exclude_columns: frozenset = None,
                  **kwargs
                  ):
         # Don't pass kwargs up to super. They should be set at the end of this method
@@ -209,7 +209,6 @@ class HistoryTableSourceBased(HistoryTable):
         self.prior_upsert_row = None
         self.prior_upsert_update_callback = None
         self.prior_upsert_insert_callback = None
-        self.prior_upsert_build_method = None
         self.prior_upsert_stat_name = None
         self.prior_upsert_parent_stats = None
 
@@ -226,9 +225,8 @@ class HistoryTableSourceBased(HistoryTable):
             additional_insert_values: dict = None,
             update_callback: typing.Callable[[list, Row], None] = None,
             insert_callback: typing.Callable[[Row], None] = None,
-            source_excludes: list = None,
-            target_excludes: list = None,
-            build_method: HistoryTable.RowBuildMethod = HistoryTable.RowBuildMethod.safe,
+            source_excludes: frozenset = None,
+            target_excludes: frozenset = None,
             stat_name: str = 'upsert',
             parent_stats: Statistics = None,
             ):
@@ -254,15 +252,10 @@ class HistoryTableSourceBased(HistoryTable):
             Function to pass updated rows to. Function should not modify row.
         insert_callback: func
             Function to pass inserted rows to. Function should not modify row.
-        source_excludes: list
+        source_excludes:
             list of source columns to exclude when mapping to this Table.
-        target_excludes: list
+        target_excludes:
             list of Table columns to exclude when mapping from the source row
-        build_method:
-            none, clone, or safe (default is safe)
-            None means use the row as is
-            Clone means create a subset clone
-            Safe does a clone and then checks each column type to ensure it matches the target
         stat_name: string
             Name of this step for the ETLTask statistics. Default = 'upsert'
         parent_stats: bi_etl.statistics.Statistics
@@ -290,14 +283,13 @@ class HistoryTableSourceBased(HistoryTable):
                 # No existing rows were found, insert
                 new_row = source_mapped_as_target_row
                 if self.inserts_use_default_begin_date:
-                    new_row[self.begin_date_column] = self.default_begin_date
+                    new_row.set_keeping_parent(self.begin_date_column, self.default_begin_date)
 
                 if additional_insert_values:
                     for colName, value in additional_insert_values.items():
                         new_row[colName] = value
-                self.insert_row(
+                new_row = self.insert_row(
                     new_row,
-                    build_method=build_method,
                     parent_stats=parent_stats,
                 )
 
@@ -311,13 +303,12 @@ class HistoryTableSourceBased(HistoryTable):
             self.prior_upsert_existing_row_index = 0
             self.prior_upsert_update_callback = update_callback
             self.prior_upsert_insert_callback = insert_callback
-            self.prior_upsert_build_method = build_method
             self.prior_upsert_stat_name = stat_name
             self.prior_upsert_parent_stats = parent_stats
             if self.inserts_use_default_begin_date:
                 # Force first row to use the default begin date (year 1900)
                 row_begin_date = self.default_begin_date
-                source_mapped_as_target_row[self.begin_date_column] = row_begin_date
+                source_mapped_as_target_row.set_keeping_parent(self.begin_date_column, row_begin_date)
             else:
                 row_begin_date = source_mapped_as_target_row[self.begin_date_column]
         else:
@@ -370,7 +361,7 @@ class HistoryTableSourceBased(HistoryTable):
                     if source_excludes is not None:
                         excludes.update(source_excludes)
                     upsert_row = self.prior_upsert_row.subset(exclude=excludes)
-                    upsert_row[self.begin_date_column] = existing_begin_date
+                    upsert_row.set_keeping_parent(self.begin_date_column, existing_begin_date)
                     self.prior_upsert_existing_row_index += 1
                 else:
                     # No prior row, keep existing data
@@ -391,7 +382,6 @@ class HistoryTableSourceBased(HistoryTable):
                     insert_callback=insert_callback,
                     source_excludes=source_excludes,
                     target_excludes=target_excludes,
-                    build_method=build_method,
                     stat_name=stat_name,
                     parent_stats=parent_stats,
                     )
@@ -408,13 +398,12 @@ class HistoryTableSourceBased(HistoryTable):
                 excludes = set(self.primary_key)
                 excludes.add(self.end_date_column)
                 upsert_row = self.prior_upsert_row.subset(exclude=excludes)
-                upsert_row[self.begin_date_column] = existing_begin_date
+                upsert_row.set_keeping_parent(self.begin_date_column, existing_begin_date)
                 super().upsert(
                     source_row=upsert_row,
                     lookup_name=self.prior_upsert_lookup_name,
                     update_callback=self.prior_upsert_update_callback,
                     insert_callback=self.prior_upsert_insert_callback,
-                    build_method=self.prior_upsert_build_method,
                     stat_name=self.prior_upsert_stat_name,
                     parent_stats=self.prior_upsert_parent_stats,
                 )
@@ -432,9 +421,8 @@ class HistoryTableSourceBased(HistoryTable):
                additional_insert_values: dict = None,
                update_callback: typing.Callable[[list, Row], None] = None,
                insert_callback: typing.Callable[[Row], None] = None,
-               source_excludes: list = None,
-               target_excludes: list = None,
-               build_method: HistoryTable.RowBuildMethod = HistoryTable.RowBuildMethod.safe,
+               source_excludes: frozenset = None,
+               target_excludes: frozenset = None,
                stat_name: str = 'upsert',
                parent_stats: Statistics = None,
                **kwargs
@@ -461,15 +449,10 @@ class HistoryTableSourceBased(HistoryTable):
             Function to pass updated rows to. Function should not modify row.
         insert_callback: func
             Function to pass inserted rows to. Function should not modify row.
-        source_excludes: list
+        source_excludes:
             list of source columns to exclude when mapping to this Table.
-        target_excludes: list
+        target_excludes:
             list of Table columns to exclude when mapping from the source row
-        build_method:
-            none, clone, or safe (default is safe)
-            RowBuildMethod.safe matches source to tagret column by column.
-            RowBuildMethod.clone makes a clone of the source row. Prevents possible issues with outside changes to the row.
-            RowBuildMethod.none uses the row as is.
         stat_name: string
             Name of this step for the ETLTask statistics. Default = 'upsert'
         parent_stats: bi_etl.statistics.Statistics
@@ -492,10 +475,10 @@ class HistoryTableSourceBased(HistoryTable):
             if self.begin_date_column in source_row and source_row[self.begin_date_column] is not None:
                 pass
             else:
-                source_row[self.begin_date_column] = self.default_effective_date
+                source_row.set_keeping_parent(self.begin_date_column, self.default_effective_date)
         else:
             date_coerce = self.get_coerce_method(self.begin_date_column)
-            source_row[self.begin_date_column] = date_coerce(effective_date)
+            source_row.set_keeping_parent(self.begin_date_column, date_coerce(effective_date))
 
         target_excludes = self._target_excludes_for_updates(target_excludes)
 
@@ -522,7 +505,6 @@ class HistoryTableSourceBased(HistoryTable):
                 insert_callback=insert_callback,
                 source_excludes=source_excludes,
                 target_excludes=target_excludes,
-                build_method=self.RowBuildMethod.none,
                 stat_name=stat_name,
                 parent_stats=parent_stats,
                 )
@@ -538,7 +520,6 @@ class HistoryTableSourceBased(HistoryTable):
                 insert_callback=insert_callback,
                 source_excludes=source_excludes,
                 target_excludes=target_excludes,
-                build_method=self.RowBuildMethod.none,
                 stat_name=stat_name,
                 parent_stats=parent_stats,
                 )
@@ -676,4 +657,3 @@ class HistoryTableSourceBased(HistoryTable):
                        connection_name=connection_name,
                        begin_new=begin_new,
                        )
-

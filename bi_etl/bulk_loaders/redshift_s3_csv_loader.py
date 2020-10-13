@@ -8,6 +8,8 @@ import time
 import typing
 from tempfile import TemporaryDirectory
 
+import sqlalchemy
+
 from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.bulk_loaders.redshift_s3_base import RedShiftS3Base
 from bi_etl.components.csv_writer import CSVWriter, QUOTE_MINIMAL
@@ -56,12 +58,11 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
     ):
         s3_full_folder = self._get_table_specific_folder_name(self.s3_folder, table_object)
 
-        wait_seconds = 120
-        t_end = time.time() + wait_seconds
+        tries = 0
         done = False
         while not done:
             try:
-                self._upload_files_to_s3(local_files, s3_full_folder)
+                file_list = self._upload_files_to_s3(local_files, s3_full_folder)
 
                 analyze_compression = analyze_compression or self.analyze_compression
                 if analyze_compression:
@@ -90,16 +91,18 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                     copy_sql=copy_sql,
                     s3_full_folder=s3_full_folder,
                     table_object=table_object,
+                    file_list=file_list,
                 )
 
                 if perform_rename:
                     self.rename_table(table_to_load, table_object)
                 done = True
             except sqlalchemy.exc.SQLAlchemyError as e:
-                if time.time() > t_end:
-                    self.log.info(f'{wait_seconds} seconds wait is over. File cannot be loaded. {t_end}')
-                    raise
-                elif 'S3ServiceException' in str(e):
+                tries += 1
+                if 'S3ServiceException' in str(e):
+                    if tries >= 3:
+                        self.log.info(f'Still failed after {tries} tries. File cannot be loaded. {t_end}')
+                        raise
                     self.log.info(f'Re-upload files to S3 to resolve {e} in 5 seconds')
                     time.sleep(5)
                 else:
@@ -147,7 +150,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 for row_number, row in enumerate(iterator):
                     row_count += 1
                     writer = writer_pool[row_number % writer_pool_size]
-                    writer.insert(row)
+                    writer.insert_row(row)
                     if progress_frequency is not None:
                         # noinspection PyTypeChecker
                         if 0 < progress_frequency < progress_timer.seconds_elapsed:

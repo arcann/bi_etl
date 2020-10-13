@@ -77,6 +77,38 @@ class Jira(Notifier):
 
         return self.jira_conn.add_attachment(issue=issue, attachment=attachment, filename=filename)
 
+    def search(self, subject):
+        # Find already opened case, if there is one
+        found_issues = list()
+        # Remove any special characters that break JQL parsing
+        # https://support.atlassian.com/jira-software-cloud/docs/search-syntax-for-text-fields/
+        subject_escaped = subject
+        reserved_list = [
+            '\\', '+', '-', '[', ']', '(', ')', '{', '}',
+            'AND', 'OR', 'NOT',
+            '"', "'", '|', '&&', '!', '*', ':',
+            '?', '~', '^', '%',
+            '\t', '\n',
+        ]
+        for reserved in reserved_list:
+            subject_escaped = subject_escaped.replace(reserved, ' ')
+
+        issues = self.jira_conn.search_issues(
+            f'project="{self.project}" '
+            f'AND summary~"{subject_escaped}" '
+            f'AND status not in ({self.exclude_statuses_filter})'
+        )
+        for iss in issues:
+            # Double check that name matches since JIRA does a wildcard search and word stemming
+            if iss.fields.summary.strip() == subject:
+                # self.log.debug('Potential match:')
+                # self.log.debug(p.fields.status)
+                # self.log.debug(p.fields.summary)
+                # self.log.debug(p.fields.description)
+                found_issues.append(iss)
+                case_number = iss.key
+        return found_issues
+
     def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):
         """
         Log a Jira issue
@@ -98,43 +130,43 @@ class Jira(Notifier):
         self.log.debug(f'subject={subject}')
         self.log.debug(f'message={message}')
 
+        if message is None:
+            message = "_No Description Provided_"
+
         message_parts = [
             message,
         ]
         if sensitive_message is not None:
             message_parts.append(sensitive_message)
 
-        found = False
-        # Find already opened case, if there is one
-        subject_escaped = subject.replace('\\', '\\\\')
-        subject_escaped = subject_escaped.replace('"', '\"')
-        subject_escaped = subject_escaped.replace("'", "\'")
-
-        issues = self.jira_conn.search_issues(
-            f'project="{self.project}" '
-            f'AND summary~"{subject_escaped}" '
-            f'AND status not in ({self.exclude_statuses_filter})'
-        )
-        for iss in issues:
-            # Double check that name matches since JIRA does a wildcard search
-            if iss.fields.summary.strip() == subject:
-                # self.log.debug(p.fields.status)
-                # self.log.debug(p.fields.summary)
-                # self.log.debug(p.fields.description)
-                found = True
+        existing_issues = self.search(subject)
+        if len(existing_issues) > 1:
+            self.log.warning(f"Found multiple open issues with subject {subject}. Finding newest...")
+            newest_case_number = 0
+            newest_iss = None
+            for iss in existing_issues:
                 case_number = iss.key
-                if self.comment_on_each_instance:
-                    if attachment is not None:
-                        attachment_object = self.add_attachment(iss, attachment)
-                        self.log.debug(f"Created attachment {attachment_object}")
-                    message_parts.insert(0, "New occurrence with message(s):")
-                    if message or sensitive_message:
-                        comment = '\n'.join(message_parts)
-                        self.jira_conn.add_comment(iss, comment)
-                        self.log.info(f"Added comment to case {case_number}.")
-                    else:
-                        self.log.info(f"Found existing open case {case_number}.")
-        if not found:
+                self.log.info(f"One of multiple existing open cases is {case_number}.")
+                if case_number > newest_case_number:
+                    newest_case_number = case_number
+                    newest_iss = iss
+            existing_issues = [newest_iss]
+            # Allow the section below to comment on the newest issue
+
+        if len(existing_issues) == 1:
+            iss = existing_issues[0]
+            case_number = iss.key
+            self.log.info(f"Found existing open case {case_number}.")
+            if self.comment_on_each_instance:
+                if attachment is not None:
+                    attachment_object = self.add_attachment(iss, attachment)
+                    self.log.debug(f"Created attachment {attachment_object}")
+                message_parts.insert(0, "New occurrence with message(s):")
+                if message or sensitive_message:
+                    comment = '\n'.join(message_parts)
+                    self.jira_conn.add_comment(iss, comment)
+                    self.log.info(f"Added comment to case {case_number}.")
+        else:
             description = '\n'.join(message_parts)
 
             issue_dict = {

@@ -72,7 +72,7 @@ class NonUniqueLookup(Lookup):
                 primary_key = None
 
             if matching_rows is None:
-                matching_rows = self.version_collection_type()
+                matching_rows = Lookup.VERSION_COLLECTION_TYPE()
                 self._cache[lk_tuple] = matching_rows
 
             try:

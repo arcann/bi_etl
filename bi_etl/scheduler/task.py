@@ -996,6 +996,7 @@ class ETLTask(object):
                 self.child_to_parent.put(e)
         finally:
             self.config.remove_log_handler(self.log_handler)
+            self.close()
 
         self.log.info("Status = {}".format(repr(self.status)))
 
@@ -1139,6 +1140,7 @@ class ETLTask(object):
                     obj.close()
                 del obj
             del self.object_registry
+            self.object_registry = list()
             for database in self._database_pool:
                 database.bind.dispose()
                 database.clear()

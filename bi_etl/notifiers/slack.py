@@ -20,8 +20,9 @@ class Slack(Notifier):
             self.log.debug("Trying slackclient v1 import")
             # noinspection PyUnresolvedReferences
             from slackclient import SlackClient
-            from slack.errors import SlackApiError
-            self.SlackApiError = SlackApiError
+            # noinspection PyUnresolvedReferences
+            from slackclient.exceptions import SlackClientError
+            self.SlackApiError = SlackClientError
             self._client_version = 1
 
         slack_token = config[config_section]['token']

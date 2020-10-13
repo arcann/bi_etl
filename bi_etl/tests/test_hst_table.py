@@ -403,6 +403,7 @@ class TestHstTable(unittest.TestCase):
             tbl.fill_cache()
 
             update_row_header = RowIterationHeader()
+            source_excludes = frozenset([tbl.type_1_surrogate, tbl.primary_key[0]])
             for i in range(upsert_start, upsert_end + 1):
                 row = Row(iteration_header=update_row_header)
                 row['nk_col1'] = i
@@ -410,7 +411,7 @@ class TestHstTable(unittest.TestCase):
                 row['text_col'] = 'upsert row {}'.format(i)
                 row['datetime_col'] = datetime(2001, 1, i, 12, 51, 43)
 
-                tbl.upsert(row, lookup_name='NK', source_excludes=[tbl.type_1_surrogate, tbl.primary_key[0]])
+                tbl.upsert(row, lookup_name='NK', source_excludes=source_excludes)
 
             tbl.commit()
 

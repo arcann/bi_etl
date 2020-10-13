@@ -66,7 +66,7 @@ class RangeLookup(Lookup):
             assert isinstance(effective_date, datetime)
                 
             if versions_collection is None:
-                versions_collection = self.version_collection_type()
+                versions_collection = Lookup.VERSION_COLLECTION_TYPE()
 
             if effective_date in versions_collection:
                 if not allow_update:

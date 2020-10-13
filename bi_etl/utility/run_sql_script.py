@@ -71,7 +71,7 @@ class RunSQLScript(ETLTask):
             root_task_id=odict['root_task_id'],
             # We don't pass scheduler or config from the Scheduler to the running instance
             # scheduler= odict['scheduler']
-            )
+        )
         self._parameter_dict = CaseInsensitiveDict(odict['_parameter_dict'])
 
     def depends_on(self):
@@ -149,11 +149,10 @@ class RunSQLScript(ETLTask):
                     if part_sql.upper().endswith('GO'):
                         part_sql = part_sql[:-2]
                     part_sql = part_sql.strip()
+                    part_sql = part_sql.strip(';')
+                    part_sql = part_sql.strip()
                     if part_sql != '':
                         timer = Timer()
-                        part_sql = part_sql.strip()
-                        part_sql = part_sql.strip(';')
-                        part_sql = part_sql.strip()
 
                         if part_sql.startswith('EXEC') and database.bind.dialect.dialect_description == 'mssql+pyodbc':
                             sql_statement = sqlparse.parse(part_sql)[0]
@@ -181,7 +180,9 @@ class RunSQLScript(ETLTask):
                             try:
                                 cursor.execute(part_sql)
                             except Exception as e:
-                                if 'Invalid string or buffer length (0)' in str(e):
+                                error_msg = str(e).lower()
+                                if ('buffer length (0)' in error_msg
+                                        or "empty query" in error_msg):
                                     # Skip errors for blank SQL
                                     pass
                                 else:

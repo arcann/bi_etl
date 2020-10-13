@@ -258,8 +258,8 @@ class AutoDiskLookup(Lookup):
                     versions_collection = self.get_versions_collection(row)
                     self._cache.uncache_set(lk_tuple)
                     # Change collection type if needed
-                    if not isinstance(versions_collection, self.disk_cache.version_collection_type):
-                        versions_collection = self.disk_cache.version_collection_type(versions_collection)
+                    if not isinstance(versions_collection, DiskLookup.VERSION_COLLECTION_TYPE):
+                        versions_collection = DiskLookup.VERSION_COLLECTION_TYPE(versions_collection)
                     disk_lk_tuple = self.disk_cache.get_hashable_combined_key(row)
                     self.disk_cache.cache_set(disk_lk_tuple, versions_collection)
 

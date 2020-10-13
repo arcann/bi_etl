@@ -7,16 +7,18 @@ Created on Sep 17, 2014
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
+import collections.abc
 import typing
 import warnings
-import collections.abc
 from decimal import Decimal
 from typing import Union, List, Iterable
 
+from sqlalchemy.sql.schema import Column
+
 from bi_etl.components.row.column_difference import ColumnDifference
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.utility import dict_to_str
-from bi_etl.components.row.row_iteration_header import RowIterationHeader
 
 
 class Row(typing.MutableMapping):
@@ -289,12 +291,26 @@ class Row(typing.MutableMapping):
         if current_length < desired_size:
             self._data_values.extend([None for _ in range(desired_size - current_length)])
 
-    def _raw_setitem(self, column_name, value):
+    def _raw_setitem(self, column_name: typing.Union[str, Column], value):
         self.iteration_header = self.iteration_header.row_set_item(column_name, value, self)
 
     def __setitem__(self, key, value):
         key_name = self.iteration_header.get_column_name(key)
         self._raw_setitem(key_name, value)
+
+    def set_keeping_parent(self, column_name: typing.Union[str, Column], value):
+        """
+        Save and restore the iteration header parent in case we are adding
+        the key to the header.  This saves time in build_row since it can
+        know the row is "safe" for quick building
+
+        :param column_name:
+        :param value:
+        :return: None
+        """
+        current_parent = self.iteration_header.parent
+        self[column_name] = value
+        self.iteration_header.parent = current_parent
 
     def get_name_by_position(self, position):
         """

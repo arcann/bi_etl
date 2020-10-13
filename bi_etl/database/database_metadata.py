@@ -53,6 +53,19 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         else:
             return self.bind.connect()
 
+    def dispose(self):
+        """
+        This method leaves the possibility of checked-out connections
+        remaining open, as it only affects connections that are
+        idle in the pool.
+        """
+        if self.dialect_name == 'sqlite':
+            if self._connection is not None:
+                if not self._connection.closed:
+                    self._connection.close()
+
+        self.bind.pool.dispose()
+
     def session(self, autocommit: bool = False):
         return Session(bind=self.bind, autocommit=autocommit)
 

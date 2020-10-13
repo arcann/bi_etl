@@ -37,6 +37,12 @@ __all__ = ['Lookup']
 
 class Lookup(object):
     COLLECTION_INDEX = datetime(year=1900, month=1, day=1, hour=0, minute=0, second=0)
+
+    # OOBTree.BTree is now used instead of SortedDict
+    # It ran tests in 80% of the time of the SortedDict equivalent
+    # http://pythonhosted.org/BTrees/index.html
+    VERSION_COLLECTION_TYPE = OOBTree
+
     ROW_TYPES = typing.Union[Row, typing.Sequence]
     DB_LOOKUP_WARNING = 1000
 
@@ -49,6 +55,7 @@ class Lookup(object):
                  **kwargs):
         self.lookup_name = lookup_name
         self.lookup_keys = lookup_keys
+        self._lookup_keys_set = None
         self.config = config
         self._cache = None
         self.parent_component = parent_component
@@ -68,16 +75,11 @@ class Lookup(object):
         self._value_cache_str_usage = dict()
         self._value_cache_datetime = dict()
         self._value_cache_datetime_usage = dict()
-        # OOBTree.BTree is now used instead of SortedDict
-        # It ran tests in 80% of the time of the SortedDict equivalent
-        # http://pythonhosted.org/BTrees/index.html
-        # self.version_collection_type = SortedDict
-        self.version_collection_type = OOBTree
+        self.end_date = None
         self._hashable_key_type = tuple
         self._fallback_to_db_count = 0
 
-    # noinspection PyUnresolvedReferences
-    def _get_version(self, versions_collection: MutableMapping[datetime, Row], effective_date: datetime):
+    def _get_version(self, versions_collection: Lookup.VERSION_COLLECTION_TYPE[datetime, Row], effective_date: datetime):
         # SortedDict version
         # first_effective_index = versions_collection.bisect_right(effective_date) - 1
         # if first_effective_index <= -1:
@@ -95,6 +97,12 @@ class Lookup(object):
     def __repr__(self):
         return "{cls}(lookup_name={name}, lookup_keys={keys})".format(cls=self.__class__.__name__, name=self.lookup_name, keys=self.lookup_keys)
     
+    @property
+    def lookup_keys_set(self):
+        if self._lookup_keys_set is None:
+            self._lookup_keys_set = set(self.lookup_keys)
+        return self._lookup_keys_set
+
     def _set_log_level(self, log_level):
         self.log.setLevel(log_level)
 
@@ -264,7 +272,7 @@ class Lookup(object):
     def cache_set(
             self,
             lk_tuple: tuple,
-            version_collection: typing.MutableMapping[datetime, Row],
+            version_collection: OOBTree[datetime, Row],
             allow_update: bool = True
             ):
         """
@@ -288,7 +296,8 @@ class Lookup(object):
 
         """
         if self.cache_enabled:
-            assert isinstance(version_collection, self.version_collection_type), "cache_row requires {} and not {}".format(self.version_collection_type, type(version_collection))
+            assert isinstance(version_collection, Lookup.VERSION_COLLECTION_TYPE), \
+                f"cache_row requires {Lookup.VERSION_COLLECTION_TYPE} and not {type(version_collection)}"
 
             if self.use_value_cache:
                 for row in version_collection.values():
@@ -325,7 +334,7 @@ class Lookup(object):
                 raise ValueError(f"uncache_row called on {self} with insufficient values {row}. {e}")
             try:
                 del self._cache[lk_tuple]
-            except KeyError as e:
+            except KeyError:
                 pass
 
     def uncache_set(self, row: ROW_TYPES):
@@ -411,7 +420,7 @@ class Lookup(object):
 
         lk_tuple = self.get_hashable_combined_key(row)
         try:
-            return self.version_collection_type({Lookup.COLLECTION_INDEX: self._cache[lk_tuple]})
+            return Lookup.VERSION_COLLECTION_TYPE({Lookup.COLLECTION_INDEX: self._cache[lk_tuple]})
         except KeyError as e:
             raise NoResultFound(e)
 

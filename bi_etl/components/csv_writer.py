@@ -71,6 +71,9 @@ class CSVWriter(ETLComponent):
         column_names: list
             The names to use for columns
             
+        primary_key: str
+            The name of the primary key column. Only impacts trace messages.  Default=None.
+        
         dialect: str or subclass of :class:`csv.Dialect`
             Default "excel". The dialect value to pass to :mod:`csv`
         

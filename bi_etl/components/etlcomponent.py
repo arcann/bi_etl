@@ -106,6 +106,8 @@ class ETLComponent(Iterable):
         self.warnings_issued = 0
         self.warnings_limit = 100
 
+        self.empty_iteration_header = RowIterationHeader(logical_name='empty')
+
         # self.log = logging.getLogger(__name__)
         self.log = logging.getLogger("{mod}.{cls}".format(mod=self.__class__.__module__, cls=self.__class__.__name__))
         if self.task is not None:
@@ -127,6 +129,8 @@ class ETLComponent(Iterable):
 
         self.sanity_check_default_iterator_done = False
         self.sanity_checked_sources = set()
+        self._row_builders = dict()
+
         self.ignore_source_not_in_target = False
         self.ignore_target_not_in_source = False
         self.raise_on_source_not_in_target = False
@@ -445,7 +449,7 @@ class ETLComponent(Iterable):
             criteria_dict: typing.Optional[dict] = None,
             order_by: typing.Optional[list] = None,
             column_list: typing.List[typing.Union[Column, str]] = None,
-            exclude_cols: typing.List[typing.Union[Column, str]] = None,
+            exclude_cols: typing.FrozenSet[typing.Union[Column, str]] = None,
             use_cache_as_source: typing.Optional[bool] = None,
             progress_frequency: typing.Optional[int] = None,
             stats_id: typing.Optional[str] = None,
@@ -567,7 +571,6 @@ class ETLComponent(Iterable):
             self,
             logical_name: typing.Optional[str] = None,
             columns_in_order: typing.Optional[list] = None,
-            columns_can_vary_by_row: typing.Optional[bool] = None,
             ) -> RowIterationHeader:
         if logical_name is None:
             logical_name = self.row_name
@@ -581,7 +584,6 @@ class ETLComponent(Iterable):
                                   primary_key=result_primary_key,
                                   parent=self,
                                   columns_in_order=columns_in_order,
-                                  columns_can_vary_by_row=columns_can_vary_by_row,
                                   )
 
     def get_column_name(
@@ -721,8 +723,8 @@ class ETLComponent(Iterable):
             self,
             source_definition: ETLComponent,
             source_name: str = None,
-            source_excludes: set = None,
-            target_excludes: set = None,
+            source_excludes: frozenset = None,
+            target_excludes: frozenset = None,
             ignore_source_not_in_target: bool = None,
             ignore_target_not_in_source: bool = None,
             raise_on_source_not_in_target: bool = None,
@@ -768,7 +770,7 @@ class ETLComponent(Iterable):
         source_set = set(source_col_list)
         if not ignore_source_not_in_target:
             if source_excludes is None:
-                source_excludes = list()
+                source_excludes = frozenset()
             pos = 0
             for src_col in source_col_list:
                 pos += 1
@@ -811,32 +813,27 @@ class ETLComponent(Iterable):
                                          ignore_target_not_in_source=ignore_target_not_in_source,
                                          )
 
+    def _get_coerce_method_name_by_str(self, target_column_name: str) -> str:
+        return ''
+
     def build_row(
             self,
-            source_row: typing.MutableMapping,
-            additional_values: dict = None,
-            source_excludes: typing.Optional[set] = None,
-            target_excludes: typing.Optional[set] = None,
-            build_method: RowBuildMethod = RowBuildMethod.safe,
-            stat_name: str = 'build rows',
-            parent_stats: Statistics = None,
-            ) -> Row:
+            source_row: Row,
+            source_excludes: typing.Optional[frozenset] = None,
+            target_excludes: typing.Optional[frozenset] = None,
+            stat_name: str = 'build_row_safe',
+            parent_stats: typing.Optional[Statistics] = None,
+    ) -> Row:
         """
-        Use a source row to build a row with correct data columns for this source.
+        Use a source row to build a row with correct data types for this table.
 
         Parameters
         ----------
         source_row
-        additional_values
         source_excludes
         target_excludes
-        build_method:
-            none, clone, or safe (default is safe)
-            None means use the row as is
-            Clone means create a subset clone
-            Safe does a clone and then checks each column type to ensure it matches the target
         stat_name
-            Name of this step for the ETLTask statistics. Default = 'upsert_by_pk'
+            Name of this step for the ETLTask statistics. Default = 'build rows'
         parent_stats
 
         Returns
@@ -846,72 +843,113 @@ class ETLComponent(Iterable):
         build_row_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         build_row_stats.print_start_stop_times = False
         build_row_stats.timer.start()
-        build_row_stats['method'] = build_method
         build_row_stats['calls'] += 1
 
-        if source_excludes is None:
-            source_excludes = set()
-        elif not isinstance(source_excludes, set):
-            # noinspection PyTypeChecker
-            source_excludes = set(source_excludes)
-
-        target_set = set(self.column_names)
-
-        if build_method == self.RowBuildMethod.full_target:
-            new_row = self.Row(iteration_header=self.FULL_ITERATION_HEADER)
-            source_set = set(source_row.keys())
-
-            # TODO: This is slower than ideal in many cases (e.g. source & target are the same)
-            for col in source_set & target_set:
-                new_row[col] = source_row[col]
-        else:
-
-            # First make sure we have an instance of Row as a source
-            default_iteration_header_used = False
+        try:
+            iteration_id = source_row.iteration_header.iteration_id
+            build_row_key = (iteration_id, source_excludes, target_excludes)
+            needs_builder = build_row_key not in self._row_builders
+        except AttributeError:
             if not isinstance(source_row, Row):
-                # This will be slow if passed a lot of these non-Row objects
-                # TODO: Count non Row objects passed in and give warning if it exceeds 100 or so
-                iteration_header = RowIterationHeader(logical_name='default')
-                source_row = self.row_object(iteration_header, data=source_row)
-                default_iteration_header_used = True
+                raise ValueError(f'source_row is not a Row instead it is {type(source_row)}')
+            raise
+        except TypeError:
+            if source_excludes is not None and not isinstance(source_excludes, frozenset):
+                raise TypeError(f'source_excludes is not a frozenset instead it is {type(source_excludes)}')
+            if target_excludes is not None and not isinstance(target_excludes, frozenset):
+                raise TypeError(f'target_excludes is not a frozenset instead it is {type(target_excludes)}')
+            raise
 
+        if needs_builder:
+            # Check row mapping and make a row builder for this source
+
+            self.sanity_check_example_row(
+                example_source_row=source_row,
+                source_excludes=source_excludes,
+                target_excludes=target_excludes,
+            )
+
+            source_row_columns = source_row.columns_in_order
+            if source_excludes is not None:
+                source_row_columns = [column_name for column_name in source_row.columns_in_order if column_name not in source_excludes]
+
+            target_column_set = self.column_names_set
             if target_excludes is not None:
-                target_set -= set(target_excludes)
+                target_column_set = target_column_set - target_excludes
 
-            if build_method == self.RowBuildMethod.none:
-                new_row = source_row
+            new_row_columns = [column_name for column_name in source_row_columns if column_name in target_column_set]
+
+            build_row_method_name = f"_build_row_{iteration_id}_{id(source_excludes)}_{id(target_excludes)}"
+
+            new_row_iteration_header = self.generate_iteration_header(
+                logical_name=f'{self} built from source {source_row.iteration_header.iteration_id} {source_row.iteration_header.logical_name} ',
+                columns_in_order=new_row_columns,
+            )
+
+            code = f"def {build_row_method_name}(self, source_row):\n"
+            code += f"    new_row = self.row_object(iteration_header={new_row_iteration_header.iteration_id})\n"
+            code += f"    source_values = source_row.values()\n"
+            # TODO: It's worth spending more time here to see if we can do the quick build
+            if (set(new_row_columns).issubset(self.column_names)
+                and source_excludes is None
+                and source_row.iteration_header.parent == self
+                and len(source_row.values()) == len(new_row_columns)
+            ):
+                code += f"    new_row._data_values = source_values.copy()\n"
             else:
-                # clone or safe modes
-                new_row = source_row.subset(exclude=source_excludes, keep_only=target_set)
+                code += f"    new_row_values = [\n"
+                for column_name in new_row_columns:
+                    coerce_method_name = self._get_coerce_method_name_by_str(column_name)
+                    if coerce_method_name is None:
+                        coerce_method_name = ''
+                    if coerce_method_name != '':
+                        coerce_method_name = f'self.{coerce_method_name}'
+                    source_column_number = source_row.get_column_position(column_name)
+                    code += f"        {coerce_method_name}(source_values[{source_column_number}]),\n"
+                code += f"    ]\n"
+                code += f"    new_row._data_values = new_row_values\n"
+            code += f"    return new_row\n"
+            try:
+                code = compile(code, filename=build_row_method_name, mode='exec')
+                exec(code)
+            except SyntaxError as e:
+                self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+                raise RuntimeError('Error with generated code')
+            # Add the new function as a method in this class
+            exec(f"self.{build_row_method_name} = {build_row_method_name}.__get__(self)")
+            build_row_method = getattr(self, build_row_method_name)
+            self._row_builders[build_row_key] = build_row_method
 
-                if build_method == self.RowBuildMethod.safe:
-                    # Safe type mode is slower, but gives better error messages than the
-                    # database that will likely give a not-so helpful message or silently truncate a value.
-                    # Non safe type mode can also lead to a failure of the lookups since type differences
-                    # will cause the lookup key to look different from the existing value.
-                    if default_iteration_header_used:
-                        if not self.sanity_check_default_iterator_done:
-                            self.sanity_check_example_row(example_source_row=source_row,
-                                                          source_excludes=source_excludes,
-                                                          target_excludes=target_excludes,
-                                                          )
-                            self.sanity_check_default_iterator_done = True
-                            header = source_row.iteration_header.iteration_id
-                            self.sanity_checked_sources.add(header)
-                    else:
-                        header = source_row.iteration_header.iteration_id
-                        if header not in self.sanity_checked_sources:
-                            self.sanity_check_example_row(example_source_row=source_row,
-                                                          source_excludes=source_excludes,
-                                                          target_excludes=target_excludes,
-                                                          )
-                            self.sanity_checked_sources.add(header)
+        new_row = self._row_builders[build_row_key](source_row)
+        build_row_stats.timer.stop()
+        return new_row
 
-            if additional_values:
-                for colName, value in additional_values.items():
-                    new_row[colName] = value
 
-            build_row_stats.timer.stop()
+    def build_row_dynamic_source(
+            self,
+            source_row: Row,
+            source_excludes: typing.Optional[frozenset] = None,
+            target_excludes: typing.Optional[frozenset] = None,
+            stat_name: str = 'build_row_dynamic_source',
+            parent_stats: typing.Optional[Statistics] = None,
+            ):
+        build_row_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
+        build_row_stats.print_start_stop_times = False
+        build_row_stats.timer.start()
+        build_row_stats['calls'] += 1
+        self.sanity_check_example_row(
+            example_source_row=source_row,
+            source_excludes=source_excludes,
+            target_excludes=target_excludes,
+        )
+        target_set = set(self.column_names)
+        new_row = source_row.subset(exclude=source_excludes, keep_only=target_set)
+        for column_name in new_row.columns:
+            coerce_method_name = self._get_coerce_method_name_by_str(column_name)
+            if coerce_method_name is not None and coerce_method_name != '':
+                coerce_method = getattr(self, f'self.{coerce_method_name}')
+                new_row.transform(column_name, coerce_method)
+        build_row_stats.timer.stop()
         return new_row
 
     def fill_cache_from_source(
@@ -922,7 +960,7 @@ class ETLComponent(Iterable):
             criteria_list: list = None,
             criteria_dict: dict = None,
             column_list: list = None,
-            exclude_cols: list = None,
+            exclude_cols: frozenset = None,
             order_by: list = None,
             assume_lookup_complete: bool = None,
             row_limit: int = None,
@@ -948,7 +986,7 @@ class ETLComponent(Iterable):
             Dict keys should be columns, values are set using = or in
         column_list:
             List of columns to include
-        exclude_cols: list
+        exclude_cols: frozenset
             Optional. Columns to exclude when filling the cache
         order_by: list
             list of columns to sort by when filling the cache (helps range caches)
@@ -987,7 +1025,6 @@ class ETLComponent(Iterable):
 
         self.init_cache()
 
-        # TODO: Identify row building actions before we start looping over rows
         for row in source.where(
                 criteria_list=criteria_list,
                 criteria_dict=criteria_dict,
@@ -1011,7 +1048,7 @@ class ETLComponent(Iterable):
                 break
 
             if source != self:
-                row = self.build_row(row, build_method=self.RowBuildMethod.full_target)
+                row = self.build_row(row, parent_stats=stats)
 
             # Actually cache the row now
             row.status = RowStatus.existing
@@ -1068,7 +1105,7 @@ class ETLComponent(Iterable):
                    criteria_list: list = None,
                    criteria_dict: dict = None,
                    column_list: list = None,
-                   exclude_cols: list = None,
+                   exclude_cols: frozenset = None,
                    order_by: list = None,
                    assume_lookup_complete: bool = None,
                    row_limit: int = None,
@@ -1092,7 +1129,7 @@ class ETLComponent(Iterable):
             Dict keys should be columns, values are set using = or in
         column_list:
             List of columns to include
-        exclude_cols: list
+        exclude_cols: frozenset
             Optional. Columns to exclude when filling the cache
         order_by: list
             list of columns to sort by when filling the cache (helps range caches)
@@ -1147,3 +1184,4 @@ class ETLComponent(Iterable):
                            fallback_to_db=fallback_to_db,
                            stats=stats
                            )
+

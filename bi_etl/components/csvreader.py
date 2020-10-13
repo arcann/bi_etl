@@ -338,7 +338,6 @@ class CSVReader(ETLComponent):
             self.seek_row(self.start_row)
             this_iteration_header = self.generate_iteration_header(
                 columns_in_order=self.column_names,
-                columns_can_vary_by_row=True,
             )
             # noinspection PyTypeChecker
             for row in self.reader:
@@ -349,6 +348,8 @@ class CSVReader(ETLComponent):
                     
                     len_row = len(row)
                     if len_column_names < len_row:
+                        # Note: Adding restkey to the row will create a new iteration header
+                        #      (shared by subsequent rows with extra values)
                         d[self.restkey] = row[len_column_names:]
                         if self.extra_part_msg_cnt < self.extra_part_msg_limit:
                             self.extra_part_msg_cnt += 1
@@ -356,6 +357,7 @@ class CSVReader(ETLComponent):
                             if self.extra_part_msg_cnt == self.extra_part_msg_limit:
                                 self.log.debug("No more Extra part of row read messages will be logged")
                     elif len_column_names > len_row:
+                        # This could be done in a faster way, but hopefully is rare so not worth optimizing
                         for key in self.column_names[len_row:]:
                             d[key] = self.restval
                     yield d

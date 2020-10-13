@@ -402,7 +402,7 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                     tgt_tbl.upsert(
                         row,
                         lookup_name='NK',
-                        source_excludes=[tgt_tbl.type_1_surrogate, tgt_tbl.primary_key[0]],
+                        source_excludes=frozenset({tgt_tbl.type_1_surrogate, tgt_tbl.primary_key[0]}),
                     )
 
                 tgt_tbl.commit()
@@ -437,7 +437,7 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                     tgt_tbl.upsert(
                         row,
                         lookup_name='NK',
-                        source_excludes=[tgt_tbl.type_1_surrogate, tgt_tbl.primary_key[0]],
+                        source_excludes=frozenset({tgt_tbl.type_1_surrogate, tgt_tbl.primary_key[0]}),
                     )
 
                 tgt_tbl.commit()
@@ -480,7 +480,7 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                     tgt_tbl.upsert(
                         row,
                         lookup_name='NK',
-                        source_excludes=[tgt_tbl.type_1_surrogate, tgt_tbl.primary_key[0]],
+                        source_excludes=frozenset({tgt_tbl.type_1_surrogate, tgt_tbl.primary_key[0]}),
                     )
 
                 tgt_tbl.commit()
