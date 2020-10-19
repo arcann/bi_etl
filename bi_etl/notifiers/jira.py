@@ -1,7 +1,5 @@
 from configparser import ConfigParser
 
-import keyring
-
 from bi_etl.notifiers.notifier import Notifier
 
 
@@ -16,11 +14,17 @@ class Jira(Notifier):
         options = dict()
         options['server'] = config.get(self.config_section, 'server')
         user_id = config.get(self.config_section, 'user_id')
+        password = config.get(self.config_section, 'password')
         self.project = config.get(self.config_section, 'project')
-        self.keyring_section = config.get(self.config_section, 'keyring_section')
-        password = keyring.get_password(self.keyring_section, user_id)
+        if password is None:
+            self.keyring_section = config.get(self.config_section, 'keyring_section')
+            if self.keyring_section is None:
+                raise ValueError(f'Jira password not provided in config and keyring_section not set in config')
+            else:
+                import keyring
+                password = keyring.get_password(self.keyring_section, user_id)
         if password is None or password == '':
-            raise ValueError(f'Jira password not provided in keyring {self.keyring_section} {user_id}')
+            raise ValueError(f'Jira password not provided in config or keyring {self.keyring_section} {user_id}')
         self.log.debug(f"user id={user_id}")
         self.log.debug(f"server={options['server']}")
         self.log.debug(f'project={self.project}')

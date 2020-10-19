@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+
 #
 # bi_etl documentation build configuration file, created by
 # sphinx-quickstart on Fri Nov 06 14:18:50 2015.

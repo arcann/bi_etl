@@ -3,16 +3,36 @@
 # Only use spaces to indent your .yml configuration.
 # -----
 # You can specify a custom docker image from Docker Hub as your build environment.
-image: continuumio/anaconda3
+
+definitions:
+  caches:
+    poetry-path: /root/.poetry
+    poetry-venv: /root/.cache/pypoetry/virtualenvs
 
 pipelines:
   default:
     - step:
-        script: # Modify the commands below to build your repository.
-          - conda update -y conda
-          - apt-get update
+        name: test-3.7
+        image: python:3.7
+        caches:
+          - poetry-path
+          - poetry-venv
+        script:
+          - pip install poetry
           - apt-get -y install gcc
-          - conda env update --file linux_environment.yml
+          - poetry install -E test
           - export PYTHONPATH=.
-          - pip install pytest
+          - pytest
+
+    - step:
+        name: test-3.8
+        image: python:3.8
+        caches:
+          - poetry-path
+          - poetry-venv
+        script:
+          - pip install poetry
+          - apt-get -y install gcc
+          - poetry install -E test
+          - export PYTHONPATH=.
           - pytest
