@@ -2,7 +2,16 @@
 name = "bi_etl"
 version = "0.7.5"
 description = "Python ETL Framework"
-authors = ["Derek Wood <arcann@users.noreply.github.com>"]
+keywords=["etl"]
+classifiers = [
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Development Status :: 5 - Production/Stable",
+    "Topic :: Database",
+]
+authors = ["Derek Wood <bietl_info@bietl.dev>"]
+#homepage = "https://bietl.dev/"
+documentation = "https://bietl.dev/docs/"
+readme="README.md"
 license = "MIT"
 
 [tool.poetry.dependencies]
