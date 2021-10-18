@@ -1417,7 +1417,7 @@ class Table(ReadOnlyTable):
                         for c in new_row:
                             try:
                                 col_obj = self.get_column(c)
-                                stmt = stmt.values({col_obj.name: bindparam(col_obj, type_=col_obj.type)})
+                                stmt = stmt.values({col_obj.name: bindparam(col_obj.name, type_=col_obj.type)})
                             except KeyError:
                                 self.log.error(f'Extra column found in pending_insert_rows row {new_row}')
                                 raise
