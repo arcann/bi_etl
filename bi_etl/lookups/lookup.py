@@ -62,7 +62,7 @@ class Lookup(object):
         self.stats = parent_component.get_unique_stats_entry(
             stats_id='{cls} {name}'.format(cls=self.__class__.__name__, name=self.lookup_name)
         )
-        self.log = logging.getLogger(self.__module__)
+        self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self._remote_lookup_stmt = None
         self._row_size = None
         self.our_process = psutil.Process()
@@ -226,9 +226,14 @@ class Lookup(object):
                     f'bytes per row using cache of {row_cnt:,} rows'
                 )
                 
-                self._row_size = new_row_size     
+                self._row_size = new_row_size
 
-    def cache_row(self, row: Row, allow_update: bool = True):
+    def cache_row(
+        self,
+        row: Row,
+        allow_update: bool = True,
+        allow_insert: bool = True,
+    ):
         """
         Adds the given row to the cache for this lookup.
         
@@ -239,6 +244,9 @@ class Lookup(object):
             
         allow_update: boolean
             Allow this method to update an existing row in the cache.
+
+        allow_insert: boolean
+            Allow this method to insert a new row into the cache
             
         Raises
         ------
@@ -260,6 +268,12 @@ class Lookup(object):
                     raise ValueError(
                         f'Key value {lk_tuple} already in cache and allow_update was False.'
                         f' Possible error with the keys defined for this lookup {self.lookup_name} {self.lookup_keys}.'
+                    )
+            if not allow_insert:
+                if lk_tuple not in self._cache:
+                    raise ValueError(
+                        f'Key value {lk_tuple} not already in cache and allow_insert was False.'
+                        f' Error with {self.lookup_name} keys {self.lookup_keys}.'
                     )
             self._cache[lk_tuple] = row
             

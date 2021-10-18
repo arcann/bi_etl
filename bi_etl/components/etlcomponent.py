@@ -108,8 +108,7 @@ class ETLComponent(Iterable):
 
         self.empty_iteration_header = RowIterationHeader(logical_name='empty')
 
-        # self.log = logging.getLogger(__name__)
-        self.log = logging.getLogger("{mod}.{cls}".format(mod=self.__class__.__module__, cls=self.__class__.__name__))
+        self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         if self.task is not None:
             if not ETLComponent.logging_level_reported:
                 self.task.log_logging_level()
@@ -166,7 +165,35 @@ class ETLComponent(Iterable):
                 return str(self.logical_name)
         else:
             return repr(self)
-    
+
+    def __reduce_ex__(self, protocol):
+        return (
+            # A callable object that will be called to create the initial version of the object.
+            self.__class__,
+
+            # A tuple of arguments for the callable object. An empty tuple must be given if the callable does not accept any argument
+            (self.task, self.logical_name),
+
+            # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
+            # If the object has no such method then, the value must be a dictionary and it will be added to the object’s __dict__ attribute.
+            self.__dict__,
+
+            # Optionally, an iterator (and not a sequence) yielding successive items.
+            # These items will be appended to the object either using obj.append(item) or, in batch, using obj.extend(list_of_items).
+
+            # Optionally, an iterator (not a sequence) yielding successive key-value pairs.
+            # These items will be stored to the object using obj[key] = value
+
+            # PROTOCOL 5+ only
+            # Optionally, a callable with a (obj, state) signature.
+            # This callable allows the user to programmatically control the state-updating behavior of a specific object,
+            # instead of using obj’s static __setstate__() method.
+            # If not None, this callable will have priority over obj’s __setstate__().
+        )
+
+    def get_manager(self):
+        return self.task.get_manager()
+
     def debug_log(
             self,
             state: bool = True
@@ -225,7 +252,10 @@ class ETLComponent(Iterable):
             self,
             value: typing.List[str],
             ):
-        self._column_names = list(value)
+        if isinstance(value, list):
+            self._column_names = value
+        else:
+            self._column_names = list(value)
         self._column_names_set = None
         # Ensure names are unique
         name_dict = dict()
@@ -692,11 +722,16 @@ class ETLComponent(Iterable):
     def cache_row(
             self,
             row: Row,
-            allow_update: bool = False
+            allow_update: bool = False,
+            allow_insert: bool = True,
             ):
         for lookup in self.__lookups.values():
             if lookup.cache_enabled:
-                lookup.cache_row(row, allow_update)
+                lookup.cache_row(
+                    row=row,
+                    allow_update=allow_update,
+                    allow_insert=allow_insert,
+                )
 
     def cache_commit(self):
         for lookup in self.__lookups.values():
@@ -778,7 +813,7 @@ class ETLComponent(Iterable):
                     if src_col not in target_set:
                         if isinstance(source_definition, set):
                             pos = 'N/A'
-                        msg = f"Sanity Check: Source {source_name} contains column {src_col}({pos}) not in target {self}"
+                        msg = f"Sanity Check: Source {source_name} contains column {src_col}({pos}) not in target {self} ({target_set})"
                         if raise_on_source_not_in_target:
                             raise ColumnMappingError(msg)
                         else:
@@ -871,7 +906,7 @@ class ETLComponent(Iterable):
 
             source_row_columns = source_row.columns_in_order
             if source_excludes is not None:
-                source_row_columns = [column_name for column_name in source_row.columns_in_order if column_name not in source_excludes]
+                source_row_columns = [column_name for column_name in source_row_columns if column_name not in source_excludes]
 
             target_column_set = self.column_names_set
             if target_excludes is not None:

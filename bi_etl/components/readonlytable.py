@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import typing
+from copy import copy
 from datetime import datetime
 from operator import attrgetter
 from typing import Iterable
@@ -141,6 +142,7 @@ class ReadOnlyTable(ETLComponent):
         self.database = database
         self.__connection_pool = dict()
         self._table = None
+        self._table_name_case_sensitive = table_name_case_sensitive
         self._columns = None
         self._column_names = None
         self._column_name_index = None
@@ -179,6 +181,43 @@ class ReadOnlyTable(ETLComponent):
 
         # Should be the last call of every init            
         self.set_kwattrs(**kwargs)
+
+    def __reduce_ex__(self, protocol):
+        dict_to_pass = copy(self.__dict__)
+        if '__connection_pool' in dict_to_pass:
+            del dict_to_pass['__connection_pool']
+        del dict_to_pass['_table']
+
+        return (
+            # A callable object that will be called to create the initial version of the object.
+            self.__class__,
+
+            # A tuple of arguments for the callable object. An empty tuple must be given if the callable does not accept any argument
+            (
+                self.task,
+                self.database,
+                self._table_name,
+                self._table_name_case_sensitive,
+                self.schema,
+                self._excluded_columns,
+            ),
+
+            # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
+            # If the object has no such method then, the value must be a dictionary and it will be added to the object’s __dict__ attribute.
+            dict_to_pass,
+
+            # Optionally, an iterator (and not a sequence) yielding successive items.
+            # These items will be appended to the object either using obj.append(item) or, in batch, using obj.extend(list_of_items).
+
+            # Optionally, an iterator (not a sequence) yielding successive key-value pairs.
+            # These items will be stored to the object using obj[key] = value
+
+            # PROTOCOL 5+ only
+            # Optionally, a callable with a (obj, state) signature.
+            # This callable allows the user to programmatically control the state-updating behavior of a specific object,
+            # instead of using obj’s static __setstate__() method.
+            # If not None, this callable will have priority over obj’s __setstate__().
+        )
 
     def __repr__(self):
         template = "{cls}(task={task}," \
@@ -398,7 +437,7 @@ class ReadOnlyTable(ETLComponent):
             cache_stats['entries'] = len(self.__compile_cache)
             del self.__compile_cache
         self.close_connections()
-        super(ReadOnlyTable, self).close()
+        super().close()
 
     def __del__(self):
         # noinspection PyBroadException

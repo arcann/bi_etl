@@ -45,41 +45,26 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
     def needs_all_columns(self):
         return False
 
-    def load_from_files(
+    def get_copy_sql(
             self,
-            local_files: list,
-            table_object: Table,
-            table_to_load: str = None,
-            perform_rename: bool = False,
+            s3_source_path: str,
+            table_to_load: str,
             file_compression: str = '',
-            options: str = '',
             analyze_compression: str = None,
+            options: str = '',
     ):
-        s3_full_folder = self._get_table_specific_folder_name(self.s3_folder, table_object)
-        self._upload_files_to_s3(local_files, s3_full_folder)
-
         analyze_compression = analyze_compression or self.analyze_compression
         if analyze_compression:
             options += f' COMPUPDATE {self.analyze_compression} '
 
-        table_to_load = table_to_load or table_object.qualified_table_name
-
         # TODO: This SQL gets syntax error at or near "credentials"
-        copy_sql = f"""\
-                COPY {table_to_load} FROM 's3://{self.s3_bucket_name}/{s3_full_folder}'                      
+        return f"""\
+                COPY {table_to_load} FROM 's3://{self.s3_bucket_name}/{s3_source_path}'                      
                      credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'
                      AVRO 'auto'
                      {file_compression}  
                      {options}
-                """
-
-        self._run_copy_sql(
-            copy_sql=copy_sql,
-            s3_full_folder=s3_full_folder,
-            table_object=table_object,
-        )
-        if perform_rename:
-            self.rename_table(table_to_load, table_object)
+               """
 
     @staticmethod
     def distribute(iterable, n):

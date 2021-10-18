@@ -327,9 +327,10 @@ class Table(ReadOnlyTable):
         self.bulk_loader = bulk_loader
 
     def cache_row(
-            self,
-            row: Row,
-            allow_update: bool = False
+        self,
+        row: Row,
+        allow_update: bool = False,
+        allow_insert: bool = True,
     ):
         if self.in_bulk_mode:
             self._bulk_load_performed = False
@@ -357,7 +358,11 @@ class Table(ReadOnlyTable):
                         if column_name not in self._bulk_defaulted_columns:
                             self.log.warning(f'defaulted column {column_name} to {default}')
                             self._bulk_defaulted_columns.add(column_name)
-        super().cache_row(row, allow_update=allow_update)
+        super().cache_row(
+            row,
+            allow_update=allow_update,
+            allow_insert=allow_insert
+        )
 
     @property
     def insert_method(self):
@@ -455,7 +460,7 @@ class Table(ReadOnlyTable):
         target_name = target_column_object.name
         code = ''
         if not target_column_object.nullable:
-            if not self.auto_generate_key and target_name in self.primary_key:
+            if not (self.auto_generate_key and target_name in self.primary_key):
                 # Check for nulls. Not as an ELSE because the conversion logic might have made the value null
                 code = textwrap.dedent(f"""\
                 # base indent            
@@ -1271,12 +1276,17 @@ class Table(ReadOnlyTable):
                 # Don't complain about the PK column being missing
                 # Note if PK is more than one column it will fail in autogenerate_key. Doesn't need to be caught here.
                 key = self.get_column_name(list(self.primary_key)[0])
-                target_excludes.add(key)
+                if key not in source_definition:
+                    target_excludes.add(key)
             else:
                 raise KeyError('Cannot generate key values without a primary key.')
 
-        target_excludes.add(self.delete_flag)
-        target_excludes.add(self.last_update_date)
+        if self.delete_flag is not None and self.delete_flag not in source_definition:
+            target_excludes.add(self.delete_flag)
+
+        if self.last_update_date is not None and self.last_update_date not in source_definition:
+            target_excludes.add(self.last_update_date)
+
         target_excludes = frozenset(target_excludes)
 
         super().sanity_check_source_mapping(
@@ -2170,6 +2180,7 @@ class Table(ReadOnlyTable):
             changes_list: typing.Optional[typing.MutableSequence] = None,
             additional_update_values: typing.MutableMapping = None,
             add_to_cache: bool = True,
+            allow_insert=True,
             update_apply_entire_row: bool = False,
             stat_name: str = 'update',
             parent_stats: typing.Optional[Statistics] = None,
@@ -2194,6 +2205,8 @@ class Table(ReadOnlyTable):
             A Row or dict of additional values to apply to the main row
         add_to_cache:
             Should this method update the cache (not if caller will)
+        allow_insert: boolean
+            Allow this method to insert a new row into the cache
         update_apply_entire_row:
             Should the update set all non-key coluyns or just the changed values?
         stat_name:
@@ -2223,7 +2236,7 @@ class Table(ReadOnlyTable):
             for col_name, value in additional_update_values.items():
                 row[col_name] = value
         if add_to_cache and self.maintain_cache_during_load:
-            self.cache_row(row, allow_update=True)
+            self.cache_row(row, allow_update=True, allow_insert=allow_insert)
 
         if not self.in_bulk_mode:
             # Check that the row isn't pending an insert
@@ -2305,7 +2318,11 @@ class Table(ReadOnlyTable):
         del key_values
 
         source_mapped_as_target_row.update(key_values_dict)
-        self.apply_updates(source_mapped_as_target_row, parent_stats=stats)
+        self.apply_updates(
+            source_mapped_as_target_row,
+                        allow_insert=False,
+            parent_stats=stats,
+        )
 
     def update(
             self,
@@ -2510,10 +2527,12 @@ class Table(ReadOnlyTable):
                     ))
 
                 # Then we can apply the updates to it
-                self.apply_updates(row=target_row,
-                                   additional_update_values=updates_to_make,
-                                   parent_stats=stats,
-                                   )
+                self.apply_updates(
+                    row=target_row,
+                    additional_update_values=updates_to_make,
+                    allow_insert=False,
+                    parent_stats=stats,
+                )
         stats.timer.stop()
 
         # Restore saved progress_frequency
@@ -2730,11 +2749,12 @@ class Table(ReadOnlyTable):
 
             if len(changes_list) > 0:
                 changes_list = list(changes_list) + list(conditional_changes)
-                self.apply_updates(row=existing_row,
-                                   changes_list=changes_list,
-                                   additional_update_values=additional_update_values,
-                                   parent_stats=stats
-                                   )
+                self.apply_updates(
+                    row=existing_row,
+                    changes_list=changes_list,
+                    additional_update_values=additional_update_values,
+                    parent_stats=stats
+                )
                 if update_callback:
                     update_callback(changes_list, existing_row)
             target_row = existing_row

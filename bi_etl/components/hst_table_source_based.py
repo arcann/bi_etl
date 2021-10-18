@@ -1,7 +1,9 @@
 import textwrap
 import typing
+from datetime import datetime
 
 from bi_etl.components.hst_table import HistoryTable
+from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.components.table import Table
@@ -633,7 +635,8 @@ class HistoryTableSourceBased(HistoryTable):
                         self=self,
                         row=target_row,
                         additional_update_values=updates_to_make,
-                        parent_stats=stats
+                        allow_insert=False,
+                        parent_stats=stats,
                     )
 
         stats.timer.stop()

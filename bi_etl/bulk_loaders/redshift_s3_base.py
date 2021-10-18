@@ -28,17 +28,29 @@ class RedShiftS3Base(BulkLoader):
                  s3_bucket_name: typing.Optional[str] = None,
                  s3_folder: typing.Optional[str] = None,
                  s3_files_to_generate: typing.Optional[int] = None,
+                 s3_clear_when_done: bool = True,
                  ):
         super().__init__(
             config=config
         )
+        self.config_section = config_section
         self.s3_user_id = s3_user_id or self.config.get(config_section, 'user_id')
-        self.s3_keyring_service_name = s3_keyring_password_section or self.config.get(config_section, 'keyring_service_name', fallback='s3')
+        self.s3_region = self.config.get(config_section, 's3_region', fallback=None)
+        self.s3_keyring_password_section = s3_keyring_password_section
+        self.s3_keyring_service_name = s3_keyring_password_section or self.config.get(
+            config_section,
+            'keyring_service_name',
+            fallback='s3',
+        )
         self.s3_bucket_name = s3_bucket_name or self.config.get(config_section, 'bucket_name')
         self.s3_folder = s3_folder or self.config.get(config_section, 's3_folder')
-        self.s3_files_to_generate = s3_files_to_generate or self.config.getint(config_section, 's3_files_to_generate')
+        self.s3_files_to_generate = s3_files_to_generate or self.config.getint(
+            config_section,
+            's3_files_to_generate',
+            fallback=3,
+        )
         self.s3_clear_before = True
-        self.s3_clear_when_done = True
+        self.s3_clear_when_done = s3_clear_when_done
         self.analyze_compression = None
         self.s3_password = keyring.get_password(self.s3_keyring_service_name, self.s3_user_id)
         assert self.s3_password is not None, f'Password for s3 {self.s3_keyring_service_name} {self.s3_user_id} not found in keyring'
@@ -192,20 +204,91 @@ class RedShiftS3Base(BulkLoader):
         #       However, requires extensive testing
         table_object.execute(f"COMMIT;")
 
-        if self.s3_clear_when_done:
-            self.clean_s3_folder(s3_full_folder)
-
-    def load_from_files(
-        self,
-        local_files: list,
-        table_object: Table,
-        table_to_load: str = None,
-        perform_rename: bool = False,
-        file_compression: str = '',
-        options: str = '',
-        analyze_compression: str = None,
+    def get_copy_sql(
+            self,
+            s3_source_path: str,
+            table_to_load: str,
+            file_compression: str = '',
+            analyze_compression: str = None,
+            options: str = '',
     ):
         raise NotImplementedError()
+
+    def load_from_s3_path(
+            self,
+            s3_source_path: str,
+            table_object: Table,
+            table_to_load: str = None,
+            s3_source_path_is_absolute: bool = True,
+            file_list: typing.Optional[typing.List[str]] = None,
+            file_compression: str = '',
+            options: str = '',
+            analyze_compression: str = None,
+            perform_rename: bool = False,
+    ):
+        tries = 0
+        done = False
+
+        if not s3_source_path_is_absolute:
+            s3_source_path = f'{self.s3_folder}/{s3_source_path}'
+
+        table_to_load = table_to_load or table_object.qualified_table_name
+
+        copy_sql = self.get_copy_sql(
+            s3_source_path=s3_source_path,
+            table_to_load=table_to_load,
+            file_compression=file_compression,
+            analyze_compression=analyze_compression,
+            options=options,
+        )
+
+        while not done:
+            try:
+                self._run_copy_sql(
+                    copy_sql=copy_sql,
+                    s3_full_folder=s3_source_path,
+                    table_object=table_object,
+                    file_list=file_list,
+                )
+                if perform_rename:
+                    self.rename_table(table_to_load, table_object)
+                done = True
+            except sqlalchemy.exc.SQLAlchemyError as e:
+                tries += 1
+                if 'S3ServiceException' in str(e):
+                    if tries >= 3:
+                        self.log.info(f'Still failed after {tries} tries. File cannot be loaded.')
+                        raise
+                    self.log.info(f'Re-upload files to S3 to resolve {e} in 5 seconds')
+                    time.sleep(5)
+                else:
+                    raise
+
+    def load_from_files(
+            self,
+            local_files: list,
+            table_object: Table,
+            table_to_load: str = None,
+            perform_rename: bool = False,
+            file_compression: str = '',
+            options: str = '',
+            analyze_compression: str = None,
+    ):
+        s3_full_folder = self._get_table_specific_folder_name(self.s3_folder, table_object)
+        file_list = self._upload_files_to_s3(local_files, s3_full_folder)
+
+        self.load_from_s3_path(
+            s3_source_path=s3_full_folder,
+            file_list=file_list,
+            table_object=table_object,
+            table_to_load=table_to_load,
+            perform_rename=perform_rename,
+            file_compression=file_compression,
+            options=options,
+            analyze_compression=analyze_compression,
+        )
+        if self.s3_clear_when_done:
+            self.clean_s3_folder(s3_full_folder)
 
     def load_from_iterator(
         self,

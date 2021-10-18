@@ -32,7 +32,7 @@ class PMCMD(object):
             self.config.setup_logging()
         else:
             self.config = config
-        self.log = logging.getLogger('Informatica')
+        self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self.f_dev_null = open(os.devnull, 'w')
         self.control_file_name = "Control_import_No_folder_rep_change.xml"
         self.setup_inf_path()

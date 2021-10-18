@@ -7,7 +7,10 @@ Created on May 26, 2015
 from __future__ import annotations
 
 import functools
+import os
+import threading
 import typing
+from collections import defaultdict
 from operator import attrgetter
 from typing import Union, List
 
@@ -24,13 +27,33 @@ class RowIterationHeader(object):
     """
     Stores the headers of a set of rows for a given iteration
     """
+    lock = threading.Lock()
     next_iteration_id = 0
     instance_dict = dict()
     __shared_name_map_db = dict()
+    _request_header_info_thread = None
+    _request_header_info_queue = None
+    _process_instance_dict = defaultdict(dict)
 
     @staticmethod
     def get_by_id(iteration_id):
         return RowIterationHeader.instance_dict[iteration_id]
+
+    @staticmethod
+    def add_remote_iteration_header(remote_header):
+        RowIterationHeader._process_instance_dict[remote_header.owner_pid][remote_header.iteration_id] = remote_header
+
+    @staticmethod
+    def get_by_process_and_id(value_sent):
+        # value_sent needs to match RowIterationHeader.get_cross_process_iteration_header return
+        process_pid, process_iteration_id = value_sent
+        if process_pid == os.getpid():
+            return RowIterationHeader.get_by_id(process_iteration_id)
+        elif process_pid in RowIterationHeader._process_instance_dict:
+            if process_iteration_id in RowIterationHeader._process_instance_dict[process_pid]:
+                return RowIterationHeader._process_instance_dict[process_pid][process_iteration_id]
+        # Else not found
+        raise ValueError(f"Iteration header for PID={process_pid} ID={process_iteration_id} has not been sent to this process")
 
     def __init__(
             self,
@@ -38,17 +61,19 @@ class RowIterationHeader(object):
             primary_key: typing.Optional[typing.Iterable] = None,
             parent: typing.Optional[ETLComponent] = None,
             columns_in_order: typing.Optional[typing.Iterable] = None,
+            owner_pid: int = None,
             ):
-        # Note this is not thread safe. However, we aren't threading yet.
-        RowIterationHeader.next_iteration_id += 1
-        self.iteration_id = RowIterationHeader.next_iteration_id
-        RowIterationHeader.instance_dict[self.iteration_id] = self
+        with RowIterationHeader.lock:
+            RowIterationHeader.next_iteration_id += 1
+            self.iteration_id = RowIterationHeader.next_iteration_id
+            RowIterationHeader.instance_dict[self.iteration_id] = self
         self.column_definition_locked = False
         if columns_in_order:
             columns_in_order = list(columns_in_order)
             self._column_count = len(columns_in_order)
         else:
             self._column_count = 0
+        self.owner_pid = owner_pid
         self.row_count = 0
         self.logical_name = logical_name or id(self)
         self._primary_key = None
@@ -59,8 +84,9 @@ class RowIterationHeader(object):
         if columns_in_order is not None:
             self._columns_in_order = None
             self.columns_in_order = columns_in_order
-            self.__name_map_db = RowIterationHeader.__shared_name_map_db
-            self.__name_map_db.update({col: col for col in columns_in_order})
+            with RowIterationHeader.lock:
+                self.__name_map_db = RowIterationHeader.__shared_name_map_db
+                self.__name_map_db.update({col: col for col in columns_in_order})
         else:
             self._columns_in_order = list()
             self.__name_map_db = RowIterationHeader.__shared_name_map_db
@@ -72,9 +98,45 @@ class RowIterationHeader(object):
         self.action_id = None
         self.action_count = 0
 
+    def get_cross_process_iteration_header(self):
+        return (
+            os.getpid(),
+            self.iteration_id,
+        )
+
+    def __reduce__(self):
+        return (
+            # A callable object that will be called to create the initial version of the object.
+            self.__class__,
+
+            # A tuple of arguments for the callable object. An empty tuple must be given if the callable does not accept any argument
+            (
+                self.logical_name,
+                self.primary_key,
+                self.parent,
+                self.columns_in_order,
+                os.getpid(),
+            ),
+            # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
+            # If the object has no such method then, the value must be a dictionary and it will be added to the object’s __dict__ attribute.
+
+            # Optionally, an iterator (and not a sequence) yielding successive items.
+            # These items will be appended to the object either using obj.append(item) or, in batch, using obj.extend(list_of_items).
+
+            # Optionally, an iterator (not a sequence) yielding successive key-value pairs.
+            # These items will be stored to the object using obj[key] = value
+
+            # PROTOCOL 5+ only
+            # Optionally, a callable with a (obj, state) signature.
+            # This callable allows the user to programmatically control the state-updating behavior of a specific object,
+            # instead of using obj’s static __setstate__() method.
+            # If not None, this callable will have priority over obj’s __setstate__().
+        )
+
     def get_column_name(self, input_name: typing.Union[str, Column]) -> str:
         try:
-            return self.__name_map_db[input_name]
+            with RowIterationHeader.lock:
+                return self.__name_map_db[input_name]
         except KeyError:
             # If the input_name is an SA Column use it's name.
             # In Python 2.7 to 3.4, isinstance is a lot faster than try-except or hasattr (which does a try)
@@ -84,7 +146,8 @@ class RowIterationHeader(object):
                 name_str = input_name.name
             else:
                 raise ValueError("Row column name must be str, unicode, or Column. Got {}".format(type(input_name)))
-            self.__name_map_db[input_name] = name_str
+            with RowIterationHeader.lock:
+                self.__name_map_db[input_name] = name_str
             return name_str
 
     def get_action_header(
@@ -176,7 +239,7 @@ class RowIterationHeader(object):
         self._clear_caches()
 
     @property
-    def primary_key(self) -> typing.Optional[typing.Iterable]:
+    def primary_key(self) -> typing.Optional[typing.List]:
         try:
             if self._primary_key is not None and len(self._primary_key) > 0:
                 # Check if primary_key is list of Column objects and needs to be turned into a list of str name values
@@ -194,6 +257,8 @@ class RowIterationHeader(object):
         if value is not None:
             if isinstance(value, str):
                 value = [value]
+            elif not isinstance(value, list):
+                value = list(value)
             assert hasattr(value, '__iter__'), "primary_key must be iterable or string"
             self._primary_key = value
         else:

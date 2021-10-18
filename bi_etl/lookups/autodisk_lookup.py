@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 """
 Created on Jan 5, 2016
 
@@ -225,7 +225,32 @@ class AutoDiskLookup(Lookup):
                 return True
         return False
 
-    def cache_row(self, row: Row, allow_update: bool = True):
+    def cache_row(
+            self,
+            row: Row,
+            allow_update: bool = True,
+            allow_insert: bool = True,
+    ):
+        """
+        Adds the given row to the cache for this lookup.
+
+        Parameters
+        ----------
+        row: Row
+            The row to cache
+
+        allow_update: boolean
+            Allow this method to update an existing row in the cache.
+
+        allow_insert: boolean
+            Allow this method to insert a new row into the cache
+
+        Raises
+        ------
+        ValueError
+            If allow_update is False and an already existing row (lookup key) is passed in.
+
+        """
         if self.cache_enabled:        
             if self._cache is None:
                 self.init_cache()

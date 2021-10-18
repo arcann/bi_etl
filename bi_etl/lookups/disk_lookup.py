@@ -128,7 +128,8 @@ class DiskLookup(Lookup):
             return 0
 
     def _cleanup(self):
-        print("Cleanup")
+        if self._cache is not None:
+            self.log.debug(f"Cleanup cache file {self._cache_dir_mgr} {self._cache_dir_mgr.name}")
         self.clear_cache()            
 
     def clear_cache(self):

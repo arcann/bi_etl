@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 """
 Created on Dec 23, 2015
 
@@ -21,7 +21,10 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
     A light wrapper over sqlalchemy.schema.MetaData
     """
 
-    def __init__(self, bind=None, reflect=False, schema=None,
+    def __init__(self,
+                 bind=None,
+                 reflect=False,
+                 schema=None,
                  quote_schema=None,
                  naming_convention=DEFAULT_NAMING_CONVENTION,
                  info=None,
@@ -36,11 +39,40 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             naming_convention=naming_convention,
             info=info,
         )
+        # Save parameters not saved by the base class for use in __reduce_ex__
+        self._save_reflect = reflect
+        self._save_quote_schema = quote_schema
+
         self._table_inventory = None
         self.database_name = database_name
         self._uses_bytes_length_limits = uses_bytes_length_limits
         self._connection = None
-        self.log = logging.getLogger("{mod}.{cls}".format(mod=self.__class__.__module__, cls=self.__class__.__name__))
+        self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+
+    def __reduce_ex__(self, protocol):
+        return (
+            # A callable object that will be called to create the initial version of the object.
+            self.__class__,
+
+            # A tuple of arguments for the callable object. An empty tuple must be given if the callable does not accept any argument
+            (self.bind.url, self._save_reflect, self.schema, self._save_quote_schema, self.naming_convention, self.info, self.database_name, self._uses_bytes_length_limits),
+
+            # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
+            # If the object has no such method then, the value must be a dictionary and it will be added to the object’s __dict__ attribute.
+            None,
+
+            # Optionally, an iterator (and not a sequence) yielding successive items.
+            # These items will be appended to the object either using obj.append(item) or, in batch, using obj.extend(list_of_items).
+
+            # Optionally, an iterator (not a sequence) yielding successive key-value pairs.
+            # These items will be stored to the object using obj[key] = value
+
+            # PROTOCOL 5+ only
+            # Optionally, a callable with a (obj, state) signature.
+            # This callable allows the user to programmatically control the state-updating behavior of a specific object,
+            # instead of using obj’s static __setstate__() method.
+            # If not None, this callable will have priority over obj’s __setstate__().
+        )
 
     def _set_parent(self, parent):
         pass

@@ -1,11 +1,14 @@
 """
 Created on Apr 2, 2015
 """
+import os
 import re
 import sys
 import typing
 
 from openpyxl import load_workbook, Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table as WorksheetTable, TableStyleInfo
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.xlsx_reader import XLSXReader
@@ -117,15 +120,28 @@ class XLSXWriter(XLSXReader):
         return "XLSXWriter({})".format(self.logical_name)
 
     @property
+    def rows_inserted(self):
+        return self._insert_cnt
+
+    @property
+    def rows_inserted_this_sheet(self):
+        return self._insert_cnt_this_sheet
+
+    @property
     def workbook(self):
         if self._workbook is None:
             if self.write_only:
                 self._workbook = Workbook(write_only=True)
             else:
-                self._workbook = load_workbook(filename=self.file_name, read_only=False)
+                if os.path.isfile(self.file_name):
+                    self._workbook = load_workbook(filename=self.file_name, read_only=False)
+                else:
+                    self._workbook = Workbook()
+                    del self._workbook['Sheet']
         return self._workbook
 
     def set_active_worksheet_by_name(self, sheet_name):
+        self._active_worksheet_name = sheet_name
         if sheet_name not in self.workbook:
             self._active_worksheet = self.workbook.create_sheet(sheet_name)
             self._insert_cnt_this_sheet = 0
@@ -137,8 +153,19 @@ class XLSXWriter(XLSXReader):
             self._column_names = None
             self._insert_cnt_this_sheet = 0
 
+    def set_active_worksheet_by_number(self, sheet_number: int):
+        try:
+            self.log.warning("Chaning sheets by number does not reset the ")
+            super().set_active_worksheet_by_number(sheet_number)
+        except ValueError as e:
+            raise ValueError(f"{e}. Use set_active_worksheet_by_name to create new sheets.")
+
     def _obtain_column_names(self):
         raise ValueError(f'Column names must be explicitly set on {self}')
+
+    def set_columns_and_widths(self, columns_dict: typing.Dict[str, float]):
+        self.column_names = columns_dict.keys()
+        self.set_widths(columns_dict.values())
 
     def write_header(self):
         if self.column_names is None:
@@ -191,6 +218,37 @@ class XLSXWriter(XLSXReader):
 
         stats.timer.stop()
 
+    def set_widths(self, column_widths):
+        for i, column_width in enumerate(column_widths):
+            self.active_worksheet.column_dimensions[get_column_letter(i + 1)].width = column_width
+
+    def make_table_from_inserted_data(self, style_name: str = 'TableStyleMedium2'):
+        if self._insert_cnt_this_sheet == 0:
+            return
+        last_col_letter = get_column_letter(len(self.column_names))
+
+        table_ref = f"A1:{last_col_letter}{self._insert_cnt_this_sheet + 1}"
+        self.log.debug(f"Adding table to worksheet {self.active_worksheet_name} for range {table_ref}")
+
+        table = WorksheetTable(
+            displayName=f"Tbl_{self.active_worksheet_name}",
+            ref=table_ref
+        )
+        style = TableStyleInfo(
+            name=style_name,
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=True,
+            showColumnStripes=False
+        )
+        table.tableStyleInfo = style
+
+        # noinspection PyProtectedMember
+        table._initialise_columns()
+        for column, value in zip(table.tableColumns, self.column_names):
+            column.name = value
+        self.active_worksheet.add_table(table)
+
     def insert(self,
                source_row: typing.Union[Row, list],  # Could also be a whole list of rows
                parent_stats: Statistics = None,
@@ -224,23 +282,6 @@ class XLSXWriter(XLSXReader):
             
     def close(self):
         if self.has_workbook_init():
-            # add_table is not currently working.
-
-            # table_range = CellRange(
-            #     min_col=1, max_col=len(self.column_names),
-            #     min_row=1, max_row=self._insert_cnt_this_sheet +1
-            # )
-            # table_name = f"{self.active_worksheet.title}_table".replace(' ', '_')
-            # tab = Table(displayName=table_name, ref=table_range.coord)
-            #
-            # # Add a default style with striped rows and banded columns
-            # style = TableStyleInfo(
-            #     name='TableStyleMedium2',
-            #     showRowStripes=True
-            # )
-            # tab.tableStyleInfo = style
-            # self.active_worksheet.add_table(tab)
-
             self.workbook.save(filename=self.file_name)
             self.workbook.close()
         super().close()

@@ -10,6 +10,8 @@ import traceback
 import warnings
 from queue import Empty
 
+import bi_etl.parallel.mp as mp
+
 import re
 import typing
 from CaseInsensitiveDict import CaseInsensitiveDict
@@ -28,6 +30,8 @@ from bi_etl.scheduler.messages import ChildStatusUpdate
 from bi_etl.scheduler.status import Status
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
+
+
 # pylint: disable=too-many-instance-attributes, too-many-public-methods
 # pylint: disable=too-many-statements, too-many-branches, too-many-arguments
 
@@ -143,6 +147,7 @@ class ETLTask(object):
             except TypeError:
                 pass  # We're not running on a full Scheduler
         self._children = set()
+        self._manager = None
         # Used by the scheduler to tell if this task has written it's dependencies to the log
         self._logged_dependencies = False
         self._normalized_dependents_set = None
@@ -185,6 +190,15 @@ class ETLTask(object):
         self.parent_to_child = odict['parent_to_child']
         self.child_to_parent = odict['child_to_parent']
         self._parameter_dict = CaseInsensitiveDict(odict['_parameter_dict'])
+
+    def get_manager(self):
+        if self._manager is None:
+            self._manager = mp.Manager()
+        return self._manager
+
+    def shutdown(self):
+        if self._manager is not None:
+            self._manager.shutdown()
 
     def log_logging_level(self):
         # Calling bi_etl.utility version
@@ -532,11 +546,11 @@ class ETLTask(object):
                       param_value: object,
                       local_only: bool = False,
                       commit: bool = True):
-            warnings.warn("add_parameter is deprecated, please use set_parameter instead")
-            self.set_parameter(param_name=param_name,
-                               param_value=param_value,
-                               local_only=local_only,
-                               commit=commit)
+        warnings.warn("add_parameter is deprecated, please use set_parameter instead")
+        self.set_parameter(param_name=param_name,
+                           param_value=param_value,
+                           local_only=local_only,
+                           commit=commit)
 
     def set_parameters(self, local_only=False, commit=True, *args, **kwargs):
         """
@@ -681,7 +695,7 @@ class ETLTask(object):
         self.add_database(database_obj)
         return database_obj
 
-    def get_sql_script_runner(self, script_name: str, database_entry: str=None):
+    def get_sql_script_runner(self, script_name: str, database_entry: str = None):
         if database_entry is None:
             database_entry = self.get_database_name()
         # Late import to avoid circular dependency
@@ -693,7 +707,7 @@ class ETLTask(object):
             config=self.config,
         )
 
-    def run_sql_script(self, script_name: str, database_entry: str=None):
+    def run_sql_script(self, script_name: str, database_entry: str = None):
         runner = self.get_sql_script_runner(script_name=script_name, database_entry=database_entry)
         ok = runner.run()
         if not ok:
@@ -989,7 +1003,17 @@ class ETLTask(object):
                 message_content = '\n'.join(message_list)
                 subject = "{environment} {etl} load failed".format(environment=environment, etl=self)
 
-                self.notify('failures', subject=subject, message=message_content)
+                # https: // jira.pepfar.net / browse / DMA - 2113
+                # Added logic to skip certain sections
+                skip_channel = self.config.get('Notifiers', 'skipfailures', fallback=None)
+
+                if skip_channel is not None:
+                    if 'Runtime' in message_content:
+                        self.notify('failures', subject=subject, message=message_content, skip_channel=skip_channel,)
+                    else:
+                        self.notify('failures', subject=subject, message=message_content, )
+                else:
+                    self.notify('failures', subject=subject, message=message_content,)
 
             self.log.info("{} FAILED.".format(self))
             if self.child_to_parent is not None:
@@ -1065,34 +1089,38 @@ class ETLTask(object):
                             self.log.exception(e)
         return notifiers_list
 
-    def notify(self, channel_name, subject, message=None, sensitive_message=None, attachment=None):
+    # https: // jira.pepfar.net / browse / DMA - 2113
+    # Added logic to skip writing to a channel based on the Channel Name
+    def notify(self, channel_name, subject, message=None, sensitive_message=None, attachment=None, skip_channel=None):
         if not self.suppress_notifications:
             # Note: all exceptions are caught since we don't want notifications to kill the load
             try:
                 notifiers_list = self.get_notifiers(channel_name)
                 for notifier in notifiers_list:
-                    try:
-                        notifier.send(
-                            subject=subject,
-                            message=message,
-                            sensitive_message=sensitive_message,
-                            attachment=attachment,
-                        )
-                    except Exception as e:
-                        self.log.exception(e)
-                        if self.notification_fallback_channel is not None:
-                            fallback_message = f'error={e} original_subject={subject} original_message={message}'
-                            fallback_notifiers_list = self.get_notifiers(self.notification_fallback_channel)
-                            for fallback_notifier in fallback_notifiers_list:
-                                try:
-                                    fallback_notifier.send(
-                                        subject=f'Failed to send to {notifier}',
-                                        message=fallback_message,
-                                        sensitive_message=sensitive_message,
-                                        attachment=attachment,
-                                    )
-                                except Exception as e:
-                                    self.log.exception(e)
+                    skip_notifier = notifier.config_section
+                    if skip_channel != skip_notifier:
+                        try:
+                            notifier.send(
+                                subject=subject,
+                                message=message,
+                                sensitive_message=sensitive_message,
+                                attachment=attachment,
+                            )
+                        except Exception as e:
+                            self.log.exception(e)
+                            if self.notification_fallback_channel is not None:
+                                fallback_message = f'error={e} original_subject={subject} original_message={message}'
+                                fallback_notifiers_list = self.get_notifiers(self.notification_fallback_channel)
+                                for fallback_notifier in fallback_notifiers_list:
+                                    try:
+                                        fallback_notifier.send(
+                                            subject=f'Failed to send to {notifier}',
+                                            message=fallback_message,
+                                            sensitive_message=sensitive_message,
+                                            attachment=attachment,
+                                        )
+                                    except Exception as e:
+                                        self.log.exception(e)
 
             except Exception as e:
                 self.log.exception(e)
@@ -1154,6 +1182,7 @@ class ETLTask(object):
 
     def __exit__(self, exit_type, exit_value, exit_traceback):
         self.close()
+
 
 ##################
 

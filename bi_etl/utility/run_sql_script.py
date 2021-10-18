@@ -128,85 +128,84 @@ class RunSQLScript(ETLTask):
                 conn.autocommit(True)
             except TypeError:
                 conn.autocommit = True
-            cursor = conn.cursor()
+            with conn.cursor() as cursor:
+                script_full_name = self.script_full_name
+                self.log.info("Running {}".format(script_full_name))
+                with open(script_full_name, "rt", encoding="utf-8-sig") as sql_file:
+                    sql = sql_file.read()
 
-            script_full_name = self.script_full_name
-            self.log.info("Running {}".format(script_full_name))
-            with open(script_full_name, "rt", encoding="utf-8-sig") as sql_file:
-                sql = sql_file.read()
+                for old, new in sql_replacements.items():
+                    if old in sql:
+                        self.log.info('replacing "{}" with "{}"'.format(old, new))
+                        sql = sql.replace(old, new)
 
-            for old, new in sql_replacements.items():
-                if old in sql:
-                    self.log.info('replacing "{}" with "{}"'.format(old, new))
-                    sql = sql.replace(old, new)
+                go_pattern = re.compile('\nGO\n', flags=re.IGNORECASE)
+                parts = go_pattern.split(sql)
+                for go_part_sql in parts:
+                    sub_parts = sqlparse.split(go_part_sql)
+                    for part_sql in sub_parts:
+                        part_sql = part_sql.strip()
+                        if part_sql.upper().endswith('GO'):
+                            part_sql = part_sql[:-2]
+                        part_sql = part_sql.strip()
+                        part_sql = part_sql.strip(';')
+                        part_sql = part_sql.strip()
+                        if part_sql != '':
+                            timer = Timer()
 
-            go_pattern = re.compile('\nGO\n', flags=re.IGNORECASE)
-            parts = go_pattern.split(sql)
-            for go_part_sql in parts:
-                sub_parts = sqlparse.split(go_part_sql)
-                for part_sql in sub_parts:
-                    part_sql = part_sql.strip()
-                    if part_sql.upper().endswith('GO'):
-                        part_sql = part_sql[:-2]
-                    part_sql = part_sql.strip()
-                    part_sql = part_sql.strip(';')
-                    part_sql = part_sql.strip()
-                    if part_sql != '':
-                        timer = Timer()
+                            if part_sql.startswith('EXEC') and database.bind.dialect.dialect_description == 'mssql+pyodbc':
+                                sql_statement = sqlparse.parse(part_sql)[0]
+                                procedure = None
+                                procedure_args = list()
+                                for token in sql_statement.tokens:
+                                    if isinstance(token, sqlparse.sql.Identifier):
+                                        procedure = token.value
+                                    if isinstance(token, sqlparse.sql.IdentifierList):
+                                        procedure_args_raw = token.value
+                                        procedure_args_list = procedure_args_raw.split(',')
+                                        for arg in procedure_args_list:
+                                            arg = arg.strip()
+                                            arg2 = arg.strip("'")
+                                            procedure_args.append(arg2)
+                                if procedure is None:
+                                    raise ValueError(f"Error parsing procedure parts {sql_statement.tokens}")
+                                self.log.debug(f"Executing Procedure: {procedure} with args {procedure_args}")
+                                database.execute_procedure(procedure, *procedure_args, dpapi_connection=conn)
+                                self.log.info("Procedure took {} seconds".format(timer.seconds_elapsed_formatted))
+                            else:
+                                self.log.debug(f"Executing SQL:\n{part_sql}\n--End SQL")
 
-                        if part_sql.startswith('EXEC') and database.bind.dialect.dialect_description == 'mssql+pyodbc':
-                            sql_statement = sqlparse.parse(part_sql)[0]
-                            procedure = None
-                            procedure_args = list()
-                            for token in sql_statement.tokens:
-                                if isinstance(token, sqlparse.sql.Identifier):
-                                    procedure = token.value
-                                if isinstance(token, sqlparse.sql.IdentifierList):
-                                    procedure_args_raw = token.value
-                                    procedure_args_list = procedure_args_raw.split(',')
-                                    for arg in procedure_args_list:
-                                        arg = arg.strip()
-                                        arg2 = arg.strip("'")
-                                        procedure_args.append(arg2)
-                            if procedure is None:
-                                raise ValueError(f"Error parsing procedure parts {sql_statement.tokens}")
-                            self.log.debug(f"Executing Procedure: {procedure} with args {procedure_args}")
-                            database.execute_procedure(procedure, *procedure_args, dpapi_connection=conn)
-                            self.log.info("Procedure took {} seconds".format(timer.seconds_elapsed_formatted))
-                        else:
-                            self.log.debug(f"Executing SQL:\n{part_sql}\n--End SQL")
+                                # noinspection PyBroadException
+                                try:
+                                    cursor.execute(part_sql)
+                                except Exception as e:
+                                    error_msg = str(e).lower()
+                                    if ('buffer length (0)' in error_msg
+                                            or "empty query" in error_msg):
+                                        # Skip errors for blank SQL
+                                        pass
+                                    else:
+                                        self.log.error(part_sql)
+                                        raise
 
-                            # noinspection PyBroadException
-                            try:
-                                cursor.execute(part_sql)
-                            except Exception as e:
-                                error_msg = str(e).lower()
-                                if ('buffer length (0)' in error_msg
-                                        or "empty query" in error_msg):
-                                    # Skip errors for blank SQL
-                                    pass
-                                else:
-                                    self.log.error(part_sql)
-                                    raise
-
-                            self.log.info("Statement took {} seconds".format(timer.seconds_elapsed_formatted))
-                            # noinspection PyBroadException
-                            try:
-                                row = cursor.fetchone()
-                                self.log.info("Results:")
-                                while row:
-                                    self.log.info(row)
+                                self.log.info("Statement took {} seconds".format(timer.seconds_elapsed_formatted))
+                                # noinspection PyBroadException
+                                try:
                                     row = cursor.fetchone()
-                            except Exception:
-                                self.log.info("No results returned")
-                            self.log.info("{:,} rows were affected".format(cursor.rowcount))
-                            # self.log.info("Statement took {} seconds and affected {:,} rows"
-                            #               .format(timer.seconds_elapsed_formatted, ret.rowcount))
-                            # if ret.returns_rows:
-                            #     self.log.info("Rows returned:")
-                            #     for row in ret:
-                            #         self.log.info(dict_to_str(row))
-                            self.log.info("-" * 80)
+                                    self.log.info("Results:")
+                                    while row:
+                                        self.log.info(row)
+                                        row = cursor.fetchone()
+                                except Exception:
+                                    self.log.info("No results returned")
+                                self.log.info("{:,} rows were affected".format(cursor.rowcount))
+                                # self.log.info("Statement took {} seconds and affected {:,} rows"
+                                #               .format(timer.seconds_elapsed_formatted, ret.rowcount))
+                                # if ret.returns_rows:
+                                #     self.log.info("Rows returned:")
+                                #     for row in ret:
+                                #         self.log.info(dict_to_str(row))
+                                self.log.info("-" * 80)
 
             conn.commit()
         finally:

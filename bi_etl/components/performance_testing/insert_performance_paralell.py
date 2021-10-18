@@ -5,7 +5,7 @@ from bi_etl.database.connect import Connect
 from datetime import datetime, date
 import time
 
-from pathos.helpers import mp
+import bi_etl.parallel.mp as mp
 
 
 def now():

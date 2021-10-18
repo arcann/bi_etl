@@ -1,9 +1,10 @@
-
+# -*- coding: utf-8 -*-
 """
 Created on Jan 22, 2016
 
 @author: Derek Wood
 """
+import json
 import logging
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
@@ -36,6 +37,8 @@ class _FastNumeric(sqltypes.Numeric):
 # Q: Why is this a class?
 # A: So that we can override the whole thing at once in MockConnect
 class Connect(object):
+    _database_pool = dict()
+
     @staticmethod
     def get_sqlachemy_engine(
             config: BIConfigParser,
@@ -259,18 +262,33 @@ class Connect(object):
             override_port: int = None,
             **kwargs) -> DatabaseMetadata:
         log = logging.getLogger(__name__)
-        engine = Connect.get_sqlachemy_engine(config, database_name, user, override_port=override_port, **kwargs)
-        if schema is None and config.has_option(database_name, 'schema'):
-            schema = config.get(database_name, 'schema')
-            log.info("Using config file schema {}".format(schema))
-        if config.has_option(database_name, 'uses_bytes_length_limits'):
-            uses_bytes_length_limits = config.getboolean(database_name, 'uses_bytes_length_limits')
+
+        pool_key_list = [database_name, user, schema, override_port]
+        for entry in kwargs.items():
+            pool_key_list.append(entry)
+        for entry in config[database_name].items():
+            if not isinstance(entry[1], dict):
+                pool_key_list.append(entry)
+        pool_key = tuple(pool_key_list)
+
+        if pool_key in Connect._database_pool:
+            log.info(f"Using existing in-memory metadata for {database_name}")
+            return Connect._database_pool[pool_key]
         else:
-            uses_bytes_length_limits = None
-        return DatabaseMetadata(
-            bind=engine,
-            schema=schema,
-            quote_schema=False,
-            database_name=database_name,
-            uses_bytes_length_limits=uses_bytes_length_limits,
-        )
+            engine = Connect.get_sqlachemy_engine(config, database_name, user, override_port=override_port, **kwargs)
+            if schema is None and config.has_option(database_name, 'schema'):
+                schema = config.get(database_name, 'schema')
+                log.info("Using config file schema {}".format(schema))
+            if config.has_option(database_name, 'uses_bytes_length_limits'):
+                uses_bytes_length_limits = config.getboolean(database_name, 'uses_bytes_length_limits')
+            else:
+                uses_bytes_length_limits = None
+            db = DatabaseMetadata(
+                bind=engine,
+                schema=schema,
+                quote_schema=False,
+                database_name=database_name,
+                uses_bytes_length_limits=uses_bytes_length_limits,
+            )
+            Connect._database_pool[pool_key] = db
+            return db

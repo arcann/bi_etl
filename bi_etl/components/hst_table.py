@@ -627,6 +627,8 @@ class HistoryTable(Table):
                       row,
                       changes_list: typing.MutableSequence[ColumnDifference] = None,
                       additional_update_values: Union[dict, Row] = None,
+                      add_to_cache: bool = True,
+                      allow_insert=True,
                       stat_name: str = 'update',
                       parent_stats: Statistics = None,
                       **kwargs
@@ -648,6 +650,10 @@ class HistoryTable(Table):
             A list of ColumnDifference objects to apply to the row
         additional_update_values:
             A Row or dict of additional values to apply to the main row
+        add_to_cache:
+            Should this method update the cache (not if caller will)
+        allow_insert: boolean
+            Allow this method to insert a new row into the cache
         stat_name:
             Name of this step for the ETLTask statistics. Default = 'update'
         parent_stats:
@@ -683,6 +689,8 @@ class HistoryTable(Table):
                 additional_update_values=additional_update_values,
                 stat_name=stat_name,
                 parent_stats=parent_stats,
+                add_to_cache=add_to_cache,
+                allow_insert=allow_insert,
             )
         else:
             # Create a clone of the existing row
@@ -695,12 +703,14 @@ class HistoryTable(Table):
             # Apply updates to the new row (use parent class routine to finish the work)
             # It won't send update since new_row.status = RowStatus.insert
             # The row actually gets inserted at the end of this method
-            super().apply_updates(new_row,
-                                  changes_list=changes_list,
-                                  additional_update_values=additional_update_values,
-                                  add_to_cache=False,
-                                  parent_stats=parent_stats,
-                                  )
+            super().apply_updates(
+                new_row,
+                changes_list=changes_list,
+                additional_update_values=additional_update_values,
+                add_to_cache=False,
+                parent_stats=parent_stats,
+                allow_insert=allow_insert,
+            )
 
             new_row.set_keeping_parent(self.begin_date_column, effective_date)
             # check that we aren't inserting after all existing rows
@@ -717,14 +727,18 @@ class HistoryTable(Table):
             # Retire the existing row (after clone so that the existing end_date is passed on to the new row)
             # Note: The parent class apply_updates will check to only send update statement if the row is in the
             #       database, otherwise it will update the record that's pending insert
-            super().apply_updates(row,
-                                  stat_name=stat_name,
-                                  parent_stats=parent_stats,
-                                  changes_list=[ColumnDifference(self.end_date_column,
-                                                                 old_value=row[self.end_date_column],
-                                                                 new_value=end_date_coerce(
-                                                                     effective_date - timedelta(seconds=1)))]
-                                  )
+            super().apply_updates(
+                row,
+                stat_name=stat_name,
+                parent_stats=parent_stats,
+                changes_list=[ColumnDifference(
+                    self.end_date_column,
+                    old_value=row[self.end_date_column],
+                    new_value=end_date_coerce(effective_date - timedelta(seconds=1))
+                )],
+                add_to_cache=add_to_cache,
+                allow_insert=allow_insert,
+            )
             if self.trace_data:
                 self.log.debug("retiring row with begin effective {begin} with new end date of {end}".format(
                     begin=row[self.begin_date_column],
@@ -1132,7 +1146,8 @@ class HistoryTable(Table):
                     first_existing_row.set_keeping_parent(self.begin_date_column, row_to_be_deleted[self.begin_date_column])
                     super().apply_updates(
                         row=first_existing_row,
-                        parent_stats=stats
+                        parent_stats=stats,
+                        allow_insert=False,
                     )
                 # Nothing more to do exit this method
                 return
@@ -1148,7 +1163,8 @@ class HistoryTable(Table):
             # Apply updates to the row (use parent class routine to finish the work)
             super().apply_updates(
                 row=prior_row,
-                parent_stats=stats
+                parent_stats=stats,
+                allow_insert=False,
             )
         stats.timer.stop()
 
@@ -1463,6 +1479,7 @@ class HistoryTable(Table):
                     target_row,
                     additional_update_values=updates_to_make,
                     parent_stats=stats,
+                    allow_insert=False,
                 )
 
                 #
@@ -1728,6 +1745,7 @@ class HistoryTable(Table):
                                             self.begin_date_column: self.default_begin_date
                                         },
                                         parent_stats=stats,
+                                        allow_insert=False,
                                     )
 
                                     stats.add_to_stat('rows with bad date sequence', 1)
@@ -1751,6 +1769,7 @@ class HistoryTable(Table):
                                         self.end_date_column: self.default_end_date
                                     },
                                     parent_stats=stats,
+                                    allow_insert=False,
                                 )
 
                                 stats.add_to_stat('rows with bad date sequence', 1)
@@ -1783,6 +1802,7 @@ class HistoryTable(Table):
                                         self.end_date_column: correct_prior_end_date
                                     },
                                     parent_stats=stats,
+                                    allow_insert=False,
                                 )
                                 stats.add_to_stat('rows with bad date sequence', 1)
 

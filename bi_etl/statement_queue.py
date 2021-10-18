@@ -31,7 +31,7 @@ class StatementQueue(object):
         # 1) It's a soft limit, we might go higher
         # 2) It doesn't count the INSERT INTO clause part (e.g. INSERT INTO perf_test (c1,c2,dt,i1,f1,d1) VALUES )
         self.size_soft_limit = 60000 * 4096
-        self.log = logging.getLogger(__name__)
+        self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         
     def __len__(self):
         return self.row_count

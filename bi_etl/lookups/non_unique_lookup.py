@@ -54,7 +54,32 @@ class NonUniqueLookup(Lookup):
 
         return results_2
 
-    def cache_row(self, row: Row, allow_update: bool = True):
+    def cache_row(
+            self,
+            row: Row,
+            allow_update: bool = True,
+            allow_insert: bool = True,
+    ):
+        """
+        Adds the given row to the cache for this lookup.
+
+        Parameters
+        ----------
+        row: Row
+            The row to cache
+
+        allow_update: boolean
+            Allow this method to update an existing row in the cache.
+
+        allow_insert: boolean
+            Allow this method to insert a new row into the cache
+
+        Raises
+        ------
+        ValueError
+            If allow_update is False and an already existing row (lookup key) is passed in.
+
+        """
         if self.cache_enabled:
             assert isinstance(row, Row), "cache_row requires Row and not {}".format(type(row))
 

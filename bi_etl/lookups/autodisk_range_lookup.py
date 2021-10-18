@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 """
 Created on Jan 5, 2016
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 import typing
 from configparser import ConfigParser
 
+from bi_etl.components.row.row import Row
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
 from bi_etl.lookups.disk_range_lookup import DiskRangeLookup
 from bi_etl.lookups.range_lookup import RangeLookup
@@ -71,7 +72,32 @@ class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
         self.MemoryLookupClass = RangeLookup
         self.DiskLookupClass = DiskRangeLookup
 
-    def cache_row(self, row, allow_update=True):
+    def cache_row(
+            self,
+            row: Row,
+            allow_update: bool = True,
+            allow_insert: bool = True,
+    ):
+        """
+        Adds the given row to the cache for this lookup.
+
+        Parameters
+        ----------
+        row: Row
+            The row to cache
+
+        allow_update: boolean
+            Allow this method to update an existing row in the cache.
+
+        allow_insert: boolean
+            Allow this method to insert a new row into the cache
+
+        Raises
+        ------
+        ValueError
+            If allow_update is False and an already existing row (lookup key) is passed in.
+
+        """
         AutoDiskLookup.cache_row(self, row, allow_update=allow_update)
 
     def find_in_cache(self, row, **kwargs):

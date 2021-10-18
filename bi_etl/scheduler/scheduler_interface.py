@@ -101,14 +101,14 @@ class SchedulerInterface(object):
                     log_name = 'SchedulerInterface'
                 self.config.set_dated_log_file_name(log_name, '.log')
                 self.config.setup_logging()
-                self.log = logging.getLogger('Scheduler')
+                self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
             else:
                 self.log = log
             self.log.info("Config file used = {}".format(config_file))
         else:
             self.config = config
             if log is None:
-                self.log = logging.getLogger('Scheduler')
+                self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
             else:
                 self.log = log
         log_logging_level(self.log)

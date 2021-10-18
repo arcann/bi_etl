@@ -6,6 +6,7 @@ import typing
 from datetime import datetime, time
 
 from openpyxl import load_workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.scheduler.task import ETLTask
@@ -99,8 +100,9 @@ class XLSXReader(ETLComponent):
         self.__active_row = None               
         
         self._workbook = None
-        self._active_worksheet = None
-        
+        self._active_worksheet: typing.Optional[Worksheet] = None
+        self._active_worksheet_name: typing.Optional[str] = None
+
         # Should be the last call of every init
         self.set_kwattrs(**kwargs)
 
@@ -143,16 +145,17 @@ class XLSXReader(ETLComponent):
             self._workbook = load_workbook(filename=self.file_name, read_only=True)
         return self._workbook
     
-    def set_active_worksheet_by_name(self, sheet_name):
+    def set_active_worksheet_by_name(self, sheet_name: str):
         self._active_worksheet = self.workbook[sheet_name]
+        self._active_worksheet_name = sheet_name
         self._column_names = None
         
-    def set_active_worksheet_by_number(self, sheet_number):
+    def set_active_worksheet_by_number(self, sheet_number: int):
         sheet_names = self.get_sheet_names()
         if len(sheet_names) >= (sheet_number + 1):
             sheet_name = sheet_names[sheet_number]
         else:
-            sheet_name = 'output'
+            raise ValueError(f"{self} does not have a worksheet numbered {sheet_number}")
         self.set_active_worksheet_by_name(sheet_name)
     
     @property
@@ -160,6 +163,13 @@ class XLSXReader(ETLComponent):
         if self._active_worksheet is None:
             self.set_active_worksheet_by_number(0)
         return self._active_worksheet
+
+    @property
+    def active_worksheet_name(self) -> str:
+        # if self._active_worksheet_name is None:
+        #     self.set_active_worksheet_by_number(0)
+        # return self._active_worksheet_name
+        return self.active_worksheet.title
     
     def get_sheet_names(self):
         return self.workbook.get_sheet_names()
@@ -220,6 +230,7 @@ class XLSXReader(ETLComponent):
         
     def read_header_row(self):
         # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
+        # noinspection PyTypeChecker
         row = next(self.active_worksheet.iter_rows(
             min_col=1,
             min_row=self.header_row,
@@ -257,4 +268,5 @@ class XLSXReader(ETLComponent):
     def close(self):
         if self._workbook is not None:
             self._workbook.close()
+            self._workbook = None
         super(XLSXReader, self).close()

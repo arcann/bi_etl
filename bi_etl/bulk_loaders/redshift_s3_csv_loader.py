@@ -29,6 +29,8 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                  s3_bucket_name: typing.Optional[str] = None,
                  s3_folder: typing.Optional[str] = None,
                  s3_files_to_generate: typing.Optional[int] = None,
+                 s3_clear_when_done: bool = True,
+                 has_header: bool = True,
                  ):
         super().__init__(
             config=config,
@@ -38,75 +40,84 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             s3_bucket_name=s3_bucket_name,
             s3_folder=s3_folder,
             s3_files_to_generate=s3_files_to_generate,
+            s3_clear_when_done=s3_clear_when_done,
         )
         self.s3_file_delimiter = '|'
         self.null_value = ''
-        self.s3_clear_before = True
-        self.s3_clear_when_done = True
+        self.s3_clear_when_done = False
         self.analyze_compression = None
+        self.has_header = has_header
 
-    def load_from_files(
+    def __reduce_ex__(self, protocol):
+        return (
+            # A callable object that will be called to create the initial version of the object.
+            self.__class__,
+
+            # A tuple of arguments for the callable object. An empty tuple must be given if the callable does not accept any argument
+            (
+                self.config,
+                self.config_section,
+                self.s3_user_id,
+                self.s3_keyring_password_section,
+                self.s3_bucket_name,
+                self.s3_folder,
+                self.s3_files_to_generate,
+                self.s3_clear_when_done,
+                self.has_header,
+            ),
+
+            # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
+            # If the object has no such method then, the value must be a dictionary and it will be added to the object’s __dict__ attribute.
+            None,
+
+            # Optionally, an iterator (and not a sequence) yielding successive items.
+            # These items will be appended to the object either using obj.append(item) or, in batch, using obj.extend(list_of_items).
+
+            # Optionally, an iterator (not a sequence) yielding successive key-value pairs.
+            # These items will be stored to the object using obj[key] = value
+
+            # PROTOCOL 5+ only
+            # Optionally, a callable with a (obj, state) signature.
+            # This callable allows the user to programmatically control the state-updating behavior of a specific object,
+            # instead of using obj’s static __setstate__() method.
+            # If not None, this callable will have priority over obj’s __setstate__().
+        )
+
+    def get_copy_sql(
             self,
-            local_files: list,
-            table_object: Table,
-            table_to_load: str = None,
-            perform_rename: bool = False,
+            s3_source_path: str,
+            table_to_load: str,
             file_compression: str = '',
-            options: str = '',
             analyze_compression: str = None,
-            has_header: bool = True,
+            options: str = '',
     ):
-        s3_full_folder = self._get_table_specific_folder_name(self.s3_folder, table_object)
+        if self.has_header:
+            header_option = 'IGNOREHEADER 1'
+        else:
+            header_option = ''
 
-        tries = 0
-        done = False
-        while not done:
-            try:
-                file_list = self._upload_files_to_s3(local_files, s3_full_folder)
+        analyze_compression = analyze_compression or self.analyze_compression
+        if analyze_compression:
+            options += f' COMPUPDATE {self.analyze_compression} '
 
-                analyze_compression = analyze_compression or self.analyze_compression
-                if analyze_compression:
-                    options += f' COMPUPDATE {self.analyze_compression} '
+        if self.s3_region is not None:
+            region_option = f"region '{self.s3_region}'"
 
-                table_to_load = table_to_load or table_object.qualified_table_name
+        else:
+            region_option = ''
 
-                if has_header:
-                    header_cmd = 'IGNOREHEADER 1'
-                else:
-                    header_cmd = ''
-
-                copy_sql = f"""\
-                            COPY {table_to_load} 
-                                 FROM 's3://{self.s3_bucket_name}/{s3_full_folder}'
-                                 CSV 
-                                 delimiter '{self.s3_file_delimiter}'
-                                 null '{self.null_value}' 
-                                 credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'
-                                 {header_cmd} 
-                                 {file_compression}
-                                 {options}; commit;
-                            """
-
-                self._run_copy_sql(
-                    copy_sql=copy_sql,
-                    s3_full_folder=s3_full_folder,
-                    table_object=table_object,
-                    file_list=file_list,
-                )
-
-                if perform_rename:
-                    self.rename_table(table_to_load, table_object)
-                done = True
-            except sqlalchemy.exc.SQLAlchemyError as e:
-                tries += 1
-                if 'S3ServiceException' in str(e):
-                    if tries >= 3:
-                        self.log.info(f'Still failed after {tries} tries. File cannot be loaded. {t_end}')
-                        raise
-                    self.log.info(f'Re-upload files to S3 to resolve {e} in 5 seconds')
-                    time.sleep(5)
-                else:
-                    raise
+        return f"""\
+                COPY {table_to_load} 
+                     FROM 's3://{self.s3_bucket_name}/{s3_source_path}'
+                     CSV 
+                     delimiter '{self.s3_file_delimiter}'
+                     null '{self.null_value}' 
+                     credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'
+                     {region_option}
+                     {header_option} 
+                     {file_compression}
+                     {options}; commit;
+                """
 
     def load_from_iterator(
                self,
@@ -137,7 +148,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                             text_wrapper,
                             delimiter=self.s3_file_delimiter,
                             column_names=table_object.column_names,
-                            include_header=True,
+                            include_header=self.has_header,
                             encoding='utf-8',
                             escapechar='\\',
                             quoting=QUOTE_MINIMAL,

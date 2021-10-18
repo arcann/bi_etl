@@ -9,8 +9,8 @@ import logging
 import os.path
 import re
 import sys
-from configparser import NoSectionError, _UNSET
-from datetime import datetime
+import configparser
+from datetime import datetime, timezone, timedelta
 from logging.handlers import RotatingFileHandler
 
 from CaseInsensitiveDict import CaseInsensitiveDict
@@ -18,6 +18,26 @@ from CaseInsensitiveDict import CaseInsensitiveDict
 from bi_etl.conversions import str2bytes_size
 
 from configparser import ConfigParser, ExtendedInterpolation
+
+# noinspection PyUnresolvedReferences,PyProtectedMember
+_UNSET = configparser._UNSET
+
+
+class TZFormatter(logging.Formatter):
+    local_timezone = datetime.now(timezone.utc).astimezone().tzinfo
+
+    @staticmethod
+    def tz_aware_converter(timestamp) -> datetime:
+        return datetime.fromtimestamp(timestamp, TZFormatter.local_timezone)
+
+    def formatTime(self, record, datefmt=None):
+        dt = TZFormatter.tz_aware_converter(record.created)
+        if datefmt is not None:
+            result = dt.strftime(datefmt)
+        else:
+            time_part = dt.strftime(self.default_time_format)
+            result = self.default_msec_format % (time_part, record.msecs)
+        return result
 
 
 class BIConfigParser(ConfigParser):
@@ -41,17 +61,70 @@ class BIConfigParser(ConfigParser):
                          **kwargs
                          )
         self.log = logging.getLogger(__name__)
+        # noinspection PyUnresolvedReferences
         if len(self.log.root.handlers) == 0:
             logging.basicConfig(level=logging.DEBUG)
         self.config_file_read = None
         self.rootLogger = logging.getLogger()
         self.configured_loggers = dict()
-        self.date_format = self.get('logging', 'date_format', fallback=None)
         self.logging_setup = False
         self.trace_logging_setup = self.getboolean('logging',
                                                    'trace_setup',
                                                    fallback=False,
                                                    )
+        self._local_timezone = None
+
+    @property
+    def default_date_format(self) -> str:
+        return self.get('environment', 'date_format', fallback='%Y-%m-%d %H:%M:%S%z')
+
+    @property
+    def logging_date_format(self) -> str:
+        return self.get('logging', 'date_format', fallback=self.default_date_format)
+
+    def get_aware_datetime(self) -> datetime:
+        return datetime.now(timezone.utc).astimezone(self.get_local_timezone())
+
+    def get_local_timezone(self) -> timezone:
+        if self._local_timezone is None:
+            timezone_str = self.get('environment', 'timezone', fallback=None)
+            if timezone_str is None:
+                # Get using OS function built into astimezone
+                self._local_timezone = datetime.now(timezone.utc).astimezone().tzinfo
+            else:
+                if ':' in timezone_str:
+                    timezone_parts = timezone_str.split(':')
+                    try:
+                        hours_offset = int(timezone_parts[0])
+                        mins_offset = int(timezone_parts[1])
+                        if len(timezone_parts) >= 3:
+                            secs_offset = int(timezone_parts[2])
+                        else:
+                            secs_offset = 0
+                        self._local_timezone = timezone(timedelta(hours=hours_offset, minutes=mins_offset, seconds=secs_offset))
+                    except (ValueError, TypeError) as e:
+                        raise ValueError(f"Unable to interpret timezone {timezone_str} due to {repr(e)}")
+                else:
+                    try:
+                        from pytz import timezone as pytz_timezone
+                        import pytz.exceptions
+                        try:
+                            self._local_timezone = pytz_timezone(timezone_str)
+                        except pytz.exceptions.Error as e:
+                            raise ValueError(f"Unable to interpret timezone {timezone_str} pytz error = {repr(e)}")
+
+                    except ImportError as e:
+                        raise ValueError(f"Unable to interpret timezone {timezone_str} and pytz not installed to help. {repr(e)}")
+
+        return self._local_timezone
+
+    def format_datetime(self, dt: datetime = None) -> str:
+        if dt is None:
+            dt = self.get_aware_datetime()
+        return dt.strftime(self.default_date_format)
+
+    def format_current_time(self) -> str:
+        return self.format_datetime(None)
 
     def merge_config(self, other_config):
         for section in other_config.sections():
@@ -171,7 +244,9 @@ class BIConfigParser(ConfigParser):
 
         Return list of successfully read files.
         """
-        files_read = super().read(filenames)
+        if encoding is None:
+            encoding = 'utf8'
+        files_read = super().read(filenames, encoding=encoding)
         if self.config_file_read is None:
             self.config_file_read = list()
         self.config_file_read.extend(files_read)
@@ -302,8 +377,9 @@ class BIConfigParser(ConfigParser):
             else:
                 if '.' in section:
                     section_list = section.split('.')[:-1]
-                    return self.get(section='.'.join(section_list), option=option, raw=raw, vars=vars, fallback=fallback)
-        except NoSectionError:
+                    return self.get(section='.'.join(section_list), option=option, raw=raw, vars=vars,
+                                    fallback=fallback)
+        except configparser.NoSectionError:
             pass
         return super().get(section, option, raw=raw, vars=vars, fallback=fallback)
 
@@ -312,11 +388,12 @@ class BIConfigParser(ConfigParser):
             section=section,
             option=option,
             fallback=fallback
-            )
+        )
         if str_value is not None:
             if '\n' in str_value:
                 str_value = str_value.replace('\n', '\\n')
-                raise ValueError(f"get_single_line('{section}','{option}') failed because the setting is multiline (check indentation).  Value = '{str_value}'")
+                raise ValueError(
+                    f"get_single_line('{section}','{option}') failed because the setting is multiline (check indentation).  Value = '{str_value}'")
         return str_value
 
     def get_list(self, section: str, option: str, delimiter: str = '\n', fallback: str = None):
@@ -356,8 +433,9 @@ class BIConfigParser(ConfigParser):
         return str2bytes_size(str_size)
 
     # Add better error message
-    def _get_conv(self, section, option, conv, *, raw=False, vars = None, fallback=_UNSET, **kwargs):
+    def _get_conv(self, section, option, conv, *, raw=False, vars=None, fallback=_UNSET, **kwargs):
         try:
+            # noinspection PyUnresolvedReferences,PyProtectedMember
             return super()._get_conv(section, option, conv=conv, raw=raw, vars=vars, fallback=fallback, **kwargs)
         except ValueError as e:
             e = str(e)
@@ -488,7 +566,7 @@ class BIConfigParser(ConfigParser):
             log_file_entry_format = self.get('logging',
                                              'log_file_entry_format',
                                              fallback=default_entry_format)
-            log_file_entry_formatter = logging.Formatter(log_file_entry_format, self.date_format)
+            log_file_entry_formatter = TZFormatter(log_file_entry_format, self.logging_date_format)
             file_handler.setFormatter(log_file_entry_formatter)
             file_handler_level = self.get('logging', 'file_log_level', fallback='DEBUG').upper()
             file_handler.setLevel(file_handler_level)
@@ -515,9 +593,11 @@ class BIConfigParser(ConfigParser):
                     self.remove_log_handler(handler)
                     removed_list.append(handler)
         if len(removed_list) == 0:
-            self.log.warning(f'remove_log_file_handler could not find log for {filename} to remove from {root.handlers}')
+            self.log.warning(
+                f'remove_log_file_handler could not find log for {filename} to remove from {root.handlers}')
         elif len(removed_list) > 1:
-            self.log.warning(f'remove_log_file_handler removed more than one handler for {filename} handlers removed = {removed_list}')
+            self.log.warning(
+                f'remove_log_file_handler removed more than one handler for {filename} handlers removed = {removed_list}')
         self.log.debug(f'Remaining log handlers = {root.handlers}')
 
     def replace_log_file_handler(self, filename=None):
@@ -546,13 +626,14 @@ class BIConfigParser(ConfigParser):
                 if self.trace_logging_setup:
                     print('Setting logger {} to {}'.format(logger.name, desired_level_name))
                 logger.setLevel(desired_level_name)
-        except NoSectionError:
+        except configparser.NoSectionError:
             no_loggers_found = True
 
         if no_loggers_found:
             self.log.warning('The config file had no [loggers] section')
         else:
             # Will not include root logger
+            # noinspection PyUnresolvedReferences
             for logger_class in sorted(logging.Logger.manager.loggerDict):  # @UndefinedVariable
                 logger = logging.getLogger(logger_class)
                 if self.trace_logging_setup:
@@ -602,7 +683,9 @@ class BIConfigParser(ConfigParser):
             # We really need this because the config options from [loggers] will be returned
             # in lower case
 
+            # noinspection PyUnresolvedReferences
             logger_dict = CaseInsensitiveDict(logging.Logger.manager.loggerDict)  # @UndefinedVariable
+            # noinspection PyUnresolvedReferences
             logging.Logger.manager.loggerDict = logger_dict
 
             if self.trace_logging_setup:
@@ -634,7 +717,7 @@ class BIConfigParser(ConfigParser):
 
             console_entry_format = self.get('logging', 'console_entry_format', fallback=None)
             if console_entry_format:
-                console_entry_formater = logging.Formatter(console_entry_format, self.date_format)
+                console_entry_formater = TZFormatter(console_entry_format, self.logging_date_format)
                 console_log.setFormatter(console_entry_formater)
                 console_error_log.setFormatter(console_entry_formater)
 
@@ -659,8 +742,33 @@ class BIConfigParser(ConfigParser):
                 self.log.info('use_log_file_setting = False. setup_log_file not called.')
             return None
 
+    @staticmethod
+    def install_mp_handler(logger=None):
+        """
+        Wraps the handlers in the given Logger with an MultiProcessingHandler.
+        ONLY if not already done.
 
-def build_example(config: BIConfigParser=None, config_file_name: str='config.ini', example_config_dir: str='example_config_files'):
+        :param logger: whose handlers to wrap. By default, the root logger.
+        """
+        from multiprocessing_logging import MultiProcessingHandler
+
+        if logger is None:
+            logger = logging.getLogger()
+
+        for i, orig_handler in enumerate(list(logger.handlers)):
+            if not isinstance(orig_handler, MultiProcessingHandler):
+                handler = MultiProcessingHandler(
+                    'mp-handler-{0}'.format(i), sub_handler=orig_handler)
+
+                logger.removeHandler(orig_handler)
+                logger.addHandler(handler)
+
+
+def build_example(
+        config: BIConfigParser = None,
+        config_file_name: str = 'config.ini',
+        example_config_dir: str = 'example_config_files'
+):
     """
     Builds an example config file from the currently active one in the users folder
     """
@@ -693,7 +801,7 @@ def build_example(config: BIConfigParser=None, config_file_name: str='config.ini
                 for option in config.options(section):
                     password_match = re.match(r'(.*password.*)=', option, re.IGNORECASE)
                     if password_match:
-                        config.set(section, option, '*'*40)
+                        config.set(section, option, '*' * 40)
             config.write(target)
         log.info("Done")
     else:

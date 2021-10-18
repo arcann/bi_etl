@@ -26,7 +26,16 @@ Guiding Design Principles
 
 4. Make it as easy as possible to create re-usable modules.
 
-5. SQL is a very powerful transformation language. The Transform Extract Load (TEL) model should be supported.
+5. SQL is a very powerful transformation language. The data pipelines that support SQL as the transformation language
+should be supported.
+
+    Extract Load Transform (ELT) - Data is loaded with no transformation (or as little as possible) into the BI database
+    in a staging area. SQL jobs are then used to transform the data for both dimension and fact tables. For dimensions,
+    especially type-2 slowly changing dimensions, the technical transformations in the upsert (update or insert) logic
+    is handled in re-usable Python classes that are part of the bi_etl framework.
+
+    Transform Extract Load (TEL) - The data is transformed using the source systems SQL engine. It then follows a
+    similar pattern to the ELT model.
 
 ****************
 Areas to Work on

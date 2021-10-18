@@ -160,18 +160,18 @@ class CSVWriter(ETLComponent):
                  **kwargs
                  ):
 
-        self.log = logging.getLogger("{mod}.{cls}".format(
-            mod=self.__class__.__module__,
-            cls=self.__class__.__name__
-            )
-        )
+        self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         
         self.__close_file = False
 
         self.include_header = include_header
         self._header_written = False
         self.column_names = column_names
-        
+
+        self._save_append = append
+        self._save_encoding = encoding
+        self._save_errors = errors
+
         # We have to check / open the file here to get the name for the logical name
         if isinstance(file_data, str):
             self.log.info("Opening file {} for writing".format(file_data))
@@ -227,6 +227,40 @@ class CSVWriter(ETLComponent):
 
         # Should be the last call of every init
         self.set_kwattrs(**kwargs)
+
+    def __reduce_ex__(self, protocol):
+        return (
+            # A callable object that will be called to create the initial version of the object.
+            self.__class__,
+
+            # A tuple of arguments for the callable object. An empty tuple must be given if the callable does not accept any argument
+            (
+                self.task,
+                self.file.name,
+                self.column_names,
+                self.include_header,
+                self._save_append,
+                self._save_encoding,
+                self._save_errors,
+                self.logical_name,
+            ),
+
+            # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
+            # If the object has no such method then, the value must be a dictionary and it will be added to the object’s __dict__ attribute.
+            None,
+
+            # Optionally, an iterator (and not a sequence) yielding successive items.
+            # These items will be appended to the object either using obj.append(item) or, in batch, using obj.extend(list_of_items).
+
+            # Optionally, an iterator (not a sequence) yielding successive key-value pairs.
+            # These items will be stored to the object using obj[key] = value
+
+            # PROTOCOL 5+ only
+            # Optionally, a callable with a (obj, state) signature.
+            # This callable allows the user to programmatically control the state-updating behavior of a specific object,
+            # instead of using obj’s static __setstate__() method.
+            # If not None, this callable will have priority over obj’s __setstate__().
+        )
 
     def __repr__(self):
         return "{cls}(task={task},logical_name={logical_name},filedata={file},primary_key={primary_key}," \

@@ -1,5 +1,7 @@
 from configparser import ConfigParser
 
+import keyring
+
 from bi_etl.notifiers.notifier import Notifier
 
 
@@ -7,24 +9,36 @@ class Jira(Notifier):
     def __init__(self, config: ConfigParser, config_section: str = 'Jira'):
         super().__init__(config=config,
                          config_section=config_section)
+        # https://jira.pepfar.net/browse/DMA-1465
+        # BEGIN New code to fix jira.client
+        import jira.client
+        # Jira Client 2.0 comes with a faulty version of CaseInsensitiveDict.
+        # Replace it with a better implementation
+        # Note: The jira github version at https://github.com/pycontribs/jira
+        #       has a fix for this, but that is not available on pypi https://pypi.org/project/jira/#history
+        from CaseInsensitiveDict import CaseInsensitiveDict
+        jira.client.CaseInsensitiveDict = CaseInsensitiveDict
+        # END New code to fix jira.client
 
+        import jira.client
+        # Jira Client 2.0 comes with a faulty version of CaseInsensitiveDict.
+        # Replace it with a better implementation
+        # Note: The jira github version at https://github.com/pycontribs/jira
+        #       has a fix for this, but that is not available on pypi https://pypi.org/project/jira/#history
+        from CaseInsensitiveDict import CaseInsensitiveDict
+        jira.client.CaseInsensitiveDict = CaseInsensitiveDict
         from jira.client import JIRA
         from jira.exceptions import JIRAError
+
         self.config_section = config_section
         options = dict()
         options['server'] = config.get(self.config_section, 'server')
         user_id = config.get(self.config_section, 'user_id')
-        password = config.get(self.config_section, 'password')
         self.project = config.get(self.config_section, 'project')
-        if password is None:
-            self.keyring_section = config.get(self.config_section, 'keyring_section')
-            if self.keyring_section is None:
-                raise ValueError(f'Jira password not provided in config and keyring_section not set in config')
-            else:
-                import keyring
-                password = keyring.get_password(self.keyring_section, user_id)
+        self.keyring_section = config.get(self.config_section, 'keyring_section')
+        password = keyring.get_password(self.keyring_section, user_id)
         if password is None or password == '':
-            raise ValueError(f'Jira password not provided in config or keyring {self.keyring_section} {user_id}')
+            raise ValueError(f'Jira password not provided in keyring {self.keyring_section} {user_id}')
         self.log.debug(f"user id={user_id}")
         self.log.debug(f"server={options['server']}")
         self.log.debug(f'project={self.project}')
@@ -92,7 +106,7 @@ class Jira(Notifier):
             'AND', 'OR', 'NOT',
             '"', "'", '|', '&&', '!', '*', ':',
             '?', '~', '^', '%',
-            '\t', '\n',
+            '\t', '\n', '\r',
         ]
         for reserved in reserved_list:
             subject_escaped = subject_escaped.replace(reserved, ' ')
@@ -151,8 +165,10 @@ class Jira(Notifier):
             for iss in existing_issues:
                 case_number = iss.key
                 self.log.info(f"One of multiple existing open cases is {case_number}.")
-                if case_number > newest_case_number:
-                    newest_case_number = case_number
+                # https: // jira.pepfar.net / browse / DMA - 1465
+                # Fixed the issue in the file by getting the int value for case_number
+                if int(case_number.replace('DMA-','')) > newest_case_number:
+                    newest_case_number = int(case_number.replace('DMA-',''))
                     newest_iss = iss
             existing_issues = [newest_iss]
             # Allow the section below to comment on the newest issue

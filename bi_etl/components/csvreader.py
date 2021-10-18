@@ -156,11 +156,7 @@ class CSVReader(ETLComponent):
                  **kwargs
                  ):
         
-        self.log = logging.getLogger("{mod}.{cls}".format(
-            mod=self.__class__.__module__,
-            cls=self.__class__.__name__
-            )
-        )
+        self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         
         self.__close_file = False
         
@@ -202,7 +198,7 @@ class CSVReader(ETLComponent):
         
         # Begin csv module params        
         self.dialect = "excel"
-        self.delimiter = ','
+        # self.delimiter = ','
         self.doublequote = True
         self.escapechar = None
         self.quotechar = '"'
@@ -242,6 +238,21 @@ class CSVReader(ETLComponent):
         Build or get the csv.reader object.
         """
         if self.__reader is None:
+            if not hasattr(self, 'delimiter'):
+                delimiters = [',', '|', '\t']
+                dialect = csv.Sniffer().sniff('\n'.join(self.file.readlines(10)), delimiters=delimiters)
+                if dialect.delimiter not in delimiters:
+                    msg = f'Invalid delimiter \'{dialect.delimiter}\' found in {self.file.name} csv file.'
+                    self.log.warning(msg)
+                    raise ValueError(msg)
+                else:
+                    self.log.info(f'Found delimiter \'{dialect.delimiter}\' in {self.file.name} csv file.')
+                self.dialect = dialect
+
+                self.file.seek(0)
+
+                self.delimiter = dialect.delimiter
+
             # Initialize the reader
             self.__reader = csv.reader(
                 self.file,

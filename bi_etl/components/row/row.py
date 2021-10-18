@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 """
 Created on Sep 17, 2014
 
@@ -8,6 +8,7 @@ Created on Sep 17, 2014
 from __future__ import annotations
 
 import collections.abc
+import textwrap
 import typing
 import warnings
 from decimal import Decimal
@@ -50,6 +51,8 @@ class Row(typing.MutableMapping):
         self._data_values = list()
         if isinstance(iteration_header, int):
             self.iteration_header = RowIterationHeader.get_by_id(iteration_header)
+        elif isinstance(iteration_header, tuple):
+            self.iteration_header = RowIterationHeader.get_by_process_and_id(iteration_header)
         else:
             assert isinstance(iteration_header, RowIterationHeader), \
                 "First argument to Row needs to be RowIterationHeader type, got {}".format(type(iteration_header))
@@ -72,13 +75,32 @@ class Row(typing.MutableMapping):
                 status_value = self.status.value
             else:
                 status_value = self.status
-        return (self.__class__,
-                # A tuple of arguments for the callable object.
-                (self.iteration_header.iteration_id,
-                 self._data_values,
-                 status_value
-                 ),
-                )
+        return (
+            # A callable object that will be called to create the initial version of the object.
+            self.__class__,
+
+            # A tuple of arguments for the callable object. An empty tuple must be given if the callable does not accept any argument
+            (
+                self.iteration_header.get_cross_process_iteration_header(),
+                self._data_values,
+                status_value
+            ),
+            # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
+            # If the object has no such method then, the value must be a dictionary and it will be added to the object’s __dict__ attribute.
+            None,
+
+            # Optionally, an iterator (and not a sequence) yielding successive items.
+            # These items will be appended to the object either using obj.append(item) or, in batch, using obj.extend(list_of_items).
+
+            # Optionally, an iterator (not a sequence) yielding successive key-value pairs.
+            # These items will be stored to the object using obj[key] = value
+
+            # PROTOCOL 5+ only
+            # Optionally, a callable with a (obj, state) signature.
+            # This callable allows the user to programmatically control the state-updating behavior of a specific object,
+            # instead of using obj’s static __setstate__() method.
+            # If not None, this callable will have priority over obj’s __setstate__().
+        )
 
     def __reduce_v1__(self):
         # TODO: Experiment with different formats for performance and compactness
@@ -98,7 +120,6 @@ class Row(typing.MutableMapping):
                 )
 
     def __setstate_v1__(self, incoming_dict):
-        self.__dict__ = incoming_dict
         if incoming_dict['s'] is not None:
             self.status = RowStatus(incoming_dict['s'])
         else:
@@ -671,7 +692,7 @@ class Row(typing.MutableMapping):
         return self
 
 
-def main():
+def test_pickle():
     from _datetime import datetime
     import pickle
     from timeit import timeit
@@ -684,56 +705,40 @@ def main():
                     'col5': 123.23,
                     })
     s = pickle.dumps(row, pickle.HIGHEST_PROTOCOL)
-    print(len(s))
-    print(s)
+    print(f"Length of pickled row = {len(s)}")
+    print(f"Pickled row data = '{s}'")
+
     row2 = pickle.loads(s)
-    print(row == row2)
-    print(row.compare_to(row2))
+    print(f"UnPickled row matches = {row == row2}")
+    print(f"UnPickled row compare_to = {row.compare_to(row2)}")
+    iterations = 1000000
     r = timeit("pickle.loads(pickle.dumps(row, pickle.HIGHEST_PROTOCOL))",
-               """
-               import pickle;
-               from bi_etl.components.row.row import Row;
-               from bi_etl.components.row.row_iteration_header import RowIterationHeader;
-               from _datetime import datetime
-               iteration_header = RowIterationHeader()
-               row = Row(iteration_header,
-                         data={'col1': 54321,
-                               'col2': 'Two',
-                               'col3': datetime(2012, 1, 3, 12, 25, 33),
-                               'col4': 'All good pickles',
-                               'col5': 123.23,
-                               })
-               """
+               textwrap.dedent("""\
+                   import pickle;
+                   from bi_etl.components.row.row import Row;
+                   from bi_etl.components.row.row_iteration_header import RowIterationHeader;
+                   from _datetime import datetime
+                   iteration_header = RowIterationHeader()
+                   row = Row(iteration_header,
+                             data={'col1': 54321,
+                                   'col2': 'Two',
+                                   'col3': datetime(2012, 1, 3, 12, 25, 33),
+                                   'col4': 'All good pickles',
+                                   'col5': 123.23,
+                                   })
+                   """),
+               number=iterations,
                )
-    print(r)
+    print(f"timeit results = {r} for {iterations} iterations")
+
+
+def main():
+    test_pickle()
 
     print("V1--------")
     Row.__reduce__ = Row.__reduce_v1__
     Row.__setstate__ = Row.__setstate_v1__
-    s = pickle.dumps(row, pickle.HIGHEST_PROTOCOL)
-    print(len(s))
-    print(s)
-    row2 = pickle.loads(s)
-    print(row == row2)
-    # print(row.compare_to(row2))
-
-    r = timeit("pickle.loads(pickle.dumps(row, pickle.HIGHEST_PROTOCOL))",
-               """
-               import pickle;
-               from bi_etl.components.row.row import Row;
-               from bi_etl.components.row.row_iteration_header import RowIterationHeader;
-               from _datetime import datetime
-               iteration_header = RowIterationHeader()
-               row = Row(iteration_header,
-                         data={'col1': 54321,
-                               'col2': 'Two',
-                               'col3': datetime(2012, 1, 3, 12, 25, 33),
-                               'col4': 'All good pickles',
-                               'col5': 123.23,
-                               })
-               """
-               )
-    print(r)
+    test_pickle()
 
 
 if __name__ == "__main__":

@@ -61,11 +61,7 @@ class W3CReader(ETLComponent):
                  **kwargs
                  ):
 
-        self.log = logging.getLogger("{mod}.{cls}".format(
-            mod=self.__class__.__module__,
-            cls=self.__class__.__name__
-        )
-        )
+        self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
         self.__close_file = False
 
