@@ -87,16 +87,13 @@ class Test(unittest.TestCase):
         with mock.patch('bi_etl.bi_config_parser.BIConfigParser.read') as read:
             # Mock read function to return empty list (as if not found)
             read.return_value = []
-            self.assertRaises(FileNotFoundError,
-                              config.read_config_ini
-                              )
+            with self.assertRaises(FileNotFoundError):
+                config.read_config_ini()
 
     def test_read_config_ini_NF2(self):
         config = bi_etl.bi_config_parser.BIConfigParser()
-        self.assertRaises(FileNotFoundError,
-                          config.read_config_ini,
-                          'does_not_exist.ini',
-                          )
+        with self.assertRaises(FileNotFoundError):
+            config.read_config_ini(file_name='does_not_exist.ini')
 
     def test_read_config_ini_OK(self):
         # This version will try and find the example config file.

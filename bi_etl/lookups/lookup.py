@@ -5,6 +5,8 @@ Created on Feb 26, 2015
 """
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
+
+import functools
 import logging
 import sys
 
@@ -21,6 +23,7 @@ from sqlalchemy.sql import Selectable
 from sqlalchemy.sql.expression import bindparam
 
 from bi_etl.components.row.row import Row
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.conversions import ensure_datetime
 from bi_etl.exceptions import AfterExisting
@@ -141,6 +144,13 @@ class Lookup(object):
         else:
             lookup_values = [row[k] for k in self.lookup_keys]
             return lookup_values
+
+    @functools.lru_cache(maxsize=10)
+    def row_iteration_header_has_lookup_keys(self, row_iteration_header: RowIterationHeader) -> bool:
+        for col in self.lookup_keys:
+            if col not in row_iteration_header.column_set:
+                return False
+        return True
 
     @staticmethod
     def rstrip_key_value(val: object) -> object:

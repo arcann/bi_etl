@@ -6,9 +6,11 @@ Created on Sep 25, 2014
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
+import functools
 import logging
 import typing
 import warnings
+from collections import defaultdict
 from enum import unique, IntEnum
 from operator import attrgetter
 from typing import Iterable
@@ -139,10 +141,27 @@ class ETLComponent(Iterable):
         self.cache_clean = False
 
         # Should be the last call of every init            
-        self.set_kwattrs(**kwargs) 
+        self.set_kwattrs(**kwargs)
+
+    @staticmethod
+    def kwattrs_order() -> typing.Dict[str, int]:
+        """
+        Certain values need to be set before others in order to work correctly.
+        This method should return a dict mapping those key values = arg name to
+        a value less than the default of 9999, which will be used for any arg
+        not explicitly listed here.
+        """
+        return {
+        }
 
     def set_kwattrs(self, **kwargs):
-        for attr in kwargs:
+        # Certain values need to be set before others in order to work correctly
+        kw_order = defaultdict(lambda: 9999)
+        kw_order.update(self.kwattrs_order())
+
+        kw_arg_tuple_list = {arg: kw_order[arg] for arg in kwargs}
+
+        for attr in sorted(kw_arg_tuple_list, key=lambda x: kw_arg_tuple_list[x]):
             if attr == 'column_names':
                 # Use the setter
                 self.column_names = kwargs[attr]
@@ -625,6 +644,13 @@ class ETLComponent(Iterable):
         else:
             raise KeyError(f'{self} does not have a column named {column}, it does have {self.column_names}')
 
+    @functools.lru_cache(maxsize=10)
+    def get_qualified_lookup_name(self, base_lookup_name: str) -> str:
+        if '.' in base_lookup_name:
+            return base_lookup_name
+        else:
+            return f"{self.logical_name}.{base_lookup_name}"
+
     def define_lookup(
             self,
             lookup_name: str,
@@ -651,6 +677,9 @@ class ETLComponent(Iterable):
         """
         if not self.__lookups:
             self.__lookups = dict()
+
+        lookup_name = self.get_qualified_lookup_name(lookup_name)
+
         if lookup_name in self.__lookups:
             self.log.warning("{} define_lookup is overriding the {} lookup with {}".format(
                 self,
@@ -666,7 +695,7 @@ class ETLComponent(Iterable):
         for key in lookup_keys:
             self.get_column_name(key)
 
-        lookup = lookup_class(lookup_name="{}.{}".format(self.logical_name, lookup_name),
+        lookup = lookup_class(lookup_name=lookup_name,
                               lookup_keys=lookup_keys,
                               parent_component=self,
                               **lookup_class_kwargs
@@ -678,6 +707,7 @@ class ETLComponent(Iterable):
     def lookups(self):
         return self.__lookups
 
+    @functools.lru_cache(maxsize=10)
     def get_lookup(
             self,
             lookup_name: str,
@@ -687,8 +717,16 @@ class ETLComponent(Iterable):
         try:
             return self.__lookups[lookup_name]
         except KeyError:
-            raise KeyError("{} does not contain a lookup named {}".format(self, lookup_name))
+            if '.' not in lookup_name:
+                qual_lookup_name = f"{self.logical_name}.{lookup_name}"
+                try:
+                    return self.__lookups[qual_lookup_name]
+                except KeyError:
+                    raise KeyError(f"{self} does not contain a lookup named {lookup_name} or {qual_lookup_name}")
+            else:
+                raise KeyError(f"{self} does not contain a lookup named {lookup_name}")
 
+    @functools.lru_cache(maxsize=10)
     def get_lookup_keys(
             self,
             lookup_name: str,
@@ -1212,8 +1250,11 @@ class ETLComponent(Iterable):
 
         self._check_pk_lookup()
 
-        lookup = self.get_lookup(lookup_name)
-        assert isinstance(lookup, Lookup)
+        if isinstance(lookup_name, Lookup):
+            lookup = lookup_name
+        else:
+            lookup = self.get_lookup(lookup_name)
+            assert isinstance(lookup, Lookup)
 
         return lookup.find(row=source_row,
                            fallback_to_db=fallback_to_db,

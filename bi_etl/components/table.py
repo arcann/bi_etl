@@ -188,7 +188,7 @@ class Table(ReadOnlyTable):
             task: typing.Optional[ETLTask],
             database: DatabaseMetadata,
             table_name: str,
-            table_name_case_sensitive: bool = False,
+            table_name_case_sensitive: bool = None,
             schema: typing.Optional[str] = None,
             exclude_columns: typing.Optional[set] = None,
             **kwargs
@@ -219,6 +219,7 @@ class Table(ReadOnlyTable):
         self.auto_generate_key = False
         self.upsert_called = False
         self.last_update_date = None
+        self.use_utc_times = False
         self.default_date_format = '%Y-%m-%d'
         self.default_date_time_format = '%Y-%m-%d %H:%M:%S'
         self.default_time_format = '%H:%M:%S'
@@ -280,7 +281,11 @@ class Table(ReadOnlyTable):
         for connection_name, transaction in self.__transaction_pool.items():
             if transaction.is_active:
                 self.log.info(f'Committing {self} {connection_name} not explicitly committed.')
-                transaction.commit()
+                try:
+                    transaction.commit()
+                except sqlalchemy.exc.InvalidRequestError:
+                    # transaction.is_active is not always correct in sqlalchemy
+                    pass
         super(Table, self).close()
         self.clear_cache()
 
@@ -777,7 +782,7 @@ class Table(ReadOnlyTable):
                 if target_column_value is not None:
                     digits = get_integer_places(target_column_value)            
                     if digits > {integer_digits_allowed}:
-                        msg = "{table}.{column} can't accept '{{val}}' since it has {{digits}} digits (_make_decimal_coerce)"\
+                        msg = "{table}.{column} can't accept '{{val}}' since it has {{digits}} integer digits (_make_decimal_coerce)"\
                               "which is > {integer_digits_allowed} by (prec {precision} - scale {scale}) limit".format(                            
                                 val=target_column_value,
                                 digits=digits,
@@ -965,7 +970,16 @@ class Table(ReadOnlyTable):
                 if isinstance(target_column_value, timedelta):
                     pass
                 elif target_column_value is None:
-                    return None                         
+                    return None
+                elif isinstance(target_column_value, float):
+                    if math.isnan(target_column_value):
+                        target_column_value = self.NAN_REPLACEMENT_VALUE
+                    target_column_value = timedelta(seconds=target_column_value)
+                elif isinstance(target_column_value, str):
+                    target_column_value = str2float(target_column_value)
+                    target_column_value = timedelta(seconds=target_column_value)
+                elif isinstance(target_column_value, int):
+                    target_column_value = timedelta(seconds=target_column_value)
                 else:
                     target_column_value = timedelta(seconds=target_column_value)
             except (TypeError, ValueError) as e:
@@ -1171,7 +1185,7 @@ class Table(ReadOnlyTable):
                 elif t_type.python_type == datetime:
                     # If we already have a date or datetime value
                     if isinstance(target_column_value, datetime):
-                        if 'mssql' in self.table.bind.dialect.dialect_description:
+                        if  self.table.bind.dialect.name == 'mssql':
                             # fast_executemany Currently causes this error on datetime update (dimension load)
                             # [Microsoft][ODBC Driver 17 for SQL Server]Datetime field overflow. Fractional second precision exceeds the scale specified in the parameter binding. (0)
                             # Also see https://github.com/sqlalchemy/sqlalchemy/issues/4418
@@ -1417,7 +1431,7 @@ class Table(ReadOnlyTable):
                         for c in new_row:
                             try:
                                 col_obj = self.get_column(c)
-                                stmt = stmt.values({col_obj.name: bindparam(col_obj.name, type_=col_obj.type)})
+                                stmt = stmt.values({col_obj.name: bindparam(col_obj, type_=col_obj.type)})
                             except KeyError:
                                 self.log.error(f'Extra column found in pending_insert_rows row {new_row}')
                                 raise
@@ -1818,7 +1832,7 @@ class Table(ReadOnlyTable):
                 # In bulk mode we just need to remove them from the cache,
                 # which is done below where we loop over deleted_rows
                 if not self.in_bulk_mode:
-                    self.delete(key_values=row, lookup_name=self.PK_LOOKUP, maintain_cache=False)
+                    self.delete(key_values=row, lookup_name=self._get_pk_lookup_name(), maintain_cache=False)
 
         for row in deleted_rows:
             self.uncache_row(row)
@@ -2029,10 +2043,17 @@ class Table(ReadOnlyTable):
             parent_stats=parent_stats,
             )
 
+    def get_current_time(self) -> datetime:
+        if self.use_utc_times:
+            # Returns the current UTC date and time, as a naive datetime object.
+            return datetime.utcnow()
+        else:
+            return datetime.now()
+
     def set_last_update_date(self, row):
         last_update_date_col = self.get_column_name(self.last_update_date)
         last_update_coerce = self.get_coerce_method(last_update_date_col)
-        last_update_value = last_update_coerce(datetime.now())
+        last_update_value = last_update_coerce(self.get_current_time())
         row.set_keeping_parent(last_update_date_col, last_update_value)
 
     def get_bind_name(self, column_name: str) -> str:
@@ -2675,11 +2696,9 @@ class Table(ReadOnlyTable):
                 source_mapped_as_target_row.set_keeping_parent(self.delete_flag, self.delete_flag_no)
 
         try:
-            # We'll default to using the natural key or primary key provided
+            # We'll default to using the natural key or primary key or NK based on row columns present
             if lookup_name is None:
-                lookup_name = self.get_nk_lookup_name()
-                if not self.primary_key:
-                    raise AssertionError("upsert needs a lookup_key or a table with a primary key!")
+                lookup_name = self.get_default_lookup(source_row.iteration_header)
 
             if isinstance(lookup_name, Lookup):
                 lookup_object = lookup_name
@@ -2856,7 +2875,7 @@ class Table(ReadOnlyTable):
         ]
 
         for source_row in special_rows:
-            self.upsert(source_row, parent_stats=stats, lookup_name=self.PK_LOOKUP)
+            self.upsert(source_row, parent_stats=stats, lookup_name=self._get_pk_lookup_name())
 
         if not self.in_bulk_mode:
             self.commit(parent_stats=stats)
@@ -2886,11 +2905,12 @@ class Table(ReadOnlyTable):
         stats['calls'] += 1
         stats.timer.start()
         database_type = self.database.dialect_name
+        truncate_sql = sqlalchemy.text(f'TRUNCATE TABLE "{self.qualified_table_name}"')
         if database_type == 'oracle':
-            self.execute('alter session set ddl_lock_timeout={}'.format(timeout))
-            self.execute("TRUNCATE TABLE {}".format(self.qualified_table_name))
-        elif database_type in ['mssql', 'mysql', 'postgresql', 'sybase', 'redshift']:
-            self.database.execute_direct("TRUNCATE TABLE {}".format(self.qualified_table_name))
+            self.execute(f'alter session set ddl_lock_timeout={timeout}')
+            self.execute(truncate_sql)
+        elif database_type in {'mssql', 'mysql', 'postgresql', 'sybase', 'redshift'}:
+            self.execute(truncate_sql)
         else:
             self.execute(self._delete_stmt(autocommit=True))
 
@@ -3055,3 +3075,211 @@ class Table(ReadOnlyTable):
         if begin_new:
             self.begin(connection_name=connection_name)
         stats.timer.stop()
+
+    @staticmethod
+    def _sql_column_not_equals(column_name, alias_1='e', alias_2='s'):
+        return "(" \
+               f"( {alias_1}.{column_name} != {alias_2}.{column_name} )" \
+               f" OR ({alias_1}.{column_name} IS NULL AND {alias_2}.{column_name} IS NOT NULL)" \
+               f" OR ({alias_1}.{column_name} IS NOT NULL AND {alias_2}.{column_name} IS NULL)" \
+               ")"
+
+    @staticmethod
+    def _sql_indent_join(
+            statement_list: typing.Iterable[str],
+            indent: int,
+            prefix: str = '',
+            suffix: str = '',
+            add_newline: bool = True,
+            prefix_if_not_empty: str = '',
+    ) -> str:
+        if add_newline:
+            newline = '\n'
+        else:
+            newline = ''
+
+        statement_list = list(statement_list)
+        if len(statement_list) == 0:
+            prefix_if_not_empty = ''
+        return prefix_if_not_empty + f"{suffix}{newline}{' ' * indent}{prefix}".join(statement_list)
+
+    def _sql_primary_key_name(self) -> str:
+        if len(self.primary_key) != 1:
+            raise ValueError(f"{self}.upsert_db_exclusive requires single primary_key column. Got {self.primary_key}")
+        return self.primary_key[0]
+
+    def _sql_now(self) -> str:
+        return "CURRENT_TIMESTAMP"
+
+    def _sql_add_seconds(
+            self,
+            column_name: str,
+            seconds: int,
+    ) -> str:
+        database_type = self.database.dialect_name
+        if database_type in {'oracle'}:
+            return f"{column_name} + INTERVAL '{seconds}' SECOND"
+        elif database_type in {'postgresql'}:
+            return f"{column_name} + INTERVAL '{seconds} SECONDS'"
+        elif database_type in {'mysql'}:
+            return f"DATE_ADD({column_name}, INTERVAL {seconds} SECOND)"
+        elif database_type in {'sqlite'}:
+            return f"datetime({column_name}, '{seconds:+d} SECOND')"
+        else:
+            return f"DATEADD(second, {seconds}, {column_name})"
+
+    def _sql_date_literal(
+            self,
+            dt: datetime,
+    ):
+        database_type = self.database.dialect_name
+        if database_type in {'oracle'}:
+            return f"TIMESTAMP '{dt.isoformat()}'"
+        elif database_type in {'postgresql', 'redshift'}:
+            return f"'{dt.isoformat()}'::TIMESTAMP"
+        elif database_type in {'sqlite'}:
+            return f"datetime('{dt.isoformat()}')"
+        else:
+            return f"TIMESTAMP('{dt.isoformat()}')"
+
+    def _sql_insert_new(
+            self,
+            source_table: ReadOnlyTable,
+            matching_columns: typing.Iterable,
+            effective_date: typing.Optional[datetime] = None,
+            connection_name: str = 'sql_upsert',
+    ):
+        if not self.auto_generate_key:
+            raise ValueError(f"_sql_insert_new expects to only be used with auto_generate_key = True")
+
+        now_str = self.get_current_time().isoformat()
+        insert_new_sql = f"""
+                    INSERT INTO {self.qualified_table_name} (
+                        {self._sql_primary_key_name()},
+                        {self.delete_flag},
+                        {self.last_update_date},
+                        {Table._sql_indent_join(matching_columns, 24, suffix=',')}
+                    )  
+                    WITH max_srgt AS (SELECT coalesce(max({self._sql_primary_key_name()}),0)  as max_srgt FROM {self.qualified_table_name})
+                    SELECT 
+                        max_srgt.max_srgt + ROW_NUMBER() OVER () as {self._sql_primary_key_name()},
+                        '{self.delete_flag_no}' as {self.delete_flag},
+                        '{now_str}' as {self.last_update_date},
+                        {Table._sql_indent_join(matching_columns, 16, suffix=',')}
+                    FROM max_srgt
+                         CROSS JOIN
+                         {source_table.qualified_table_name} s
+                    WHERE NOT EXISTS(
+                        SELECT 1 
+                        FROM {self.qualified_table_name} e
+                        WHERE {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}" for nk_col in self.natural_key], 18, prefix='AND ')}
+                    )
+                """
+
+        self.log.debug('=' * 80)
+        self.log.debug('insert_new_sql')
+        self.log.debug('=' * 80)
+        self.log.debug(insert_new_sql)
+        sql_timer = Timer()
+        results = self.execute(insert_new_sql, connection_name=connection_name)
+        self.log.debug(f"Impacted rows = {results.rowcount} (meaningful count? {results.supports_sane_rowcount()})")
+        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
+
+    def _sql_update_from(
+            self,
+            update_name: str,
+            source_sql: str,
+            list_of_joins: typing.List[typing.Tuple[str, typing.Tuple[str, str]]],
+            list_of_sets: typing.List[typing.Tuple[str, str]],
+            target_alias_in_source: str = 'tgt',
+            extra_where: typing.Optional[str] = None,
+            connection_name: str = 'sql_upsert',
+    ):
+        # Multiple Table Updates
+        # https://docs.sqlalchemy.org/en/14/core/tutorial.html#multiple-table-updates
+        conn = self.connection(connection_name)
+        database_type = self.database.dialect_name
+
+        if extra_where is not None:
+            and_extra_where = f"AND {extra_where}"
+        else:
+            extra_where = ''
+            and_extra_where = ''
+
+        sql = None
+        if database_type in {'oracle'}:
+            sql = f"""
+                MERGE INTO {self.qualified_table_name} tgt
+                USING (
+                    SELECT
+                        {Table._sql_indent_join([f"{join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 16, suffix=',')}
+                        {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
+                        {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
+                    FROM {source_sql}
+                ) src
+                ON {Table._sql_indent_join([f"tgt.{self.qualified_table_name}.{join_entry[0]} = src.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
+                WHEN MATCHED THEN UPDATE
+                SET {Table._sql_indent_join([f"tgt.{set_entry[0]} = src.col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
+            """
+        elif database_type in {'mysql'}:
+            sql = f"""
+                UPDATE {self.qualified_table_name} INNER JOIN {source_sql}
+                   ON  {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {'.'.join(join_entry[1])}" for join_entry in list_of_joins], 19, prefix='AND ')}
+                SET {Table._sql_indent_join([f"{target_alias_in_source}.{set_entry[0]} = {set_entry[1]}" for set_entry in list_of_sets], 16, suffix=',')}
+            """
+        # SQL Server
+        elif database_type in {'mssql'}:
+            sql = f"""
+                UPDATE {self.qualified_table_name}
+                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}" for set_entry in list_of_sets], 16, suffix=',')}
+                FROM {self.qualified_table_name}
+                     INNER JOIN 
+                     {source_sql}
+                        ON  {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {'.'.join(join_entry[1])}" for join_entry in list_of_joins], 24, prefix='AND ')}
+                {and_extra_where}
+            """
+        elif database_type == 'sqlite':
+            import sqlite3
+            from packaging import version
+
+            if version.parse(sqlite3.sqlite_version) > version.parse('3.33.0'):
+                # Use PostgreSQL below
+                pass
+            else:
+                # Older
+                set_statement_list = []
+                where_stmt = f"""
+                    {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
+                    {and_extra_where}
+                """
+                for set_entry in list_of_sets:
+                    select_part = f"""
+                        SELECT {set_entry[1]} 
+                        FROM {source_sql} 
+                        WHERE {where_stmt}
+                    """
+                    set_statement_list.append(f"{set_entry[0]} = ({select_part})")
+
+                set_delimiter = ',\n'
+                sql = f"""
+                    UPDATE {self.qualified_table_name} SET {set_delimiter.join(set_statement_list)}
+                    WHERE EXISTS ({select_part})
+                    """
+
+        if sql is None:  # SQLite 3.33+ and PostgreSQL
+            # https://sqlite.org/lang_update.html
+            sql = f"""
+                UPDATE {self.qualified_table_name}
+                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}" for set_entry in list_of_sets], 16, suffix=',')}
+                FROM {source_sql}
+                WHERE {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
+                {and_extra_where}
+            """
+        sql_timer = Timer()
+        self.log.debug(f"Running {update_name}")
+        self.log.debug(sql)
+        sql = sqlalchemy.text(sql)
+        results = self.execute(sql, connection_name=connection_name)
+        self.log.debug(f"Impacted rows = {results.rowcount:,} (meaningful count? {results.supports_sane_rowcount()})")
+        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
+

@@ -293,7 +293,7 @@ def log_logging_level(log):
 
 
 def get_integer_places(number):
-    abs_number = abs(number)
+    abs_number = int(abs(number))
     if abs_number == 0:
         return 0
     # For numbers larger than 999999999999997 the log10 function's rounding causes the result to be too big

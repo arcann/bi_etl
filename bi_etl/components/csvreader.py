@@ -240,7 +240,10 @@ class CSVReader(ETLComponent):
         if self.__reader is None:
             if not hasattr(self, 'delimiter'):
                 delimiters = [',', '|', '\t']
-                dialect = csv.Sniffer().sniff('\n'.join(self.file.readlines(10)), delimiters=delimiters)
+                try:
+                    dialect = csv.Sniffer().sniff(self.file.read(8096), delimiters=delimiters)
+                except csv.Error as e:
+                    raise ValueError(f"{e} in file {self.file.name} delimiters={delimiters}")
                 if dialect.delimiter not in delimiters:
                     msg = f'Invalid delimiter \'{dialect.delimiter}\' found in {self.file.name} csv file.'
                     self.log.warning(msg)

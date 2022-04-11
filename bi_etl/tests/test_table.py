@@ -21,13 +21,12 @@ from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.table import Table
 from bi_etl.database.connect import Connect
 from bi_etl.scheduler.task import ETLTask
+from bi_etl.tests._test_base_database import _TestBaseDatabase
 from bi_etl.utility import dict_to_str
 from sqlalchemy import exc
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import BLOB
 from sqlalchemy.sql.sqltypes import BOOLEAN
-from sqlalchemy.sql.sqltypes import CLOB
 from sqlalchemy.sql.sqltypes import Date
 from sqlalchemy.sql.sqltypes import DateTime
 from sqlalchemy.sql.sqltypes import Enum
@@ -46,41 +45,53 @@ from sqlalchemy.sql.sqltypes import Time
 # pylint: disable=missing-docstring, protected-access
 
 
-class TestTable(unittest.TestCase):
+class TestTable(_TestBaseDatabase):
     class MyEnum(enum.Enum):
         a = "a"
         b = "b"
         c = "c"
 
-    def setUp(self):
-        self.log = logging.getLogger('TestTable')
-        self.log.setLevel(logging.DEBUG)
-        logging.getLogger().setLevel(logging.DEBUG)
-        database_name = 'test_db'
-        self.config = BIConfigParser()
-        self.config[database_name] = {}
-        self.config[database_name]['dialect'] = 'sqlite'
-        self.task = ETLTask(config=self.config)
-        self.mock_database = Connect.get_database_metadata(config=self.config,
-                                                           database_name=database_name,
-                                                           )
+    def _create_table(self, tbl_name):
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
 
-    def tearDown(self):
-        pass
+    def _create_table_2(self, tbl_name):
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+            Column('del_flg', TEXT),
+        )
+        sa_table.create()
+
+    def _create_table_3(self, tbl_name):
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT, primary_key=True),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
 
     def testInit(self):
         tbl_name = 'testInit'
 
-        # Wanted to test Table (sqlalchemy metadata) parsing of a table it did not create. 
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT,
-              col2 TEXT,
-              col3 REAL,
-              col4 NUMERIC,
-              col5 BLOB
-           )
-        """.format(tbl_name))
+        self._create_table(tbl_name)
 
         with Table(self.task,
                    self.mock_database,
@@ -90,47 +101,45 @@ class TestTable(unittest.TestCase):
             self.assertIn('col3', tbl.column_names)
             self.assertIn('col4', tbl.column_names)
             self.assertIn('col5', tbl.column_names)
-            # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testInitExcludeCol(self):
         tbl_name = 'testInitExcludeCol'
 
-        # Wanted to test Table (sqlalchemy metadata) parsing of a table it did not create. 
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT,
-              col2 TEXT,
-              col3 REAL,
-              col4 NUMERIC,
-              col5 BLOB
-           )
-        """.format(tbl_name))
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
 
         with Table(self.task,
                    self.mock_database,
                    table_name=tbl_name,
-                   exclude_columns=['col4']
+                   exclude_columns={'col4'},
                    ) as tbl:
             self.assertIn('col1', tbl.column_names)
             self.assertIn('col2', tbl.column_names)
             self.assertIn('col3', tbl.column_names)
             self.assertNotIn('col4', tbl.column_names)
             self.assertIn('col5', tbl.column_names)
-            # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testInitExcludeCol2(self):
         tbl_name = 'testInitExcludeCol2'
 
-        # Wanted to test Table (sqlalchemy metadata) parsing of a table it did not create. 
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT,
-              col2 TEXT,
-              col3 REAL,
-              col4 NUMERIC,
-              col5 BLOB
-           )
-        """.format(tbl_name))
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
 
         with Table(self.task,
                    self.mock_database,
@@ -144,7 +153,6 @@ class TestTable(unittest.TestCase):
             self.assertNotIn('col3', tbl.column_names)
             self.assertNotIn('col4', tbl.column_names)
             self.assertIn('col5', tbl.column_names)
-            # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testDoesNotExist(self):
         self.assertRaises(exc.NoSuchTableError, Table, task=self.task, database=self.mock_database,
@@ -159,15 +167,13 @@ class TestTable(unittest.TestCase):
     ):
         iteration_header = RowIterationHeader()
         for i in range_to_use:
+            row = tbl.Row(iteration_header=iteration_header)
             if assign_col1:
-                row = tbl.Row()
                 row['col1'] = i
-            else:
-                row = Row(iteration_header)
-            row['col2'] = 'this is row {}'.format(i)
+            row['col2'] = f'this is row {i}'
             row['col3'] = i / 1000.0
             row['col4'] = i / 100000000.0
-            row['col5'] = 'this is row {} blob'.format(i).encode('ascii')
+            row['col5'] = f'this is row {i} blob'.encode('ascii')
 
             tbl.insert(row)
         if commit:
@@ -190,14 +196,15 @@ class TestTable(unittest.TestCase):
     def testInsertAndIterateNoKey(self):
         tbl_name = 'testInsertAndIterateNoKey'
 
-        sa_table = sqlalchemy.schema.Table(tbl_name,
-                                           self.mock_database,
-                                           Column('col1', Integer),
-                                           Column('col2', TEXT),
-                                           Column('col3', REAL),
-                                           Column('col4', NUMERIC),
-                                           Column('col5', BLOB),
-                                           )
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
         sa_table.create()
 
         rows_to_insert = 10
@@ -217,24 +224,24 @@ class TestTable(unittest.TestCase):
             for i in range(rows_to_insert):
                 row = rows_dict[i]
                 self.assertEqual(row['col1'], i)
-                self.assertEqual(row['col2'], 'this is row {}'.format(i))
-                self.assertEqual(row['col3'], i / 1000.0)
-                self.assertEqual(row['col4'], i / 100000000.0)
-                self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
+                self.assertEqual(row['col2'], f'this is row {i}')
+                self.assertEquivalentNumber(row['col3'], i / 1000.0)
+                self.assertEquivalentNumber(row['col4'], i / 100000000.0)
+                self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
 
-        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
 
     def testInsertAndIterateWithKey(self):
         tbl_name = 'testInsertAndIterateWithKey'
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT  PRIMARY KEY,
-              col2 TEXT,
-              col3 REAL,
-              col4 NUMERIC,
-              col5 BLOB
-           )
-        """.format(tbl_name))
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
 
         rows_to_insert = 10
         tbl = Table(self.task,
@@ -259,26 +266,25 @@ class TestTable(unittest.TestCase):
             try:
                 row = rows_dict[i + 1]  # Auto-generate starts with 1 not 0
                 self.assertEqual(row['col1'], i + 1)  # Auto-generate starts with 1 not 0
-                self.assertEqual(row['col2'], 'this is row {}'.format(i))
-                self.assertEqual(row['col3'], i / 1000.0)
-                self.assertEqual(row['col4'], i / 100000000.0)
-                self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'))
+                self.assertEqual(row['col2'], f'this is row {i}')
+                self.assertEquivalentNumber(row['col3'], i / 1000.0)
+                self.assertEquivalentNumber(row['col4'], i / 100000000.0)
+                self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
             except KeyError:
-                raise KeyError('Row key {} did not exist'.format(i))
-
-        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+                raise KeyError(f'Row key {i} did not exist')
 
     def testInsertDuplicate(self):
         tbl_name = 'testInsertDuplicate'
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT  PRIMARY KEY,
-              col2 TEXT,
-              col3 REAL,
-              col4 NUMERIC,
-              col5 BLOB
-           )
-        """.format(tbl_name))
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
 
         rows_to_insert = 10
         tbl = Table(self.task,
@@ -291,10 +297,10 @@ class TestTable(unittest.TestCase):
                     # Use full table row
                     row = tbl.Row()
                     row['col1'] = i % 5
-                    row['col2'] = 'this is row {}'.format(i)
+                    row['col2'] = f'this is row {i}'
                     row['col3'] = i / 1000.0
                     row['col4'] = i / 100000000.0
-                    row['col5'] = 'this is row {} blob'.format(i).encode('ascii')
+                    row['col5'] = f'this is row {i} blob'.encode('ascii')
 
                     tbl.insert(row)
                 tbl.commit()
@@ -308,15 +314,16 @@ class TestTable(unittest.TestCase):
 
     def testInsertAutogenerateContinue(self):
         tbl_name = 'testInsertAutogenerateContinue'
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT  PRIMARY KEY,
-              col2 TEXT,
-              col3 REAL,
-              col4 NUMERIC,
-              col5 BLOB
-           )
-        """.format(tbl_name))
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
 
         rows_to_insert1 = 10
         rows_to_insert2 = 10
@@ -352,47 +359,644 @@ class TestTable(unittest.TestCase):
                 try:
                     row = rows_dict[i]
                     self.assertEqual(row['col1'], i, 'col1 check')
-                    self.assertEqual(row['col2'], 'this is row {}'.format(i), 'col2 check')
-                    self.assertEqual(row['col3'], i / 1000.0, 'col3 check')
-                    self.assertEqual(row['col4'], i / 100000000.0, 'col4 check')
-                    self.assertEqual(row['col5'], 'this is row {} blob'.format(i).encode('ascii'), 'col5 check')
+                    self.assertEqual(row['col2'], f'this is row {i}', 'col2 check')
+                    self.assertEquivalentNumber(row['col3'], i / 1000.0, 'col3 check')
+                    self.assertEquivalentNumber(row['col4'], i / 100000000.0, 'col4 check')
+                    self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'), 'col5 check')
                 except KeyError:
-                    raise KeyError('Row key {} did not exist'.format(i))
+                    raise KeyError(f'Row key {i} did not exist')
 
-        # self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+    def testInsertAutogenerateContinueNegative(self):
+        tbl_name = 'testInsertAutogenerateContinueNegative'
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
+
+        rows_to_insert1 = 3
+        rows_to_insert2 = 10
+
+        with Table(self.task,
+                   self.mock_database,
+                   table_name=tbl_name) as tbl:
+            self._generate_test_rows_range(tbl, [-9999, -8888, -7777])
+
+        with Table(self.task,
+                   self.mock_database,
+                   table_name=tbl_name) as tbl:
+            tbl.auto_generate_key = True
+            tbl.batch_size = 5
+            # col1 should be auto-generated
+            self._generate_test_rows(tbl, rows_to_insert2, assign_col1=False)
+
+            # Validate data
+            rows_dict = dict()
+            for row in tbl:
+                print(row, row.values())
+                print(dict_to_str(row))
+                rows_dict[row['col1']] = row
+
+            self.assertEqual(len(rows_dict), rows_to_insert1 + rows_to_insert2)
+
+            for i in range(rows_to_insert2):
+                try:
+                    row = rows_dict[i + 1]  # Auto generate starts at 1 not 0
+                    self.assertEqual(row['col1'], i + 1)  # Auto generate starts at 1 not 0
+                    self.assertEqual(row['col2'], f'this is row {i}')
+                    self.assertEquivalentNumber(row['col3'], i / 1000.0)
+                    self.assertEquivalentNumber(row['col4'], i / 100000000.0)
+                    self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
+                except KeyError:
+                    raise KeyError(f'Row key {i} did not exist')
+
+    def testUpdate_partial_by_alt_key(self):
+        tbl_name = 'testUpdate_by_alt_key'
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('alt_key', Integer),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
+
+        rows_to_insert = 10
+        tbl = Table(self.task,
+                    self.mock_database,
+                    table_name=tbl_name)
+        for i in range(rows_to_insert):
+            # Use full table row
+            row = tbl.Row()
+            row['col1'] = i
+            row['alt_key'] = i + 100
+            row['col2'] = f'this is row {i}'
+            row['col3'] = i / 1000.0
+            row['col4'] = i / 100000000.0
+            row['col5'] = f'this is row {i} blob'.encode('ascii')
+
+            tbl.insert(row)
+        tbl.commit()
+
+        for i in range(rows_to_insert):
+            # self.task.debug_sql()
+            tbl.trace_sql = True
+            tbl.update(updates_to_make={'col2': f'new col2 {i}'},
+                       key_names=['alt_key'],
+                       key_values=[i + 100],
+                       )
+            # self.task.debug_sql(False)
+        tbl.commit()
+
+        # Validate data
+        rows_dict = dict()
+        for row in tbl:
+            print(row, row['col1'], row['col2'])
+            rows_dict[row['col1']] = row
+
+        self.assertEqual(len(rows_dict), rows_to_insert)
+
+        for i in range(rows_to_insert):
+            row = rows_dict[i]
+            self.assertEqual(row['col1'], i)
+            self.assertEqual(row['col2'], f'new col2 {i}')
+            self.assertEquivalentNumber(row['col3'], i / 1000.0)
+            self.assertEquivalentNumber(row['col4'], i / 100000000.0)
+            self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
+
+    def testUpdate_partial_by_key(self):
+        tbl_name = 'testUpdate_partial_by_key'
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
+
+        rows_to_insert = 10
+        tbl = Table(self.task,
+                    self.mock_database,
+                    table_name=tbl_name)
+        tbl.batch_size = 0
+        iteration_header = RowIterationHeader(
+            logical_name='test',
+            columns_in_order=[
+                'col1',
+                'col2',
+                'col3',
+                'col4',
+                'col5',
+            ],
+        )
+        for i in range(rows_to_insert):
+            # Use full table row
+            row = tbl.Row(iteration_header=iteration_header)
+            row['col1'] = i
+            row['col2'] = f'this is row {i} before update'
+            row['col3'] = i / 1000.0
+            row['col4'] = i / 100000000.0
+            row['col5'] = f'this is row {i} blob'.encode('ascii')
+
+            tbl.insert(row)
+        tbl.commit()
+
+        # Update the values
+        for i in range(rows_to_insert):
+            # self.task.debug_sql()
+            tbl.trace_sql = True
+            tbl.update(updates_to_make={'col2': f'new col2 {i}'},
+                       key_values=[i],
+                       )
+            # self.task.debug_sql(False)
+        tbl.commit()
+
+        # Validate data
+        rows_dict = dict()
+        for row in tbl:
+            print(row, row['col1'], row['col2'])
+            rows_dict[row['col1']] = row
+
+        self.assertEqual(len(rows_dict), rows_to_insert)
+
+        for i in range(rows_to_insert):
+            row = rows_dict[i]
+            self.assertEqual(row['col1'], i)
+            self.assertEqual(row['col2'], f'new col2 {i}')
+            self.assertEquivalentNumber(row['col3'], i / 1000.0)
+            self.assertEquivalentNumber(row['col4'], i / 100000000.0)
+            self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
+
+    def testUpdate_whole_by_key(self):
+        tbl_name = 'testUpdate_whole_by_key'
+        self._create_table(tbl_name)
+
+        rows_to_insert = 10
+        tbl = Table(self.task,
+                    self.mock_database,
+                    table_name=tbl_name)
+        self._generate_test_rows(tbl, rows_to_insert)
+
+        # Do the updates
+        iteration_header = RowIterationHeader()
+        for i in range(rows_to_insert):
+            # self.task.debug_sql()
+            tbl.trace_sql = True
+            # DO NOT use full table row since we want a column to not exist
+            row = Row(iteration_header)
+            row['col1'] = i
+            row['col2'] = f'new col2 {i}'
+            row['col3'] = i / 1000.0
+            row['col4'] = i / 100000000.0
+            row['col5'] = f'this is row {i} blob'.encode('ascii')
+            tbl.update(updates_to_make=row)
+            # self.task.debug_sql(False)
+        tbl.commit()
+
+        # Validate data
+        rows_dict = dict()
+        for row in tbl:
+            print(row, row['col1'], row['col2'])
+            rows_dict[row['col1']] = row
+
+        self.assertEqual(len(rows_dict), rows_to_insert)
+
+        for i in range(rows_to_insert):
+            row = rows_dict[i]
+            self.assertEqual(row['col1'], i)
+            self.assertEqual(row['col2'], f'new col2 {i}')
+            self.assertEquivalentNumber(row['col3'], i / 1000.0)
+            self.assertEquivalentNumber(row['col4'], i / 100000000.0)
+            self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
+
+    def test_update_where_pk(self):
+        tbl_name = 'test_update_where_pk'
+        self._create_table(tbl_name)
+
+        rows_to_insert = 10
+        tbl = Table(self.task,
+                    self.mock_database,
+                    table_name=tbl_name)
+        self._generate_test_rows(tbl, rows_to_insert)
+
+        # Do the updates
+        for i in range(rows_to_insert):
+            # self.task.debug_sql()
+            tbl.trace_sql = True
+            # Use full table row
+            row = tbl.Row()
+            row['col1'] = i
+            row['col2'] = f'new col2 {i}'
+            row['col3'] = i / 1000.0
+            row['col4'] = i / 100000000.0
+            row['col5'] = f'this is row {i} blob'.encode('ascii')
+            tbl.update_where_pk(updates_to_make=row)
+            # self.task.debug_sql(False)
+        tbl.commit()
+
+        # Validate data
+        rows_dict = dict()
+        for row in tbl:
+            print(row, row['col1'], row['col2'])
+            rows_dict[row['col1']] = row
+
+        self.assertEqual(len(rows_dict), rows_to_insert)
+
+        for i in range(rows_to_insert):
+            row = rows_dict[i]
+            self.assertEqual(row['col1'], i)
+            self.assertEqual(row['col2'], f'new col2 {i}')
+            self.assertEquivalentNumber(row['col3'], i / 1000.0)
+            self.assertEquivalentNumber(row['col4'], i / 100000000.0)
+            self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
+
+    def test_upsert_int_pk(self):
+        tbl_name = 'test_upsert_int_pk'
+        self._create_table_2(tbl_name)
+
+        rows_to_insert = 10
+        tbl = Table(self.task,
+                    self.mock_database,
+                    table_name=tbl_name)
+        tbl.delete_flag = 'del_flg'
+        self._generate_test_rows(tbl, rows_to_insert)
+
+        # Do the updates
+        tbl.track_source_rows = True
+        row_key_values = list(range(rows_to_insert))
+        # Add one value that will be inserted
+        row_key_values.append(12)
+        iteration_header = RowIterationHeader()
+        for i in row_key_values:
+            # only upsert even rows
+            if i % 2 == 0:
+                # self.task.debug_sql()
+                tbl.trace_sql = True
+                # DO NOT use full table row since we want a column to not exist
+                row = Row(iteration_header)
+                row['col1'] = i
+                row['col2'] = f'new col2 {i}'
+                row['col3'] = i / 1000.0
+                # leave out col 4
+                row['col5'] = f'this is row {i} blob'.encode('ascii')
+                tbl.upsert(row)
+                # self.task.debug_sql(False)
+        tbl.commit()
+
+        tbl.logically_delete_not_processed()
+        tbl.commit()
+
+        # Validate data
+        rows_dict = dict()
+        last_int_value = -1
+        # Note: We intentionally pass a str and not a list below
+        # noinspection PyTypeChecker
+        for row in tbl.order_by('col1'):
+            if row['col1'] <= 9:  # Sequence only holds up from 0 to 9.
+                self.assertEqual(last_int_value + 1, row['col1'], 'Order by did not work')
+                last_int_value = row['col1']
+            self.log.debug(row.values_in_order())
+            rows_dict[row['col1']] = row
+
+        self.assertEqual(len(rows_dict), rows_to_insert + 1)
+
+        for i in row_key_values:
+            row = rows_dict[i]
+            self.assertEqual(row['col1'], i)
+            if i % 2 == 0:
+                self.assertEqual(row['col2'], f'new col2 {i}')
+                self.assertEqual(row['del_flg'], 'N')
+            else:
+                self.assertEqual(row['col2'], f'this is row {i}')
+                self.assertEqual(row['del_flg'], 'Y')
+            self.assertEquivalentNumber(row['col3'], i / 1000.0)
+            if i != 12:
+                self.assertEquivalentNumber(row['col4'], i / 100000000.0)
+            self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
+        tbl.close()
+
+        self.mock_database.drop_table_if_exists(tbl_name)
+
+    def test_upsert_int_dual_pk(self):
+        tbl_name = 'test_upsert_int_dual_pk'
+        self._create_table_3(tbl_name)
+
+        rows_to_insert = 10
+        tbl = Table(self.task,
+                    self.mock_database,
+                    table_name=tbl_name)
+        for i in range(rows_to_insert):
+            # Use full table row
+            row = tbl.Row()
+            row['col1'] = i
+            row['col2'] = f'this is row {i}'
+            row['col3'] = i * 1 / 1000.0
+            row['col4'] = i / 100000000.0
+            row['col5'] = f'this is row {i} blob'.encode('ascii')
+
+            tbl.insert(row)
+        tbl.commit()
+
+        # Do the updates / inserts
+        iteration_header = RowIterationHeader()
+        rows_generated = list()
+        for i in range(rows_to_insert):
+            # only update even rows            
+            # self.task.debug_sql()
+            tbl.trace_sql = True
+            # DO NOT use full table row since we want a column to not exist
+            row = Row(iteration_header)
+            row['col1'] = i
+            row['col2'] = f'this is row {i}'
+            if i % 2 == 0:
+                row['col3'] = i * 10
+            else:
+                row['col3'] = i * 1 / 1000.0
+            # leave out col 4
+            row['col5'] = f'this is row {i} blob'.encode('ascii')
+            tbl.upsert(row)
+
+            # Add col4 to the saved list for validation
+            saved_row = row.clone()
+            saved_row['col4'] = i / 100000000.0
+            rows_generated.append(saved_row)
+            # self.task.debug_sql(False)
+        tbl.commit()
+
+        # Validate data
+        rows_dict = dict()
+        for row in tbl:
+            print(row, row['col1'], row.values_in_order())
+            rows_dict[row['col1']] = row
+
+        self.assertEqual(len(rows_dict), rows_to_insert)
+
+        for expected_row in rows_generated:
+            row = rows_dict[expected_row['col1']]
+            self.assertEqual(row['col2'], expected_row['col2'], 'col2 check')
+            if expected_row['col1'] % 2 == 0:
+                self.assertEqual(row['col3'], expected_row['col3'], 'col3 check even')
+            else:
+                self.assertEquivalentNumber(row['col3'], expected_row['col3'], 'col3 check odd')
+            self.assertEquivalentNumber(row['col4'], expected_row['col4'], 'col4 check')
+            self.assertEqual(row['col5'], expected_row['col5'], 'col5 check')
+
+        tbl.close()
+        self.mock_database.drop_table_if_exists(tbl_name)
+
+    def test_delete_int_pk(self):
+        tbl_name = 'test_delete_int_pk'
+        self._create_table(tbl_name)
+
+        rows_to_insert = 10
+        with Table(
+            self.task,
+            self.mock_database,
+            table_name=tbl_name
+        ) as tbl:
+            self._generate_test_rows(tbl, rows_to_insert)
+
+            # Do the deletes
+            tbl.delete(key_values=[2])
+            tbl.delete(key_names=['col2'], key_values=[f'this is row {8}'])
+            tbl.commit()
+
+            # Validate data
+            rows_dict = dict()
+            for row in tbl:
+                print(row, row.values())
+                rows_dict[row['col1']] = row
+
+            self.assertEqual(
+                rows_to_insert - 2,
+                len(rows_dict),
+                f"Table has {len(rows_dict)} rows but we expect {rows_to_insert - 2} rows after deletes.\n"
+                f"Actual rows = {rows_dict}"
+            )
+
+            for i in range(rows_to_insert):
+                if i in [2, 8]:
+                    self.assertNotIn(i, rows_dict, f'row {i} not deleted')
+                else:
+                    row = rows_dict[i]
+                    self.assertEqual(row['col1'], i)
+                    self.assertEqual(row['col2'], f'this is row {i}')
+                    self.assertEquivalentNumber(row['col3'], i * 1 / 1000.0)
+                    self.assertEquivalentNumber(row['col4'], i / 100000000.0)
+                    self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
+
+
+        self.mock_database.drop_table_if_exists(tbl_name)
+
+    def test_delete_int_pk_no_batch(self):
+        tbl_name = 'test_delete_int_pk_no_batch'
+        self._create_table(tbl_name)
+
+        rows_to_insert = 10
+        tbl = Table(self.task,
+                    self.mock_database,
+                    table_name=tbl_name)
+        tbl.batch_size = 1
+        self._generate_test_rows(tbl, rows_to_insert)
+
+        # Do the deletes
+        tbl.delete(key_values=[2])
+        tbl.delete(key_names=['col2'], key_values=[f'this is row {8}'])
+        tbl.commit()
+
+        # Validate data
+        rows_dict = dict()
+        for row in tbl:
+            print(row, row.values())
+            rows_dict[row['col1']] = row
+
+        self.assertEqual(
+            rows_to_insert - 2,
+            len(rows_dict),
+            f"Table has {len(rows_dict)} rows but we expect {rows_to_insert - 4} rows after deletes.\n"
+            f"Actual rows = {rows_dict}"
+        )
+
+        for i in range(rows_to_insert):
+            if i in [2, 8]:
+                self.assertNotIn(i, rows_dict, f'row {i} not deleted')
+            else:
+                row = rows_dict[i]
+                self.assertEqual(row['col1'], i)
+                self.assertEqual(row['col2'], f'this is row {i}')
+                self.assertEquivalentNumber(row['col3'], i * 1 / 1000.0)
+                self.assertEquivalentNumber(row['col4'], i / 100000000.0)
+                self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
+
+        tbl.close()
+        self.mock_database.drop_table_if_exists(tbl_name)
+
+    def testSanityCheck1(self):
+        src_tbl_name = 'testSanityCheck1s'
+        self.log.info(src_tbl_name)
+        sa_table = sqlalchemy.schema.Table(
+            src_tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2a', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+        )
+        sa_table.create()
+
+        tgt_tbl_name = 'testSanityCheck1t'
+        sa_table = sqlalchemy.schema.Table(
+            tgt_tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2a', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+        )
+        sa_table.create()
+
+        with Table(
+            self.task,
+            self.mock_database,
+            table_name=src_tbl_name
+        ) as src_tbl:
+            with Table(
+                self.task,
+                self.mock_database,
+                table_name=tgt_tbl_name
+            ) as tgt_tbl:
+                with mock.patch('bi_etl.components.etlcomponent.logging', autospec=True) as log:
+                    tgt_tbl.log = log
+                    tgt_tbl.sanity_check_source_mapping(
+                        src_tbl,
+                        source_excludes=frozenset(['col5']),
+                    )
+                    self.assertFalse(
+                        log.error.called,
+                        f"unexpected error from sanity_check_source_mapping. {log.mock_calls}"
+                    )
+                    self.assertFalse(
+                        log.warning.called,
+                        f"unexpected warning from sanity_check_source_mapping. {log.mock_calls}"
+                    )
+                    log.reset_mock()
+
+                    tgt_tbl.sanity_check_source_mapping(
+                        src_tbl,
+                        source_excludes=frozenset(['col5']),
+                        target_excludes=frozenset(['col4']),
+                    )
+                    self.assertFalse(log.error.called)
+                    log.reset_mock()
+
+                    tgt_tbl.sanity_check_source_mapping(
+                        src_tbl,
+                        target_excludes=frozenset(['col4']),
+                    )
+                    self.assertFalse(log.error.called)
+                    calls_str = '\n'.join([str(call) for call in log.mock_calls])
+                    self.assertIn('col5', calls_str)
+                    log.reset_mock()
+
+                    tgt_tbl.sanity_check_source_mapping(
+                        src_tbl,
+                        source_excludes=frozenset(['col5']),
+                        target_excludes=frozenset(['col4']),
+                    )
+                    self.assertFalse(log.error.called)
+                    calls_str = '\n'.join([str(call) for call in log.mock_calls])
+                    self.assertIn('col4', calls_str)
+                    log.reset_mock()
+
+                    # Test using row and not source component
+                    # DO NOT use full table row since we want a column to not exist
+                    iteration_header = RowIterationHeader()
+                    src_row = Row(iteration_header)
+                    src_row['col1'] = 0
+                    src_row['col2a'] = 0
+                    src_row['col3'] = 0
+                    src_row['col5'] = 0
+                    tgt_tbl.sanity_check_source_mapping(
+                        src_tbl,
+                        source_excludes=frozenset(['col5']),
+                    )
+                    # calls_str = '\n'.join([str(call) for call in log.mock_calls])
+                    self.assertFalse(
+                        log.error.called,
+                        f'unexpected error from sanity_check_source_mapping. {log.mock_calls}'
+                    )
+                    self.assertFalse(
+                        log.warning.called,
+                        f'unexpected warning from sanity_check_source_mapping. {log.mock_calls}'
+                    )
+                    log.reset_mock()
+
+                    # Test using row and not source component
+                    tgt_tbl.sanity_check_source_mapping(
+                        src_tbl,
+                        source_excludes=frozenset(['col5']),
+                        target_excludes=frozenset(['col4']),
+                    )
+                    # calls_str = '\n'.join([str(call) for call in log.mock_calls])
+                    self.assertFalse(
+                        log.error.called,
+                        f'unexpected error from sanity_check_source_mapping. {log.mock_calls}'
+                    )
+                    log.reset_mock()
+
+        self.mock_database.drop_table_if_exists(src_tbl_name)
+        self.mock_database.drop_table_if_exists(tgt_tbl_name)
 
     def testBuildRow1(self):
         src_tbl_name = 'testBuildRow1s'
         self.log.info(src_tbl_name)
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT  PRIMARY KEY,
-              col2a TEXT,
-              col3 REAL,              
-              col4 NUMERIC,
-              col5 BLOB,
-              ext1 INT
-           )
-        """.format(src_tbl_name))
+        sa_table = sqlalchemy.schema.Table(
+            src_tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2a', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+            Column('ext1', Integer),
+        )
+        sa_table.create()
 
         tgt_tbl_name = 'testBuildRow1t'
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT  PRIMARY KEY,
-              col2b TEXT,
-              col3 REAL,              
-              col4 NUMERIC,
-              col5 BLOB,
-              ext2 INT
-           )
-        """.format(tgt_tbl_name))
+        sa_table = sqlalchemy.schema.Table(
+            tgt_tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2b', TEXT),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', LargeBinary),
+            Column('ext2', Integer),
+        )
+        sa_table.create()
 
-        with Table(self.task,
-                   self.mock_database,
-                   table_name=src_tbl_name) as src_tbl:
-            with Table(self.task,
-                       self.mock_database,
-                       table_name=tgt_tbl_name) as tgt_tbl:
+        with Table(
+            self.task,
+            self.mock_database,
+            table_name=src_tbl_name
+        ) as src_tbl:
+            with Table(
+                self.task,
+                self.mock_database,
+                table_name=tgt_tbl_name
+            ) as tgt_tbl:
                 with mock.patch('bi_etl.components.etlcomponent.logging', autospec=True) as log:
                     tgt_tbl.log = log
 
@@ -410,14 +1014,18 @@ class TestTable(unittest.TestCase):
                         source_excludes=frozenset({'ext1'}),
                         target_excludes=frozenset({'ext2'}),
                     )
-                    self.assertFalse(log.error.called,
-                                     'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
-                    self.assertFalse(log.warning.called,
-                                     'unexpected warning from sanity_check_source_mapping. {}'.format(log.mock_calls))
+                    self.assertFalse(
+                        log.error.called,
+                        f'unexpected error from sanity_check_source_mapping. {log.mock_calls}'
+                    )
+                    self.assertFalse(
+                        log.warning.called,
+                        f'unexpected warning from sanity_check_source_mapping. {log.mock_calls}'
+                    )
                     self.assertEqual(tgt_row['col1'], 0)
                     self.assertEqual(tgt_row['col2b'], 'example text')
-                    self.assertEqual(tgt_row['col3'], 123.12)
-                    self.assertEqual(tgt_row['col4'], 1234.12)
+                    self.assertEquivalentNumber(tgt_row['col3'], 123.12)
+                    self.assertEquivalentNumber(tgt_row['col4'], 1234.12)
                     self.assertEqual(tgt_row['col5'], 'this is row blob'.encode('ascii'))
                     self.assertNotIn('ext1', tgt_row)
                     self.assertNotIn('ext2', tgt_row)
@@ -436,10 +1044,14 @@ class TestTable(unittest.TestCase):
                                                 source_excludes=frozenset({'ext1'}),
                                                 target_excludes=frozenset({'ext2'}),
                                                 )
-                    self.assertFalse(log.error.called,
-                                     'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
-                    self.assertFalse(log.warning.called,
-                                     'unexpected warning from sanity_check_source_mapping. {}'.format(log.mock_calls))
+                    self.assertFalse(
+                        log.error.called,
+                        f'unexpected error from sanity_check_source_mapping. {log.mock_calls}'
+                    )
+                    self.assertFalse(
+                        log.warning.called,
+                        f'unexpected warning from sanity_check_source_mapping. {log.mock_calls}'
+                    )
                     self.assertEqual(tgt_row['col1'], 0)
                     self.assertEqual(tgt_row['col2b'], '123')
                     self.assertAlmostEqual(tgt_row['col3'], 123.12, places=2)
@@ -449,25 +1061,34 @@ class TestTable(unittest.TestCase):
                     self.assertNotIn('ext2', tgt_row)
 
     def testBuildRow2(self):
-        self.mock_database.execute("""
-                          CREATE TABLE {} (
-                             col1 INT,
-                             col2 TEXT,
-                             col3 REAL,
-                             col4 NUMERIC,
-                             col5 BLOB
-                          )
-                       """.format('test'))
         tbl_name = 'testBuildRow2'
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('float_col', Float),
+            Column('date_col', Date),
+            Column('datetime_col', DateTime),
+            Column('time_col', Time),
+            Column('interval_col', Interval),
+            Column('large_binary_col', LargeBinary),
+            Column('numeric13_col', Numeric(13)),
+            Column('numeric25_col', Numeric(25)),
+            Column('numeric25_15_col', Numeric(25, 15)),
+            Column('strin_10_col', String(10)),
+            Column('bool_col', BOOLEAN),
+            Column('enum_col', Enum(TestTable.MyEnum)),
+        )
+        sa_table.create()
 
-        with CSVReader(self.task,
-                       filedata=None,
-                       logical_name='testBuildRow2_src',
-                       ) as src_tbl:
+        with CSVReader(
+            self.task,
+            filedata=None,
+            logical_name='testBuildRow2_src',
+        ) as src_tbl:
             with Table(
                     self.task,
                     self.mock_database,
-                    table_name='test',
+                    table_name=tbl_name,
             ) as tgt_tbl:
                 # Just here to help IDE know the data type
                 assert isinstance(tgt_tbl, Table)
@@ -479,34 +1100,10 @@ class TestTable(unittest.TestCase):
                     tgt_tbl.default_date_time_format = '%m/%d/%Y %H:%M:%S'
                     tgt_tbl.default_date_format = '%m/%d/%Y'
 
-                    # http://docs.sqlalchemy.org/en/latest/core/type_basics.html
-                    tgt_tbl.table = sqlalchemy.schema.Table(tbl_name,
-                                                            self.mock_database,
-                                                            Column('float_col', Float),
-                                                            quote=False
-                                                            )
-                    # Add columns that sqllite doesn't support properly
-                    columns = tgt_tbl.columns
-                    columns.extend([
-                        Column('date_col', Date),
-                        Column('datetime_col', DateTime),
-                        Column('time_col', Time),
-                        Column('interval_col', Interval),
-                        Column('large_binary_col', LargeBinary),
-                        Column('numeric13_col', Numeric(13)),
-                        Column('numeric25_col', Numeric(25)),
-                        Column('numeric25_15_col', Numeric(25, 15)),
-                        Column('strin_10_col', String(10)),
-                        Column('bool_col', BOOLEAN),
-                        Column('clob_col', CLOB),
-                        Column('enum_col', Enum(TestTable.MyEnum)),
-                        ])
-                    tgt_tbl.set_columns(columns)
-
+                    #
                     # Use full table row
                     src_row = src_tbl.Row()
                     src_row['bool_col'] = 0
-                    src_row['clob_col'] = "It's a Python world."
                     src_row['date_col'] = '01/01/2015'
                     src_row['datetime_col'] = '01/01/2001 12:51:43'  # default format '%m/%d/%Y %H:%M:%S'
                     src_row['time_col'] = '22:13:55'
@@ -520,12 +1117,15 @@ class TestTable(unittest.TestCase):
                     src_row['strin_10_col'] = '1234567890'
 
                     tgt_row = tgt_tbl.build_row(src_row)
-                    self.assertFalse(log.error.called,
-                                     'unexpected error from sanity_check_source_mapping. {}'.format(log.mock_calls))
-                    self.assertFalse(log.warning.called,
-                                     'unexpected warning from sanity_check_source_mapping. {}'.format(log.mock_calls))
+                    self.assertFalse(
+                        log.error.called,
+                        f'unexpected error from sanity_check_source_mapping. {log.mock_calls}'
+                    )
+                    self.assertFalse(
+                        log.warning.called,
+                        f'unexpected warning from sanity_check_source_mapping. {log.mock_calls}'
+                    )
                     self.assertEqual(tgt_row['bool_col'], False)
-                    self.assertEqual(tgt_row['clob_col'], "It's a Python world.")
                     self.assertEqual(tgt_row['date_col'], date(2015, 1, 1))
                     self.assertEqual(tgt_row['datetime_col'], datetime(2001, 1, 1, 12, 51, 43))
                     self.assertEqual(tgt_row['time_col'], time(22, 13, 55))
@@ -610,6 +1210,7 @@ class TestTable(unittest.TestCase):
         tbl = Table(self.task,
                     self.mock_database,
                     table_name=tbl_name)
+        tbl.primary_key = ['col1']
         tbl.auto_generate_key = True
         tbl.batch_size = 5
         tbl.upsert_special_values_rows()
@@ -648,17 +1249,16 @@ class TestTable(unittest.TestCase):
         self.assertEqual(row['col3'], -6666)
         self.assertEqual(row['col4'], -6666)
 
+    def test_upsert_special_values_rows(self):
+        tbl_name = 'test_upsert_special_values_rows'
+        self._create_table(tbl_name)
+        self._test_upsert_special_values_rows_check(tbl_name)
+        # Run a second time to make sure rows stay the same
+        self._test_upsert_special_values_rows_check(tbl_name)
+
     def testInsertAndTruncate(self):
         tbl_name = 'testInsertAndTruncate'
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT,
-              col2 TEXT,
-              col3 REAL,
-              col4 NUMERIC,
-              col5 BLOB
-           )
-        """.format(tbl_name))
+        self._create_table(tbl_name)
 
         rows_to_insert = 10
         with Table(self.task,
@@ -667,6 +1267,7 @@ class TestTable(unittest.TestCase):
             self._generate_test_rows(tbl, rows_to_insert)
 
             tbl.truncate()
+            tbl.commit()
 
             # Validate no data
             rows_dict = dict()
@@ -678,15 +1279,7 @@ class TestTable(unittest.TestCase):
 
     def testInsertAndRollback(self):
         tbl_name = 'testInsertAndRollback'
-        self.mock_database.execute("""
-           CREATE TABLE {} (
-              col1 INT,
-              col2 TEXT,
-              col3 REAL,
-              col4 NUMERIC,
-              col5 BLOB
-           )
-        """.format(tbl_name))
+        self._create_table(tbl_name)
 
         rows_to_insert = 10
         with Table(self.task,
@@ -713,7 +1306,7 @@ class TestTable(unittest.TestCase):
             Column('col_txt', TEXT),
             Column('col_real', REAL),
             Column('col_num', NUMERIC),
-            Column('col_blob', BLOB),
+            Column('col_blob', LargeBinary),
         )
         sa_table.create()
 
@@ -776,6 +1369,35 @@ class TestTable(unittest.TestCase):
             self.assertIsInstance(result_row['col_blob'], bytes)
             self.assertIsInstance(result_row['col_dt'], datetime)
             self.assertIsInstance(result_row['col_d'], date)
+
+    def test_upsert_override_autogen_pk(self):
+        tbl_name = 'test_upsert_override_autogen_pk'
+        self._create_table_2(tbl_name)
+
+        rows_to_insert = 10
+        with Table(
+            self.task,
+            self.mock_database,
+            table_name=tbl_name
+        ) as tbl:
+            tbl.primary_key = ['col1']
+            tbl.natural_key = ['col2']
+            tbl.auto_generate_key = True
+            tbl.delete_flag = 'del_flg'
+
+            iteration_header = RowIterationHeader()
+            for i in range(rows_to_insert):
+                row = tbl.Row()
+                row['col1'] = i
+                row['col2'] = 'this is row {}'.format(i)
+                row['col3'] = i / 1000.0
+                row['col4'] = i / 100000000.0
+                row['col5'] = 'this is row {} blob'.format(i).encode('ascii')
+
+                tbl.upsert(row)
+            tbl.commit()
+
+        self.mock_database.drop_table_if_exists(tbl_name)
 
     # TODO: Test update_not_in_set, delete_not_in_set 
 

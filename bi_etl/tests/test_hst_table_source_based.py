@@ -1,16 +1,13 @@
 """
 Created on Jan 27, 2016
 """
-import logging
 import unittest
 from datetime import datetime
 
 import sqlalchemy
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.schema import Index
-from sqlalchemy.sql.sqltypes import BLOB
 from sqlalchemy.sql.sqltypes import BOOLEAN
-from sqlalchemy.sql.sqltypes import CLOB
 from sqlalchemy.sql.sqltypes import Date
 from sqlalchemy.sql.sqltypes import DateTime
 from sqlalchemy.sql.sqltypes import Float
@@ -24,76 +21,60 @@ from sqlalchemy.sql.sqltypes import String
 from sqlalchemy.sql.sqltypes import TEXT
 from sqlalchemy.sql.sqltypes import Time
 
-from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.components.hst_table_source_based import HistoryTableSourceBased
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
-from bi_etl.database.connect import Connect
-from bi_etl.scheduler.task import ETLTask
-# pylint: disable=missing-docstring, protected-access
+from bi_etl.tests._test_base_database import _TestBaseDatabase
 from bi_etl.tests.dummy_etl_component import DummyETLComponent
 
 
-class TestHistoryTableSourceBased(unittest.TestCase):
-    def setUp(self):
-        self.log = logging.getLogger('TestHstTable')
-        self.log.setLevel(logging.DEBUG)
-        logging.getLogger().setLevel(logging.DEBUG)
-        database_name = 'test_db'
-        self.config = BIConfigParser()
-        self.config[database_name] = {}
-        self.config[database_name]['dialect'] = 'sqlite'
-        self.task = ETLTask(config=self.config)
-        self.mock_database = Connect.get_database_metadata(config=self.config,
-                                                           database_name=database_name,
-                                                           )
-
-    def tearDown(self):
-        pass
+# noinspection DuplicatedCode
+class TestHistoryTableSourceBased(_TestBaseDatabase):
 
     def testInsertAndIterate(self):
         tbl_name = 'testInsertAndIterate'
 
-        sa_table = sqlalchemy.schema.Table(tbl_name,
-                                           self.mock_database,
-                                           Column('int_col', Integer, primary_key=True),
-                                           Column('source_begin_date', DateTime, primary_key=True),
-                                           Column('source_end_date', DateTime),
-                                           Column('text_col', TEXT),
-                                           Column('real_col', REAL),
-                                           Column('num_col', NUMERIC),
-                                           Column('blob_col', BLOB),
-                                           Column('bool_col', BOOLEAN),
-                                           Column('clob_col', CLOB),
-                                           Column('date_col', Date),
-                                           Column('datetime_col', DateTime),
-                                           Column('time_col', Time),
-                                           Column('float_col', Float),
-                                           Column('interval_col', Interval),
-                                           Column('large_binary_col', LargeBinary),
-                                           Column('numeric13_col', Numeric(13)),
-                                           Column('numeric25_col', Numeric(25)),
-                                           Column('numeric25_15_col', Numeric(25, 15)),
-                                           Column('strin_10_col', String(10)),
-                                           )
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('int_col', Integer, primary_key=True),
+            Column('source_begin_date', DateTime, primary_key=True),
+            Column('source_end_date', DateTime),
+            Column('text_col', TEXT),
+            Column('real_col', REAL),
+            Column('num_col', NUMERIC),
+            Column('bool_col', BOOLEAN),
+            Column('date_col', Date),
+            Column('datetime_col', DateTime),
+            Column('time_col', Time),
+            Column('float_col', Float),
+            Column('interval_col', Interval),
+            Column('large_binary_col', LargeBinary),
+            Column('numeric13_col', Numeric(13)),
+            Column('numeric25_col', Numeric(25)),
+            Column('numeric25_15_col', Numeric(25, 15)),
+            Column('strin_10_col', String(10)),
+        )
         sa_table.create()
 
         rows_to_insert = 10
-        source_compontent = DummyETLComponent()
+        source_component = DummyETLComponent()
 
         with HistoryTableSourceBased(
                 self.task,
                 self.mock_database,
-                table_name=tbl_name) as tbl:
+                table_name=tbl_name
+        ) as tbl:
             tbl.begin_date_column = 'source_begin_date'
             tbl.end_date_column = 'source_end_date'
+
             for i in range(rows_to_insert):
-                row = source_compontent.Row()
+                row = source_component.Row()
                 row['int_col'] = i
                 row['text_col'] = 'this is row {}'.format(i)
                 row['real_col'] = i / 1000.0
                 row['num_col'] = i / 100000000.0
-                row['blob_col'] = 'this is row {} blob'.format(i).encode('ascii')
+                row['large_binary_col'] = 'this is row {} large_binary_col'.format(i).encode('ascii')
 
                 tbl.insert(row)
             tbl.commit()
@@ -110,37 +91,36 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                 row = rows_dict[i]
                 self.assertEqual(row['int_col'], i)
                 self.assertEqual(row['text_col'], 'this is row {}'.format(i))
-                self.assertEqual(row['real_col'], i / 1000.0)
-                self.assertEqual(row['num_col'], i / 100000000.0)
-                self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
+                self.assertEquivalentNumber((row['real_col']), (i / 1000.0))
+                self.assertEquivalentNumber((row['num_col']), (i / 100000000.0))
+                self.assertEqual(row['large_binary_col'], 'this is row {} large_binary_col'.format(i).encode('ascii'))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        self.mock_database.drop_table_if_exists(tbl_name)
 
     def testInsertAndUpsertPK(self):
         tbl_name = 'testInsertAndUpsertPK'
 
-        sa_table = sqlalchemy.schema.Table(tbl_name,
-                                           self.mock_database,
-                                           Column('int_col', Integer, primary_key=True),
-                                           Column('source_begin_date', DateTime, primary_key=True),
-                                           Column('source_end_date', DateTime),
-                                           Column('text_col', TEXT),
-                                           Column('real_col', REAL),
-                                           Column('num_col', NUMERIC),
-                                           Column('blob_col', BLOB),
-                                           Column('bool_col', BOOLEAN),
-                                           Column('clob_col', CLOB),
-                                           Column('date_col', Date),
-                                           Column('datetime_col', DateTime),
-                                           Column('time_col', Time),
-                                           Column('float_col', Float),
-                                           Column('interval_col', Interval),
-                                           Column('large_binary_col', LargeBinary),
-                                           Column('numeric13_col', Numeric(13)),
-                                           Column('numeric25_col', Numeric(25)),
-                                           Column('numeric25_15_col', Numeric(25, 15)),
-                                           Column('strin_10_col', String(10)),
-                                           )
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('int_col', Integer, primary_key=True),
+            Column('source_begin_date', DateTime, primary_key=True),
+            Column('source_end_date', DateTime),
+            Column('text_col', TEXT),
+            Column('real_col', REAL),
+            Column('num_col', NUMERIC),
+            Column('bool_col', BOOLEAN),
+            Column('date_col', Date),
+            Column('datetime_col', DateTime),
+            Column('time_col', Time),
+            Column('float_col', Float),
+            Column('interval_col', Interval),
+            Column('large_binary_col', LargeBinary),
+            Column('numeric13_col', Numeric(13)),
+            Column('numeric25_col', Numeric(25)),
+            Column('numeric25_15_col', Numeric(25, 15)),
+            Column('strin_10_col', String(10)),
+        )
         sa_table.create()
 
         rows_to_insert = 10
@@ -159,7 +139,7 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                 row['text_col'] = 'this is row {}'.format(i)
                 row['real_col'] = i / 1000.0
                 row['num_col'] = i / 100000000.0
-                row['blob_col'] = 'this is row {} blob'.format(i).encode('ascii')
+                row['large_binary_col'] = 'this is row {} large_binary_col'.format(i).encode('ascii')
                 tbl.insert(row)
             tbl.commit()
 
@@ -190,17 +170,26 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                 i = row['int_col']
                 if i in range(upsert_start):
                     self.assertEqual(row['text_col'], 'this is row {}'.format(i))
-                    self.assertEqual(row['real_col'], i / 1000.0)
-                    self.assertEqual(row['num_col'], i / 100000000.0)
-                    self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
+                    self.assertEquivalentNumber((row['real_col']), (i / 1000.0))
+                    self.assertEquivalentNumber((row['num_col']), (i / 100000000.0))
+                    self.assertEqual(
+                        row['large_binary_col'],
+                        'this is row {} large_binary_col'.format(i).encode('ascii')
+                    )
                     self.assertIsNone(row['datetime_col'])
                 else:
                     if row[tbl.begin_date_column] == tbl.default_begin_date and i in range(rows_to_insert):
                         # original values
-                        self.assertEqual(row['text_col'], 'this is row {}'.format(i))
-                        self.assertEqual(row['real_col'], i / 1000.0)
-                        self.assertEqual(row['num_col'], i / 100000000.0)
-                        self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
+                        self.assertEqual(
+                            row['text_col'],
+                            f"this is row {i}"
+                        )
+                        self.assertEquivalentNumber((row['real_col']), (i / 1000.0))
+                        self.assertEquivalentNumber((row['num_col']), (i / 100000000.0))
+                        self.assertEqual(
+                            row['large_binary_col'],
+                            f"this is row {i} large_binary_col".encode('ascii')
+                        )
                         self.assertIsNone(row['datetime_col'])
                     else:
                         # new values
@@ -208,42 +197,44 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                         # for the originally inserted rows the new version will have the original data for
                         # these fields that are not in the upsert
                         if i in range(rows_to_insert):
-                            self.assertEqual(row['real_col'], i / 1000.0)
-                            self.assertEqual(row['num_col'], i / 100000000.0)
-                            self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
+                            self.assertEquivalentNumber((row['real_col']), (i / 1000.0))
+                            self.assertEquivalentNumber((row['num_col']), (i / 100000000.0))
+                            self.assertEqual(
+                                row['large_binary_col'],
+                                f"this is row {i} large_binary_col".encode('ascii')
+                            )
                         else:
                             self.assertIsNone(row['real_col'])
                             self.assertIsNone(row['num_col'])
-                            self.assertIsNone(row['blob_col'])
+                            self.assertIsNone(row['large_binary_col'])
                         self.assertEqual(row['datetime_col'], datetime(2001, 1, i, 12, 51, 43))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        self.mock_database.drop_table_if_exists(tbl_name)
 
     def testInsertAndUpsertPKCached(self):
         tbl_name = 'testInsertAndUpsertPKCached'
 
-        sa_table = sqlalchemy.schema.Table(tbl_name,
-                                           self.mock_database,
-                                           Column('int_col', Integer, primary_key=True),
-                                           Column('source_begin_date', DateTime, primary_key=True),
-                                           Column('source_end_date', DateTime),
-                                           Column('text_col', TEXT),
-                                           Column('real_col', REAL),
-                                           Column('num_col', NUMERIC),
-                                           Column('blob_col', BLOB),
-                                           Column('bool_col', BOOLEAN),
-                                           Column('clob_col', CLOB),
-                                           Column('date_col', Date),
-                                           Column('datetime_col', DateTime),
-                                           Column('time_col', Time),
-                                           Column('float_col', Float),
-                                           Column('interval_col', Interval),
-                                           Column('large_binary_col', LargeBinary),
-                                           Column('numeric13_col', Numeric(13)),
-                                           Column('numeric25_col', Numeric(25)),
-                                           Column('numeric25_15_col', Numeric(25, 15)),
-                                           Column('strin_10_col', String(10)),
-                                           )
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('int_col', Integer, primary_key=True),
+            Column('source_begin_date', DateTime, primary_key=True),
+            Column('source_end_date', DateTime),
+            Column('text_col', TEXT),
+            Column('real_col', REAL),
+            Column('num_col', NUMERIC),
+            Column('bool_col', BOOLEAN),
+            Column('date_col', Date),
+            Column('datetime_col', DateTime),
+            Column('time_col', Time),
+            Column('float_col', Float),
+            Column('interval_col', Interval),
+            Column('large_binary_col', LargeBinary),
+            Column('numeric13_col', Numeric(13)),
+            Column('numeric25_col', Numeric(25)),
+            Column('numeric25_15_col', Numeric(25, 15)),
+            Column('strin_10_col', String(10)),
+        )
         sa_table.create()
 
         rows_to_insert = 10
@@ -262,7 +253,7 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                 row['text_col'] = 'this is row {}'.format(i)
                 row['real_col'] = i / 1000.0
                 row['num_col'] = i / 100000000.0
-                row['blob_col'] = 'this is row {} blob'.format(i).encode('ascii')
+                row['large_binary_col'] = 'this is row {} large_binary_col'.format(i).encode('ascii')
                 tbl.insert(row)
             tbl.commit()
 
@@ -293,17 +284,23 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                 i = row['int_col']
                 if i in range(upsert_start):
                     self.assertEqual(row['text_col'], 'this is row {}'.format(i))
-                    self.assertEqual(row['real_col'], i / 1000.0)
-                    self.assertEqual(row['num_col'], i / 100000000.0)
-                    self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
+                    self.assertEquivalentNumber((row['real_col']), (i / 1000.0))
+                    self.assertEquivalentNumber((row['num_col']), (i / 100000000.0))
+                    self.assertEqual(
+                        row['large_binary_col'],
+                        f"this is row {i} large_binary_col".encode('ascii')
+                    )
                     self.assertIsNone(row['datetime_col'])
                 else:
                     if row[tbl.begin_date_column] == tbl.default_begin_date and i in range(rows_to_insert):
                         # original values
                         self.assertEqual(row['text_col'], 'this is row {}'.format(i))
-                        self.assertEqual(row['real_col'], i / 1000.0)
-                        self.assertEqual(row['num_col'], i / 100000000.0)
-                        self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
+                        self.assertEquivalentNumber((row['real_col']), (i / 1000.0))
+                        self.assertEquivalentNumber((row['num_col']), (i / 100000000.0))
+                        self.assertEqual(
+                            row['large_binary_col'],
+                            f"this is row {i} large_binary_col".encode('ascii')
+                        )
                         self.assertIsNone(row['datetime_col'])
                     else:
                         # new values
@@ -311,16 +308,19 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                         # for the originally inserted rows the new version will have the original data for
                         # these fields that are not in the upsert
                         if i in range(rows_to_insert):
-                            self.assertEqual(row['real_col'], i / 1000.0)
-                            self.assertEqual(row['num_col'], i / 100000000.0)
-                            self.assertEqual(row['blob_col'], 'this is row {} blob'.format(i).encode('ascii'))
+                            self.assertEquivalentNumber((row['real_col']), (i / 1000.0))
+                            self.assertEquivalentNumber((row['num_col']), (i / 100000000.0))
+                            self.assertEqual(
+                                row['large_binary_col'],
+                                f"this is row {i} large_binary_col".encode('ascii')
+                            )
                         else:
                             self.assertIsNone(row['real_col'])
                             self.assertIsNone(row['num_col'])
-                            self.assertIsNone(row['blob_col'])
+                            self.assertIsNone(row['large_binary_col'])
                         self.assertEqual(row['datetime_col'], datetime(2001, 1, i, 12, 51, 43))
 
-        self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+        self.mock_database.drop_table_if_exists(tbl_name)
 
     def testInsertAndUpsertNKCached(self):
         tbl_name = 'testInsertAndUpsertNKCached'
@@ -418,8 +418,8 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                 table_rows = tgt_tbl.order_by(['nk_col1', 'nk_col2', tgt_tbl.begin_date_column])
                 for expected_row, row in zip(expected_rows, table_rows):
                     self.log.debug("-"*80)
-                    self.log.debug("Row={}".format(row.as_dict))
-                    self.log.debug("Exp={}".format(expected_row))
+                    self.log.debug(f"Row={row.as_dict}")
+                    self.log.debug(f"Exp={expected_row}")
                     for test_col in expected_row.keys():
                         self.assertEqual(str(row[test_col]), expected_row[test_col], "Not changed test")
 
@@ -454,8 +454,8 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                 table_rows = tgt_tbl.order_by(['nk_col1', 'nk_col2', tgt_tbl.begin_date_column])
                 for expected_row, row in zip(expected_rows, table_rows):
                     self.log.debug("-" * 80)
-                    self.log.debug("Row={}".format(row.as_dict))
-                    self.log.debug("Exp={}".format(expected_row))
+                    self.log.debug(f"Row={row.as_dict}")
+                    self.log.debug(f"Exp={expected_row}")
                     for test_col in expected_row.keys():
                         self.assertEqual(str(row[test_col]), expected_row[test_col], "New dates, no change")
 
@@ -504,12 +504,16 @@ class TestHistoryTableSourceBased(unittest.TestCase):
                 table_rows = tgt_tbl.order_by(['nk_col1', 'nk_col2', tgt_tbl.begin_date_column])
                 for expected_row, row in zip(expected_rows, table_rows):
                     self.log.debug("-" * 80)
-                    self.log.debug("Row={}".format(row.as_dict))
-                    self.log.debug("Exp={}".format(expected_row))
+                    self.log.debug(f"Row={row.as_dict}")
+                    self.log.debug(f"Exp={expected_row}")
                     for test_col in expected_row.keys():
-                        self.assertEqual(str(row[test_col]), expected_row[test_col], "New dates, no change")
+                        self.assertEqual(
+                            str(row[test_col]),
+                            expected_row[test_col],
+                            "New dates, no change"
+                        )
 
-            self.mock_database.execute('DROP TABLE {}'.format(tbl_name))
+            self.mock_database.drop_table_if_exists(tbl_name)
 
 
 if __name__ == "__main__":

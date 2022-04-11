@@ -191,7 +191,7 @@ class HistoryTableSourceBased(HistoryTable):
                  task: typing.Optional[ETLTask],
                  database: DatabaseMetadata,
                  table_name: str,
-                 table_name_case_sensitive: bool = True,
+                 table_name_case_sensitive: bool = None,
                  schema: str = None,
                  exclude_columns: frozenset = None,
                  **kwargs
@@ -494,7 +494,13 @@ class HistoryTableSourceBased(HistoryTable):
             # Keep track of source records so we can check if target rows don't exist in source
             self.source_keys_processed.add(self.get_natural_key_tuple(source_mapped_as_target_row))
 
-        if lookup_name is None or lookup_name == self.PK_LOOKUP:
+        if lookup_name is None:
+            lookup = self.get_default_lookup(source_row.iteration_header)
+            lookup_name = lookup.lookup_name
+        else:
+            lookup = self.get_lookup(lookup_name)
+
+        if len(lookup.lookup_keys) == 1:  # Primary key, it can't be anything else unless not valid.
             # PK lookup doesn't need to deal with list of dates, so call the parent upsert routine directly
             return super().upsert(
                 source_row=source_mapped_as_target_row,
@@ -660,3 +666,263 @@ class HistoryTableSourceBased(HistoryTable):
                        connection_name=connection_name,
                        begin_new=begin_new,
                        )
+
+    def sql_upsert(
+            self,
+            source_table: ReadOnlyTable,
+            source_excludes: typing.Optional[frozenset] = None,
+            target_excludes: typing.Optional[frozenset] = None,
+            skip_update_check_on: typing.Optional[frozenset] = None,
+            connection_name: str = 'sql_upsert',
+            stat_name: str = 'upsert_db_exclusive',
+            parent_stats: typing.Optional[Statistics] = None,
+            **kwargs
+    ):
+        upsert_db_excl_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
+        upsert_db_excl_stats.print_start_stop_times = False
+        upsert_db_excl_stats.timer.start()
+        upsert_db_excl_stats['calls'] += 1
+
+        source_row_columns_set = source_table.column_names_set
+        if source_excludes is not None:
+            source_row_columns_set = source_row_columns_set - source_excludes
+
+        target_column_set = self.column_names_set
+        if target_excludes is not None:
+            target_column_set = target_column_set - target_excludes
+
+        matching_columns = {column_name for column_name in source_row_columns_set if column_name in target_column_set}
+
+        compare_columns = matching_columns - {self.begin_date_column, self.end_date_column}
+
+        non_nk_columns = matching_columns - set(self.natural_key)
+
+        if self.last_update_date is not None:
+            compare_columns -= {self.last_update_date}
+
+        if len(self.primary_key) != 1:
+            raise ValueError(f"{self}.upsert_db_exclusive requires single primary_key column. Got {self.primary_key}")
+        primary_key_name = self.primary_key[0]
+
+        now_str = self.get_current_time().isoformat()
+
+        # TODO: Need to "deduplicate" source versions if two have identical values except for the effective_date_column
+        deduplicated_source_table = 'public.deduplicated_source'
+        self.execute(f"DROP TABLE IF EXISTS {deduplicated_source_table}")
+
+        deduplicate_source_sql = f"""
+               CREATE TABLE {deduplicated_source_table} AS
+               WITH source_next_prev AS (
+                   SELECT
+                       {Table._sql_indent_join([col for col in matching_columns], 23, suffix=',')},
+                       {kwargs['source_begin_date_column']},
+                       LAG({kwargs['source_begin_date_column']}) OVER (
+                            PARTITION BY 
+                                {Table._sql_indent_join([nk_col for nk_col in self.natural_key], 32, suffix=',')} 
+                            ORDER BY {kwargs['source_begin_date_column']}
+                        ) as prev_effective_date
+                        /*
+                        LEAD({kwargs['source_begin_date_column']}) OVER (
+                            PARTITION BY 
+                                {Table._sql_indent_join([nk_col for nk_col in self.natural_key], 32, suffix=',')} 
+                            ORDER BY {kwargs['source_begin_date_column']}
+                        ) as next_effective_date
+                        */
+                   FROM {source_table.qualified_table_name} s
+               )
+               , changes_only AS (  
+               SELECT r.*
+               FROM source_next_prev r
+                    LEFT OUTER JOIN 
+                    source_next_prev prev
+                       ON {Table._sql_indent_join([f"prev.{nk_col} = r.{nk_col}" for nk_col in self.natural_key], 32, prefix='AND ')}
+                       AND prev.{kwargs['source_begin_date_column']} = r.prev_effective_date
+                WHERE 
+                    {Table._sql_indent_join([Table._sql_column_not_equals(m_col, 'prev', 'r') for m_col in non_nk_columns], 20, prefix='OR ')}
+               )    
+               SELECT 
+                    changes_only.*,
+                    /* Note we can't use the next_effective_date since we might have skipped one with no changes */
+                    COALESCE(
+                         LEAD({kwargs['source_begin_date_column']}) OVER (
+                            PARTITION BY 
+                                {Table._sql_indent_join([nk_col for nk_col in self.natural_key], 32, suffix=',')} 
+                            ORDER BY {kwargs['source_begin_date_column']}
+                        ), 
+                        {self._sql_date_literal(self.default_end_date)}
+                    ) as end_effective_date
+               FROM changes_only                 
+               """
+        self.log.debug('-' * 80)
+        self.log.debug('deduplicate_source_sql')
+        self.log.debug('-' * 80)
+        sql_timer = Timer()
+        self.log.debug(deduplicate_source_sql)
+        self.execute(deduplicate_source_sql, connection_name=connection_name)
+        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
+
+        # Insert rows for new Natural Keys
+        self._sql_insert_new(
+            source_table=deduplicated_source_table,
+            matching_columns=matching_columns,
+            effective_date_column=kwargs['source_begin_date_column'],
+            connection_name=connection_name,
+        )
+
+        # unified_dates_table = '#unified_dates_table'
+        unified_dates_table = 'public.derek_unified_dates_table'
+        self.execute(f"DROP TABLE IF EXISTS {unified_dates_table}")
+
+        unified_dates_sql = f"""
+            CREATE TABLE {unified_dates_table} AS
+            WITH pass1 as (
+                SELECT DISTINCT 
+                    {Table._sql_indent_join([f"s.{nk_col}" for nk_col in self.natural_key], 16, suffix=',')},
+                    s.{kwargs['source_begin_date_column']} as effective_date
+                FROM {deduplicated_source_table} s
+                UNION
+                SELECT
+                    {Table._sql_indent_join([f"e.{nk_col}" for nk_col in self.natural_key], 16, suffix=',')},
+                    e.{self.begin_date_column} as effective_date
+                FROM {self.qualified_table_name} e
+            )
+            SELECT 
+            pass1.*,
+            COALESCE(
+                LEAD({self._sql_add_seconds('pass1.effective_date', -1)}) OVER (
+                    PARTITION BY {Table._sql_indent_join([nk_col for nk_col in self.natural_key], 16, suffix=',')}
+                    ORDER BY effective_date
+                    ),
+                {self._sql_date_literal(self.default_end_date)}
+            ) as new_end_effective_date
+           FROM pass1 
+        """
+        self.log.debug('-' * 80)
+        self.log.debug('unified_dates_sql')
+        self.log.debug('-' * 80)
+        sql_timer = Timer()
+        self.log.debug(unified_dates_sql)
+        self.execute(unified_dates_sql, connection_name=connection_name)
+        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
+
+        # TODO: Need DB specific CREATE TABLE AS or SELECT ... INTO
+        # derek_updated_row_nk_table = '#updated_row_nk'
+        updated_row_nk_table = 'public.derek_updated_row_nk'
+
+        self.execute(f"DROP TABLE IF EXISTS {updated_row_nk_table}")
+
+        find_updates_sql = f"""
+            CREATE TABLE {updated_row_nk_table} AS
+            SELECT 
+                {Table._sql_indent_join([f"e.{nk_col}" for nk_col in self.natural_key], 16, suffix=',')},
+                s.{kwargs['source_begin_date_column']} as source_effective_date,
+                e.{self.begin_date_column} as target_begin_date,
+                e.{self.end_date_column} as target_end_date,
+                d.new_end_effective_date,
+                {Table._sql_indent_join([f"CASE WHEN {Table._sql_column_not_equals(m_col, 'e', 's')} THEN 1 ELSE 0 END as chg_in_{m_col}" for m_col in non_nk_columns], 16, suffix=',')}
+            FROM {unified_dates_table} d
+                 INNER JOIN
+                 {self.qualified_table_name} e
+                    ON {Table._sql_indent_join([f"d.{nk_col} = e.{nk_col}" for nk_col in self.natural_key], 19, prefix='AND ')}
+                   AND d.effective_date BETWEEN e.{self.begin_date_column} AND e.{self.end_date_column}
+                 INNER JOIN
+                 {deduplicated_source_table} s
+                    ON {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}" for nk_col in self.natural_key], 19, prefix='AND ')}
+                   AND d.effective_date BETWEEN s.{kwargs['source_begin_date_column']} AND s.{kwargs['source_end_date_column']} 
+            WHERE ( 
+                    {Table._sql_indent_join([Table._sql_column_not_equals(m_col, 'e', 's') for m_col in non_nk_columns], 20, prefix='OR ')}
+                    OR e.{self.delete_flag} != '{self.delete_flag_no}'
+                  )
+        """
+        self.log.debug('-' * 80)
+        self.log.debug('find_updates_sql')
+        self.log.debug('-' * 80)
+        sql_timer = Timer()
+        self.log.debug(find_updates_sql)
+        results = self.execute(find_updates_sql, connection_name=connection_name)
+        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
+
+        # Note: This SQL will only work if generated AFTER the insert_new_sql has been run on the DB
+        # otherwise the primary_key values will conflict.
+
+        # TODO type 1 srgt
+        insert_updates_sql = f"""                
+            INSERT INTO {self.qualified_table_name} (
+                {primary_key_name},
+                {self.delete_flag},
+                {self.begin_date_column},
+                {self.end_date_column},
+                {self.last_update_date},
+                {Table._sql_indent_join(matching_columns, 16, suffix=',')}
+            )  
+            WITH max_srgt AS (SELECT coalesce(max({primary_key_name}),0)  as max_srgt FROM {self.qualified_table_name})
+            SELECT 
+                max_srgt.max_srgt + ROW_NUMBER() OVER () as {primary_key_name},
+                '{self.delete_flag_no}' as {self.delete_flag},
+                u.source_effective_date as {self.begin_date_column},
+                u.new_end_effective_date as {self.end_date_column},
+                '{now_str}' as {self.last_update_date},
+                {Table._sql_indent_join([f's.{col}' for col in matching_columns], 16, suffix=',')}
+            FROM max_srgt
+                 CROSS JOIN 
+                 {deduplicated_source_table} s
+                 INNER JOIN
+                 {updated_row_nk_table} u
+                   ON {Table._sql_indent_join([f"u.{nk_col} = s.{nk_col}" for nk_col in self.natural_key], 18, prefix='AND')}
+                  AND s.{kwargs['source_begin_date_column']} = u.source_effective_date
+            /* Do not insert entries for when dates match exactly, those must be updated in place */
+            WHERE u.source_effective_date != u.target_begin_date
+        """
+
+        self.log.debug('-' * 80)
+        self.log.debug('insert_updates_sql')
+        self.log.debug('-' * 80)
+        self.log.debug(insert_updates_sql)
+        sql_timer = Timer()
+        results = self.execute(insert_updates_sql, connection_name=connection_name)
+        self.log.debug(f"Impacted rows = {results.rowcount:,} (meaningful count? {results.supports_sane_rowcount()})")
+        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
+
+        joins = [(nk_col, ("u", nk_col)) for nk_col in self.natural_key]
+        joins.append((self.begin_date_column, ('u', 'target_begin_date')))
+        self._sql_update_from(
+            update_name='update_retire',
+            source_sql=f"{updated_row_nk_table} u",
+            list_of_joins=joins,
+            # Do not insert entries for when dates match exactly, those must be updated in place.
+            extra_where="u.source_effective_date != u.target_begin_date",
+            target_alias_in_source='e',
+            list_of_sets=[
+                (
+                    self.end_date_column,
+                    f"u.new_end_effective_date"
+                ),
+            ]
+        )
+
+        self._sql_update_from(
+            update_name='update_in_place',
+            source_sql=f"""
+                {updated_row_nk_table} u
+                 INNER JOIN
+                 {deduplicated_source_table} s
+                   ON {Table._sql_indent_join([f"s.{nk_col} = u.{nk_col}" for nk_col in self.natural_key], 18, prefix='AND ')}
+                  AND s.{kwargs['source_begin_date_column']} = u.source_effective_date
+            """,
+            list_of_joins=joins,
+            target_alias_in_source='e',
+            list_of_sets=[
+                (m_col,
+                 f"s.{m_col}")
+                for m_col in non_nk_columns
+            ]
+        )
+
+        self.log.debug('=' * 80)
+
+        self.commit()
+
+        self.close_connection(connection_name=connection_name)
+
+        upsert_db_excl_stats.timer.stop()
+
