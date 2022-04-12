@@ -1,6 +1,7 @@
 import inspect
 import logging
 import os
+import random
 import unittest
 
 from datetime import datetime, date, time, timedelta
@@ -29,8 +30,8 @@ from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.row.row import Row
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
-from bi_etl.tests.sqlite_db import SqliteDB
-from bi_etl.tests.dummy_etl_component import DummyETLComponent
+from tests.sqlite.sqlite_db import SqliteDB
+from tests.dummy_etl_component import DummyETLComponent
 
 
 class _TestBaseDatabase(unittest.TestCase):
@@ -112,6 +113,9 @@ class _TestBaseDatabase(unittest.TestCase):
             Column('delete_flag', TEXT),
         ]
         return cols
+
+    def _get_table_name(self, partial_name: str) -> str:
+        return f"{partial_name}_{random.randint(1, 99)}"
 
     def _create_index_table_1(self, sa_table) -> typing.List[sqlalchemy.schema.Index]:
         idx = Index(sa_table.name + '_idx',

@@ -13,10 +13,10 @@ from unittest.case import SkipTest
 from bi_etl.scheduler.scheduler_interface import SchedulerInterface
 from bi_etl.scheduler.task import Status
 
-from bi_etl.tests.etl_jobs.etl_task_1 import ETL_Task_1
-from bi_etl.tests.etl_jobs.etl_task_d1 import ETL_Task_D1
-from bi_etl.tests.etl_jobs.etl_task_d2 import ETL_Task_D2
-from bi_etl.tests.etl_jobs.etl_task_d3 import ETL_Task_D3
+from tests.etl_jobs.etl_task_1 import ETL_Task_1
+from tests.etl_jobs.etl_task_d1 import ETL_Task_D1
+from tests.etl_jobs.etl_task_d2 import ETL_Task_D2
+from tests.etl_jobs.etl_task_d3 import ETL_Task_D3
 
 
 class IntegrationTestScheduler(unittest.TestCase):

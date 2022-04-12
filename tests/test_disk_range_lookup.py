@@ -8,7 +8,7 @@ import unittest
 from bi_etl.lookups.disk_range_lookup import DiskRangeLookup
 import tempfile
 
-from bi_etl.tests._test_base_range_lookup import _TestBaseRangeLookup
+from tests._test_base_range_lookup import _TestBaseRangeLookup
 import os
 
 class TestDiskRangeLookup(_TestBaseRangeLookup):

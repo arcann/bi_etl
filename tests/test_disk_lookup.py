@@ -5,7 +5,7 @@ Created on Jan 5, 2016
 """
 import unittest
 
-from bi_etl.tests._test_base_lookup import _TestBase
+from tests._test_base_lookup import _TestBase
 from bi_etl.lookups.disk_lookup import DiskLookup
 import tempfile
 import os

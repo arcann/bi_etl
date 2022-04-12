@@ -4,7 +4,7 @@ import random
 from testcontainers.postgres import PostgresContainer
 from testcontainers.core import config as tc_config
 
-from bi_etl.tests.sqlite_db import SqliteDB
+from tests.sqlite.sqlite_db import SqliteDB
 
 
 class PostgresTestDB(SqliteDB):

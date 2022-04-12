@@ -7,9 +7,9 @@ import logging
 import unittest
 
 from bi_etl.bi_config_parser import BIConfigParser
-from bi_etl.tests.etl_jobs.etl_task_d1 import ETL_Task_D1
-from bi_etl.tests.etl_jobs.etl_task_d2 import ETL_Task_D2
-from bi_etl.tests.etl_jobs.etl_task_d3 import ETL_Task_D3
+from tests.etl_jobs.etl_task_d1 import ETL_Task_D1
+from tests.etl_jobs.etl_task_d2 import ETL_Task_D2
+from tests.etl_jobs.etl_task_d3 import ETL_Task_D3
 
 
 class TestTask(unittest.TestCase):
@@ -18,7 +18,7 @@ class TestTask(unittest.TestCase):
         self.log = logging.getLogger("TestTask")
         self.config = BIConfigParser()
         self.config['Scheduler'] = dict()
-        self.config['Scheduler']['base_module'] = 'bi_etl.tests.etl_jobs'
+        self.config['Scheduler']['base_module'] = 'tests.etl_jobs'
         self.config['loggers'] = dict()
         self.config['loggers']['root'] = 'DEBUG'
         self.config.setup_logging()

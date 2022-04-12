@@ -7,14 +7,13 @@ import unittest
 import tempfile
 from datetime import datetime
 
-from bi_etl.components.row.row import Row
 from bi_etl.exceptions import NoResultFound, AfterExisting, BeforeAllExisting
-from bi_etl.tests._test_base_range_lookup import _TestBaseRangeLookup
+from tests._test_base_range_lookup import _TestBaseRangeLookup
 from bi_etl.lookups.autodisk_range_lookup import AutoDiskRangeLookup
 
 
 # pylint: disable=missing-docstring, protected-access
-from bi_etl.tests.dummy_etl_component import DummyETLComponent
+from tests.dummy_etl_component import DummyETLComponent
 
 
 class TestAutodiskRangeLookup(_TestBaseRangeLookup):

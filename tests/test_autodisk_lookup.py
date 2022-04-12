@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime
 
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
-from bi_etl.tests._test_base_lookup import _TestBase
+from tests._test_base_lookup import _TestBase
 
 # pylint: disable=missing-docstring, protected-access
 

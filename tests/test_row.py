@@ -6,7 +6,7 @@ Created on Mar 26, 2015
 import unittest
 from collections import OrderedDict
 
-from sqlalchemy.engine.result import RowProxy
+import sqlalchemy
 from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.sql.sqltypes import Integer, String, Numeric
 
@@ -14,8 +14,8 @@ from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_case_insensitive import RowCaseInsensitive
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.conversions import nullif
-from bi_etl.tests.dummy_etl_component import DummyETLComponent
-from bi_etl.tests.mock_metadata import MockTableMeta, MockDatabaseMeta
+from tests.dummy_etl_component import DummyETLComponent
+from tests.mock_metadata import MockTableMeta, MockDatabaseMeta
 from bi_etl.timer import Timer
 
 
@@ -160,50 +160,21 @@ class TestRow(unittest.TestCase):
         self._test_transform_single_case_example('UPPER')
 
     def _make_row_from_dict(self, row_dict):
-        metadata = MockTableMeta(list(row_dict.keys()))
+        engine = sqlalchemy.create_engine('sqlite://')
 
-        def proc1(value):
-            return value
+        select_values = list()
+        for key, val in row_dict.items():
+            if isinstance(val, str):
+                select_values.append(f"'{val}' as {key}")
+            else:
+                select_values.append(f"{val} as {key}")
 
-        row = [v for v in row_dict.values()]
-        processors = [proc1 for _ in row_dict]
-        keymap = {}
-        index = 0
-        for key in row_dict.keys():
-            keymap[key] = (proc1, key, index)
-            keymap[index] = (proc1, key, index)
-            index += 1
+        sql = "SELECT " + ', '.join(select_values)
 
-        # return sqlalchemy.engine.result.RowProxy
-        return RowProxy(metadata,  # parent
-                        row,
-                        processors,
-                        keymap
-                        )
+        results = engine.execute(sql)
 
-    def _make_row_from_list(self, row_list):
-        row_keys = [t[0] for t in row_list]
-        metadata = MockTableMeta(row_keys)
+        return next(results)
 
-        def proc1(value):
-            return value
-
-        row = [t[1] for t in row_list]
-        processors = [proc1 for _ in row_list]
-        index = 0
-        keymap = {}
-        for key, _ in row_list:
-            keymap[key] = (proc1, key, index)
-            keymap[index] = (proc1, key, index)
-            index += 1
-
-        # return sqlalchemy.engine.result.RowProxy
-        return RowProxy(metadata,  # parent
-                        row,
-                        processors,
-                        keymap
-                        )
-            
     def test_SA_init(self):        
         self.assertEqual(self.row2a.name, self.sa_row_name, "row.name didn't return correct value")
         self.assertIn(self.sa_row_name, str(self.row2a), "str(Row) didn't return row name")
@@ -450,51 +421,6 @@ class TestRowCaseInsensitive(TestRow):
     def test_transform_upper_case(self):
         # For upper case columns we can access it by any case
         self._test_transform_single_case('uPpEr')
-
-    def _make_row_from_dict(self, row_dict):
-        metadata = MockTableMeta(list(row_dict.keys()))
-
-        def proc1(value):
-            return value
-
-        row = [v for v in row_dict.values()]
-        processors = [proc1 for _ in row_dict]  # @UnusedVariable
-        keymap = {}
-        index = 0
-        for key in row_dict.keys():
-            keymap[key] = (proc1, key, index)
-            keymap[index] = (proc1, key, index)
-            index += 1
-
-        # return sqlalchemy.engine.result.RowProxy
-        return RowProxy(metadata,  # parent
-                        row,
-                        processors,
-                        keymap
-                        )
-
-    def _make_row_from_list(self, row_list):
-        columns = [t[0] for t in row_list]
-        metadata = MockTableMeta(columns)
-
-        def proc1(value):
-            return value
-
-        row = [t[1] for t in row_list]
-        processors = [proc1 for _ in row_list]
-        index = 0
-        keymap = {}
-        for key, _ in row_list:
-            keymap[key] = (proc1, key, index)
-            keymap[index] = (proc1, key, index)
-            index += 1
-
-        # return sqlalchemy.engine.result.RowProxy
-        return RowProxy(metadata,  # parent
-                        row,
-                        processors,
-                        keymap
-                        )
 
     def test_SA_init(self):
         self.assertEqual(self.row2a['MixedCase'], self.source2a['MixedCase'])

@@ -24,8 +24,8 @@ from sqlalchemy.sql.sqltypes import Time
 from bi_etl.components.hst_table_source_based import HistoryTableSourceBased
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
-from bi_etl.tests._test_base_database import _TestBaseDatabase
-from bi_etl.tests.dummy_etl_component import DummyETLComponent
+from tests._test_base_database import _TestBaseDatabase
+from tests.dummy_etl_component import DummyETLComponent
 
 
 # noinspection DuplicatedCode

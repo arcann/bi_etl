@@ -2164,6 +2164,8 @@ class HistoryTable(Table):
 
         now_str = self._sql_date_literal(self.get_current_time())
 
+        self.execute(f"DROP TABLE IF EXISTS {deleted_row_nk_table}")
+
         find_deletes_sql = f"""
             CREATE TABLE {deleted_row_nk_table} AS
             SELECT 

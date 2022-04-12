@@ -14,14 +14,11 @@ from decimal import Decimal
 from unittest import mock
 
 import sqlalchemy
-from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.components.csvreader import CSVReader
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.table import Table
-from bi_etl.database.connect import Connect
-from bi_etl.scheduler.task import ETLTask
-from bi_etl.tests._test_base_database import _TestBaseDatabase
+from tests._test_base_database import _TestBaseDatabase
 from bi_etl.utility import dict_to_str
 from sqlalchemy import exc
 from sqlalchemy.exc import DatabaseError

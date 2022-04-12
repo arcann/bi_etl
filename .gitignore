@@ -92,3 +92,4 @@ ENV/
 # PyCharm project settings
 .idea/*
 **/.pytest_cache/
+unit_tests_sqlite.db

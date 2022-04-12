@@ -17,7 +17,7 @@ repository = "https://bitbucket.org/DatastrongTeam/bi_etl/src/master/"
 
 [tool.poetry.dependencies]
 python = "^3.7,<4.0"
-SQLAlchemy = ">=1.3,<1.4"
+SQLAlchemy = "1.4.35"
 semidbm = "^0.5.1"
 psutil = "^5.7.2"
 openpyxl = "^3.0.5"
@@ -52,6 +52,7 @@ sphinx-autodoc-annotation = "^1.0-1"
 pathos = {version = "^0.2.6", optional = true}
 toml = "^0.10.1"
 testcontainers = {version = ">=3.2.0", extras = ["mysql oracle postgresql mssqlserver"]}
+tox = "^3.25.0"
 
 [build-system]
 requires = ["poetry>=0.12"]

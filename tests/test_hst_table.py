@@ -18,7 +18,7 @@ from bi_etl.components.hst_table import HistoryTable
 from bi_etl.components.row.row import Row
 from bi_etl.components.table import Table
 from bi_etl.conversions import str2datetime, str2date, str2time, str2int, str2decimal, str2float
-from bi_etl.tests._test_base_database import _TestBaseDatabase
+from tests._test_base_database import _TestBaseDatabase
 
 
 class TestHstTable(_TestBaseDatabase):
@@ -81,7 +81,8 @@ class TestHstTable(_TestBaseDatabase):
         self.assertEqual(
             sum(rows_cnt_dict.values()),
             actual_count,
-            f"Test definition error. Read {actual_count} rows but key based dict has {sum(rows_cnt_dict.values())} {msg}"
+            f"Test definition error. "
+            f"Read {actual_count} rows but key based dict has {sum(rows_cnt_dict.values())} {msg}"
         )
 
         expected_count = 0
@@ -91,8 +92,9 @@ class TestHstTable(_TestBaseDatabase):
             self.assertIn(key, rows_dict, f"\nKey combo {key} not found in actual table results")
 
             actual_row_list = rows_dict[key]
-            self.assertGreater(len(actual_row_list), 0,
-                               f"No remaining actual rows to match with for key {key} {msg} (more versions expected than found)"
+            self.assertGreater(
+                len(actual_row_list), 0,
+                f"No remaining actual rows to match with for key {key} {msg} (more versions expected than found)"
             )
 
             actual_row = actual_row_list.pop(0)
@@ -249,7 +251,7 @@ class TestHstTable(_TestBaseDatabase):
             yield row
 
     def testInsertAndIterate(self):
-        tbl_name = 'testInsertAndIterate'
+        tbl_name = self._get_table_name('testInsertAndIterate')
 
         self._create_table_1(tbl_name)
 
@@ -419,7 +421,7 @@ class TestHstTable(_TestBaseDatabase):
     # However, using methods for each allows for parallel testing.
 
     def test_insert_and_update_t2_t1_del(self):
-        tbl_name_base = "test_insert_and_update_t2_t1_del"
+        tbl_name_base = self._get_table_name("test_insert_and_update_t2_t1_del")
         for load_cache in [True, False]:
             tbl_part2 = '_Cache' if load_cache else '_NoChc'
             tbl_name = tbl_name_base + tbl_part2
@@ -432,7 +434,7 @@ class TestHstTable(_TestBaseDatabase):
             )
 
     def test_insert_and_update_t2_not1_del(self):
-        tbl_name_base = "test_insert_and_update_t2_not1_del"
+        tbl_name_base = self._get_table_name("test_insert_and_update_t2_not1_del")
         for load_cache in [True, False]:
             tbl_part2 = '_Cache' if load_cache else '_NoChc'
             tbl_name = tbl_name_base + tbl_part2
@@ -445,7 +447,7 @@ class TestHstTable(_TestBaseDatabase):
             )
 
     def test_insert_and_update_nosrgt_del(self):
-        tbl_name_base = "test_insert_and_update_nosrgt_del"
+        tbl_name_base = self._get_table_name("test_insert_and_update_nosrgt_del")
         for load_cache in [True, False]:
             tbl_part2 = '_Cache' if load_cache else '_NoChc'
             tbl_name = tbl_name_base + tbl_part2
@@ -458,7 +460,7 @@ class TestHstTable(_TestBaseDatabase):
             )
 
     def test_insert_and_update_odd_duck(self):
-        tbl_name_base = "test_insert_and_update_odd_duck"
+        tbl_name_base = self._get_table_name("test_insert_and_update_odd_duck")
         for load_cache in [True, False]:
             tbl_part2 = '_Cache' if load_cache else '_NoChc'
             tbl_name = tbl_name_base + tbl_part2
@@ -471,7 +473,7 @@ class TestHstTable(_TestBaseDatabase):
             )
 
     def test_insert_and_update_t2_t1_nodel(self):
-        tbl_name_base = "test_insert_and_update_t2_t1_nodel"
+        tbl_name_base = self._get_table_name("test_insert_and_update_t2_t1_nodel")
         for load_cache in [True, False]:
             tbl_part2 = '_Cache' if load_cache else '_NoChc'
             tbl_name = tbl_name_base + tbl_part2
@@ -484,7 +486,7 @@ class TestHstTable(_TestBaseDatabase):
             )
 
     def test_insert_and_update_t2_not1_nodel(self):
-        tbl_name_base = "test_insert_and_update_t2_not1_nodel"
+        tbl_name_base = self._get_table_name("test_insert_and_update_t2_not1_nodel")
         for load_cache in [True, False]:
             tbl_part2 = '_Cache' if load_cache else '_NoChc'
             tbl_name = tbl_name_base + tbl_part2
@@ -497,7 +499,7 @@ class TestHstTable(_TestBaseDatabase):
             )
 
     def test_insert_and_update_nosrgt_nodel(self):
-        tbl_name_base = "test_insert_and_update_nosrgt_nodel"
+        tbl_name_base = self._get_table_name("test_insert_and_update_nosrgt_nodel")
         for load_cache in [True, False]:
             tbl_part2 = '_Cache' if load_cache else '_NoChc'
             tbl_name = tbl_name_base + tbl_part2
@@ -513,7 +515,7 @@ class TestHstTable(_TestBaseDatabase):
     ###############################################################
 
     def test_upsert_override_autogen_pk(self):
-        tbl_name = 'test_hst_upsert_override_autogen_pk'
+        tbl_name = self._get_table_name('test_hst_upsert_override_autogen_pk')
         self._create_table_1(tbl_name)
 
         rows_to_insert = 10
@@ -599,7 +601,6 @@ class TestHstTable(_TestBaseDatabase):
             )
             sa_table.create()
 
-
             with Table(
                 self.task,
                 self.mock_database,
@@ -664,7 +665,7 @@ class TestHstTable(_TestBaseDatabase):
             use_type2=True,
             use_type1=True,
             check_for_deletes=True,
-            tbl_name="test_sql_upsert_t2_t1_del",
+            tbl_name=self._get_table_name("test_sql_upsert_t2_t1_del"),
         )
 
     def test_sql_upsert_t2_not1_del(self):
@@ -672,7 +673,7 @@ class TestHstTable(_TestBaseDatabase):
             use_type2=True,
             use_type1=False,
             check_for_deletes=True,
-            tbl_name="test_sql_upsert_t2_not1_del",
+            tbl_name=self._get_table_name("test_sql_upsert_t2_not1_del"),
         )
 
     def test_sql_upsert_nosrgt_del(self):
@@ -680,7 +681,7 @@ class TestHstTable(_TestBaseDatabase):
             use_type2=False,
             use_type1=False,
             check_for_deletes=True,
-            tbl_name="test_sql_upsert_nosrgt_del",
+            tbl_name=self._get_table_name("test_sql_upsert_nosrgt_del"),
         )
 
     def test_sql_upsert_t2_t1_nodel(self):
@@ -688,7 +689,7 @@ class TestHstTable(_TestBaseDatabase):
             use_type2=True,
             use_type1=True,
             check_for_deletes=False,
-            tbl_name="test_sql_upsert_t2_t1_nodel",
+            tbl_name=self._get_table_name("test_sql_upsert_t2_t1_nodel"),
         )
 
     def test_sql_upsert_t2_not1_nodel(self):
@@ -696,7 +697,7 @@ class TestHstTable(_TestBaseDatabase):
             use_type2=True,
             use_type1=False,
             check_for_deletes=False,
-            tbl_name="test_sql_upsert_t2_not1_nodel",
+            tbl_name=self._get_table_name("test_sql_upsert_t2_not1_nodel"),
         )
 
     def test_sql_upsert_nosrgt_nodel(self):
@@ -704,7 +705,7 @@ class TestHstTable(_TestBaseDatabase):
             use_type2=False,
             use_type1=False,
             check_for_deletes=False,
-            tbl_name="test_sql_upsert_nosrgt_nodel",
+            tbl_name=self._get_table_name("test_sql_upsert_nosrgt_nodel"),
         )
 
     # End SQL Upsert Test block

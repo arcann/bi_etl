@@ -9,7 +9,7 @@ import sys
 from datetime import datetime, date
 
 from bi_etl.exceptions import NoResultFound
-from bi_etl.tests.dummy_etl_component import DummyETLComponent
+from tests.dummy_etl_component import DummyETLComponent
 from bi_etl.lookups.lookup import Lookup
 
 #pylint: disable=missing-docstring, protected-access

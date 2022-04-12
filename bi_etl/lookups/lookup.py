@@ -748,7 +748,7 @@ class Lookup(object):
 def test():
     from _datetime import datetime
     from bi_etl.timer import Timer
-    from bi_etl.tests.dummy_etl_component import DummyETLComponent
+    from tests.dummy_etl_component import DummyETLComponent
     from bi_etl.components.row.row_iteration_header import RowIterationHeader
     from bi_etl.components.row.row import Row
 

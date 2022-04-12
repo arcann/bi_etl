@@ -24,7 +24,7 @@ except NameError:
         pass
 
 
-class Test(unittest.TestCase):
+class TestConfigParser(unittest.TestCase):
     def setUp(self):
         self.longMessage = True
 
@@ -73,6 +73,14 @@ class Test(unittest.TestCase):
         with open(self.generated_parent_ini_file_path, 'w') as temp_file_handle:
             parent_cp.write(temp_file_handle)
 
+    @staticmethod
+    def get_parent_path(path: str, levels_up: int = 1) -> str:
+        return os.path.abspath(os.path.join(path, *(['..'] * levels_up)))
+
+    @staticmethod
+    def get_repo_path():
+        return TestConfigParser.get_parent_path(__file__, levels_up=2)
+
     def tearDown(self):
         self.log_folder.cleanup()
         os.remove(self.generated_ini_file_path)
@@ -101,11 +109,11 @@ class Test(unittest.TestCase):
         config = bi_etl.bi_config_parser.BIConfigParser()
 
         try:
-            # Make sure the current working dir is the bi_etl home dir
-            # (where example_config.ini can be found)
-            dir_path = os.path.dirname(os.path.realpath(__file__))
             with mock.patch('os.getcwd', autospec=True) as getcwd:
-                getcwd.return_value = dir_path
+                getcwd.return_value = os.path.join(
+                    TestConfigParser.get_repo_path(),
+                    'examples'
+                )
                 config.read_config_ini(file_name='example_config.ini')
         except FileNotFoundError as e:
             self.fail(e)

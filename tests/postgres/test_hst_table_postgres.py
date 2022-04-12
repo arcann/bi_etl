@@ -1,5 +1,5 @@
-from bi_etl.tests.postgres.postgres_docker import PostgresTestDB
-from bi_etl.tests.test_hst_table import TestHstTable
+from tests.postgres.postgres_docker import PostgresTestDB
+from tests.test_hst_table import TestHstTable
 
 
 class TestTableSourceBasedPostgres(TestHstTable):
