@@ -13,6 +13,8 @@ pipelines:
   default:
     - step:
         name: test-3.7
+        services:
+          - docker
         image: python:3.7
         caches:
           - poetry-path
@@ -26,6 +28,8 @@ pipelines:
 
     - step:
         name: test-3.8
+        services:
+          - docker
         image: python:3.8
         caches:
           - poetry-path
