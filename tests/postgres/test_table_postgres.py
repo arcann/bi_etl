@@ -6,3 +6,7 @@ class TestTableSourceBasedPostgres(TestTable):
     @classmethod
     def setUpClass(cls) -> None:
         cls.db_container = PostgresTestDB()
+
+
+# don't test TestTable here
+del TestTable

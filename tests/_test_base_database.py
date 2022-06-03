@@ -37,6 +37,7 @@ from tests.dummy_etl_component import DummyETLComponent
 class _TestBaseDatabase(unittest.TestCase):
     db_container = None
     SUPPORTS_DECIMAL = False
+    TABLE_PREFIX = ''
 
     class ApproxDatetime(object):
         def __init__(self, expected_dt: datetime, interval: timedelta = None):
@@ -115,7 +116,7 @@ class _TestBaseDatabase(unittest.TestCase):
         return cols
 
     def _get_table_name(self, partial_name: str) -> str:
-        return f"{partial_name}_{random.randint(1, 99)}"
+        return f"{self.TABLE_PREFIX}{partial_name}_{random.randint(1, 99)}"
 
     def _create_index_table_1(self, sa_table) -> typing.List[sqlalchemy.schema.Index]:
         idx = Index(sa_table.name + '_idx',

@@ -9,7 +9,7 @@ from datetime import timedelta, datetime
 import sqlalchemy
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.schema import Index
-from sqlalchemy.sql.sqltypes import DateTime
+from sqlalchemy.sql.sqltypes import DateTime, Enum
 from sqlalchemy.sql.sqltypes import Integer
 from sqlalchemy.sql.sqltypes import TEXT
 
@@ -21,9 +21,19 @@ from bi_etl.conversions import str2datetime, str2date, str2time, str2int, str2de
 from tests._test_base_database import _TestBaseDatabase
 
 
+class BeginDateSource(Enum):
+    SYSTEM_TIME = 1
+    IN_ROW = 2
+    PARAMETER = 3
+
+
 class TestHstTable(_TestBaseDatabase):
     SUPPORTS_DECIMAL = False
+    TABLE_PREFIX = 'hst_'
+    TEST_COMPONENT = HistoryTable
+    TEST_DATA_PATH = 'test_hst_table_data'
 
+    # Override  _check_table_rows with a version that processes versioned records
     def _check_table_rows(
             self,
             expected_row_generator: typing.Iterator[Row],
@@ -257,7 +267,7 @@ class TestHstTable(_TestBaseDatabase):
 
         rows_to_insert = 10
 
-        with HistoryTable(
+        with self.TEST_COMPONENT(
                 self.task,
                 self.mock_database,
                 table_name=tbl_name) as tbl:
@@ -302,9 +312,11 @@ class TestHstTable(_TestBaseDatabase):
     def _gen_rows_from_csv(
             self,
             csv_file: str,
-            path: str = 'test_hst_table_data',
+            path: str = None,
             transform: bool = True,
     ) -> typing.Iterator[Row]:
+        if path is None:
+            path = self.TEST_DATA_PATH
         with CSVReader(
                 self.task,
                 os.path.join(self.get_package_path(), path, csv_file),
@@ -322,6 +334,7 @@ class TestHstTable(_TestBaseDatabase):
             use_type1: bool,
             use_type2: bool,
             check_for_deletes: bool,
+            begin_date_source: BeginDateSource = BeginDateSource.SYSTEM_TIME,
     ):
         self._create_table_2(
             tbl_name,
@@ -329,7 +342,7 @@ class TestHstTable(_TestBaseDatabase):
             use_type2,
         )
 
-        with HistoryTable(
+        with self.TEST_COMPONENT(
                 self.task,
                 self.mock_database,
                 table_name=tbl_name) as tbl:
@@ -346,12 +359,12 @@ class TestHstTable(_TestBaseDatabase):
             if use_type1:
                 tbl.type_1_surrogate = 'type_1_srgt'
 
-            # if load_cache:
-            #     tbl.fill_cache()
+            if load_cache:
+                tbl.fill_cache()
 
             with CSVReader(
                 self.task,
-                os.path.join(self.get_package_path(), 'test_hst_table_data', 'test1_insert.csv'),
+                os.path.join(self.get_package_path(), self.TEST_DATA_PATH, 'test1_insert.csv'),
             ) as insert_file:
                 for source_row in insert_file:
                     self._transform_csv_row(source_row)
@@ -378,15 +391,25 @@ class TestHstTable(_TestBaseDatabase):
                 tbl.fill_cache()
 
             update_time = datetime(2001, 5, 23, 7, 59, 21)
-            # Mock get_current_time so that it returns a time we can predict
-            tbl.get_current_time = lambda: update_time
+            if begin_date_source == BeginDateSource.SYSTEM_TIME:
+                # Mock get_current_time so that it returns a time we can predict
+                tbl.get_current_time = lambda: update_time
 
             for source_row in self._gen_rows_from_csv('test1_upsert.csv', transform=False):
                 self._transform_csv_row(source_row)
-                tbl.upsert(source_row)
+                if begin_date_source == BeginDateSource.IN_ROW:
+                    source_row['begin_date'] = update_time
+
+                if begin_date_source in {BeginDateSource.IN_ROW, BeginDateSource.SYSTEM_TIME}:
+                    tbl.upsert(source_row)
+                else:
+                    tbl.upsert(source_row, effective_date=update_time)
 
             if check_for_deletes:
-                tbl.delete_not_processed()
+                if begin_date_source in {BeginDateSource.IN_ROW, BeginDateSource.SYSTEM_TIME}:
+                    tbl.delete_not_processed()
+                else:
+                    tbl.delete_not_processed(effective_date=update_time)
 
             tbl.commit()
 
@@ -420,8 +443,8 @@ class TestHstTable(_TestBaseDatabase):
     # Note: We could loop over all these test parameters.
     # However, using methods for each allows for parallel testing.
 
-    def test_insert_and_update_t2_t1_del(self):
-        tbl_name_base = self._get_table_name("test_insert_and_update_t2_t1_del")
+    def test_insert_and_update_t2_t1_del_systime(self):
+        tbl_name_base = self._get_table_name("test_insert_and_update_t2_t1_del_systime")
         for load_cache in [True, False]:
             tbl_part2 = '_Cache' if load_cache else '_NoChc'
             tbl_name = tbl_name_base + tbl_part2
@@ -431,6 +454,35 @@ class TestHstTable(_TestBaseDatabase):
                 use_type1=True,
                 check_for_deletes=True,
                 tbl_name=tbl_name,
+                begin_date_source=BeginDateSource.SYSTEM_TIME,
+            )
+
+    def test_insert_and_update_t2_t1_del_timeinrow(self):
+        tbl_name_base = self._get_table_name("test_insert_and_update_t2_t1_del_timeinrow")
+        for load_cache in [True, False]:
+            tbl_part2 = '_Cache' if load_cache else '_NoChc'
+            tbl_name = tbl_name_base + tbl_part2
+            self._testInsertAndUpsert(
+                load_cache=load_cache,
+                use_type2=True,
+                use_type1=True,
+                check_for_deletes=True,
+                tbl_name=tbl_name,
+                begin_date_source=BeginDateSource.IN_ROW,
+            )
+
+    def test_insert_and_update_t2_t1_del_param(self):
+        tbl_name_base = self._get_table_name("test_insert_and_update_t2_t1_del_param")
+        for load_cache in [True, False]:
+            tbl_part2 = '_Cache' if load_cache else '_NoChc'
+            tbl_name = tbl_name_base + tbl_part2
+            self._testInsertAndUpsert(
+                load_cache=load_cache,
+                use_type2=True,
+                use_type1=True,
+                check_for_deletes=True,
+                tbl_name=tbl_name,
+                begin_date_source=BeginDateSource.PARAMETER,
             )
 
     def test_insert_and_update_t2_not1_del(self):
@@ -519,7 +571,7 @@ class TestHstTable(_TestBaseDatabase):
         self._create_table_1(tbl_name)
 
         rows_to_insert = 10
-        with HistoryTable(
+        with self.TEST_COMPONENT(
             self.task,
             self.mock_database,
             table_name=tbl_name,
@@ -549,7 +601,7 @@ class TestHstTable(_TestBaseDatabase):
             use_type2,
         )
 
-        with HistoryTable(
+        with self.TEST_COMPONENT(
                 self.task,
                 self.mock_database,
                 table_name=tbl_name) as tbl:
@@ -571,7 +623,7 @@ class TestHstTable(_TestBaseDatabase):
 
             with CSVReader(
                     self.task,
-                    os.path.join(self.get_package_path(), 'test_hst_table_data', 'test1_insert.csv'),
+                    os.path.join(self.get_package_path(), self.TEST_DATA_PATH, 'test1_insert.csv'),
             ) as insert_file:
                 for source_row in insert_file:
                     self._transform_csv_row(source_row)
