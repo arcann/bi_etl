@@ -1,12 +1,9 @@
-from configparser import ConfigParser
-
-from bi_etl.notifiers.notifier import Notifier
+from bi_etl.notifiers.notifier_base import NotifierBase
 
 
-class LogNotifier(Notifier):
-    def __init__(self, config: ConfigParser, config_section: str):
-        super().__init__(config=config,
-                         config_section=config_section)
+class LogNotifier(NotifierBase):
+    def __init__(self):
+        super().__init__()
 
     def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):
         if subject is not None:

@@ -10,8 +10,8 @@ import typing
 from datetime import datetime
 from tempfile import TemporaryDirectory
 
-from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.bulk_loaders.redshift_s3_base import RedShiftS3Base
+from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 from bi_etl.timer import Timer
 
 if typing.TYPE_CHECKING:
@@ -21,28 +21,11 @@ if typing.TYPE_CHECKING:
 
 class RedShiftS3JSONBulk(RedShiftS3Base):
     def __init__(self,
-                 config: BIConfigParser,
-                 config_section: str = 's3_bulk',
-                 s3_user_id: typing.Optional[str] = None,
-                 s3_keyring_password_section: typing.Optional[str] = None,
-                 s3_bucket_name: typing.Optional[str] = None,
-                 s3_folder: typing.Optional[str] = None,
-                 s3_files_to_generate: typing.Optional[int] = None,
+                 config: S3_Bulk_Loader_Config,
                  ):
         super().__init__(
             config=config,
-            config_section=config_section,
-            s3_user_id=s3_user_id,
-            s3_keyring_password_section=s3_keyring_password_section,
-            s3_bucket_name=s3_bucket_name,
-            s3_folder=s3_folder,
-            s3_files_to_generate=s3_files_to_generate,
         )
-        self.s3_file_delimiter = '|'
-        self.null_value = ''
-        self.s3_clear_before = True
-        self.s3_clear_when_done = True
-        self.analyze_compression = None
 
     @property
     def needs_all_columns(self):
@@ -120,13 +103,16 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
             for zip_file in zip_pool:
                 zip_file.close()
 
-            self.load_from_files(
-                local_files,
-                file_compression='GZIP',
-                table_object=table_object,
-                table_to_load=table_to_load,
-                perform_rename=perform_rename,
-                analyze_compression=analyze_compression,
-            )
+            if row_count > 0:
+                self.load_from_files(
+                    local_files,
+                    file_compression='GZIP',
+                    table_object=table_object,
+                    table_to_load=table_to_load,
+                    perform_rename=perform_rename,
+                    analyze_compression=analyze_compression,
+                )
+            else:
+                self.log.info(f"{self} had nothing to do with 0 rows found")
 
             return row_count

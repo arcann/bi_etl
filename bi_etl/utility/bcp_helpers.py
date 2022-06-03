@@ -3,10 +3,11 @@ import os
 import subprocess
 import tempfile
 import textwrap
-from configparser import ConfigParser
 from datetime import date, datetime
 from pprint import pformat
 
+from config_wrangler.config_templates.config_hierarchy import ConfigHierarchy
+from config_wrangler.config_types.path_types import ExecutablePath
 from sqlalchemy.dialects.mssql import BIT
 
 from bi_etl.components.table import Table
@@ -16,6 +17,11 @@ log = logging.getLogger('etl.utils.bcp_helpers')
 
 class BCPError(Exception):
     pass
+
+
+class BCP_Config(ConfigHierarchy):
+    path_to_bcp_exectable: ExecutablePath = 'bcp'
+    batch_size: int = 10000
 
 
 def create_bcp_format_file(table: Table, bcp_format_path, encoding=None, delimiter=None, row_terminator=None):
@@ -104,7 +110,7 @@ def create_bcp_format_file(table: Table, bcp_format_path, encoding=None, delimit
 
 
 def run_bcp(
-        config: ConfigParser,
+        config: BCP_Config,
         table_name: str,
         file_path: str,
         database_bind,
@@ -131,7 +137,7 @@ def run_bcp(
         # char_encoding = 'UTF-8'
         char_encoding = '65001'
 
-    cmd = [config.get('BCP', 'path', fallback='bcp'),
+    cmd = [config.path_to_bcp_exectable,
            table_name,
            # in / out
            direction,
@@ -145,7 +151,7 @@ def run_bcp(
            # '-o', bcp_output,
            '-e', bcp_errors,
            # Batch size
-           '-b', str(config.get('BCP', 'batch', fallback='10000')),
+           '-b', str(config.batch_size),
            # encoding eg UTF-8
            '-C', char_encoding,
            # hints

@@ -3,15 +3,11 @@ Created on Nov 4, 2014
 
 @author: Derek Wood
 """
-import functools
 import traceback
 import typing
 import warnings
 from datetime import datetime, timedelta
 from typing import Union, Callable, List
-
-from bi_etl.components.readonlytable import ReadOnlyTable
-from bi_etl.database.database_metadata import DatabaseMetadata
 
 from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row import Row
@@ -19,9 +15,9 @@ from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.components.table import Table
 from bi_etl.conversions import ensure_datetime
+from bi_etl.database.database_metadata import DatabaseMetadata
 from bi_etl.exceptions import AfterExisting, NoResultFound, BeforeAllExisting
 from bi_etl.lookups.autodisk_range_lookup import AutoDiskRangeLookup
-from bi_etl.lookups.lookup import Lookup
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
@@ -186,7 +182,7 @@ class HistoryTable(Table):
                  task: typing.Optional[ETLTask],
                  database: DatabaseMetadata,
                  table_name: str,
-                 table_name_case_sensitive: bool = None,
+                 table_name_case_sensitive: bool = False,
                  schema: str = None,
                  exclude_columns: frozenset = None,
                  default_effective_date: datetime = None,
@@ -201,7 +197,9 @@ class HistoryTable(Table):
                          exclude_columns=exclude_columns,
                          )
         self.__default_effective_date = None
-        if default_effective_date is not None:
+        if default_effective_date is None:
+            self.default_effective_date = datetime.now()
+        else:
             self.default_effective_date = default_effective_date
 
         self.__begin_date_column = None
@@ -223,23 +221,8 @@ class HistoryTable(Table):
     def __repr__(self):
         return "HistoryTable({})".format(self.table.name)
 
-    @staticmethod
-    def kwattrs_order() -> typing.Dict[str, int]:
-        """
-        Certain values need to be set before others in order to work correctly.
-        This method should return a dict mapping those key values = arg name to
-        a value less than the default of 9999, which will be used for any arg
-        not explicitly listed here.
-        """
-        return {
-            'begin_date_column': 1,
-            'end_date_column': 1,
-        }
-
     @property
     def default_effective_date(self):
-        if self.__default_effective_date is None:
-            self.__default_effective_date = self.get_current_time()
         return self.__default_effective_date
 
     @default_effective_date.setter
@@ -472,9 +455,9 @@ class HistoryTable(Table):
             If the effective date provided is before all existing records.
         """
         if lookup_name is None:
-            lookup = self.get_default_lookup(source_row.iteration_header)
-        else:
-            lookup = self.get_lookup(lookup_name)
+            lookup_name = Table.PK_LOOKUP
+
+        lookup = self.get_lookup(lookup_name)
 
         stats = self.get_stats_entry(stats_id, parent_stats=parent_stats)
         stats.timer.start()
@@ -639,16 +622,17 @@ class HistoryTable(Table):
         )
         return new_row_from_super
 
-    def apply_updates(self,
-                      row,
-                      changes_list: typing.MutableSequence[ColumnDifference] = None,
-                      additional_update_values: Union[dict, Row] = None,
-                      add_to_cache: bool = True,
-                      allow_insert=True,
-                      stat_name: str = 'update',
-                      parent_stats: Statistics = None,
-                      **kwargs
-                      ):
+    def apply_updates(
+        self,
+        row,
+        changes_list: typing.MutableSequence[ColumnDifference] = None,
+        additional_update_values: Union[dict, Row] = None,
+        add_to_cache: bool = True,
+        allow_insert=True,
+        stat_name: str = 'update',
+        parent_stats: Statistics = None,
+        **kwargs
+    ):
         """
         This method should only be called with a row that has already been transformed into the correct datatypes
         and column names.
@@ -665,7 +649,7 @@ class HistoryTable(Table):
         changes_list:
             A list of ColumnDifference objects to apply to the row
         additional_update_values:
-            A Row or dict of additional values to apply to the main row
+            A Row or dict of additional values to apply to the  row
         add_to_cache:
             Should this method update the cache (not if caller will)
         allow_insert: boolean
@@ -859,7 +843,7 @@ class HistoryTable(Table):
         stats['upsert source row count'] += 1
         self.begin()
 
-        self._set_upert_mode()
+        self._set_upsert_mode()
 
         effective_date = kwargs.get('effective_date')
         begin_date_coerce = self.get_coerce_method(self.begin_date_column)
@@ -905,19 +889,19 @@ class HistoryTable(Table):
         lookup_keys = None
         # Check for existing row
         try:
-            # We'll default to using the primary key or NK as provided in the row
+            # We'll default to using the primary key provided
             if lookup_name is None:
-                lookup_object = self.get_default_lookup(source_row.iteration_header)
-                lookup_name = lookup_object.lookup_name
-            else:
-                lookup_object = self.get_lookup(lookup_name)
+                lookup_name = Table.PK_LOOKUP
+                if not self.primary_key:
+                    raise AssertionError("upsert needs a lookup_key or a table with a primary key!")
 
+            lookup_object = self.get_lookup(lookup_name)
             if not lookup_object.cache_enabled and self.maintain_cache_during_load and self.batch_size > 1:
                 raise AssertionError("Caching needs to be turned on if batch mode is on!")
 
             if self.trace_data:
                 # lookup_keys is used only for data trace
-                lookup_keys = lookup_object.get_list_of_lookup_column_values(source_mapped_as_target_row)
+                lookup_keys = self.get_lookup(lookup_name).get_list_of_lookup_column_values(source_mapped_as_target_row)
                 lookup_keys.append(effective_date)
 
             existing_row = self.get_by_lookup_and_effective_date(lookup_name,
@@ -1098,7 +1082,7 @@ class HistoryTable(Table):
         """
         Not implemented for history table. Instead use `physically_delete_version`.
         """
-        raise NotImplementedError("Use physically_delete_version instead")
+        raise NotImplementedError()
 
     def physically_delete_version(self,
                                   row_to_be_deleted,
@@ -1140,7 +1124,7 @@ class HistoryTable(Table):
             # Delete the row in the database
             super().delete(
                 key_values=row_to_be_deleted,
-                lookup_name=self._get_pk_lookup_name(),
+                lookup_name=self.PK_LOOKUP,
                 maintain_cache=False,
                 parent_stats=stats,
             )
@@ -1153,12 +1137,8 @@ class HistoryTable(Table):
         # If we were not given a prior row
         if prior_row is None:
             try:
-                prior_row = self.get_by_lookup_and_effective_date(
-                    self._get_pk_lookup_name(),
-                    row_to_be_deleted,
-                    prior_effective_date,
-                    parent_stats=stats,
-                )
+                prior_row = self.get_by_lookup_and_effective_date(Table.PK_LOOKUP, row_to_be_deleted,
+                                                                  prior_effective_date, parent_stats=stats)
             except BeforeAllExisting as e:
                 # No prior row. If inserts_use_default_begin_date then we need to update the following row
                 if self.inserts_use_default_begin_date:
@@ -1472,7 +1452,7 @@ class HistoryTable(Table):
         for row in self.where(column_list=lookup.lookup_keys,
                               criteria_list=criteria_list,
                               criteria_dict=criteria_dict,
-                              use_cache_as_source=False,  # We can't use cache since we have a list of in-equality filters
+                              use_cache_as_source=use_cache_as_source,
                               parent_stats=stats):
             if row.status == RowStatus.unknown:
                 pass
@@ -1693,9 +1673,10 @@ class HistoryTable(Table):
                     del_remove_from_cache = False
                 else:
                     del_remove_from_cache = True
-                    # Apply any pending updates and deletes
-                    self._delete_pending_batch(parent_stats=stats)
-                    self._update_pending_batch(parent_stats=stats)
+                    if not self.in_bulk_mode:
+                        # Apply any pending updates and deletes
+                        self._delete_pending_batch(parent_stats=stats)
+                        self._update_pending_batch(parent_stats=stats)
                     order_by = list(lookup_object.lookup_keys)
                     # Make sure begin date is not already in the order_by
                     if self.begin_date_column in order_by:
@@ -1938,506 +1919,3 @@ class HistoryTable(Table):
             stat_name=stat_name,
             parent_stats=parent_stats,
         )
-
-    def _sql_insert_new(
-            self,
-            source_table: str,
-            matching_columns: typing.Iterable,
-            effective_date_column: str = None,
-            connection_name: str = 'sql_upsert',
-    ):
-        now_str = self._sql_date_literal(self.get_current_time())
-        if self.inserts_use_default_begin_date or effective_date_column is None:
-            new_row_begin_date = self._sql_date_literal(self.default_begin_date)
-        else:
-            new_row_begin_date = effective_date_column
-
-        last_update_date_into_str = '-- No last update date'
-        last_update_date_select_str = '-- No last update date'
-        if self.last_update_date is not None:
-            last_update_date_into_str = f"{self.last_update_date}"
-            last_update_date_select_str = f"'{now_str}' as {self.last_update_date}"
-
-        if self.auto_generate_key:
-            type2_srgt_sql = 'max_srgt.max_srgt + ROW_NUMBER() OVER ()'
-
-            # Type 1 srgt
-
-            if self.type_1_surrogate is None:
-                insert_list_type_1 = '--No type 1 srgt present'
-                select_list_type_1 = '--No type 1 srgt present'
-            else:
-                insert_list_type_1 = f"{self.type_1_surrogate}"
-                select_list_type_1 = f"{type2_srgt_sql} as {self.type_1_surrogate}"
-
-            insert_new_sql = f"""
-                        INSERT INTO {self.qualified_table_name} (
-                            {self._sql_primary_key_name()},
-                            {insert_list_type_1},
-                            {self.delete_flag},
-                            {self.begin_date_column},
-                            {self.end_date_column},
-                            {last_update_date_into_str},
-                            {Table._sql_indent_join(matching_columns, 16, suffix=',')}
-                        )  
-                        WITH max_srgt AS (SELECT coalesce(max({self._sql_primary_key_name()}),0)  as max_srgt FROM {self.qualified_table_name})
-                        SELECT 
-                            {type2_srgt_sql} as {self._sql_primary_key_name()},
-                            {select_list_type_1},
-                            '{self.delete_flag_no}' as {self.delete_flag},
-                            {new_row_begin_date} as {self.begin_date_column},
-                            {self._sql_date_literal(self.default_end_date)} as {self.end_date_column},
-                            {last_update_date_select_str},
-                            {Table._sql_indent_join(matching_columns, 16, suffix=',')}
-                        FROM max_srgt
-                             CROSS JOIN
-                             {source_table} s
-                        WHERE NOT EXISTS(
-                            SELECT 1 
-                            FROM {self.qualified_table_name} e
-                            WHERE {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}" for nk_col in self.natural_key], 18, prefix='AND ')}
-                        )
-                    """
-        else:
-            insert_new_sql = f"""
-                INSERT INTO {self.qualified_table_name} (
-                    {Table._sql_indent_join(self.primary_key, 20, suffix=',')},
-                    {self.delete_flag},
-                    {self.begin_date_column},
-                    {self.end_date_column},
-                    {last_update_date_into_str}
-                    {Table._sql_indent_join(matching_columns, 20, suffix=',')}
-                )  
-                SELECT 
-                    {Table._sql_indent_join(self.primary_key, 20, suffix=',')},
-                    '{self.delete_flag_no}' as {self.delete_flag},
-                    {new_row_begin_date} as {self.begin_date_column},
-                    {self._sql_date_literal(self.default_end_date)} as {self.end_date_column},
-                    {last_update_date_select_str}
-                    {Table._sql_indent_join(matching_columns, 20, suffix=',')}
-                FROM {source_table} s
-                WHERE NOT EXISTS(
-                    SELECT 1 
-                    FROM {self.qualified_table_name} e
-                    WHERE {Table._sql_indent_join([f"e.{key_col} = s.{key_col}" for key_col in self.primary_key], 18, prefix='AND ')}
-                )
-            """
-
-        print()
-        print('=' * 80)
-        print('insert_new_sql')
-        print('=' * 80)
-        print(insert_new_sql)
-        sql_timer = Timer()
-        results = self.execute(insert_new_sql, connection_name=connection_name)
-        print(f"Impacted rows = {results.rowcount} (meaningful count? {results.supports_sane_rowcount()})")
-        print(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
-
-    def _sql_find_updates(
-            self,
-            source_table: ReadOnlyTable,
-            source_effective_date_column: str,
-            key_columns_set: typing.Iterable,
-            non_nk_matching_columns: typing.Iterable,
-            target_only_columns: set,
-            updated_row_nk_table: str,
-            connection_name: str = 'sql_upsert',
-    ):
-        self.execute(f"DROP TABLE IF EXISTS {updated_row_nk_table}")
-
-        find_updates_sql = f"""
-            CREATE TABLE {updated_row_nk_table} AS
-            SELECT 
-                {Table._sql_indent_join([f"e.{nk_col}" for nk_col in key_columns_set], 16, suffix=',')},
-                s.{source_effective_date_column} as source_effective_date,
-                e.{self.begin_date_column} as target_begin_date,
-                e.{self.end_date_column} as target_end_date,
-                {Table._sql_indent_join([f"CASE WHEN {Table._sql_column_not_equals(m_col, 'e', 's')} THEN 1 ELSE 0 END as chg_in_{m_col}" for m_col in non_nk_matching_columns], 16, suffix=',')}
-                {Table._sql_indent_join([f'e.{col}' for col in target_only_columns], 16, suffix=',', prefix_if_not_empty=',')}
-            FROM {self.qualified_table_name} e 
-                 INNER JOIN
-                 {source_table.qualified_table_name} s
-                    ON {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}" for nk_col in key_columns_set], 19, prefix='AND ')}
-                   AND s.{source_effective_date_column} BETWEEN e.{self.begin_date_column} AND e.{self.end_date_column} 
-            WHERE ( 
-                    {Table._sql_indent_join([Table._sql_column_not_equals(m_col, 'e', 's') for m_col in non_nk_matching_columns], 20, prefix='OR ')}
-                    OR e.{self.delete_flag} != '{self.delete_flag_no}'
-                  )
-        """
-        self.log.debug('-' * 80)
-        self.log.debug('find_updates_sql')
-        self.log.debug('-' * 80)
-        sql_timer = Timer()
-        self.log.debug(find_updates_sql)
-        self.execute(find_updates_sql, connection_name=connection_name)
-        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
-
-    def _sql_insert_updates(
-            self,
-            source_table: ReadOnlyTable,
-            source_effective_date_column: str,
-            matching_columns: typing.Iterable,
-            non_nk_matching_columns: typing.Iterable,
-            target_only_columns: set,
-            updated_row_nk_table: str,
-            connection_name: str = 'sql_upsert',
-    ):
-        now_str = self._sql_date_literal(self.get_current_time())
-        last_update_date_into_str = '/* No last update date */'
-        last_update_date_select_str = '/* No last update date */'
-        if self.last_update_date is not None:
-            last_update_date_into_str = f"{self.last_update_date},"
-            last_update_date_select_str = f"'{now_str}' as {self.last_update_date},"
-
-        if self.auto_generate_key:
-            primary_key_name = self.primary_key[0]
-            insert_updates_sql = f"""
-                INSERT INTO {self.qualified_table_name} (
-                    {primary_key_name},
-                    {self.delete_flag},
-                    {self.begin_date_column},
-                    {self.end_date_column},
-                    {last_update_date_into_str}
-                    {Table._sql_indent_join(matching_columns, 16, suffix=',')}   
-                    {Table._sql_indent_join(target_only_columns, 16, suffix=',', prefix_if_not_empty=',')}             
-                )  
-                WITH max_srgt AS (SELECT coalesce(max({primary_key_name}),0)  as max_srgt FROM {self.qualified_table_name})
-                SELECT 
-                    max_srgt.max_srgt + ROW_NUMBER() OVER () as {primary_key_name},
-                    '{self.delete_flag_no}' as {self.delete_flag},
-                    u.source_effective_date as {self.begin_date_column},
-                    u.target_end_date as {self.end_date_column},
-                    {last_update_date_select_str}
-                    {Table._sql_indent_join([f's.{col}' for col in matching_columns], 16, suffix=',')}
-                    {Table._sql_indent_join([f'u.{col}' for col in target_only_columns], 16, suffix=',', prefix_if_not_empty=',')}
-                FROM max_srgt
-                     CROSS JOIN 
-                     {source_table.qualified_table_name} s
-                     INNER JOIN
-                     {updated_row_nk_table} u
-                       ON {Table._sql_indent_join([f"u.{nk_col} = s.{nk_col}" for nk_col in self.natural_key], 18, prefix='AND')}
-                      AND s.{source_effective_date_column} = u.source_effective_date
-            """
-        else:
-            insert_updates_sql = f"""
-                INSERT INTO {self.qualified_table_name} (
-                    {Table._sql_indent_join([key_col for key_col in self.primary_key], 16, suffix=',')},
-                    {self.delete_flag},
-                    {self.begin_date_column},
-                    {self.end_date_column},
-                    {last_update_date_into_str}
-                    {Table._sql_indent_join(non_nk_matching_columns, 16, suffix=',')}   
-                    {Table._sql_indent_join(target_only_columns, 16, suffix=',', prefix_if_not_empty=',')}             
-                )  
-                SELECT                     
-                    {Table._sql_indent_join([f"u.{key_col}" for key_col in self.primary_key], 16, suffix=',')},
-                    '{self.delete_flag_no}' as {self.delete_flag},
-                    u.source_effective_date as {self.begin_date_column},
-                    u.target_end_date as {self.end_date_column},
-                    {last_update_date_select_str}
-                    {Table._sql_indent_join([f's.{col}' for col in non_nk_matching_columns], 16, suffix=',')}
-                    {Table._sql_indent_join([f'u.{col}' for col in target_only_columns], 16, suffix=',', prefix_if_not_empty=',')}
-                FROM {source_table.qualified_table_name} s
-                     INNER JOIN
-                     {updated_row_nk_table} u
-                       ON {Table._sql_indent_join([f"u.{key_col} = s.{key_col}" for key_col in self.primary_key], 18, prefix='AND')}
-                      AND s.{source_effective_date_column} = u.source_effective_date
-            """
-
-        self.log.debug('-' * 80)
-        self.log.debug('insert_updates_sql')
-        self.log.debug('-' * 80)
-        self.log.debug(insert_updates_sql)
-        sql_timer = Timer()
-        results = self.execute(insert_updates_sql, connection_name=connection_name)
-        self.log.debug(f"Impacted rows = {results.rowcount:,} (meaningful count? {results.supports_sane_rowcount()})")
-        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
-
-    def _sql_find_deletes(
-            self,
-            source_table: ReadOnlyTable,
-            key_columns_set: typing.Iterable,
-            deleted_row_nk_table: str,
-            connection_name: str = 'sql_upsert',
-    ):
-        # self.execute(f"DROP TABLE IF EXISTS {updated_row_nk_table}")
-
-        now_str = self._sql_date_literal(self.get_current_time())
-
-        self.execute(f"DROP TABLE IF EXISTS {deleted_row_nk_table}")
-
-        find_deletes_sql = f"""
-            CREATE TABLE {deleted_row_nk_table} AS
-            SELECT 
-                {Table._sql_indent_join([f"e.{nk_col}" for nk_col in key_columns_set], 16, suffix=',')},
-                {now_str} as source_effective_date,
-                e.{self.begin_date_column} as target_begin_date,
-                e.{self.end_date_column} as target_end_date
-            FROM {self.qualified_table_name} e 
-            WHERE {now_str} BETWEEN e.{self.begin_date_column} AND e.{self.end_date_column} 
-              AND NOT EXISTS (
-                    SELECT 1 
-                    FROM {source_table.qualified_table_name} s
-                    WHERE {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}" for nk_col in key_columns_set], 19, prefix='AND ')}
-            )
-        """
-        self.log.debug('-' * 80)
-        self.log.debug('find_deletes_sql')
-        self.log.debug('-' * 80)
-        sql_timer = Timer()
-        self.log.debug(find_deletes_sql)
-        self.execute(find_deletes_sql, connection_name=connection_name)
-        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
-
-    def _sql_insert_deletes(
-            self,
-            target_column_set: typing.Iterable,
-            metadata_column_set: typing.Iterable,
-            deleted_row_nk_table: str,
-            connection_name: str = 'sql_upsert',
-    ):
-        target_non_metadata_column_set = target_column_set - metadata_column_set
-
-        now_str = self._sql_date_literal(self.get_current_time())
-        last_update_date_into_str = '/* No last update date */'
-        last_update_date_select_str = '/* No last update date */'
-        if self.last_update_date is not None:
-            last_update_date_into_str = f"{self.last_update_date},"
-            last_update_date_select_str = f"'{now_str}' as {self.last_update_date},"
-
-        if self.auto_generate_key:
-            primary_key_name = self.primary_key[0]
-            insert_delete_versions_sql = f"""
-                INSERT INTO {self.qualified_table_name} (
-                    {primary_key_name},
-                    {self.delete_flag},
-                    {self.begin_date_column},
-                    {self.end_date_column},
-                    {last_update_date_into_str}
-                    {Table._sql_indent_join(target_non_metadata_column_set, 20, suffix=',')}                                 
-                )  
-                WITH max_srgt AS (SELECT coalesce(max({primary_key_name}),0)  as max_srgt FROM {self.qualified_table_name})
-                SELECT 
-                    max_srgt.max_srgt + ROW_NUMBER() OVER () as {primary_key_name},
-                    '{self.delete_flag_yes}' as {self.delete_flag},
-                    u.source_effective_date as {self.begin_date_column},
-                    u.target_end_date as {self.end_date_column},
-                    {last_update_date_select_str}
-                    {Table._sql_indent_join([f'e.{col}' for col in target_non_metadata_column_set], 20, suffix=',')}                    
-                FROM max_srgt
-                     CROSS JOIN 
-                     {self.qualified_table_name} e
-                     INNER JOIN
-                     {deleted_row_nk_table} u
-                       ON {Table._sql_indent_join([f"u.{nk_col} = e.{nk_col}" for nk_col in self.natural_key], 18, prefix='AND')}
-                      AND u.target_begin_date = e.{self.begin_date_column} 
-            """
-        else:
-            insert_delete_versions_sql = f"""
-                INSERT INTO {self.qualified_table_name} (
-                    {Table._sql_indent_join([key_col for key_col in self.primary_key], 16, suffix=',')},
-                    {self.delete_flag},
-                    {self.begin_date_column},
-                    {self.end_date_column},
-                    {last_update_date_into_str}
-                    {Table._sql_indent_join(target_non_metadata_column_set, 20, suffix=',')}                                 
-                )  
-                SELECT                     
-                    {Table._sql_indent_join([f"u.{key_col}" for key_col in self.primary_key], 20, suffix=',')},
-                    '{self.delete_flag_yes}' as {self.delete_flag},
-                    u.source_effective_date as {self.begin_date_column},
-                    u.target_end_date as {self.end_date_column},
-                    {last_update_date_select_str}
-                    {Table._sql_indent_join([f'e.{col}' for col in target_non_metadata_column_set], 16, suffix=',')}                    
-                FROM {self.qualified_table_name} e
-                     INNER JOIN
-                     {deleted_row_nk_table} u
-                       ON {Table._sql_indent_join([f"u.{key_col} = e.{key_col}" for key_col in self.primary_key], 18, prefix='AND')}
-                      AND u.target_begin_date = e.{self.begin_date_column}  
-            """
-
-        self.log.debug('-' * 80)
-        self.log.debug('insert_delete_versions_sql')
-        self.log.debug('-' * 80)
-        self.log.debug(insert_delete_versions_sql)
-        sql_timer = Timer()
-        results = self.execute(insert_delete_versions_sql, connection_name=connection_name)
-        self.log.debug(f"Impacted rows = {results.rowcount:,} (meaningful count? {results.supports_sane_rowcount()})")
-        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
-
-    def sql_upsert(
-            self,
-            source_table: ReadOnlyTable,
-            source_effective_date_column: str,
-            source_excludes: typing.Optional[frozenset] = None,
-            target_excludes: typing.Optional[frozenset] = None,
-            skip_update_check_on: typing.Optional[frozenset] = None,
-            check_for_deletes: bool = None,
-            connection_name: str = 'sql_upsert',
-            temp_table_prefix: str = '',
-            commit_each_table: bool = False,
-            stat_name: str = 'upsert_db_exclusive',
-            parent_stats: typing.Optional[Statistics] = None,
-    ):
-        upsert_db_excl_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
-        upsert_db_excl_stats.print_start_stop_times = False
-        upsert_db_excl_stats.timer.start()
-        upsert_db_excl_stats['calls'] += 1
-
-        source_row_columns_set = source_table.column_names_set
-        if source_excludes is not None:
-            source_row_columns_set = source_row_columns_set - source_excludes
-
-        target_column_set = self.column_names_set
-        if target_excludes is not None:
-            target_column_set = target_column_set - target_excludes
-
-        version_date_column_set = {self.begin_date_column, self.end_date_column}
-        metadata_column_set = set(version_date_column_set)
-        if self.delete_flag is not None:
-            metadata_column_set.add(self.delete_flag)
-        if self.last_update_date is not None:
-            metadata_column_set.add(self.last_update_date)
-        metadata_column_set.update(self.primary_key)
-
-        matching_columns = {column_name for column_name in source_row_columns_set if column_name in target_column_set and column_name not in metadata_column_set}
-        target_only_columns = {column_name for column_name in target_column_set if column_name not in (source_row_columns_set | metadata_column_set)}
-
-        compare_columns = matching_columns
-
-        if self.natural_key is not None:
-            if len(self.natural_key) == 0:
-                raise ValueError(f"Empty natural key for {self}")
-            if not self.autogenerate_key:
-                raise ValueError(f"Natural key for {self} when autogenerate_key = False and primary key is {self.primary_key}")
-            key_columns_set = set(self.natural_key)
-        elif self.primary_key is not None and len(self.primary_key) > 0:
-            key_columns_set = set(self.primary_key)
-        else:
-            raise ValueError(f"No primary key or natural key for {self}")
-
-        non_nk_matching_columns = matching_columns - key_columns_set
-
-        if self.delete_flag is not None:
-            if check_for_deletes is None:
-                check_for_deletes = True
-
-            if self.delete_flag in non_nk_matching_columns:
-                non_nk_matching_columns.remove(self.delete_flag)
-            if self.delete_flag in target_only_columns:
-                target_only_columns.remove(self.delete_flag)
-        else:
-            if check_for_deletes is None:
-                check_for_deletes = False
-
-        if self.last_update_date is not None:
-            compare_columns -= {self.last_update_date}
-
-            if self.last_update_date in non_nk_matching_columns:
-                non_nk_matching_columns.remove(self.last_update_date)
-            if self.last_update_date in target_only_columns:
-                target_only_columns.remove(self.last_update_date)
-
-        if len(self.primary_key) != 1:
-            raise ValueError(f"{self}.upsert_db_exclusive requires single primary_key column. Got {self.primary_key}")
-
-        # Insert rows for new Natural Keys
-        self._sql_insert_new(
-            source_table=source_table.qualified_table_name,
-            matching_columns=matching_columns,
-            connection_name=connection_name,
-        )
-        if commit_each_table:
-            self.commit()
-            self.log.debug("Commit done")
-
-        updated_row_nk_table = f"{temp_table_prefix}{self.table_name}_updated_row_nk"
-
-        self._sql_find_updates(
-            source_table=source_table,
-            source_effective_date_column=source_effective_date_column,
-            key_columns_set=key_columns_set,
-            non_nk_matching_columns=non_nk_matching_columns,
-            target_only_columns=target_only_columns,
-            updated_row_nk_table=updated_row_nk_table,
-            connection_name=connection_name,
-        )
-        if commit_each_table:
-            self.commit()
-            self.log.debug("Commit done")
-
-        self._sql_insert_updates(
-            source_table=source_table,
-            source_effective_date_column=source_effective_date_column,
-            matching_columns=matching_columns,
-            non_nk_matching_columns=non_nk_matching_columns,
-            target_only_columns=target_only_columns,
-            updated_row_nk_table=updated_row_nk_table,
-            connection_name=connection_name,
-        )
-        if commit_each_table:
-            self.commit()
-            self.log.debug("Commit done")
-
-        joins = [(nk_col, ("u", nk_col)) for nk_col in key_columns_set]
-        joins.append((self.begin_date_column, ('u', 'target_begin_date')))
-        self._sql_update_from(
-            update_name='update_retire',
-            source_sql=f"{updated_row_nk_table} u",
-            list_of_joins=joins,
-            extra_where="u.source_effective_date != u.target_begin_date",
-            list_of_sets=[
-                (self.end_date_column,
-                 self._sql_add_seconds('u.source_effective_date', -1)
-                 ),
-            ],
-            connection_name=connection_name,
-        )
-        if commit_each_table:
-            self.commit()
-            self.log.debug("Commit done")
-
-        if check_for_deletes:
-            deleted_row_nk_table = f"{temp_table_prefix}{self.table_name}_del_row_nk"
-            self._sql_find_deletes(
-                source_table=source_table,
-                key_columns_set=key_columns_set,
-                deleted_row_nk_table=deleted_row_nk_table,
-                connection_name=connection_name,
-            )
-            if commit_each_table:
-                self.commit()
-                self.log.debug("Commit done")
-
-            # Retire versions
-            joins = [(nk_col, ("d", nk_col)) for nk_col in key_columns_set]
-            joins.append((self.begin_date_column, ('d', 'target_begin_date')))
-            self._sql_update_from(
-                update_name='delete_retire',
-                source_sql=f"{deleted_row_nk_table} d",
-                list_of_joins=joins,
-                extra_where="d.source_effective_date != d.target_begin_date",
-                list_of_sets=[
-                    (self.end_date_column,
-                     self._sql_add_seconds('d.source_effective_date', -1)
-                     ),
-                ],
-                connection_name=connection_name,
-            )
-            if commit_each_table:
-                self.commit()
-                self.log.debug("Commit done")
-
-            self._sql_insert_deletes(
-                target_column_set=target_column_set,
-                metadata_column_set=metadata_column_set,
-                deleted_row_nk_table=deleted_row_nk_table,
-                connection_name=connection_name,
-            )
-            if commit_each_table:
-                self.commit()
-                self.log.debug("Commit done")
-
-        self.log.debug('=' * 80)
-
-        upsert_db_excl_stats.timer.stop()

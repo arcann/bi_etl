@@ -7,13 +7,13 @@ Created on Feb 27, 2015
 from __future__ import annotations
 
 import typing
-from configparser import ConfigParser
 from datetime import datetime
 
 from sqlalchemy.sql import Selectable
 from sqlalchemy.sql.expression import bindparam
 
 from bi_etl.components.row.row import Row
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.conversions import ensure_datetime
 from bi_etl.exceptions import BeforeAllExisting, AfterExisting, NoResultFound
 from bi_etl.lookups.lookup import Lookup
@@ -33,8 +33,8 @@ class RangeLookup(Lookup):
                  parent_component: ETLComponent,
                  begin_date,
                  end_date,
+                 config: BI_ETL_Config_Base,
                  use_value_cache: bool = True,
-                 config: ConfigParser = None,
                  ):
         super().__init__(
             lookup_name=lookup_name,

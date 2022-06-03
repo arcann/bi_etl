@@ -7,6 +7,7 @@ Created on May 15, 2015
 from __future__ import annotations
 
 import dbm
+import math
 import os
 import pickle
 import shelve
@@ -15,11 +16,10 @@ import sys
 import tempfile
 import typing
 import weakref
-from configparser import ConfigParser
 
-import math
 import semidbm
 
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.memory_size import get_dir_size
 from bi_etl.memory_size import get_size_gc
@@ -38,8 +38,8 @@ class DiskLookup(Lookup):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: ETLComponent,
+                 config: BI_ETL_Config_Base,
                  use_value_cache: bool = True,
-                 config: ConfigParser = None,
                  path=None,
                  init_parent: bool = True,
                  **kwargs):
@@ -166,7 +166,7 @@ def test():
         dc.cache_row(row)
 
     for row in parent_component:
-        found_row = dc.find_in_cache(row)
+        _ = dc.find_in_cache(row)
 
     print(start_time.seconds_elapsed_formatted)
 

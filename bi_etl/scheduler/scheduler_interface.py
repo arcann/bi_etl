@@ -3,26 +3,26 @@ Created on May 20, 2015
 
 @author: Derek Wood
 """
-from configparser import ConfigParser
-
-from datetime import datetime
+import copyreg
+import fnmatch
 import getpass
 import importlib
 import inspect
 import logging
+import pickle as pickle
 import pkgutil
 import socket
 import textwrap
 import time
 import traceback
 import types
-import pickle as pickle
+from datetime import datetime
 
+# noinspection PyUnresolvedReferences
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.sql.functions import func
 
-from bi_etl.bi_config_parser import BIConfigParser
-from bi_etl.database.connect import Connect
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.scheduler.models import (ETL_Tasks,
                                      ETL_Task_Params,
                                      ETL_Task_Status_CD,
@@ -32,7 +32,6 @@ from bi_etl.scheduler.models import (ETL_Tasks,
 from bi_etl.scheduler.task import ETLTask, Status
 from bi_etl.timer import Timer
 from bi_etl.utility import log_logging_level, dict_to_str
-import fnmatch
 
 
 #################
@@ -59,19 +58,7 @@ def _unpickle_method(func_name, obj, cls):
         raise RuntimeError('function {} not found'.format(func_name))
 
 
-# pylint: disable=wrong-import-position, import-error
-try:
-    import copyreg
-except ImportError:
-    import copy_reg as copyreg
 copyreg.pickle(types.MethodType, _pickle_method, _unpickle_method)
-
-
-#################
-
-# pylint: disable=too-many-instance-attributes, too-many-public-methods
-# pylint: disable=too-many-statements, too-many-branches, too-many-arguments, too-many-locals
-# pylint: disable=invalid-name
 
 
 class SchedulerInterface(object):
@@ -85,36 +72,22 @@ class SchedulerInterface(object):
     SCHEDULER_ETL_JOBS_PACKAGE = 'bi_etl.scheduler.scheduler_etl_jobs'
 
     def __init__(self,
+                 config: BI_ETL_Config_Base,
                  session=None,
-                 config: ConfigParser = None,
                  log=None,
-                 log_name=None,
                  scheduler_id=None,
                  allow_create=False
                  ):
 
-        if config is None:
-            self.config = BIConfigParser()
-            config_file = self.config.read_config_ini()
-            if log is None:
-                if log_name is None:
-                    log_name = 'SchedulerInterface'
-                self.config.set_dated_log_file_name(log_name, '.log')
-                self.config.setup_logging()
-                self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
-            else:
-                self.log = log
-            self.log.info("Config file used = {}".format(config_file))
+        self.config = config
+        if log is None:
+            self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         else:
-            self.config = config
-            if log is None:
-                self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
-            else:
-                self.log = log
+            self.log = log
         log_logging_level(self.log)
 
         self.etl_task_classes = SchedulerInterface.SHARED_etl_task_classes
-        base_module_str = self.config.get(self.CONFIG_SECTION, 'base_module', fallback=None)
+        base_module_str = self.config.bi_etl.task_finder_base_module
         if base_module_str is None:
             self.base_modules = []
         else:
@@ -129,8 +102,11 @@ class SchedulerInterface(object):
         # Change the schema of the ETL task definition tables
         metadata = ETL_Tasks.__base__.metadata  # @UndefinedVariable pylint: disable=no-member
 
+        if self.config.bi_etl.scheduler is None:
+            raise ValueError("Config does not contain bi_etl.scheduler setting")
+
         # Pickup schema name from config
-        schema = self.config.get(self.CONFIG_SECTION, 'schema', fallback=None)
+        schema = self.config.bi_etl.scheduler.db_schema
         self.schema = schema
         if self.schema is not None:
             self.log.info("Using etl_tasks tables in schema {}".format(schema))
@@ -154,12 +130,10 @@ class SchedulerInterface(object):
             ##############
 
         if session is None:
-            if self.config.has_option(self.CONFIG_SECTION, 'database'):
+            scheduler_db = self.config.bi_etl.scheduler.db
+            if scheduler_db is not None:
                 self.log.debug("Making new session")
-                self.session = Connect.get_sqlachemy_session(self.config,
-                                                             self.config.get(self.CONFIG_SECTION, 'database'),
-                                                             self.config.get(self.CONFIG_SECTION, 'user', fallback=None)
-                                                             )
+                self.session = scheduler_db.session()
             else:
                 self.log.debug("Missing database option in INI file. No session creation possible")
                 self.session = None
@@ -173,12 +147,13 @@ class SchedulerInterface(object):
             self.log.debug('scheduler_row not retried')
         else:
             if scheduler_id is None:
-                scheduler_host_name = self.config.get(self.CONFIG_SECTION, 'host', fallback=None)
+                scheduler_host_name = self.config.bi_etl.scheduler.host_name
                 # Pass null scheduler_host_name to get_scheduler_id_for_host,
                 # it looks up in the config or defaults to local host
-                self.scheduler_row = self._get_scheduler_row_for_host(qualified_host_name=scheduler_host_name,
-                                                                      allow_create=allow_create
-                                                                      )
+                self.scheduler_row = self._get_scheduler_row_for_host(
+                    qualified_host_name=scheduler_host_name,
+                    allow_create=allow_create,
+                )
             else:
                 self.log.info('Using assigned scheduler ID {}.'.format(scheduler_id))
                 self.scheduler_row = self.get_scheduler_row_for_id(scheduler_id)
@@ -221,34 +196,25 @@ class SchedulerInterface(object):
         """
         return self.scheduler_row.qualified_host_name
 
-    def _get_local_qualified_host_name(self):
+    @staticmethod
+    def _get_local_qualified_host_name():
         """
         Gets the qualified host name of the current server (not the scheduler server)
         """
         # =======================================================================
         # socket.getfqdn can return different values for each call if the host has multiple aliases.
         # In our case it alternated between values, however it seems like it could be more random than that.
-        # So we'll get it ten times and pick the lowest value (as a way of trying to be consistent).
+        # So we'll get all aliases pick the lowest value (as a way of trying to be consistent).
         #
-        # If you have this situation, it would be even better to use the configuration file to specify the value
-        #
-        # .. code-block:: ini
-        #
-        #     [Scheduler]
-        #      qualified_host_name=my_host_name
+        # Note: You can also specify the hostname directly in the config to avoid this.
         # =======================================================================
-        lowest_qualified_host_name = None
-        tries = self.config.get(self.CONFIG_SECTION, 'qualified_host_name_tries', fallback=10)
         try:
-            tries = int(tries)
-        except TypeError:
-            self.log.error("qualified_host_name_tries not an integer, defaulting to 10")
-            tries = 10
-        for _ in range(tries):
-            qualified_host_name = socket.getfqdn()
-            if lowest_qualified_host_name is None or qualified_host_name < lowest_qualified_host_name:
-                lowest_qualified_host_name = qualified_host_name
-        return lowest_qualified_host_name
+            hostname, aliases, ipaddrs = socket.gethostbyaddr(socket.gethostname())
+            aliases.append(hostname)
+
+            return min([name for name in aliases if '.' in name])
+        except socket.error:
+            return socket.gethostname()
 
     def get_scheduler_row_for_id(self, scheduler_id):
         query = self.session.query(ETL_Scheduler).filter(ETL_Scheduler.scheduler_id == scheduler_id)
@@ -258,7 +224,7 @@ class SchedulerInterface(object):
     def _get_scheduler_row_for_host(self, qualified_host_name: str = None, allow_create: bool = False):
         qualified_host_name = (qualified_host_name
                                or
-                               self.config.get(self.CONFIG_SECTION, 'qualified_host_name', fallback=None)
+                               self.config.bi_etl.scheduler.qualified_host_name
                                or
                                self._get_local_qualified_host_name()
                                )

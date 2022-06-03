@@ -1,13 +1,12 @@
-import datetime
-import json
+import logging
 import random
 import subprocess
 import time
-from configparser import ConfigParser
+from pathlib import Path
+from typing import Optional, Union
 
-from bi_etl.bi_config_parser import BIConfigParser
-
-import logging
+from config_wrangler.config_templates.config_hierarchy import ConfigHierarchy
+from config_wrangler.config_types.path_types import ExecutablePath
 
 log = logging.getLogger('etl.utils.ssh_forward')
 
@@ -16,7 +15,7 @@ def ssh_run_command(
         host: str,
         user: str,
         command: str,
-        ssh_path: str = None,
+        ssh_path: Optional[Union[str, Path]] = None,
         ) -> str:
     # Command line options documentation
     # https://man.openbsd.org/ssh
@@ -52,15 +51,18 @@ def ssh_run_command(
         raise e
 
 
-def ssh_run_command_using_config(config: ConfigParser, command: str, section='ssh') -> str:
-    host = config[section]['host']
-    user = config[section]['user']
-    ssh_path = config[section].get('ssh_path', fallback=None)
+class SSH_Config(ConfigHierarchy):
+    host: str
+    user_id: str
+    ssh_path: ExecutablePath = None
+
+
+def ssh_run_command_using_config(config: SSH_Config, command: str) -> str:
     return ssh_run_command(
-        host=host,
-        user=user,
+        host=config.host,
+        user=config.user_id,
+        ssh_path=config.ssh_path,
         command=command,
-        ssh_path=ssh_path,
     )
 
 
@@ -71,7 +73,7 @@ def ssh_forward(
         server_port: int,
         local_port: int = None,
         wait: bool = False,
-        ssh_path: str = None,
+        ssh_path: Optional[Union[str, Path]] = None,
         seconds_wait_for_usage: int = 60):
     # Command line options documentation
     # https://man.openbsd.org/ssh
@@ -131,43 +133,26 @@ def ssh_forward(
         raise e
 
 
-def ssh_forward_using_config(config: ConfigParser, section='ssh', wait=False):
-    host = config[section]['host']
-    user = config[section]['user']
-    server = config.get(section, 'server', fallback='localhost')
-    server_port = config[section]['server_port']
-    local_port = config[section].get('local_port', fallback=None)
-    ssh_path = config[section].get('ssh_path', fallback=None)
-    seconds_wait_for_usage = config[section].getint('seconds_wait_for_usage', fallback=60)
+class SSH_Forward_Config(SSH_Config):
+    server: str
+    server_port: int
+    local_port: int
+    seconds_wait_for_usage: int = 60
+    seconds_wait_for_tunnel_start: int = 2
+
+
+def ssh_forward_using_config(config: SSH_Forward_Config, wait=False):
     local_port = ssh_forward(
-        host=host,
-        user=user,
-        local_port=local_port,
-        server=server,
-        server_port=server_port,
+        host=config.host,
+        user=config.user_id,
+        local_port=config.local_port,
+        server=config.server,
+        server_port=config.server_port,
+        ssh_path=config.ssh_path,
+        seconds_wait_for_usage=config.seconds_wait_for_usage,
         wait=wait,
-        ssh_path=ssh_path,
-        seconds_wait_for_usage=seconds_wait_for_usage,
     )
-    seconds_wait_for_tunnel_start = config[section].getint('seconds_wait_for_tunnel_start', fallback=2)
-    if seconds_wait_for_tunnel_start:
-        time.sleep(seconds_wait_for_tunnel_start)
+    if config.seconds_wait_for_tunnel_start:
+        time.sleep(config.seconds_wait_for_tunnel_start)
 
     return local_port
-
-
-if __name__ == '__main__':
-    my_config = BIConfigParser()
-    my_config.read_config_ini()
-    # ssh_forward_using_config(my_config, wait=True)
-    result = ssh_run_command_using_config(my_config, 'dhis_api_analytics --status')
-    print(result)
-    result_dict = json.loads(result)
-    print(result_dict)
-    completed = result_dict['completed']
-    message_time = datetime.datetime.strptime(result_dict['time']+'+0000', "%Y-%m-%dT%H:%M:%S.%f%z")
-    now = datetime.datetime.now(datetime.timezone.utc)
-    diff = now - message_time
-    print(f"Time since message {diff}")
-    print(f"days since message {diff.days}")
-    print(f"Total seconds since message {diff.total_seconds()}")

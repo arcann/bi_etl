@@ -1,15 +1,15 @@
-
+# -*- coding: utf-8 -*-
 """
 Created on Sep 17, 2014
 
 @author: Derek Wood
 """
-from bi_etl.components.row.row_status import RowStatus
-
-from bi_etl.components.row.row_iteration_header import RowIterationHeader
-from bi_etl.utility import dict_to_str
-from bi_etl.components.row.row import Row
 from sqlalchemy.sql.schema import Column
+
+from bi_etl.components.row.row import Row
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
+from bi_etl.components.row.row_status import RowStatus
+from bi_etl.utility import dict_to_str
 
 
 class RowCaseInsensitive(Row):

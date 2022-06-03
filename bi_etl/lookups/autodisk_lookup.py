@@ -7,15 +7,14 @@ Created on Jan 5, 2016
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
-import typing
-
 import gc
-from configparser import ConfigParser
+import typing
 from datetime import datetime
 
 import psutil
-from bi_etl.components.row.row import Row
 
+from bi_etl.components.row.row import Row
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.disk_lookup import DiskLookup
 from bi_etl.lookups.lookup import Lookup
@@ -47,8 +46,8 @@ class AutoDiskLookup(Lookup):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: ETLComponent,
+                 config: BI_ETL_Config_Base,
                  use_value_cache: bool = True,
-                 config: ConfigParser = None,
                  path=None,
                  max_percent_ram_used=None,
                  max_process_ram_usage_mb=None,
@@ -68,11 +67,13 @@ class AutoDiskLookup(Lookup):
         # First try and use passed value
         self.max_percent_ram_used = max_percent_ram_used
         # If not passed in config
+        if config is not None:
+            self.config = config
+        else:
+            self.config = parent_component.task.config
         if self.max_percent_ram_used is None:
             if self.config is not None:
-                self.max_percent_ram_used = self.config.getfloat('Limits',
-                                                                 'disk_swap_at_percent_ram_used',
-                                                                 fallback=None)
+                self.max_percent_ram_used = self.config.bi_etl.lookup_disk_swap_at_percent_ram_used
         # Finally default value
         if self.max_percent_ram_used is None:
             # Needs to be less than the default in bi_etl.components.table.Table.fill_cache
@@ -82,9 +83,7 @@ class AutoDiskLookup(Lookup):
         # If not passed in config
         if self.max_process_ram_usage_mb is None:
             if self.config is not None:
-                self.max_process_ram_usage_mb = self.config.getfloat('Limits',
-                                                                     'disk_swap_at_process_ram_usage_mb',
-                                                                     fallback=None)
+                self.max_process_ram_usage_mb = self.config.bi_etl.lookup_disk_swap_at_process_ram_usage_mb
         # Finally default value
         if self.max_process_ram_usage_mb is None:
             self.max_process_ram_usage_mb = 2.5 * 1024**3
@@ -287,9 +286,11 @@ class AutoDiskLookup(Lookup):
                         versions_collection = DiskLookup.VERSION_COLLECTION_TYPE(versions_collection)
                     disk_lk_tuple = self.disk_cache.get_hashable_combined_key(row)
                     self.disk_cache.cache_set(disk_lk_tuple, versions_collection)
-
-                # Put add new row to disk as well
-                self.disk_cache.cache_row(row, allow_update=allow_update)
+                    # Ensure our new row is there
+                    self.disk_cache.cache_row(row, allow_update=True)
+                else:
+                    # Cache the row to disk
+                    self.disk_cache.cache_row(row, allow_update=allow_update)
 
     def uncache_row(self, row: Lookup.ROW_TYPES):
         if self._cache is not None:

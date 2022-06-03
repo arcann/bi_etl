@@ -2,8 +2,9 @@
 Created on Apr 2, 2015
 """
 import os
-import typing
+from typing import *
 from datetime import datetime, time
+from pathlib import Path
 
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
@@ -72,9 +73,9 @@ class XLSXReader(ETLComponent):
         not present in a given row (missing values).     
     """
     def __init__(self,
-                 task: typing.Optional[ETLTask],
-                 file_name: str,
-                 logical_name: typing.Optional[str] = None,
+                 task: Optional[ETLTask],
+                 file_name: Union[str, Path],
+                 logical_name: Optional[str] = None,
                  **kwargs
                  ):
         self.file_name = file_name
@@ -100,14 +101,14 @@ class XLSXReader(ETLComponent):
         self.__active_row = None               
         
         self._workbook = None
-        self._active_worksheet: typing.Optional[Worksheet] = None
-        self._active_worksheet_name: typing.Optional[str] = None
+        self._active_worksheet: Optional[Worksheet] = None
+        self._active_worksheet_name: Optional[str] = None
 
         # Should be the last call of every init
         self.set_kwattrs(**kwargs)
 
     def __repr__(self):
-        return "XLSXReader({})".format(self.logical_name)
+        return f"XLSXReader({self.logical_name})"
     
     @property
     def header_row(self):
@@ -265,8 +266,9 @@ class XLSXReader(ETLComponent):
                     d[key] = self.restval
             yield d 
             
-    def close(self):
-        if self._workbook is not None:
-            self._workbook.close()
-            self._workbook = None
-        super(XLSXReader, self).close()
+    def close(self, error: bool = False):
+        if not self.is_closed:
+            if self._workbook is not None:
+                self._workbook.close()
+                self._workbook = None
+            super(XLSXReader, self).close(error=error)

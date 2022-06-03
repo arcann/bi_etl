@@ -6,16 +6,13 @@ Created on Feb 26, 2015
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
-import functools
 import logging
-import sys
-
 import math
+import sys
 import traceback
-import warnings
-from configparser import ConfigParser
-from datetime import datetime
 import typing
+import warnings
+from datetime import datetime
 
 import psutil
 from BTrees.OOBTree import OOBTree
@@ -23,8 +20,8 @@ from sqlalchemy.sql import Selectable
 from sqlalchemy.sql.expression import bindparam
 
 from bi_etl.components.row.row import Row
-from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.conversions import ensure_datetime
 from bi_etl.exceptions import AfterExisting
 from bi_etl.exceptions import BeforeAllExisting
@@ -53,13 +50,16 @@ class Lookup(object):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: ETLComponent,
-                 config: ConfigParser = None,
+                 config: BI_ETL_Config_Base = None,
                  use_value_cache: bool = True,
                  **kwargs):
         self.lookup_name = lookup_name
         self.lookup_keys = lookup_keys
         self._lookup_keys_set = None
-        self.config = config
+        if config is not None:
+            self.config = config
+        else:
+            self.config = parent_component.task.config
         self._cache = None
         self.parent_component = parent_component
         self.stats = parent_component.get_unique_stats_entry(
@@ -145,13 +145,6 @@ class Lookup(object):
             lookup_values = [row[k] for k in self.lookup_keys]
             return lookup_values
 
-    @functools.lru_cache(maxsize=10)
-    def row_iteration_header_has_lookup_keys(self, row_iteration_header: RowIterationHeader) -> bool:
-        for col in self.lookup_keys:
-            if col not in row_iteration_header.column_set:
-                return False
-        return True
-
     @staticmethod
     def rstrip_key_value(val: object) -> object:
         """
@@ -230,12 +223,14 @@ class Lookup(object):
 
                 # get_size_gc is slow but shouldn't be too bad twice (once here and once above in _get_first_row_size)
                 total_cache_size = get_size_gc(self._cache)
-                new_row_size = math.ceil(total_cache_size / row_cnt)
+                if row_cnt > 0:
+                    new_row_size = math.ceil(total_cache_size / row_cnt)
+                else:
+                    new_row_size = total_cache_size
                 self.log.debug(
                     f'{self.lookup_name} Row memory size now estimated at {new_row_size:,} '
                     f'bytes per row using cache of {row_cnt:,} rows'
                 )
-                
                 self._row_size = new_row_size
 
     def cache_row(
@@ -371,7 +366,7 @@ class Lookup(object):
         The rows will come out in any order.
         """
         if self._cache is not None:
-            for row in self._cache.values():
+            for row in list(self._cache.values()):
                 # Do not return the actual instance of the row since the caller might modify it to no longer be
                 # compatible with the parent table
                 yield row.clone()

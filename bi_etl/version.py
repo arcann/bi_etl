@@ -1,9 +1,9 @@
-import os
 import toml
-from bi_etl.bi_config_parser import BIConfigParser
 
-package_root = BIConfigParser.get_package_root()
-poetry_config = toml.load(os.path.join(package_root, 'pyproject.toml'))
+from bi_etl.utility.package_root import get_package_root_path
+
+package_root = get_package_root_path()
+poetry_config = toml.load(package_root.joinpath('pyproject.toml'))
 
 full_version = poetry_config['tool']['poetry']['version']
 

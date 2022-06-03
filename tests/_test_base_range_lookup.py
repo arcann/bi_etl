@@ -6,11 +6,11 @@ Created on Jan 5, 2016
 import unittest
 from datetime import datetime
 
-from tests._test_base_lookup import _TestBase
-from bi_etl.lookups.range_lookup import RangeLookup
-from bi_etl.exceptions import NoResultFound
-from bi_etl.exceptions import BeforeAllExisting
 from bi_etl.exceptions import AfterExisting
+from bi_etl.exceptions import BeforeAllExisting
+from bi_etl.exceptions import NoResultFound
+from bi_etl.lookups.range_lookup import RangeLookup
+from tests._test_base_lookup import _TestBase
 from tests.dummy_etl_component import DummyETLComponent
 
 

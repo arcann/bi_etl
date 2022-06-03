@@ -4,22 +4,27 @@ Created on Sep 15, 2014
 @author: Derek Wood
 """
 import errno
+import importlib
 import logging
 import socket
 import traceback
 import warnings
+from pathlib import Path
 from queue import Empty
+from typing import *
 
-import bi_etl.parallel.mp as mp
-
-import re
-import typing
 from CaseInsensitiveDict import CaseInsensitiveDict
+from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase, SQLAlchemyMetadata
+from config_wrangler.config_types.dynamically_referenced import DynamicallyReferenced
 
+import bi_etl.config.notifiers_config as notifiers_config
+import bi_etl.parallel.mp as mp
 from bi_etl import utility
-from bi_etl.bi_config_parser import BIConfigParser
-from bi_etl.database.connect import Connect, DatabaseMetadata
-from bi_etl.notifiers import NOTIFIER_CLASES
+from bi_etl.components.etlcomponent import ETLComponent
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Base_From_Ini_Env
+from bi_etl.database.database_metadata import DatabaseMetadata
+from bi_etl.notifiers import LogNotifier, Email, Slack, Jira
+from bi_etl.notifiers.notifier_base import NotifierBase
 from bi_etl.scheduler import models
 from bi_etl.scheduler import queue_io
 from bi_etl.scheduler.exceptions import ParameterError, TaskStopRequested
@@ -31,6 +36,8 @@ from bi_etl.scheduler.status import Status
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 
+if TYPE_CHECKING:
+    from bi_etl.scheduler.scheduler_interface import SchedulerInterface
 
 # pylint: disable=too-many-instance-attributes, too-many-public-methods
 # pylint: disable=too-many-statements, too-many-branches, too-many-arguments
@@ -50,12 +57,12 @@ class ETLTask(object):
     CLASS_VERSION = 1.0
 
     def __init__(self,
+                 config: BI_ETL_Config_Base,
                  task_id=None,
                  parent_task_id=None,
                  root_task_id=None,
                  scheduler=None,
                  task_rec=None,
-                 config=None
                  ):
         """
         Constructor. This code will run on the scheduler thread and the execution thread.
@@ -73,11 +80,11 @@ class ETLTask(object):
         scheduler: bi_etl.scheduler.scheduler.Scheduler
             The :class:`bi_etl.scheduler.scheduler.Scheduler` this job should be run under.
             Defaults to not running via a scheduler.
-        config: bi_etl.bi_config_parser.BIConfigParser
-            The configuration :class:`bi_etl.bi_config_parser.BIConfigParser` to use
-            (See :doc:`config_ini`). If passed it should be an instance
-            of :class:`bi_etl.bi_config_parser.BIConfigParser`.
+        config: bi_etl.config.bi_etl_config_base.BI_ETL_Config_Base
+            The configuration :class:`bi_etl.config.bi_etl_config_base.BI_ETL_Config_Base` to use
+            (See :doc:`config_ini`).
         """
+        self.config = config
         self._log = None
         self.log_file_name = None
         self._task_rec = None
@@ -122,7 +129,6 @@ class ETLTask(object):
 
         self._externally_provided_scheduler = (scheduler is not None)
         self._scheduler = scheduler
-        self._config = config
         if self.status is None:
             self.status = Status.new
         self._parameters_loaded = False
@@ -157,7 +163,6 @@ class ETLTask(object):
         self.load_timer = Timer(start_running=False)
         self.finish_timer = Timer(start_running=False)
         self.suppress_notifications = False
-        self.notification_fallback_channel = 'failed_notifications'
         self.log_handler = None
 
     def __getstate__(self):
@@ -170,6 +175,7 @@ class ETLTask(object):
         odict['parent_to_child'] = self.parent_to_child
         odict['child_to_parent'] = self.child_to_parent
         odict['_parameter_dict'] = dict(self._parameter_dict)
+        odict['config'] = self.config
         # We don't pass scheduler or config from the Scheduler to the running instance
         # odict['scheduler'] = self._scheduler
         # print("__getstate__ {}".format(utility.dict_to_str(odict)))
@@ -184,7 +190,8 @@ class ETLTask(object):
         self.__init__(task_id=odict['task_id'],
                       parent_task_id=odict['parent_task_id'],
                       root_task_id=odict['root_task_id'],
-                      # We don't pass scheduler or config from the Scheduler to the running instance
+                      config=odict['config'],
+                      # We don't pass scheduler from the Scheduler to the running instance
                       # scheduler= odict['scheduler']
                       )
         self.parent_to_child = odict['parent_to_child']
@@ -227,8 +234,8 @@ class ETLTask(object):
 
     @property
     def environment_name(self):
-        environment = self.config.get('environment', 'name', fallback=None)
-        if environment is None:
+        environment = self.config.bi_etl.environment_name
+        if environment == '*qualified_host_name*':
             if self._scheduler is not None:
                 environment = self._scheduler.qualified_host_name
             else:
@@ -311,7 +318,7 @@ class ETLTask(object):
         if self.root_task_id is not None:
             from bi_etl.scheduler.scheduler import Scheduler
             if isinstance(self.scheduler, Scheduler):
-                # pylint: disable=no-member
+                assert isinstance(self.scheduler, Scheduler)
                 return self.scheduler.get_task_by_id(self.root_task_id)
             else:
                 raise TypeError('Scheduler required to get ETLTask.root_task')
@@ -425,50 +432,41 @@ class ETLTask(object):
         return self._mutually_exclusive_with_set
 
     @property
-    def config(self) -> BIConfigParser:
-        """
-        Get the task configuration object. If it was not passed in, it will be read from the users
-        folder.
-        """
-        if self._config is None:
-            self._config = BIConfigParser()
-            self._config.read_config_ini()
-        return self._config
-
-    @property
-    def scheduler(self) -> 'bi_etl.scheduler.scheduler_interface.SchedulerInterface':
+    def scheduler(self) -> 'SchedulerInterface':
         """
         Get the existing :class`bi_etl.scheduler.scheduler.Scheduler` that this task is running under.
         or
         Get an instance of :class`bi_etl.scheduler.scheduler_interface.SchedulerInterface` that can be
-        used to interact with the main Scheduler.
+        used to interact with the test_config Scheduler.
         """
         if self._scheduler is None:
             # Import is done here to prevent circular module level imports
             self.log.debug("Building scheduler")
             from bi_etl.scheduler.scheduler_interface import SchedulerInterface
-            self._scheduler = SchedulerInterface(config=self.config,
-                                                 log_name=self.name + '_SchedulerInterface'
-                                                 )
+            self._scheduler = SchedulerInterface(
+                config=self.config,
+            )
         return self._scheduler
 
-    def add_child_task_to_scheduler(self,
-                                    etl_task_class_type,
-                                    parameters=None,
-                                    display_name=None,
-                                    ):
+    def add_child_task_to_scheduler(
+            self,
+            etl_task_class_type,
+            parameters=None,
+            display_name=None,
+        ):
         """
         Start a new task on the :class`bi_etl.scheduler.scheduler.Scheduler`
         that will be a child of this task.
         """
         new_task_id = None
         if self.task_id is not None:
-            new_task_id = self.scheduler.add_task_by_class(etl_task_class_type,
-                                                           parent_task_id=self.task_id,
-                                                           root_task_id=self.root_task_id,
-                                                           parameters=parameters,
-                                                           display_name=display_name,
-                                                           )
+            new_task_id = self.scheduler.add_task_by_class(
+                etl_task_class_type,
+                parent_task_id=self.task_id,
+                root_task_id=self.root_task_id,
+                parameters=parameters,
+                display_name=display_name,
+            )
         else:
             msg = 'Not running in a scheduler. Child task {} not actually scheduled.'.format(etl_task_class_type)
             self.log.warning(msg)
@@ -485,12 +483,13 @@ class ETLTask(object):
         """
         new_task_id = None
         if self.task_id is not None:
-            new_task_id = self.scheduler.add_task_by_partial_name(partial_module_name,
-                                                                  parent_task_id=self.task_id,
-                                                                  root_task_id=self.root_task_id,
-                                                                  parameters=parameters,
-                                                                  display_name=display_name,
-                                                                  )
+            new_task_id = self.scheduler.add_task_by_partial_name(
+                partial_module_name,
+                parent_task_id=self.task_id,
+                root_task_id=self.root_task_id,
+                parameters=parameters,
+                display_name=display_name,
+            )
         else:
             msg = 'Not running in a scheduler. Child task {} not actually scheduled.'.format(partial_module_name)
             self.log.warning(msg)
@@ -512,11 +511,13 @@ class ETLTask(object):
         if self.task_id is not None:
             self.scheduler.load_parameters(self)
 
-    def set_parameter(self,
-                      param_name: str,
-                      param_value: object,
-                      local_only: bool = False,
-                      commit: bool = True):
+    def set_parameter(
+            self,
+            param_name: str,
+            param_value: object,
+            local_only: bool = False,
+            commit: bool = True
+    ):
         """
         Add a single parameter to this task.
 
@@ -541,18 +542,26 @@ class ETLTask(object):
             print("add_parameter local {}={}".format(param_name, param_value))
 
     # Deprecated name
-    def add_parameter(self,
-                      param_name: str,
-                      param_value: object,
-                      local_only: bool = False,
-                      commit: bool = True):
+    def add_parameter(
+            self,
+            param_name: str,
+            param_value: object,
+            local_only: bool = False,
+            commit: bool = True,
+    ):
         warnings.warn("add_parameter is deprecated, please use set_parameter instead")
         self.set_parameter(param_name=param_name,
                            param_value=param_value,
                            local_only=local_only,
                            commit=commit)
 
-    def set_parameters(self, local_only=False, commit=True, *args, **kwargs):
+    def set_parameters(
+            self,
+            local_only=False,
+            commit=True,
+            *args,
+            **kwargs
+    ):
         """
         Add multiple parameters to this task.
         Parameters can be passed in as any combination of:
@@ -587,7 +596,7 @@ class ETLTask(object):
         # which is equivalent to
         #     add_parameters(**parms)
         for arg in args:
-            if isinstance(arg, typing.Mapping):
+            if isinstance(arg, Mapping):
                 for param_name, param_value in arg.items():
                     self.set_parameter(param_name, param_value, local_only=local_only, commit=commit)
             elif hasattr(arg, '__getitem__'):
@@ -661,75 +670,67 @@ class ETLTask(object):
         """
         return NotImplementedError()
 
-    def get_database(
-            self,
-            database_name: str = None,
-            user: str = None,
-            schema: str = None,
-            override_port: int = None,
-            **kwargs) -> DatabaseMetadata:
-        """
-        Get a new database connection.
-        
-        Parameters
-        ----------
-        database_name:
-            The name of the database section in :doc:`config_ini`
-        user:
-            The user name to connect with. Defaults to config setting.
-        schema:
-            The schema to default to. Defaults to config setting.
-        override_port:
-            Override the config definition for the port (useful for SSH tunnels)
-        """
-        if database_name is None:
-            database_name = self.get_database_name()
-        database_obj = Connect.get_database_metadata(
-            config=self.config,
-            database_name=database_name,
-            user=user,
-            schema=schema,
-            override_port=override_port,
-            **kwargs
-        )
+    def get_database_metadata(self, db_config: SQLAlchemyDatabase) -> DatabaseMetadata:
+        if isinstance(db_config, SQLAlchemyMetadata):
+            database_obj = DatabaseMetadata(
+                bind=db_config.get_engine(),
+                schema=db_config.schema,
+            )
+        elif isinstance(db_config, SQLAlchemyDatabase):
+            database_obj = DatabaseMetadata(
+                bind=db_config.get_engine(),
+            )
+        else:
+            raise ValueError(
+                "get_database_metadata expects SQLAlchemyDatabase or SQLAlchemyMetadata configs. "
+                f"Got {type(db_config)} {db_config}"
+            )
         self.add_database(database_obj)
         return database_obj
 
-    def get_sql_script_runner(self, script_name: str, database_entry: str = None):
+    def get_database(self, database_name: str) -> DatabaseMetadata:
+        db_config = getattr(self.config, database_name)
+        return self.get_database_metadata(db_config)
+
+    def get_sql_script_runner(
+            self,
+            script_name: Union[str, Path],
+            script_path: Union[str, Path],
+            database_entry: Union[str, DatabaseMetadata, None] = None,
+    ):
         if database_entry is None:
             database_entry = self.get_database_name()
         # Late import to avoid circular dependency
         from bi_etl.utility.run_sql_script import RunSQLScript
         return RunSQLScript(
-            datbase_entry=database_entry,
-            script_path=self.config['SQL Scripts']['path'],
-            script_name=script_name,
             config=self.config,
+            database_entry=database_entry,
+            script_path=script_path,
+            script_name=script_name,
         )
 
-    def run_sql_script(self, script_name: str, database_entry: str = None):
-        runner = self.get_sql_script_runner(script_name=script_name, database_entry=database_entry)
+    def run_sql_script(
+            self,
+            script_name: Union[str, Path],
+            script_path: Union[str, Path],
+            database_entry: Union[str, DatabaseMetadata],
+    ):
+        runner = self.get_sql_script_runner(
+            script_name=script_name,
+            script_path=script_path,
+            database_entry=database_entry,
+        )
         ok = runner.run()
         if not ok:
             raise ValueError(f"{script_name} {runner} failed with error {runner.exception}")
 
-    def get_setting(self, setting_name, assignments=None):
-        return self.config.get(section=self.name, option=setting_name, vars=assignments)
-
-    def get_setting_or_default(self, setting_name, default):
-        return self.config.get(section=self.name, option=setting_name, fallback=default)
-
-    def register_object(self, obj):
+    def register_object(self, obj: Union[ETLComponent, Statistics]):
         """
         Register an ETLComponent or Statistics object with the task.
         This allows the task to 
         1) Get statistics from the component
         2) Close the component when done
         
-        Parameters
-        ----------
-        obj: bi_etl.components.etlcomponent.ETLComponent
-            A sub-class of :class`~bi_etl.components.etlcomponent.ETLComponent`
         """
         self.object_registry.append(obj)
         return obj
@@ -740,7 +741,7 @@ class ETLTask(object):
         return stats
 
     # pylint: disable=singleton-comparison
-    def debug_sql(self, mode: typing.Union[bool, int] = True):
+    def debug_sql(self, mode: Union[bool, int] = True):
         """
         Control the output of sqlalchemy engine
 
@@ -770,15 +771,10 @@ class ETLTask(object):
         """
         queue_io.redirect_output_to(self.child_to_parent)
 
-        config = self.config
-        if not isinstance(config, BIConfigParser):
-            new_config = BIConfigParser()
-            new_config.merge_config(config)
-            self._config = new_config
         if self.log_file_name is None:
             self.log_file_name = self.name
-        config.set_dated_log_file_name(self.log_file_name, '.log')
-        self.log_handler = config.setup_logging()
+        self.config.logging.setup_logging()
+        self.log_handler = self.config.logging.add_log_file_handler(log_file_prefix=self.log_file_name)
 
         self.log_logging_level()
         self.log.debug("externally_provided_scheduler = {}".format(self._externally_provided_scheduler))
@@ -811,7 +807,7 @@ class ETLTask(object):
 
     def load(self):
         """
-        Placeholder for load. This is where the main body of the ETLTask's work should be performed.
+        Placeholder for load. This is where the test_config body of the ETLTask's work should be performed.
         """
         raise AttributeError("{} load not implemented".format(self))
 
@@ -983,7 +979,9 @@ class ETLTask(object):
             self.log.info("{} statistics=\n{stats}".format(self, stats=stats_formatted))
 
             self.start_following_tasks()
+            self.close(error=False)
         except Exception as e:  # pylint: disable=broad-except
+            self.close(error=True)
             self.exception = e
             self.status = Status.failed
             if not handle_exceptions:
@@ -993,34 +991,24 @@ class ETLTask(object):
             self.log.info(repr(e))
             self.log.info(utility.dict_to_str(e.__dict__))
             if not self.suppress_notifications:
-                environment = self.config.get('environment', 'name', fallback='Unknown_ENVT')
+                environment = self.config.bi_etl.environment_name
                 message_list = list()
                 message_list.append(repr(e))
                 message_list.append("Task ID = {}".format(self.task_id))
-                ui_url = self.config.get('Scheduler', 'base_ui_url', fallback=None)
-                if ui_url and self.task_id:
-                    message_list.append("Run details are here: {}{}".format(ui_url, self.task_id))
+                if self.config.bi_etl.scheduler is not None:
+                    ui_url = self.config.bi_etl.scheduler.base_ui_url
+                    if ui_url and self.task_id:
+                        message_list.append("Run details are here: {}{}".format(ui_url, self.task_id))
                 message_content = '\n'.join(message_list)
-                subject = "{environment} {etl} load failed".format(environment=environment, etl=self)
+                subject = f"{environment} {self} load failed"
 
-                # https: // jira.pepfar.net / browse / DMA - 2113
-                # Added logic to skip certain sections
-                skip_channel = self.config.get('Notifiers', 'skipfailures', fallback=None)
-
-                if skip_channel is not None:
-                    if 'Runtime' in message_content:
-                        self.notify('failures', subject=subject, message=message_content, skip_channel=skip_channel,)
-                    else:
-                        self.notify('failures', subject=subject, message=message_content, )
-                else:
-                    self.notify('failures', subject=subject, message=message_content,)
+                self.notify(self.config.notifiers.failures, subject=subject, message=message_content,)
 
             self.log.info("{} FAILED.".format(self))
             if self.child_to_parent is not None:
                 self.child_to_parent.put(e)
         finally:
-            self.config.remove_log_handler(self.log_handler)
-            self.close()
+            self.config.logging.remove_log_handler(self.log_handler)
 
         self.log.info("Status = {}".format(repr(self.status)))
 
@@ -1030,97 +1018,97 @@ class ETLTask(object):
 
         return self.status == Status.succeeded
 
-    def get_notifiers(self, channel_name, auto_include_log=True) -> list:
-        config_sections_str = self.config.get('Notifiers', channel_name, fallback=None)
-        config_sections = list()
-        if config_sections_str is not None and config_sections_str != '':
-            for config_section in re.split(r'\W+', config_sections_str):
-                notifier_class_str = self.config.get(config_section, 'notifier_class', fallback=None)
-                if notifier_class_str in NOTIFIER_CLASES:
-                    config_sections.append(config_section)
-                else:
-                    self.log.warning('Channel {} set to unknown notifier_class {}. Logging notification instead'.format(
-                        channel_name,
-                        notifier_class_str,
-                    ))
-                    self.log.warning('Accepted notifier_class values are {}'.format(NOTIFIER_CLASES.keys()))
-                    if 'LogNotifier' not in config_sections:
-                        config_sections.append('LogNotifier')
-        elif config_sections_str == '':
-            pass
-        else:
-            self.log.info('Channel {} not set in config, logging notification instead.'.format(
-                channel_name
-            ))
-            # Add LogNotifier if it would not be auto included below
-            if not auto_include_log:
-                if 'LogNotifier' not in config_sections:
-                    config_sections.append('LogNotifier')
-
-        if auto_include_log:
-            if 'LogNotifier' not in config_sections:
-                config_sections.append('LogNotifier')
-
+    def get_notifiers(self, channel_list: List[DynamicallyReferenced], auto_include_log=True) -> List[NotifierBase]:
         notifiers_list = list()
         notifier_class_str = 'unset'
-        for config_section in config_sections:
+
+        if auto_include_log:
+            notifiers_list.append(LogNotifier())
+
+        for config_ref in channel_list:
+            config_section = config_ref.get_referenced()
+            if not isinstance(config_section, notifiers_config.NotifierConfigBase):
+                raise ValueError(f"Notifier is not an instance of NotifierConfigBase: type= {type(config_section)} value= {config_section}")
             try:
                 if config_section == 'LogNotifier':
                     notifier_class_str = config_section
                 else:
-                    notifier_class_str = self.config.get(config_section, 'notifier_class', fallback=None)
+                    notifier_class_str = config_section.notifier_class
 
-                notifier_class = NOTIFIER_CLASES[notifier_class_str]
-                notifier_instance = notifier_class(self.config, config_section)
-                notifiers_list.append(notifier_instance)
+                if isinstance(config_section, notifiers_config.LogNotifierConfig):
+                    notifier_instance = LogNotifier()
+                elif isinstance(config_section, notifiers_config.SMTP_Notifier):
+                    notifier_instance = Email(config_section)
+                elif isinstance(config_section, notifiers_config.SlackNotifier):
+                    notifier_instance = Slack(config_section)
+                elif isinstance(config_section, notifiers_config.JiraNotifier):
+                    notifier_instance = Jira(config_section)
+                else:
+                    module, class_name = config_section.notifier_class.rsplit('.', 1)
+                    mod_object = importlib.import_module(module)
+                    class_object = getattr(mod_object, class_name)
+                    notifier_instance = class_object(config_section)
+
+                if notifier_instance is not None:
+                    notifiers_list.append(notifier_instance)
             except Exception as e:
                 self.log.exception(e)
-                if self.notification_fallback_channel is not None and channel_name != self.notification_fallback_channel:
-                    fallback_message = f'Notification to {config_section} {notifier_class_str} failed with error={e}'
-                    fallback_notifiers_list = self.get_notifiers(self.notification_fallback_channel)
-                    for fallback_notifier in fallback_notifiers_list:
-                        try:
+                if self.config.notifiers.failed_notifications is not None:
+                    try:
+                        fallback_message = f'Notification to {config_section} {notifier_class_str} failed with error={e}'
+                        fallback_notifiers_list = self.get_notifiers(self.config.notifiers.failed_notifications)
+                        for fallback_notifier in fallback_notifiers_list:
                             fallback_notifier.send(
-                                subject=f'Failed to send to {config_section}',
+                                subject=f"Failed to send to {config_section}",
                                 message=fallback_message,
                             )
                             notifiers_list.append(fallback_notifier)
-                        except Exception as e:
-                            self.log.exception(e)
+                    except Exception as e:
+                        self.log.exception(e)
         return notifiers_list
 
-    # https: // jira.pepfar.net / browse / DMA - 2113
-    # Added logic to skip writing to a channel based on the Channel Name
-    def notify(self, channel_name, subject, message=None, sensitive_message=None, attachment=None, skip_channel=None):
+    def notify(
+            self,
+            channel_list: List[DynamicallyReferenced],
+            subject,
+            message=None,
+            sensitive_message: str = None,
+            attachment=None,
+            skip_channels: set = None,
+    ):
         if not self.suppress_notifications:
             # Note: all exceptions are caught since we don't want notifications to kill the load
             try:
-                notifiers_list = self.get_notifiers(channel_name)
+                filtered_channels = list()
+
+                for channel in channel_list:
+                    if skip_channels is None or channel.ref not in skip_channels:
+                        filtered_channels.append(channel)
+
+                notifiers_list = self.get_notifiers(filtered_channels)
                 for notifier in notifiers_list:
-                    skip_notifier = notifier.config_section
-                    if skip_channel != skip_notifier:
-                        try:
-                            notifier.send(
-                                subject=subject,
-                                message=message,
-                                sensitive_message=sensitive_message,
-                                attachment=attachment,
-                            )
-                        except Exception as e:
-                            self.log.exception(e)
-                            if self.notification_fallback_channel is not None:
-                                fallback_message = f'error={e} original_subject={subject} original_message={message}'
-                                fallback_notifiers_list = self.get_notifiers(self.notification_fallback_channel)
-                                for fallback_notifier in fallback_notifiers_list:
-                                    try:
-                                        fallback_notifier.send(
-                                            subject=f'Failed to send to {notifier}',
-                                            message=fallback_message,
-                                            sensitive_message=sensitive_message,
-                                            attachment=attachment,
-                                        )
-                                    except Exception as e:
-                                        self.log.exception(e)
+                    try:
+                        notifier.send(
+                            subject=subject,
+                            message=message,
+                            sensitive_message=sensitive_message,
+                            attachment=attachment,
+                        )
+                    except Exception as e:
+                        self.log.exception(e)
+                        if self.config.notifiers.failed_notifications is not None:
+                            fallback_message = f"error={e} original_subject={subject} original_message={message}"
+                            fallback_notifiers_list = self.get_notifiers(self.config.notifiers.failed_notifications)
+                            for fallback_notifier in fallback_notifiers_list:
+                                try:
+                                    fallback_notifier.send(
+                                        subject=f"Failed to send to {notifier}",
+                                        message=fallback_message,
+                                        sensitive_message=sensitive_message,
+                                        attachment=attachment,
+                                    )
+                                except Exception as e:
+                                    self.log.exception(e)
 
             except Exception as e:
                 self.log.exception(e)
@@ -1157,7 +1145,7 @@ class ETLTask(object):
 
         return stats
 
-    def close(self):
+    def close(self, error: bool = False):
         """
         Cleanup the task. Close any registered objects, close any database connections.
         """
@@ -1165,7 +1153,7 @@ class ETLTask(object):
             self.log.debug("close")
             for obj in self.object_registry:
                 if hasattr(obj, 'close'):
-                    obj.close()
+                    obj.close(error=error)
                 del obj
             del self.object_registry
             self.object_registry = list()
@@ -1208,9 +1196,10 @@ def run_task(task_name,
         The task name to run. Must match the name or at least *ending* of the name of a module under **etl_jobs**.
     parameters: list or dict
         Parameters for the task. Passed to method :meth:`bi_etl.scheduler.task.ETLTask.add_parameters`.
-    config: bi_etl.bi_config_parser.BIConfigParser 
+    config: Union[str, bi_etl.config.bi_etl_config_base.BI_ETL_Config_Base]
         The configuration to use (defaults to reading it from :doc:`config_ini`).
-        If passed it should be an instance of :class:`bi_etl.bi_config_parser.BIConfigParser`.
+        If passed it should be an string reference to an ini file
+        or an instance of :class:`bi_etl.config.bi_etl_config_base.BI_ETL_Config_Base`.
     suppress_notifications: boolean
         Skip sending email on failure? See suppress_notifications in :meth:`bi_etl.scheduler.task.ETLTask.run`.
     scheduler: bi_etl.scheduler.scheduler.Scheduler
@@ -1236,20 +1225,9 @@ def run_task(task_name,
         queue_out_stream = queue_io.redirect_output_to(child_to_parent)
         print("run_task...")
         if config is None:
-            print("Reading config")
-            config = BIConfigParser()
-            config.read_config_ini()
-            config.set_dated_log_file_name(task_name, '.log')
-            print("setup_logging")
-            config.setup_logging(queue_out_stream)
+            config = BI_ETL_Config_Base()
         elif isinstance(config, str):
-            config_file = config.split(',')
-            print(("Using config file(s) {}".format(config_file)))
-            config = BIConfigParser()
-            config.read(config_file)
-            config.set_dated_log_file_name(task_name, '.log')
-            print("setup_logging")
-            config.setup_logging(queue_out_stream)
+            config = BI_ETL_Config_Base_From_Ini_Env(file_name=config)
         else:
             print("Using passed config")
 
@@ -1257,7 +1235,7 @@ def run_task(task_name,
         # Import is done here to prevent circular module dependency
         from bi_etl.scheduler.scheduler_interface import SchedulerInterface
         if scheduler is None:
-            scheduler = SchedulerInterface()
+            scheduler = SchedulerInterface(config)
         etl_class = scheduler.find_etl_class_instance(task_name)
         etl_task = etl_class(task_id=task_id,
                              parent_task_id=parent_task_id,

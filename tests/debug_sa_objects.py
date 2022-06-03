@@ -4,8 +4,10 @@ Created on Mar 27, 2015
 @author: Derek Wood
 """
 import operator
+
 import sqlalchemy
 from sqlalchemy.exc import InvalidRequestError
+
 
 #pylint: disable=protected-access
 

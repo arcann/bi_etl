@@ -6,7 +6,9 @@ Created on Apr 18, 2016
 import logging
 import unittest
 
-from bi_etl.bi_config_parser import BIConfigParser
+from config_wrangler.config_templates.logging_config import LoggingConfig
+
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Section
 from tests.etl_jobs.etl_task_d1 import ETL_Task_D1
 from tests.etl_jobs.etl_task_d2 import ETL_Task_D2
 from tests.etl_jobs.etl_task_d3 import ETL_Task_D3
@@ -16,12 +18,17 @@ class TestTask(unittest.TestCase):
 
     def setUp(self):
         self.log = logging.getLogger("TestTask")
-        self.config = BIConfigParser()
-        self.config['Scheduler'] = dict()
-        self.config['Scheduler']['base_module'] = 'tests.etl_jobs'
-        self.config['loggers'] = dict()
-        self.config['loggers']['root'] = 'DEBUG'
-        self.config.setup_logging()
+        self.config = BI_ETL_Config_Base(
+            bietl=BI_ETL_Config_Section(
+                task_finder_base_module='tests.etl_jobs',
+            ),
+            logging=LoggingConfig(
+                log_levels={
+                    'root': 'DEBUG',
+                }
+            )
+        )
+        self.config.logging.setup_logging()
         self.log.setLevel(logging.DEBUG)        
 
     def tearDown(self):

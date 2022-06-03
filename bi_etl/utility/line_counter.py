@@ -1,8 +1,7 @@
 #!/usr/bin/env python
+import argparse
 import mmap
 import subprocess
-import argparse
-
 from collections import defaultdict
 from timeit import default_timer as timer
 

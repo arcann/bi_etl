@@ -7,9 +7,9 @@ Created on Feb 27, 2015
 from __future__ import annotations
 
 import typing
-from configparser import ConfigParser
 
 from bi_etl.components.row.row import Row
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.lookup import Lookup
 
@@ -21,11 +21,11 @@ __all__ = ['NonUniqueLookup']
 
 class NonUniqueLookup(Lookup):
     def __init__(self,
+                 config: BI_ETL_Config_Base,
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: ETLComponent,
                  use_value_cache: bool = True,
-                 config: ConfigParser = None,
                  value_for_none='<None>',  # Needs to be comparable to datatypes in the key actual None is not.
                  ):
         super(NonUniqueLookup, self).__init__(
@@ -91,10 +91,13 @@ class NonUniqueLookup(Lookup):
                 self.init_cache()
             matching_rows = self._cache.get(lk_tuple, None)
             try:
+                # noinspection PyUnresolvedReferences
                 primary_key = self.parent_component.get_primary_key_value_tuple(row)
                 assert isinstance(primary_key, tuple)
             except KeyError:
                 primary_key = None
+            except AttributeError as e:
+                raise ValueError(f"The lookup parent_component needs to be a ReadOnlyTable or related child (needs get_primary_key_value_tuple method) {e}")
 
             if matching_rows is None:
                 matching_rows = Lookup.VERSION_COLLECTION_TYPE()
@@ -131,6 +134,7 @@ class NonUniqueLookup(Lookup):
             lk_tuple = self.get_hashable_combined_key(row)
         if self._cache is not None:
             existing_rows = self._cache.get(lk_tuple, None)
+            # noinspection PyUnresolvedReferences
             primary_key = self.parent_component.get_primary_key_value_tuple(row)
             assert isinstance(primary_key, tuple)
 
@@ -189,7 +193,11 @@ class NonUniqueLookup(Lookup):
             primary_key = None
         else:
             lk_tuple = self.get_hashable_combined_key(row)
-            primary_key = self.parent_component.get_primary_key_value_tuple(row)
+            try:
+                # noinspection PyUnresolvedReferences
+                primary_key = self.parent_component.get_primary_key_value_tuple(row)
+            except AttributeError as e:
+                raise ValueError(f"The lookup parent_component needs to be a ReadOnlyTable or related child (needs get_primary_key_value_tuple method) {e}")
         matching_rows = self._cache.get(lk_tuple, None)
         if matching_rows is None:
             raise NoResultFound()

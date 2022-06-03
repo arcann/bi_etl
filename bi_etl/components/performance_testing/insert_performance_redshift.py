@@ -1,6 +1,5 @@
 import gzip
 import io
-import shutil
 import time
 from datetime import datetime, date
 
@@ -10,9 +9,8 @@ import keyring
 # MSQL functions Version 0.5
 import sqlalchemy
 
-from bi_etl.bi_config_parser import BIConfigParser
-from bi_etl.components.csv_writer import CSVWriter, QUOTE_NONE, QUOTE_MINIMAL
-from bi_etl.database.connect import Connect
+from bi_etl.components.csv_writer import CSVWriter, QUOTE_MINIMAL
+from etl.pepfar_etl_config import PEPFAR_ETL_Config
 
 
 def encapsulate_value(value) -> str:
@@ -505,23 +503,21 @@ def test_connection(test, con, row_list,
 
 
 def main():
-    server = 'analytics-etl.crezir2z6j4p.us-east-1.redshift.amazonaws.com'
-    user = 'analyticsetl'
-    password = keyring.get_password('BI_Cache', user)
-    database_name = 'analyticsetldb'
-    # charset=utf8
-    # {SQL Server} - released with SQL Server 2000
+    server = 'example_server'
+    user = 'systemBI'
+    password = keyring.get_password('target_database', user)
+    database_name = 'example'
 
     names = [
-        'Derek',
-        'Bob',
-        'Ravi',
-        'Juhi',
-        'Wallace',
-        'Elvis',
-        'Stephanie',
-        'Spanish Inquisition',
-    ]
+            'Derek',
+            'Bob',
+            'Ravi',
+            'Juhi',
+            'Wallace',
+            'Elvis',
+            'Stephanie',
+            'Spanish Inquisition',
+        ]
 
     row_list = []
     rows = 1000000
@@ -546,9 +542,8 @@ def main():
             ]
         )
 
-    config = BIConfigParser()
-    config.read_config_ini(file_name='perf_config.ini')
-    config.setup_logging()
+    config = PEPFAR_ETL_Config(file_name='perf_config.ini')
+    config.logging.setup_logging()
 
     print("Starting test")
 
@@ -612,7 +607,7 @@ def main():
     #                 )
     # con.close()
 
-    engine = Connect.get_sqlachemy_engine(config, 'perf_test2')
+    engine = config.target_database.get_engine()
     con = engine.connect()
     test_connection(f'sqlalchemy perf_test2 config', con, row_list,
                     do_copy=True,

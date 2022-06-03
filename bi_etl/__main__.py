@@ -3,11 +3,12 @@ Created on Sep 18, 2014
 
 @author: Derek Wood
 """
-from bi_etl.scheduler.task import run_task
-from argparse import ArgumentParser
 import sys
+from argparse import ArgumentParser
+
 from bi_etl.scheduler.scheduler_interface import SchedulerInterface
 from bi_etl.scheduler.status import Status
+from bi_etl.scheduler.task import run_task
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="Run ETL")

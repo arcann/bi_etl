@@ -1,12 +1,12 @@
-
+# -*- coding: utf-8 -*-
 """
 Created on Jan 12, 2016
 
 @author: Derek Wood
 """
 import gc
-import sys
 import os
+import sys
 from copy import copy
 
 from bi_etl.components.row.row import Row

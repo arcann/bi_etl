@@ -3,13 +3,13 @@ Created on Jan 5, 2016
 
 @author: Derek Wood
 """
+import os
+import tempfile
 import unittest
 
 from bi_etl.lookups.disk_range_lookup import DiskRangeLookup
-import tempfile
-
 from tests._test_base_range_lookup import _TestBaseRangeLookup
-import os
+
 
 class TestDiskRangeLookup(_TestBaseRangeLookup):
 

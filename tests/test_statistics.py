@@ -4,10 +4,11 @@ Created on Apr 13, 2015
 @author: Derek Wood
 """
 
+import time
 import unittest
 from datetime import datetime
+
 from bi_etl.statistics import Statistics
-import time
 
 
 class Test(unittest.TestCase):

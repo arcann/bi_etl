@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 """
 Created on Dec 23, 2015
 
@@ -6,6 +6,7 @@ Created on Dec 23, 2015
 """
 
 import sys
+
 from bi_etl.scheduler.sdtout_queue import StdoutQueue
 
 

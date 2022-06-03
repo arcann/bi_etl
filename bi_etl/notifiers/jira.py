@@ -1,15 +1,12 @@
-from configparser import ConfigParser
-
-import keyring
-
-from bi_etl.notifiers.notifier import Notifier
+import bi_etl.config.notifiers_config as notifiers_config
+from bi_etl.notifiers.notifier_base import NotifierBase
 
 
-class Jira(Notifier):
-    def __init__(self, config: ConfigParser, config_section: str = 'Jira'):
-        super().__init__(config=config,
-                         config_section=config_section)
-        # https://jira.pepfar.net/browse/DMA-1465
+class Jira(NotifierBase):
+    def __init__(self, config_section: notifiers_config.JiraNotifier):
+        super().__init__()
+        self.config_section = config_section
+
         # BEGIN New code to fix jira.client
         import jira.client
         # Jira Client 2.0 comes with a faulty version of CaseInsensitiveDict.
@@ -32,13 +29,10 @@ class Jira(Notifier):
 
         self.config_section = config_section
         options = dict()
-        options['server'] = config.get(self.config_section, 'server')
-        user_id = config.get(self.config_section, 'user_id')
-        self.project = config.get(self.config_section, 'project')
-        self.keyring_section = config.get(self.config_section, 'keyring_section')
-        password = keyring.get_password(self.keyring_section, user_id)
-        if password is None or password == '':
-            raise ValueError(f'Jira password not provided in keyring {self.keyring_section} {user_id}')
+        options['server'] = self.config_section.server
+        user_id = self.config_section.user_id
+        self.project = self.config_section.project
+        password = self.config_section.get_password()
         self.log.debug(f"user id={user_id}")
         self.log.debug(f"server={options['server']}")
         self.log.debug(f'project={self.project}')
@@ -52,7 +46,7 @@ class Jira(Notifier):
                 self.log.error(f'Error connecting to JIRA')
                 self.log.exception(e)
                 raise
-        priority_name = config.get(self.config_section, 'priority', fallback=None)
+        priority_name = self.config_section.priority
         if priority_name is not None:
             for priority_object in self.jira_conn.priorities():
                 if priority_object.name == priority_name:
@@ -62,11 +56,11 @@ class Jira(Notifier):
             self.priority_id = None
             self.log.debug('priority not specified in config')
 
-        self.subject_prefix = self.config.get(self.config_section, 'subject_prefix', fallback='')
-        self.comment_on_each_instance = self.config.getboolean(self.config_section, 'comment_on_each_instance', fallback=True)
-        self.component = self.config.get(self.config_section, 'component', fallback=None)
-        self.issue_type = self.config.get(self.config_section, 'issue_type', fallback='Bug')
-        exclude_statuses = self.config.get_list(self.config_section, 'exclude_statuses', fallback='Closed')
+        self.subject_prefix = self.config_section.subject_prefix
+        self.comment_on_each_instance = self.config_section.comment_on_each_instance
+        self.component = self.config_section.component
+        self.issue_type = self.config_section.issue_type
+        exclude_statuses = self.config_section.exclude_statuses
         exclude_statuses_filter_list = []
         for status in exclude_statuses:
             exclude_statuses_filter_list.append(f'"{status}"')
@@ -165,7 +159,6 @@ class Jira(Notifier):
             for iss in existing_issues:
                 case_number = iss.key
                 self.log.info(f"One of multiple existing open cases is {case_number}.")
-                # https: // jira.pepfar.net / browse / DMA - 1465
                 # Fixed the issue in the file by getting the int value for case_number
                 if int(case_number.replace('DMA-','')) > newest_case_number:
                     newest_case_number = int(case_number.replace('DMA-',''))

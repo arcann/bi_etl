@@ -3,9 +3,9 @@ Created on Jan 6, 2016
 
 @author: Derek Wood
 """
-from bi_etl.bi_config_parser import BIConfigParser
-from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.etlcomponent import ETLComponent
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
+from bi_etl.scheduler.task import ETLTask
 
 
 class DummyETLComponent(ETLComponent):
@@ -13,12 +13,12 @@ class DummyETLComponent(ETLComponent):
     classdocs
     """
 
-    def __init__(self, task=None, logical_name=None, primary_key=None, data=None, iteration_header=None):
+    def __init__(self, config: BI_ETL_Config_Base, task=None, logical_name=None, primary_key=None, data=None, iteration_header=None):
         """
         Constructor
         """
         if task is None:
-            task = ETLTask(config=BIConfigParser())
+            task = ETLTask(config=config)
         super().__init__(task=task, logical_name=logical_name, primary_key=primary_key)
         self.iteration_header = iteration_header
         if data is None:

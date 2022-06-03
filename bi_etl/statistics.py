@@ -3,10 +3,9 @@ Created on Mar 20, 2015
 
 @author: Derek Wood
 """
-from collections import OrderedDict
 import sys
-
 import typing
+from collections import OrderedDict
 
 OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
 from typing import List

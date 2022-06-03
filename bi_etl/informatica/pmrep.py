@@ -11,27 +11,22 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from typing import Union
 
-import bi_etl.bi_config_parser
 from bi_etl.informatica.exceptions import NoObjects
+from bi_etl.informatica.pm_config import PMCMDConfig
 from bi_etl.utility import dict_to_str, line_counter
 
 
 class PMREP(object):
     SETTINGS_SECTION = 'INFORMATICA'
 
-    def __init__(self, config=None):
-        if config is None:
-            self.config = bi_etl.bi_config_parser.BIConfigParser()
-            self.config.read_config_ini()
-            self.config.set_dated_log_file_name('pmrep', '.log')
-            self.config.setup_logging()
-        else:
-            self.config = config
+    def __init__(self, config: PMCMDConfig):
+        self.config = config
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self.f_dev_null = open(os.devnull, 'w')
         self.control_file_name = "Control_import_No_folder_rep_change.xml"
-        self.infa_home = os.environ['INFA_HOME']
+        self._folder = None
 
     def setup_inf_path(self):
         user_dir = os.path.expanduser('~')
@@ -42,36 +37,53 @@ class PMREP(object):
                                       )
         os.environ['LD_LIBRARY_PATH'] = self.informatica_bin_dir()
 
-    def informatica_bin_dir(self):
-        return os.path.join(self.infa_home, 'server', 'bin')
+    def infa_home(self) -> Union[str, None]:
+        if 'INFA_HOME' in os.environ:
+            return os.environ['INFA_HOME']
+        else:
+            return self.config.INFA_HOME
 
-    def informatica_pmrep(self):
-        return os.path.join(self.informatica_bin_dir(), 'pmrep')
+    def informatica_bin_dir(self):
+        return os.path.join(self.infa_home(), 'server', 'bin')
+
+    def informatica_pmcmd(self):
+        return os.path.join(self.informatica_bin_dir(), 'pmcmd')
+
+    def usersecuritydomain(self):
+        return self.config.USER_SECURITY_DOMAIN
 
     def user_id(self):
-        return self.config.get(self.SETTINGS_SECTION, 'USER_ID')
+        return self.config.user_id
 
     def password(self):
-        return self.config.get(self.SETTINGS_SECTION, 'PASSWORD')
+        return self.config.get_password()
 
     def set_password_in_env(self):
         os.environ['INFA_PM_PASSWORD'] = self.password()
 
     def repository(self):
-        return self.config.get(self.SETTINGS_SECTION, 'REPOSITORY')
+        return self.config.REPOSITORY
+
+    def service(self):
+        return self.config.SERVICE
 
     def domain(self):
-        return self.config.get(self.SETTINGS_SECTION, 'DOMAIN')
+        return self.config.DOMAIN
 
     def folder(self):
-        return self.config.get(self.SETTINGS_SECTION, 'DEFAULTFOLDER')
+        if self._folder is None:
+            self._folder = self.config.DEFAULT_FOLDER
+        return self._folder
+
+    def informatica_pmrep(self):
+        return os.path.join(self.informatica_bin_dir(), 'pmrep')
 
     def connect(self):
-        pmrep_cmd = [self.informatica_pmrep(), 
-                     'connect', 
-                     '-r', self.repository(), 
-                     '-d', self.domain(), 
-                     '-n', self.user_id(), 
+        pmrep_cmd = [self.informatica_pmrep(),
+                     'connect',
+                     '-r', self.repository(),
+                     '-d', self.domain(),
+                     '-n', self.user_id(),
                      '-X', 'INFA_PM_PASSWORD'
                      ]
         self.set_password_in_env()
@@ -111,19 +123,20 @@ class PMREP(object):
                 'ListObjects',
                 '-o', object_type,
                 '-f', folder_name
-            ]
-            , stdout=subprocess.PIPE
+            ],
+            stdout=subprocess.PIPE
         )
         count = 0
         found_invoked = False
         found_blank_line = False
         for line in iter(process.stdout.readline, ''):
             # End on line .ListObjects completed successfully.
-            if line.startswith('.ListObjects'): break
+            if line.startswith(b'.ListObjects'):
+                break
             if found_blank_line:
                 count += 1
                 # if count >= 15: break
-                parts = line.rstrip('\n').split(' ')
+                parts = line.rstrip(b'\n').split(b' ')
                 subtype = parts[0]
                 if len(parts) == 2:
                     reusable = 'reusable'
@@ -135,14 +148,14 @@ class PMREP(object):
                 if reusable == 'reusable':
                     # print "subtype = " + subtype + " name = " + name
                     object_dict = {'objectType': object_type,
-                                   'subtype':    subtype,
-                                   'name':       name,
+                                   'subtype': subtype,
+                                   'name': name,
                                    'folderName': folder_name
-                                  }
+                                   }
                     object_list.append(object_dict)
-            if line.startswith('Invoked'): 
+            if line.startswith(b'Invoked'):
                 found_invoked = True
-            if found_invoked and line == '\n': 
+            if found_invoked and line == '\n':
                 found_blank_line = True
         return object_list
 
@@ -181,9 +194,9 @@ class PMREP(object):
                         if reusable == 'reusable':
                             # print("parts {} = 0-excluded {}" .format(len(parts),[parts[i] for i in range(1,7)]))
                             object_dict = {'objectType': object_type,
-                                           'subtype':    subtype,
-                                           'name':       name,
-                                           'folder':     folder
+                                           'subtype': subtype,
+                                           'name': name,
+                                           'folder': folder
                                            }
                             obj_list.append(object_dict)
             else:  # query.out not created
@@ -222,15 +235,13 @@ class PMREP(object):
 
     def exportObject(self, objectDict, dependents, outputPath):
         # pmrep  objectexport -f $FOLDER -n "$NAME" -o "$TYPE" -t "$SUBTYPE" $DEPENDENTS_OPTIONS -u "${TYPE}s/${NAME}.xml"
-        pmrep_cmd = []
-        pmrep_cmd.append(self.informatica_pmrep())
-        pmrep_cmd.append('objectexport')
-        pmrep_cmd.append('-f')
-        pmrep_cmd.append(objectDict['folder'])
-        pmrep_cmd.append('-n')
-        pmrep_cmd.append(objectDict['name'])
-        pmrep_cmd.append('-o')
-        pmrep_cmd.append(objectDict['type'])
+        pmrep_cmd = [
+            self.informatica_pmrep(),
+            'objectexport',
+            '-f', objectDict['folder'],
+            '-n', objectDict['name'],
+            '-o', objectDict['type']
+        ]
 
         # Include subtype if required
         if objectDict['type'].lower() in ('task', 'transformation'):
@@ -308,16 +319,19 @@ class PMREP(object):
             dependents = False
         return self.exportObject(objectDict, dependents, outputPath)
 
-    def getFolderName(self, objectDict):
+    @staticmethod
+    def getFolderName(objectDict):
         return objectDict['type'].capwords() + 's'
 
-    def getFileName(self, objectDict):
+    @staticmethod
+    def getFileName(objectDict):
         return objectDict['name'] + '.xml'
 
-    def attributesString(self, element):
+    @staticmethod
+    def attributesString(element):
         s = element.tag
         # print 'attributesString ' + xml.tostring(element)
-        if list(element.items()) != None:
+        if list(element.items()) is not None:
             for attr in sorted(element.items()):
                 s += ' ' + ' '.join(attr)
         # print 'end attributesString = ' + s
@@ -338,13 +352,13 @@ class PMREP(object):
                 os.makedirs(fullTempDir)
                 tempFilePath = os.path.join(fullTempDir, self.getFileName(objectDict))
 
-                self.log.ingo("Exporting {}/{}".format(self.getFolderName(objectDict),
+                self.log.info("Exporting {}/{}".format(self.getFolderName(objectDict),
                                                        self.getFileName(objectDict)
                                                        )
                               )
                 try:
                     messages = self.exportObject(objectDict, False, tempFilePath)
-                    if messages != None and len(messages) > 0:
+                    if messages is not None and len(messages) > 0:
                         messageList.append((self.getFileName(objectDict), messages))
 
                     targetDir = os.path.join(os.getcwd(), self.getFolderName(objectDict))
@@ -375,7 +389,7 @@ class PMREP(object):
                           )
             try:
                 messages = self.validateObject(objectDict)
-                if messages != None and len(messages) > 0:
+                if messages is not None and len(messages) > 0:
                     messageList.append((self.getFileName(objectDict), messages))
             except NoObjects:
                 pass
@@ -383,14 +397,13 @@ class PMREP(object):
 
     def importXMLFile(self, path, control_file):
         # pmrep objectimport -c "${CONTROL_FILE}" -i "${FILE}" -p
-        pmrep_cmd = []
-        pmrep_cmd.append(self.informatica_pmrep())
-        pmrep_cmd.append('objectimport')
-        pmrep_cmd.append('-c')
-        pmrep_cmd.append(control_file)
-        pmrep_cmd.append('-i')
-        pmrep_cmd.append(path)
-        pmrep_cmd.append('-p')
+        pmrep_cmd = [
+            self.informatica_pmrep(),
+            'objectimport',
+            '-c', control_file,
+            '-i', path,
+            '-p',
+        ]
 
         try:
             messages = subprocess.check_output(pmrep_cmd, stderr=subprocess.STDOUT)
@@ -415,7 +428,7 @@ class PMREP(object):
         with open(controlFile, 'r') as sf:
             with open(workingControlFile, 'w') as tf:
                 for line in sf:
-                    ## Replace generic repository name with our specific one
+                    # Replace generic repository name with our specific one
                     line = re.sub(r'impcntl.dtd',
                                   os.path.join(self.informatica_bin_dir(), 'impcntl.dtd'),
                                   line)
@@ -426,7 +439,6 @@ class PMREP(object):
         print("Importing {}".format(fileObj.name))
         tempDir = tempfile.mkdtemp()
         scriptDir = os.path.dirname(os.path.realpath(__file__))
-        messages = ""
         try:
             (_, fileName) = os.path.split(fileObj.name)
             workingFile = os.path.join(tempDir, fileName)
@@ -443,7 +455,6 @@ class PMREP(object):
 
     def importFile(self, folderName, fileName):
         path = os.path.join(folderName, fileName)
-        messages = ""
         try:
             with open(path, 'r') as sf:
                 messages = self.importFileObj(sf)

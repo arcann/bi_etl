@@ -8,17 +8,17 @@ from __future__ import annotations
 
 import codecs
 import contextlib
+import math
 import sys
 import textwrap
 import traceback
-import typing
+from typing import *
 import warnings
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from decimal import InvalidOperation
 from typing import Iterable, Callable, List, Union
 
-import math
 import sqlalchemy
 from gevent import spawn, sleep
 from gevent.queue import Queue
@@ -87,7 +87,7 @@ class Table(ReadOnlyTable):
         Automatically commit after delete? Defaults to False.
     
     batch_size: int
-        How many rows should be insert/update/deleted in a single batch.
+        How many rows should be inserted / updated / deleted in a single batch.
         Default = 5000. Assigning None will use the default.
         
     delete_flag : str
@@ -129,7 +129,7 @@ class Table(ReadOnlyTable):
         Default = None
             
     log_first_row : boolean
-        Should we log progress on the the first row read. *Only applies if Table is used as a source.*
+        Should we log progress on the first row read. *Only applies if Table is used as a source.*
         (inherited from ETLComponent)
 
     max_rows : int, optional
@@ -185,12 +185,12 @@ class Table(ReadOnlyTable):
 
     def __init__(
             self,
-            task: typing.Optional[ETLTask],
+            task: Optional[ETLTask],
             database: DatabaseMetadata,
             table_name: str,
-            table_name_case_sensitive: bool = None,
-            schema: typing.Optional[str] = None,
-            exclude_columns: typing.Optional[set] = None,
+            table_name_case_sensitive: bool = False,
+            schema: Optional[str] = None,
+            exclude_columns: Optional[set] = None,
             **kwargs
             ):
         # Don't pass kwargs up. They should be set here at the end
@@ -207,6 +207,7 @@ class Table(ReadOnlyTable):
         self._update_method = Table.UpdateMethod.execute_many
         self._delete_method = Table.DeleteMethod.execute_many
         self.bulk_loader = None
+        self._bulk_rollback = False
         self._bulk_load_performed = False
         self._bulk_iter_sentinel = None
         self._bulk_iter_queue = None
@@ -219,7 +220,6 @@ class Table(ReadOnlyTable):
         self.auto_generate_key = False
         self.upsert_called = False
         self.last_update_date = None
-        self.use_utc_times = False
         self.default_date_format = '%Y-%m-%d'
         self.default_date_time_format = '%Y-%m-%d %H:%M:%S'
         self.default_time_format = '%H:%M:%S'
@@ -274,20 +274,22 @@ class Table(ReadOnlyTable):
         # Should be the after all self attributes are created
         self.set_kwattrs(**kwargs)
 
-    def close(self):
-        if self.in_bulk_mode and not self._bulk_load_performed:
-            self.log.info("Doing bulk load automatically from table.close(). An explicit call to bulk_load_from_cache would be better.")
-            self.bulk_load_from_cache()
-        for connection_name, transaction in self.__transaction_pool.items():
-            if transaction.is_active:
-                self.log.info(f'Committing {self} {connection_name} not explicitly committed.')
-                try:
+    def close(self, error: bool = False):
+        if not self.is_closed:
+            if self.in_bulk_mode:
+                if self._bulk_load_performed:
+                    self.log.debug(f"{self}.close() NOT causing bulk load since a bulk load has already been performed.")
+                elif error:
+                    self.log.info(f"{self}.close() NOT causing bulk load due to error.")
+                else:
+                    self.bulk_load_from_cache()
+
+            for connection_name, transaction in self.__transaction_pool.items():
+                if transaction.is_active:
+                    self.log.info(f'Committing {self} {connection_name} not explicitly committed.')
                     transaction.commit()
-                except sqlalchemy.exc.InvalidRequestError:
-                    # transaction.is_active is not always correct in sqlalchemy
-                    pass
-        super(Table, self).close()
-        self.clear_cache()
+            super(Table, self).close(error=error)
+            self.clear_cache()
 
     def __iter__(self) -> Iterable[Row]:
         # Note: yield_per will break if the transaction is committed while we are looping
@@ -438,6 +440,7 @@ class Table(ReadOnlyTable):
             key = pk_list[0]
             return self.autogenerate_sequence(row, seq_column=key, force_override=force_override)
 
+    # noinspection PyUnresolvedReferences
     def _trace_data_type(
             self,
             target_name: str,
@@ -482,11 +485,11 @@ class Table(ReadOnlyTable):
             self._build_coerce_methods()
         return f"_coerce_{target_column_name}"
 
-    def _get_coerce_method_name_by_object(self, target_column_object: typing.Union[str, 'sqlalchemy.sql.expression.ColumnElement']) -> str:
+    def _get_coerce_method_name_by_object(self, target_column_object: Union[str, 'sqlalchemy.sql.expression.ColumnElement']) -> str:
         target_column_name = self.get_column_name(target_column_object)
         return self._get_coerce_method_name_by_str(target_column_name)
 
-    def get_coerce_method(self, target_column_object: typing.Union[str, 'sqlalchemy.sql.expression.ColumnElement']) -> typing.Callable:
+    def get_coerce_method(self, target_column_object: Union[str, 'sqlalchemy.sql.expression.ColumnElement']) -> Callable:
         if not self._coerce_methods_built:
             self._build_coerce_methods()
         method_name = self._get_coerce_method_name_by_object(target_column_object)
@@ -782,7 +785,7 @@ class Table(ReadOnlyTable):
                 if target_column_value is not None:
                     digits = get_integer_places(target_column_value)            
                     if digits > {integer_digits_allowed}:
-                        msg = "{table}.{column} can't accept '{{val}}' since it has {{digits}} integer digits (_make_decimal_coerce)"\
+                        msg = "{table}.{column} can't accept '{{val}}' since it has {{digits}} digits (_make_decimal_coerce)"\
                               "which is > {integer_digits_allowed} by (prec {precision} - scale {scale}) limit".format(                            
                                 val=target_column_value,
                                 digits=digits,
@@ -970,16 +973,7 @@ class Table(ReadOnlyTable):
                 if isinstance(target_column_value, timedelta):
                     pass
                 elif target_column_value is None:
-                    return None
-                elif isinstance(target_column_value, float):
-                    if math.isnan(target_column_value):
-                        target_column_value = self.NAN_REPLACEMENT_VALUE
-                    target_column_value = timedelta(seconds=target_column_value)
-                elif isinstance(target_column_value, str):
-                    target_column_value = str2float(target_column_value)
-                    target_column_value = timedelta(seconds=target_column_value)
-                elif isinstance(target_column_value, int):
-                    target_column_value = timedelta(seconds=target_column_value)
+                    return None                         
                 else:
                     target_column_value = timedelta(seconds=target_column_value)
             except (TypeError, ValueError) as e:
@@ -1185,7 +1179,7 @@ class Table(ReadOnlyTable):
                 elif t_type.python_type == datetime:
                     # If we already have a date or datetime value
                     if isinstance(target_column_value, datetime):
-                        if  self.table.bind.dialect.name == 'mssql':
+                        if 'mssql' in self.table.bind.dialect.dialect_description:
                             # fast_executemany Currently causes this error on datetime update (dimension load)
                             # [Microsoft][ODBC Driver 17 for SQL Server]Datetime field overflow. Fractional second precision exceeds the scale specified in the parameter binding. (0)
                             # Also see https://github.com/sqlalchemy/sqlalchemy/issues/4418
@@ -1274,12 +1268,12 @@ class Table(ReadOnlyTable):
             self,
             source_definition: ETLComponent,
             source_name: str = None,
-            source_excludes: typing.Optional[frozenset] = None,
-            target_excludes: typing.Optional[frozenset] = None,
-            ignore_source_not_in_target: typing.Optional[bool] = None,
-            ignore_target_not_in_source: typing.Optional[bool] = None,
-            raise_on_source_not_in_target: typing.Optional[bool] = None,
-            raise_on_target_not_in_source: typing.Optional[bool] = None,
+            source_excludes: Optional[frozenset] = None,
+            target_excludes: Optional[frozenset] = None,
+            ignore_source_not_in_target: Optional[bool] = None,
+            ignore_target_not_in_source: Optional[bool] = None,
+            raise_on_source_not_in_target: Optional[bool] = None,
+            raise_on_target_not_in_source: Optional[bool] = None,
             ):
         if target_excludes is None:
             target_excludes = set()
@@ -1317,10 +1311,10 @@ class Table(ReadOnlyTable):
     def sanity_check_example_row(
             self,
             example_source_row,
-            source_excludes: typing.Optional[frozenset] = None,
-            target_excludes: typing.Optional[frozenset] = None,
-            ignore_source_not_in_target: typing.Optional[bool] = None,
-            ignore_target_not_in_source: typing.Optional[bool] = None,
+            source_excludes: Optional[frozenset] = None,
+            target_excludes: Optional[frozenset] = None,
+            ignore_source_not_in_target: Optional[bool] = None,
+            ignore_target_not_in_source: Optional[bool] = None,
             ):
         self.sanity_check_source_mapping(
             example_source_row,
@@ -1343,7 +1337,7 @@ class Table(ReadOnlyTable):
     def _insert_pending_batch(
             self,
             stat_name: str = 'insert',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             ):
         if self.in_bulk_mode:
             raise InvalidOperation('_insert_pending_batch is not allowed for bulk loader')
@@ -1431,7 +1425,7 @@ class Table(ReadOnlyTable):
                         for c in new_row:
                             try:
                                 col_obj = self.get_column(c)
-                                stmt = stmt.values({col_obj.name: bindparam(col_obj.name, type_=col_obj.type)})
+                                stmt = stmt.values({col_obj.name: bindparam(col_obj, type_=col_obj.type)})
                             except KeyError:
                                 self.log.error(f'Extra column found in pending_insert_rows row {new_row}')
                                 raise
@@ -1476,11 +1470,11 @@ class Table(ReadOnlyTable):
     def insert_row(
             self,
             source_row: Row,
-            additional_insert_values: typing.Optional[dict] = None,
-            source_excludes: typing.Optional[frozenset] = None,
-            target_excludes: typing.Optional[frozenset] = None,
+            additional_insert_values: Optional[dict] = None,
+            source_excludes: Optional[frozenset] = None,
+            target_excludes: Optional[frozenset] = None,
             stat_name: str = 'insert',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             ) -> Row:
         """
         Inserts a row into the database (batching rows as batch_size)
@@ -1572,11 +1566,11 @@ class Table(ReadOnlyTable):
 
     def insert(
             self,
-            source_row: Union[typing.MutableMapping, typing.Iterable[typing.MutableMapping]],
-            additional_insert_values: typing.Optional[dict] = None,
-            source_excludes: typing.Optional[frozenset] = None,
-            target_excludes: typing.Optional[frozenset] = None,
-            parent_stats: typing.Optional[Statistics] = None,
+            source_row: Union[MutableMapping, Iterable[MutableMapping]],
+            additional_insert_values: Optional[dict] = None,
+            source_excludes: Optional[frozenset] = None,
+            target_excludes: Optional[frozenset] = None,
+            parent_stats: Optional[Statistics] = None,
             **kwargs
             ):
         """
@@ -1597,7 +1591,7 @@ class Table(ReadOnlyTable):
             Default is to place statistics in the ETLTask level statistics.                               
         """
 
-        if isinstance(source_row, typing.MutableMapping):
+        if isinstance(source_row, MutableMapping):
             if not isinstance(source_row, self.row_object):
                 warnings.warn('Passing types other than Row to insert is slower.')
                 source_row = self.row_object(data=source_row, iteration_header=self.empty_iteration_header)
@@ -1627,7 +1621,7 @@ class Table(ReadOnlyTable):
     def _delete_pending_batch(
             self,
             stat_name: str = 'delete',
-            parent_stats: typing.Iterable[Statistics] = None,
+            parent_stats: Iterable[Statistics] = None,
             ):
         if self.in_bulk_mode:
             raise InvalidOperation('_delete_pending_batch not allowed in bulk mode')
@@ -1648,12 +1642,12 @@ class Table(ReadOnlyTable):
 
     def delete(
             self,
-            key_values: typing.Union[typing.Iterable, typing.MutableMapping],
-            lookup_name: typing.Optional[str] = None,
-            key_names: typing.Optional[typing.Iterable] = None,
-            maintain_cache: typing.Optional[bool] = None,
+            key_values: Union[Iterable, MutableMapping],
+            lookup_name: Optional[str] = None,
+            key_names: Optional[Iterable] = None,
+            maintain_cache: Optional[bool] = None,
             stat_name: str = 'delete',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             ):
         """
         Delete rows matching key_values. 
@@ -1752,13 +1746,13 @@ class Table(ReadOnlyTable):
     def delete_not_in_set(
             self,
             set_of_key_tuples: set,
-            lookup_name: typing.Optional[str] = None,
-            criteria_list: typing.Optional[list] = None,
-            criteria_dict: typing.Optional[dict] = None,
-            use_cache_as_source: typing.Optional[bool] = True,
+            lookup_name: Optional[str] = None,
+            criteria_list: Optional[list] = None,
+            criteria_dict: Optional[dict] = None,
+            use_cache_as_source: Optional[bool] = True,
             stat_name: str = 'delete_not_in_set',
-            progress_frequency: typing.Optional[int] = None,
-            parent_stats: typing.Optional[Statistics] = None,
+            progress_frequency: Optional[int] = None,
+            parent_stats: Optional[Statistics] = None,
             **kwargs
     ):
         """
@@ -1823,8 +1817,9 @@ class Table(ReadOnlyTable):
 
             if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 progress_timer.reset()
-                self.log.info("delete_not_in_set current row={} key={} deletes_done = {}"
-                              .format(stats['rows read'], existing_key, stats['rows deleted']))
+                self.log.info(
+                    f"delete_not_in_set current row={stats['rows read']} key={existing_key} deletes_done = {stats['rows deleted']}"
+                    )
             if existing_key not in set_of_key_tuples:
                 stats['rows deleted'] += 1
 
@@ -1832,7 +1827,7 @@ class Table(ReadOnlyTable):
                 # In bulk mode we just need to remove them from the cache,
                 # which is done below where we loop over deleted_rows
                 if not self.in_bulk_mode:
-                    self.delete(key_values=row, lookup_name=self._get_pk_lookup_name(), maintain_cache=False)
+                    self.delete(key_values=row, lookup_name=self.PK_LOOKUP, maintain_cache=False)
 
         for row in deleted_rows:
             self.uncache_row(row)
@@ -1844,12 +1839,12 @@ class Table(ReadOnlyTable):
 
     def delete_not_processed(
             self,
-            criteria_list: typing.Optional[list] = None,
-            criteria_dict: typing.Optional[dict] = None,
+            criteria_list: Optional[list] = None,
+            criteria_dict: Optional[dict] = None,
             use_cache_as_source: bool = True,
             allow_delete_all: bool = False,
             stat_name: str = 'delete_not_processed',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             **kwargs
             ):
         """
@@ -1891,13 +1886,13 @@ class Table(ReadOnlyTable):
     def logically_delete_not_in_set(
             self,
             set_of_key_tuples: set,
-            lookup_name: typing.Optional[str] = None,
-            criteria_list: typing.Optional[list] = None,
-            criteria_dict: typing.Optional[dict] = None,
+            lookup_name: Optional[str] = None,
+            criteria_list: Optional[list] = None,
+            criteria_dict: Optional[dict] = None,
             use_cache_as_source: bool = True,
             stat_name: str = 'logically_delete_not_in_set',
-            progress_frequency: typing.Optional[int] = 10,
-            parent_stats: typing.Optional[Statistics] = None,
+            progress_frequency: Optional[int] = 10,
+            parent_stats: Optional[Statistics] = None,
             **kwargs
             ):
         """
@@ -1917,8 +1912,6 @@ class Table(ReadOnlyTable):
             Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
-        allow_delete_all:
-            Allow this method to delete ALL rows if no source rows were processed
         stat_name: string
             Name of this step for the ETLTask statistics. Default = 'delete_not_in_set'    
         progress_frequency: int
@@ -1946,12 +1939,12 @@ class Table(ReadOnlyTable):
 
     def logically_delete_not_processed(
             self,
-            criteria_list: typing.Optional[list] = None,
-            criteria_dict: typing.Optional[dict] = None,
+            criteria_list: Optional[list] = None,
+            criteria_dict: Optional[dict] = None,
             use_cache_as_source: bool = True,
             allow_delete_all: bool = False,
             stat_name='logically_delete_not_processed',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             **kwargs
     ):
         """
@@ -1959,13 +1952,16 @@ class Table(ReadOnlyTable):
 
         Parameters
         ----------
-        criteria_list : string or list of strings
+        criteria_list:
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        criteria_dict : dict
+        criteria_dict:
             Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
+        allow_delete_all:
+            Allow this method to delete all rows.
+            Defaults to False in case an error preventing the processing of any rows.
         parent_stats: bi_etl.statistics.Statistics
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
@@ -1991,12 +1987,12 @@ class Table(ReadOnlyTable):
     def logically_delete_not_in_source(
             self,
             source: ReadOnlyTable,
-            source_criteria_list: typing.Optional[list] = None,
-            source_criteria_dict: typing.Optional[dict] = None,
-            target_criteria_list: typing.Optional[list] = None,
-            target_criteria_dict: typing.Optional[dict] = None,
-            use_cache_as_source: typing.Optional[bool] = True,
-            parent_stats: typing.Optional[Statistics] = None):
+            source_criteria_list: Optional[list] = None,
+            source_criteria_dict: Optional[dict] = None,
+            target_criteria_list: Optional[list] = None,
+            target_criteria_dict: Optional[dict] = None,
+            use_cache_as_source: Optional[bool] = True,
+            parent_stats: Optional[Statistics] = None):
         """
         Logically deletes rows matching criteria that are not in the source component passed to this method.
         The primary use case for this method is when the upsert method is only passed new/changed records and so cannot 
@@ -2009,14 +2005,14 @@ class Table(ReadOnlyTable):
         source_criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        source_criteria_dict : dict
+        source_criteria_dict:
             Dict keys should be columns, values are set using = or in
         target_criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        target_criteria_dict : dict
+        target_criteria_dict:
             Dict keys should be columns, values are set using = or in
-        use_cache_as_source: bool
+        use_cache_as_source:
             Attempt to read existing rows from the cache?
         parent_stats:
             Optional Statistics object to nest this steps statistics in.
@@ -2043,17 +2039,10 @@ class Table(ReadOnlyTable):
             parent_stats=parent_stats,
             )
 
-    def get_current_time(self) -> datetime:
-        if self.use_utc_times:
-            # Returns the current UTC date and time, as a naive datetime object.
-            return datetime.utcnow()
-        else:
-            return datetime.now()
-
     def set_last_update_date(self, row):
         last_update_date_col = self.get_column_name(self.last_update_date)
         last_update_coerce = self.get_coerce_method(last_update_date_col)
-        last_update_value = last_update_coerce(self.get_current_time())
+        last_update_value = last_update_coerce(datetime.now())
         row.set_keeping_parent(last_update_date_col, last_update_value)
 
     def get_bind_name(self, column_name: str) -> str:
@@ -2083,7 +2072,7 @@ class Table(ReadOnlyTable):
     def _update_pending_batch(
             self,
             stat_name: str = 'update',
-            parent_stats: typing.Optional[Statistics] = None):
+            parent_stats: Optional[Statistics] = None):
         """
 
         Parameters
@@ -2166,7 +2155,7 @@ class Table(ReadOnlyTable):
                 try:
                     connection.execute(stmt, row_dict)
                 except Exception as e:
-                    self.log.error("Error with row {}".format(dict_to_str(row_dict)))
+                    self.log.error(f"Error with row {dict_to_str(row_dict)}")
                     raise e
             # If that didn't cause the error... re-raise the original error
             self.log.error(f"Single updates on {self} did not produce the error. Original error will be issued below.")
@@ -2179,7 +2168,7 @@ class Table(ReadOnlyTable):
     def _add_pending_update(
             self,
             row: Row,
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             ):
         assert self.primary_key, "add_pending_update called for table with no primary key"
         assert row.status != RowStatus.insert, "add_pending_update called with row that's pending insert"
@@ -2198,13 +2187,13 @@ class Table(ReadOnlyTable):
     def apply_updates(
             self,
             row: Row,
-            changes_list: typing.Optional[typing.MutableSequence] = None,
-            additional_update_values: typing.MutableMapping = None,
+            changes_list: Optional[MutableSequence] = None,
+            additional_update_values: MutableMapping = None,
             add_to_cache: bool = True,
             allow_insert=True,
             update_apply_entire_row: bool = False,
             stat_name: str = 'update',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             **kwargs
             ):
         """
@@ -2223,13 +2212,13 @@ class Table(ReadOnlyTable):
         changes_list:
             A list of ColumnDifference objects to apply to the row
         additional_update_values:
-            A Row or dict of additional values to apply to the main row
+            A Row or dict of additional values to apply to the test_config row
         add_to_cache:
             Should this method update the cache (not if caller will)
         allow_insert: boolean
             Allow this method to insert a new row into the cache
         update_apply_entire_row:
-            Should the update set all non-key coluyns or just the changed values?
+            Should the update set all non-key columns or just the changed values?
         stat_name:
             Name of this step for the ETLTask statistics. Default = 'update'
         parent_stats:
@@ -2237,7 +2226,7 @@ class Table(ReadOnlyTable):
             Not used in this version
         """
         assert self.primary_key, "apply_updates called for table with no primary key"
-        assert row.status != RowStatus.deleted, "apply_updates called for deleted row {}".format(row)
+        assert row.status != RowStatus.deleted, f"apply_updates called for deleted row {row}"
 
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         self.pending_update_stats = stats
@@ -2294,10 +2283,10 @@ class Table(ReadOnlyTable):
             self,
             updates_to_make: Row,
             key_values: Union[Row, dict, list] = None,
-            source_excludes: typing.Optional[frozenset] = None,
-            target_excludes: typing.Optional[frozenset] = None,
+            source_excludes: Optional[frozenset] = None,
+            target_excludes: Optional[frozenset] = None,
             stat_name: str = 'update_where_pk',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             ):
         """
         Updates the table using the primary key for the where clause.
@@ -2341,22 +2330,22 @@ class Table(ReadOnlyTable):
         source_mapped_as_target_row.update(key_values_dict)
         self.apply_updates(
             source_mapped_as_target_row,
-                        allow_insert=False,
+            allow_insert=False,
             parent_stats=stats,
         )
 
     def update(
             self,
             updates_to_make: Union[Row, dict],
-            key_names: typing.Optional[Iterable] = None,
-            key_values: typing.Optional[Iterable] = None,
-            lookup_name: typing.Optional[str] = None,
+            key_names: Optional[Iterable] = None,
+            key_values: Optional[Iterable] = None,
+            lookup_name: Optional[str] = None,
             update_all_rows: bool = False,
-            source_excludes: typing.Optional[frozenset] = None,
-            target_excludes: typing.Optional[frozenset] = None,
+            source_excludes: Optional[frozenset] = None,
+            target_excludes: Optional[frozenset] = None,
             stat_name: str = 'direct update',
-            parent_stats: typing.Optional[Statistics] = None,
-            connection_name: typing.Optional[str] = None,
+            parent_stats: Optional[Statistics] = None,
+            connection_name: Optional[str] = None,
             ):
         """
         Directly performs a database update. Invalidates caching.
@@ -2433,7 +2422,7 @@ class Table(ReadOnlyTable):
                 stmt = stmt.where(key == key_value)
 
             # We could optionally scan the entire cache and apply updates there
-            # instead for now, we'll uncache the row and set the lookups to fall back to the database
+            # instead for now, we'll un-cache the row and set the lookups to fall back to the database
 
             # TODO: If we have a lookup based on an updated value, the original value would still be 
             # in the lookup. We don't know the original without doing a lookup.
@@ -2471,7 +2460,7 @@ class Table(ReadOnlyTable):
             **kwargs
             ):
         """
-        Applies update to rows matching criteria that are not in the list_of_key_tuples pass in.
+        Applies update to all rows matching criteria that are not in the list_of_key_tuples pass in.
         
         Parameters
         ----------
@@ -2484,7 +2473,7 @@ class Table(ReadOnlyTable):
         criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        criteria_dict : dict
+        criteria_dict:
             Dict keys should be columns, values are set using = or in
         stat_name: string
             Name of this step for the ETLTask statistics. Default = 'delete_not_in_set'    
@@ -2543,9 +2532,9 @@ class Table(ReadOnlyTable):
                     # First we need the entire existing row
                     target_row = lookup.find(row)
                 except NoResultFound:
-                    raise RuntimeError("keys {} found in database or cache but not found now by get_by_lookup".format(
-                        row.as_key_value_list
-                    ))
+                    raise RuntimeError(
+                        f"keys {row.as_key_value_list} found in database or cache but not found now by get_by_lookup"
+                        )
 
                 # Then we can apply the updates to it
                 self.apply_updates(
@@ -2562,14 +2551,14 @@ class Table(ReadOnlyTable):
     def update_not_processed(
             self,
             update_row,
-            lookup_name: typing.Optional[str] = None,
-            criteria_list: typing.Optional[typing.Iterable] = None,
-            criteria_dict: typing.Optional[typing.MutableMapping] = None,
-            stat_name: typing.Optional[str] = 'update_not_processed',
-            parent_stats: typing.Optional[Statistics] = None,
+            lookup_name: Optional[str] = None,
+            criteria_list: Optional[Iterable] = None,
+            criteria_dict: Optional[MutableMapping] = None,
+            stat_name: Optional[str] = 'update_not_processed',
+            parent_stats: Optional[Statistics] = None,
             ):
         """
-        Applies update to rows matching criteria that are not in the Table memory of rows passed to :meth:`upsert`.  
+        Applies update to all rows matching criteria that are not in the Table memory of rows passed to :meth:`upsert`.
         
         Parameters
         ----------
@@ -2578,7 +2567,7 @@ class Table(ReadOnlyTable):
         criteria_list : string or list of strings
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        criteria_dict : dict
+        criteria_dict:
             Dict keys should be columns, values are set using = or in
         lookup_name: str
             Optional lookup name those key values are from.
@@ -2596,7 +2585,7 @@ class Table(ReadOnlyTable):
                     criteria_list=criteria_list,
                     criteria_dict=criteria_dict,
             )):
-                raise RuntimeError("{} called before any source rows were processed.".format(stat_name))
+                raise RuntimeError(f"{stat_name} called before any source rows were processed.")
         self.update_not_in_set(updates_to_make=update_row,
                                set_of_key_tuples=self.source_keys_processed,
                                lookup_name=lookup_name,
@@ -2606,7 +2595,7 @@ class Table(ReadOnlyTable):
                                parent_stats=parent_stats)
         self.source_keys_processed = set()
 
-    def _set_upert_mode(self):
+    def _set_upsert_mode(self):
         if self._bulk_iter_sentinel is not None:
             raise ValueError("Upsert called on a table that is using insert_row method.  Please manually set upsert_called = True before load operations.")
         if self.in_bulk_mode and not self.upsert_called:
@@ -2622,15 +2611,15 @@ class Table(ReadOnlyTable):
     def upsert(
             self,
             source_row: Union[Row, List[Row]],
-            lookup_name: typing.Optional[str] = None,
-            skip_update_check_on: typing.Optional[frozenset] = None,
-            do_not_update: typing.Optional[typing.Iterable] = None,
-            additional_update_values: typing.Optional[dict] = None,
-            additional_insert_values: typing.Optional[dict] = None,
-            update_callback: typing.Optional[Callable[[list, Row], None]] = None,
-            insert_callback: typing.Optional[Callable[[Row], None]] = None,
-            source_excludes: typing.Optional[frozenset] = None,
-            target_excludes: typing.Optional[frozenset] = None,
+            lookup_name: Optional[str] = None,
+            skip_update_check_on: Optional[frozenset] = None,
+            do_not_update: Optional[Iterable] = None,
+            additional_update_values: Optional[dict] = None,
+            additional_insert_values: Optional[dict] = None,
+            update_callback: Optional[Callable[[list, Row], None]] = None,
+            insert_callback: Optional[Callable[[Row], None]] = None,
+            source_excludes: Optional[frozenset] = None,
+            target_excludes: Optional[frozenset] = None,
             stat_name: str = 'upsert',
             parent_stats: Statistics = None,
             **kwargs
@@ -2658,9 +2647,9 @@ class Table(ReadOnlyTable):
             Additional updates to apply when updating
         additional_insert_values
             Additional values to set on each row when inserting.
-        update_callback: function
+        update_callback:
             Function to pass updated rows to. Function should not modify row.
-        insert_callback: function
+        insert_callback:
             Function to pass inserted rows to. Function should not modify row.
         source_excludes
             list of Row source columns to exclude when mapping to this Table.
@@ -2675,7 +2664,7 @@ class Table(ReadOnlyTable):
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.ensure_exists('upsert source row count')
 
-        self._set_upert_mode()
+        self._set_upsert_mode()
 
         stats.timer.start()
         self.begin()
@@ -2696,9 +2685,11 @@ class Table(ReadOnlyTable):
                 source_mapped_as_target_row.set_keeping_parent(self.delete_flag, self.delete_flag_no)
 
         try:
-            # We'll default to using the natural key or primary key or NK based on row columns present
+            # We'll default to using the natural key or primary key provided
             if lookup_name is None:
-                lookup_name = self.get_default_lookup(source_row.iteration_header)
+                lookup_name = self.get_nk_lookup_name()
+                if not self.primary_key:
+                    raise AssertionError("upsert needs a lookup_key or a table with a primary key!")
 
             if isinstance(lookup_name, Lookup):
                 lookup_object = lookup_name
@@ -2742,13 +2733,9 @@ class Table(ReadOnlyTable):
                 for chg in changes_list:
                     col_stats.add_to_stat(key=chg.column_name, increment=1)
                     if self.trace_data:
-                        self.log.debug("{key} {name} changed from {old} to {new}".format(
-                            key=lookup_keys,
-                            name=chg.column_name,
-                            old=chg.old_value,
-                            new=chg.new_value
+                        self.log.debug(
+                            f"{lookup_keys} {chg.column_name} changed from {chg.old_value} to {chg.new_value}"
                             )
-                        )
                 if len(changes_list) > 0:
                     conditional_changes_msg = 'Conditional change applied'
                 else:
@@ -2757,14 +2744,9 @@ class Table(ReadOnlyTable):
                 for chg in conditional_changes:
                     col_stats.add_to_stat(key=chg.column_name, increment=1)
                     if self.trace_data:
-                        self.log.debug("{key} {msg}: {name} changed from {old} to {new}".format(
-                            key=lookup_keys,
-                            msg=conditional_changes_msg,
-                            name=chg.column_name,
-                            old=chg.old_value,
-                            new=chg.new_value,
+                        self.log.debug(
+                            f"{lookup_keys} {conditional_changes_msg}: {chg.column_name} changed from {chg.old_value} to {chg.new_value}"
                             )
-                        )
 
             if len(changes_list) > 0:
                 changes_list = list(changes_list) + list(conditional_changes)
@@ -2790,7 +2772,7 @@ class Table(ReadOnlyTable):
             target_row = new_row
 
         if self.track_source_rows:
-            # Keep track of source records so we can check if target rows don't exist in source
+            # Keep track of source records, so we can check if target rows don't exist in source
             # Note: We use the target_row here since it has already been translated to match the target table
             # It's also important that it have the existing surrogate key (if any)
             self.source_keys_processed.add(self.get_natural_key_tuple(target_row))
@@ -2802,12 +2784,12 @@ class Table(ReadOnlyTable):
             self,
             source_row: Row,
             stat_name='upsert_by_pk',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             **kwargs
             ):
         """
         Used by upsert_special_values_rows to find and update rows by the full PK.
-        Not expected to be useful outside of that.
+        Not expected to be useful outside that use case.
 
         Parameters
         ----------
@@ -2826,7 +2808,7 @@ class Table(ReadOnlyTable):
         source_row = self.build_row(source_row)
 
         if self.track_source_rows:
-            # Keep track of source records so we can check if target rows don't exist in source
+            # Keep track of source records,, so we can check if target rows don't exist in source
             self.source_keys_processed.add(self.get_natural_key_tuple(source_row))
 
         try:
@@ -2846,7 +2828,7 @@ class Table(ReadOnlyTable):
     def upsert_special_values_rows(
             self,
             stat_name: str = 'upsert_special_values_rows',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             ):
         """
         Send all special values rows to upsert to ensure they exist and are current.
@@ -2860,7 +2842,7 @@ class Table(ReadOnlyTable):
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.       
         """
-        self.log.info("Checking special values rows for {}".format(self))
+        self.log.info(f"Checking special values rows for {self}")
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats['calls'] += 1
         stats.timer.start()
@@ -2871,11 +2853,12 @@ class Table(ReadOnlyTable):
             self.get_missing_row(),
             self.get_invalid_row(),
             self.get_not_applicable_row(),
-            self.get_various_row()
+            self.get_various_row(),
+            self.get_none_selected_row()
         ]
 
         for source_row in special_rows:
-            self.upsert(source_row, parent_stats=stats, lookup_name=self._get_pk_lookup_name())
+            self.upsert(source_row, parent_stats=stats, lookup_name=self.PK_LOOKUP)
 
         if not self.in_bulk_mode:
             self.commit(parent_stats=stats)
@@ -2886,7 +2869,7 @@ class Table(ReadOnlyTable):
             self,
             timeout: int = 60,
             stat_name: str = 'truncate',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             ):
         """
         Truncate the table if possible, else delete all.
@@ -2905,12 +2888,11 @@ class Table(ReadOnlyTable):
         stats['calls'] += 1
         stats.timer.start()
         database_type = self.database.dialect_name
-        truncate_sql = sqlalchemy.text(f'TRUNCATE TABLE "{self.qualified_table_name}"')
         if database_type == 'oracle':
             self.execute(f'alter session set ddl_lock_timeout={timeout}')
-            self.execute(truncate_sql)
-        elif database_type in {'mssql', 'mysql', 'postgresql', 'sybase', 'redshift'}:
-            self.execute(truncate_sql)
+            self.execute(f"TRUNCATE TABLE {self.qualified_table_name}")
+        elif database_type in ['mssql', 'mysql', 'postgresql', 'sybase', 'redshift']:
+            self.database.execute_direct(f"TRUNCATE TABLE {self.qualified_table_name}")
         else:
             self.execute(self._delete_stmt(autocommit=True))
 
@@ -2918,7 +2900,7 @@ class Table(ReadOnlyTable):
 
     def transaction(
             self,
-            connection_name: typing.Optional[str] = None
+            connection_name: Optional[str] = None
             ):
         connection_name = self._get_usable_connection_name(connection_name)
         if connection_name in self.__transaction_pool:
@@ -2928,7 +2910,7 @@ class Table(ReadOnlyTable):
 
     def begin(
             self,
-            connection_name: typing.Optional[str] = None
+            connection_name: Optional[str] = None
             ):
         if not self.in_bulk_mode:
             connection_name = self._get_usable_connection_name(connection_name)
@@ -2943,47 +2925,51 @@ class Table(ReadOnlyTable):
 
     def bulk_load_from_cache(
             self,
-            temp_table: typing.Optional[str] = None,
+            temp_table: Optional[str] = None,
             stat_name: str = 'bulk_load_from_cache',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
     ):
         if self.in_bulk_mode:
-            if self.bulk_loader is not None:
-                stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
-                stats.timer.start()
-                assert isinstance(self.bulk_loader, BulkLoader), f'bulk_loader property needs to be instance of bulk_loader not {type(self.bulk_loader)}'
-                self.close_connections()
-                if self._bulk_iter_sentinel is None:
-                    if self.upsert_called:
-                        self.log.info(f"Bulk load from lookup cache for {self}")
-                        if temp_table is None:
-                            temp_table = self.qualified_table_name
-                        row_count = self.bulk_loader.load_table_from_cache(self, temp_table)
-                        stats['rows_loaded'] = row_count
-                    else:
-                        self.log.info(f"Bulk for {self} -- nothing to do. Neither Upsert nor insert_row was called.")
-                else:
-                    self.log.info(f"Bulk load from insert_row for {self}")
-                    # Finish the iterator on the queue
-                    self._bulk_iter_queue.put(self._bulk_iter_sentinel)
-                    self.log.info("Waiting for bulk loader")
-                    self._bulk_iter_worker.join()
-                    stats['rows_loaded'] = self._bulk_iter_worker.value
-                    if self._bulk_iter_worker.exception is not None:
-                        raise self._bulk_iter_worker.exception
-                stats.timer.stop()
-                self._bulk_load_performed = True
+            if self._bulk_rollback:
+                self.log.info("Not performing bulk load due to rollback")
             else:
-                raise ValueError('bulk_loader not set')
+                if self.bulk_loader is not None:
+                    stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
+                    stats.timer.start()
+                    assert isinstance(self.bulk_loader, BulkLoader), f'bulk_loader property needs to be instance of bulk_loader not {type(self.bulk_loader)}'
+                    self.close_connections()
+                    if self._bulk_iter_sentinel is None:
+                        if self.upsert_called:
+                            self.log.info(f"Bulk load from lookup cache for {self}")
+                            if temp_table is None:
+                                temp_table = self.qualified_table_name
+                            row_count = self.bulk_loader.load_table_from_cache(self, temp_table)
+                            stats['rows_loaded'] = row_count
+                        else:
+                            self.log.info(f"Bulk for {self} -- nothing to do. Neither Upsert nor insert_row was called.")
+                    else:
+                        self.log.info(f"Bulk load from insert_row for {self}")
+                        # Finish the iterator on the queue
+                        self._bulk_iter_queue.put(self._bulk_iter_sentinel)
+                        self.log.info("Waiting for bulk loader")
+                        self._bulk_iter_worker.join()
+                        stats['rows_loaded'] = self._bulk_iter_worker.value
+                        self._bulk_iter_sentinel = None
+                        if self._bulk_iter_worker.exception is not None:
+                            raise self._bulk_iter_worker.exception
+                    stats.timer.stop()
+                    self._bulk_load_performed = True
+                else:
+                    raise ValueError('bulk_loader not set')
         else:
             raise ValueError('bulk_load_from_cache and in_bulk_mode = false')
 
     def commit(
             self,
             stat_name: str = 'commit',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             print_to_log: bool = True,
-            connection_name: typing.Optional[str] = None,
+            connection_name: Optional[str] = None,
             begin_new: bool = True,
             ):
         """
@@ -3005,7 +2991,8 @@ class Table(ReadOnlyTable):
             Start a new transaction after commit
         """
         if self.in_bulk_mode:
-            self.log.debug('Skipping commit for bulk loaded table')
+            self.log.debug(f"{self}.commit() does nothing in bulk mode")
+            # Commit is not final enough to perform the bulk load.
         else:
             # insert_pending_batch calls other *_pending methods
             self._insert_pending_batch()
@@ -3038,8 +3025,8 @@ class Table(ReadOnlyTable):
     def rollback(
             self,
             stat_name: str = 'rollback',
-            parent_stats: typing.Optional[Statistics] = None,
-            connection_name: typing.Optional[str] = None,
+            parent_stats: Optional[Statistics] = None,
+            connection_name: Optional[str] = None,
             begin_new: bool = True,
             ):
         """
@@ -3058,228 +3045,21 @@ class Table(ReadOnlyTable):
             Start a new transaction after rollback
         """
         if self.in_bulk_mode:
-            raise InvalidOperation('rollback is not allowed for bulk loader')
-        self.log.debug("Rolling back transaction")
-        stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
-        stats['calls'] += 1
-        stats.timer.start()
-        transaction = self.transaction(connection_name=connection_name)
-        if transaction is not None:
-            # Check if a transaction is still active.
-            if transaction.is_active:
-                transaction.rollback()
+            self._bulk_rollback = True
+        else:
+            self.log.debug("Rolling back transaction")
+            stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
+            stats['calls'] += 1
+            stats.timer.start()
+            transaction = self.transaction(connection_name=connection_name)
+            if transaction is not None:
+                # Check if a transaction is still active.
+                if transaction.is_active:
+                    transaction.rollback()
+                else:
+                    self.log.debug('rollback called when not in an active transaction')
             else:
-                self.log.debug('rollback called when not in an active transaction')
-        else:
-            self.log.debug('rollback called when not in a transaction')
-        if begin_new:
-            self.begin(connection_name=connection_name)
-        stats.timer.stop()
-
-    @staticmethod
-    def _sql_column_not_equals(column_name, alias_1='e', alias_2='s'):
-        return "(" \
-               f"( {alias_1}.{column_name} != {alias_2}.{column_name} )" \
-               f" OR ({alias_1}.{column_name} IS NULL AND {alias_2}.{column_name} IS NOT NULL)" \
-               f" OR ({alias_1}.{column_name} IS NOT NULL AND {alias_2}.{column_name} IS NULL)" \
-               ")"
-
-    @staticmethod
-    def _sql_indent_join(
-            statement_list: typing.Iterable[str],
-            indent: int,
-            prefix: str = '',
-            suffix: str = '',
-            add_newline: bool = True,
-            prefix_if_not_empty: str = '',
-    ) -> str:
-        if add_newline:
-            newline = '\n'
-        else:
-            newline = ''
-
-        statement_list = list(statement_list)
-        if len(statement_list) == 0:
-            prefix_if_not_empty = ''
-        return prefix_if_not_empty + f"{suffix}{newline}{' ' * indent}{prefix}".join(statement_list)
-
-    def _sql_primary_key_name(self) -> str:
-        if len(self.primary_key) != 1:
-            raise ValueError(f"{self}.upsert_db_exclusive requires single primary_key column. Got {self.primary_key}")
-        return self.primary_key[0]
-
-    def _sql_now(self) -> str:
-        return "CURRENT_TIMESTAMP"
-
-    def _sql_add_seconds(
-            self,
-            column_name: str,
-            seconds: int,
-    ) -> str:
-        database_type = self.database.dialect_name
-        if database_type in {'oracle'}:
-            return f"{column_name} + INTERVAL '{seconds}' SECOND"
-        elif database_type in {'postgresql'}:
-            return f"{column_name} + INTERVAL '{seconds} SECONDS'"
-        elif database_type in {'mysql'}:
-            return f"DATE_ADD({column_name}, INTERVAL {seconds} SECOND)"
-        elif database_type in {'sqlite'}:
-            return f"datetime({column_name}, '{seconds:+d} SECOND')"
-        else:
-            return f"DATEADD(second, {seconds}, {column_name})"
-
-    def _sql_date_literal(
-            self,
-            dt: datetime,
-    ):
-        database_type = self.database.dialect_name
-        if database_type in {'oracle'}:
-            return f"TIMESTAMP '{dt.isoformat()}'"
-        elif database_type in {'postgresql', 'redshift'}:
-            return f"'{dt.isoformat()}'::TIMESTAMP"
-        elif database_type in {'sqlite'}:
-            return f"datetime('{dt.isoformat()}')"
-        else:
-            return f"TIMESTAMP('{dt.isoformat()}')"
-
-    def _sql_insert_new(
-            self,
-            source_table: ReadOnlyTable,
-            matching_columns: typing.Iterable,
-            effective_date: typing.Optional[datetime] = None,
-            connection_name: str = 'sql_upsert',
-    ):
-        if not self.auto_generate_key:
-            raise ValueError(f"_sql_insert_new expects to only be used with auto_generate_key = True")
-
-        now_str = self.get_current_time().isoformat()
-        insert_new_sql = f"""
-                    INSERT INTO {self.qualified_table_name} (
-                        {self._sql_primary_key_name()},
-                        {self.delete_flag},
-                        {self.last_update_date},
-                        {Table._sql_indent_join(matching_columns, 24, suffix=',')}
-                    )  
-                    WITH max_srgt AS (SELECT coalesce(max({self._sql_primary_key_name()}),0)  as max_srgt FROM {self.qualified_table_name})
-                    SELECT 
-                        max_srgt.max_srgt + ROW_NUMBER() OVER () as {self._sql_primary_key_name()},
-                        '{self.delete_flag_no}' as {self.delete_flag},
-                        '{now_str}' as {self.last_update_date},
-                        {Table._sql_indent_join(matching_columns, 16, suffix=',')}
-                    FROM max_srgt
-                         CROSS JOIN
-                         {source_table.qualified_table_name} s
-                    WHERE NOT EXISTS(
-                        SELECT 1 
-                        FROM {self.qualified_table_name} e
-                        WHERE {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}" for nk_col in self.natural_key], 18, prefix='AND ')}
-                    )
-                """
-
-        self.log.debug('=' * 80)
-        self.log.debug('insert_new_sql')
-        self.log.debug('=' * 80)
-        self.log.debug(insert_new_sql)
-        sql_timer = Timer()
-        results = self.execute(insert_new_sql, connection_name=connection_name)
-        self.log.debug(f"Impacted rows = {results.rowcount} (meaningful count? {results.supports_sane_rowcount()})")
-        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
-
-    def _sql_update_from(
-            self,
-            update_name: str,
-            source_sql: str,
-            list_of_joins: typing.List[typing.Tuple[str, typing.Tuple[str, str]]],
-            list_of_sets: typing.List[typing.Tuple[str, str]],
-            target_alias_in_source: str = 'tgt',
-            extra_where: typing.Optional[str] = None,
-            connection_name: str = 'sql_upsert',
-    ):
-        # Multiple Table Updates
-        # https://docs.sqlalchemy.org/en/14/core/tutorial.html#multiple-table-updates
-        conn = self.connection(connection_name)
-        database_type = self.database.dialect_name
-
-        if extra_where is not None:
-            and_extra_where = f"AND {extra_where}"
-        else:
-            extra_where = ''
-            and_extra_where = ''
-
-        sql = None
-        if database_type in {'oracle'}:
-            sql = f"""
-                MERGE INTO {self.qualified_table_name} tgt
-                USING (
-                    SELECT
-                        {Table._sql_indent_join([f"{join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 16, suffix=',')}
-                        {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
-                        {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
-                    FROM {source_sql}
-                ) src
-                ON {Table._sql_indent_join([f"tgt.{self.qualified_table_name}.{join_entry[0]} = src.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
-                WHEN MATCHED THEN UPDATE
-                SET {Table._sql_indent_join([f"tgt.{set_entry[0]} = src.col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
-            """
-        elif database_type in {'mysql'}:
-            sql = f"""
-                UPDATE {self.qualified_table_name} INNER JOIN {source_sql}
-                   ON  {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {'.'.join(join_entry[1])}" for join_entry in list_of_joins], 19, prefix='AND ')}
-                SET {Table._sql_indent_join([f"{target_alias_in_source}.{set_entry[0]} = {set_entry[1]}" for set_entry in list_of_sets], 16, suffix=',')}
-            """
-        # SQL Server
-        elif database_type in {'mssql'}:
-            sql = f"""
-                UPDATE {self.qualified_table_name}
-                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}" for set_entry in list_of_sets], 16, suffix=',')}
-                FROM {self.qualified_table_name}
-                     INNER JOIN 
-                     {source_sql}
-                        ON  {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {'.'.join(join_entry[1])}" for join_entry in list_of_joins], 24, prefix='AND ')}
-                {and_extra_where}
-            """
-        elif database_type == 'sqlite':
-            import sqlite3
-            from packaging import version
-
-            if version.parse(sqlite3.sqlite_version) > version.parse('3.33.0'):
-                # Use PostgreSQL below
-                pass
-            else:
-                # Older
-                set_statement_list = []
-                where_stmt = f"""
-                    {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
-                    {and_extra_where}
-                """
-                for set_entry in list_of_sets:
-                    select_part = f"""
-                        SELECT {set_entry[1]} 
-                        FROM {source_sql} 
-                        WHERE {where_stmt}
-                    """
-                    set_statement_list.append(f"{set_entry[0]} = ({select_part})")
-
-                set_delimiter = ',\n'
-                sql = f"""
-                    UPDATE {self.qualified_table_name} SET {set_delimiter.join(set_statement_list)}
-                    WHERE EXISTS ({select_part})
-                    """
-
-        if sql is None:  # SQLite 3.33+ and PostgreSQL
-            # https://sqlite.org/lang_update.html
-            sql = f"""
-                UPDATE {self.qualified_table_name}
-                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}" for set_entry in list_of_sets], 16, suffix=',')}
-                FROM {source_sql}
-                WHERE {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
-                {and_extra_where}
-            """
-        sql_timer = Timer()
-        self.log.debug(f"Running {update_name}")
-        self.log.debug(sql)
-        sql = sqlalchemy.text(sql)
-        results = self.execute(sql, connection_name=connection_name)
-        self.log.debug(f"Impacted rows = {results.rowcount:,} (meaningful count? {results.supports_sane_rowcount()})")
-        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
-
+                self.log.debug('rollback called when not in a transaction')
+            if begin_new:
+                self.begin(connection_name=connection_name)
+            stats.timer.stop()

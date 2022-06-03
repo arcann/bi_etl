@@ -4,14 +4,11 @@ from __future__ import annotations
 import gzip
 import io
 import os.path
-import time
 import typing
 from tempfile import TemporaryDirectory
 
-import sqlalchemy
-
-from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.bulk_loaders.redshift_s3_base import RedShiftS3Base
+from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 from bi_etl.components.csv_writer import CSVWriter, QUOTE_MINIMAL
 from bi_etl.timer import Timer
 
@@ -22,30 +19,16 @@ if typing.TYPE_CHECKING:
 
 class RedShiftS3CSVBulk(RedShiftS3Base):
     def __init__(self,
-                 config: BIConfigParser,
-                 config_section: str = 's3_bulk',
-                 s3_user_id: typing.Optional[str] = None,
-                 s3_keyring_password_section: typing.Optional[str] = None,
-                 s3_bucket_name: typing.Optional[str] = None,
-                 s3_folder: typing.Optional[str] = None,
-                 s3_files_to_generate: typing.Optional[int] = None,
-                 s3_clear_when_done: bool = True,
+                 config: S3_Bulk_Loader_Config,
                  has_header: bool = True,
+                 s3_file_delimiter: str = '|',
+                 null_value: str = '',
                  ):
         super().__init__(
             config=config,
-            config_section=config_section,
-            s3_user_id=s3_user_id,
-            s3_keyring_password_section=s3_keyring_password_section,
-            s3_bucket_name=s3_bucket_name,
-            s3_folder=s3_folder,
-            s3_files_to_generate=s3_files_to_generate,
-            s3_clear_when_done=s3_clear_when_done,
         )
-        self.s3_file_delimiter = '|'
-        self.null_value = ''
-        self.s3_clear_when_done = False
-        self.analyze_compression = None
+        self.s3_file_delimiter = s3_file_delimiter
+        self.null_value = null_value
         self.has_header = has_header
 
     def __reduce_ex__(self, protocol):
@@ -56,9 +39,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             # A tuple of arguments for the callable object. An empty tuple must be given if the callable does not accept any argument
             (
                 self.config,
-                self.config_section,
                 self.s3_user_id,
-                self.s3_keyring_password_section,
                 self.s3_bucket_name,
                 self.s3_folder,
                 self.s3_files_to_generate,
@@ -67,7 +48,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             ),
 
             # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
-            # If the object has no such method then, the value must be a dictionary and it will be added to the object’s __dict__ attribute.
+            # If the object has no such method then, the value must be a dictionary, and it will be added to the object’s __dict__ attribute.
             None,
 
             # Optionally, an iterator (and not a sequence) yielding successive items.
@@ -120,15 +101,15 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 """
 
     def load_from_iterator(
-               self,
-               iterator: typing.Iterator,
-               table_object: Table,
-               table_to_load: str = None,
-               perform_rename: bool = False,
-               progress_frequency: int = 10,
-               analyze_compression: str = None,
-               parent_task: typing.Optional[ETLTask] = None,
-               ) -> int:
+           self,
+           iterator: typing.Iterator,
+           table_object: Table,
+           table_to_load: str = None,
+           perform_rename: bool = False,
+           progress_frequency: int = 10,
+           analyze_compression: str = None,
+           parent_task: typing.Optional[ETLTask] = None,
+    ) -> int:
 
         row_count = 0
         with TemporaryDirectory() as temp_dir:
@@ -179,12 +160,15 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 for zip_file in zip_pool:
                     zip_file.close()
 
-            self.load_from_files(
-                local_files,
-                file_compression='GZIP',
-                table_object=table_object,
-                table_to_load=table_to_load,
-                perform_rename=perform_rename,
-                analyze_compression=analyze_compression,
-            )
+            if row_count > 0:
+                self.load_from_files(
+                    local_files,
+                    file_compression='GZIP',
+                    table_object=table_object,
+                    table_to_load=table_to_load,
+                    perform_rename=perform_rename,
+                    analyze_compression=analyze_compression,
+                )
+            else:
+                self.log.info(f"{self} had nothing to do with 0 rows found")
             return row_count

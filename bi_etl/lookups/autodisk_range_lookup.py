@@ -8,9 +8,9 @@ Created on Jan 5, 2016
 from __future__ import annotations
 
 import typing
-from configparser import ConfigParser
 
 from bi_etl.components.row.row import Row
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
 from bi_etl.lookups.disk_range_lookup import DiskRangeLookup
 from bi_etl.lookups.range_lookup import RangeLookup
@@ -42,8 +42,8 @@ class AutoDiskRangeLookup(AutoDiskLookup, RangeLookup):
                  parent_component: ETLComponent,
                  begin_date,
                  end_date,
+                 config: BI_ETL_Config_Base,
                  use_value_cache: bool = True,
-                 config: ConfigParser = None,
                  path=None,
                  ):
         """

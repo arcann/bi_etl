@@ -9,8 +9,7 @@ from __future__ import annotations
 import functools
 import typing
 from copy import copy
-from datetime import datetime, date
-from decimal import Decimal
+from datetime import datetime
 from operator import attrgetter
 from typing import Iterable
 
@@ -117,7 +116,7 @@ class ReadOnlyTable(ETLComponent):
                  task: typing.Optional[ETLTask],
                  database: DatabaseMetadata,
                  table_name: str,
-                 table_name_case_sensitive: bool = None,
+                 table_name_case_sensitive: bool = False,
                  schema: str = None,
                  exclude_columns: set = None,
                  include_only_columns: set = None,
@@ -143,8 +142,6 @@ class ReadOnlyTable(ETLComponent):
         self.database = database
         self.__connection_pool = dict()
         self._table = None
-        if table_name_case_sensitive is None:
-            table_name_case_sensitive = self.database.dialect.case_sensitive
         self._table_name_case_sensitive = table_name_case_sensitive
         self._columns = None
         self._column_names = None
@@ -432,15 +429,16 @@ class ReadOnlyTable(ETLComponent):
                 self.log.debug(f'Closing connection {self} {connection_name}')
                 con.close()
 
-    def close(self):
-        for lookup in self.lookups.values():
-            lookup.add_size_to_stats()
-        if len(self.__compile_cache) > 0:
-            cache_stats = self.get_stats_entry('compile cache', print_start_stop_times=False)
-            cache_stats['entries'] = len(self.__compile_cache)
-            del self.__compile_cache
-        self.close_connections()
-        super().close()
+    def close(self, error: bool = False):
+        if not self.is_closed:
+            for lookup in self.lookups.values():
+                lookup.add_size_to_stats()
+            if len(self.__compile_cache) > 0:
+                cache_stats = self.get_stats_entry('compile cache', print_start_stop_times=False)
+                cache_stats['entries'] = len(self.__compile_cache)
+                del self.__compile_cache
+            self.close_connections()
+            super().close(error=error)
 
     def __del__(self):
         # noinspection PyBroadException
@@ -572,7 +570,7 @@ class ReadOnlyTable(ETLComponent):
                 key_names = self.get_lookup(lookup_name).lookup_keys
             else:
                 self._check_pk_lookup()
-                lookup_name = self._get_pk_lookup_name()
+                lookup_name = self.PK_LOOKUP
                 key_names = self.primary_key
         else:
             # Handle case where we have a single key name item and not a list or dict
@@ -604,7 +602,7 @@ class ReadOnlyTable(ETLComponent):
         else:
             # Otherwise we'll assume key_values is a list or iterable like one
             key_values_dict = dict()
-            assert len(key_values) == len(key_names), 'key values list does not match length of key names list'
+            assert len(key_names) == len(key_names), 'key values list does not match length of key names list'
             for key_name, key_value in zip(key_names, key_values):
                 key_values_dict[key_name] = key_value
         return key_values_dict, lookup_name
@@ -753,7 +751,7 @@ class ReadOnlyTable(ETLComponent):
                     stmt = stmt.order_by(*order_by)
                 else:
                     stmt = stmt.order_by(order_by)
-            self.log.debug(f'Table Read SQL=\n{stmt}\n---End Fill cache SQL')
+            self.log.debug(f'Fill cache SQL=\n{stmt}\n---End Fill cache SQL')
             stats.timer.start()
             select_result = self.execute(stmt, connection_name=connection_name)
             stats.timer.stop()
@@ -969,12 +967,80 @@ class ReadOnlyTable(ETLComponent):
                                   parent=self,
                                   columns_in_order=columns_in_order)
 
-    def get_special_row(self,
-                        short_char,
-                        long_char,
-                        int_value,
-                        date_value,
-                        ):
+    def get_column_special_value(
+            self,
+            column: Column,
+            short_char: str,
+            long_char: str,
+            int_value: int,
+            date_value: datetime,
+            use_custom_special_values: bool = 'Y'
+        ) -> object:
+        target_type = column.type
+        special_value = None
+        if use_custom_special_values and self.custom_special_values and column.name in self.custom_special_values:
+            custom_value = self.custom_special_values[column.name]
+            if custom_value == '[short_char]':
+                special_value = short_char
+            elif custom_value == '[long_char]':
+                special_value = long_char
+            elif custom_value == '[int_value]':
+                special_value = int_value
+            elif custom_value == '[date_value]':
+                special_value = date_value
+            else:
+                # Note: We test for setitem because dict like containers have it but str doesn't have it.
+                if hasattr(custom_value, '__setitem__'):
+                    if short_char in custom_value:
+                        # noinspection PyTypeChecker
+                        special_value = custom_value[short_char]
+                    else:
+                        # This short_char value doesn't have a custom assignment, try again with no custom value
+                        special_value = self.get_column_special_value(
+                            column=column,
+                            short_char=short_char,
+                            long_char=long_char,
+                            int_value=int_value,
+                            date_value=date_value,
+                            use_custom_special_values=False
+                        )
+                else:
+                    special_value = custom_value
+        elif column.name == self.delete_flag:
+            special_value = 'N'
+        elif isinstance(target_type, sqltypes.String):
+            if column.name in self.special_values_descriptive_columns:
+                special_value = long_char
+            elif column.type.length is None:
+                special_value = long_char
+            elif (self.special_values_descriptive_min_length
+                  and column.type.length >= self.special_values_descriptive_min_length
+            ):
+                special_value = long_char
+            else:
+                special_value = short_char
+        elif (isinstance(target_type, sqltypes.DATE)
+              or isinstance(target_type, sqltypes.DATETIME)
+              or isinstance(target_type, sqlalchemy.types.DateTime)
+        ):
+            special_value = date_value
+        elif (isinstance(target_type, sqltypes.INTEGER)
+              or isinstance(target_type, sqltypes.Numeric)
+        ):
+            special_value = int_value
+        elif (isinstance(target_type, sqltypes.FLOAT)
+              or isinstance(target_type, sqltypes.Numeric)
+        ):
+            special_value = float(int_value)
+        return special_value
+
+    def get_special_row(
+            self,
+            short_char: str,
+            long_char: str,
+            int_value: int,
+            date_value: datetime,
+    ):
         if self._special_row_header is None:
             self._special_row_header = RowIterationHeader(
                 logical_name='get_special_row',
@@ -984,46 +1050,13 @@ class ReadOnlyTable(ETLComponent):
             )
         row = self.Row(iteration_header=self._special_row_header)
         for column in self.columns:
-            target_type = column.type
-            if self.custom_special_values and column.name in self.custom_special_values:
-                custom_value = self.custom_special_values[column.name]
-                if custom_value == '[short_char]':
-                    custom_value = short_char
-                elif custom_value == '[long_char]':
-                    custom_value = long_char
-                elif custom_value == '[int_value]':
-                    custom_value = int_value
-                elif custom_value == '[date_value]':
-                    custom_value = date_value
-                # Note: We test for setitem because dict like containers have it but str doesn't have it.
-                if hasattr(custom_value, '__setitem__'):
-                    row[column.name] = custom_value[short_char]
-                else:
-                    row[column.name] = custom_value
-            elif column.name == self.delete_flag:
-                row[column.name] = 'N'
-            elif target_type.python_type in {str, bytes}:
-                if column.name in self.special_values_descriptive_columns:
-                    row[column.name] = long_char
-                if column.type.length is None:
-                    row[column.name] = long_char
-                elif self.special_values_descriptive_min_length and column.type.length \
-                        >= self.special_values_descriptive_min_length:
-                    row[column.name] = long_char
-                else:
-                    row[column.name] = short_char
-            elif (isinstance(target_type, sqltypes.DATE)
-                  or isinstance(target_type, sqltypes.DATETIME)
-                  or isinstance(target_type, sqlalchemy.types.DateTime)
-                  or target_type.python_type in {date, datetime}
-                  ):
-                row[column.name] = date_value
-            elif target_type.python_type in {int}:
-                row[column.name] = int_value
-            elif target_type.python_type in {float}:
-                row[column.name] = float(int_value)
-            elif target_type.python_type in {Decimal}:
-                row[column.name] = Decimal(int_value)
+            row[column.name] = self.get_column_special_value(
+                column=column,
+                short_char=short_char,
+                long_char=long_char,
+                int_value=int_value,
+                date_value=date_value,
+            )
         return row
 
     def get_missing_row(self):
@@ -1091,14 +1124,28 @@ class ReadOnlyTable(ETLComponent):
         """
         return self.get_special_row('*', 'Various', -6666, datetime(9999, 6, 1))
 
+    def get_none_selected_row(self):
+        """
+        Get a :class:`~bi_etl.components.row.row_case_insensitive.Row`
+        with the None Selected special values filled in for all columns.
+
+        =========== =========
+        Type        Value
+        =========== =========
+        Integer     -5555
+        Short Text  '#'
+        Long Text   'None Selected'
+        Date        9999-5-1
+        =========== =========
+        """
+        return self.get_special_row('#', 'None Selected', -5555, datetime(9999, 5, 1))
+
     def _check_pk_lookup(self):
         # Check that we have setup the PK lookup.
         # Late binding so that it will take overrides to the default lookup class
-
-        pk_lookup_name = self._get_pk_lookup_name()
-        if pk_lookup_name not in self.lookups:
+        if ReadOnlyTable.PK_LOOKUP not in self.lookups:
             if self.primary_key:
-                self.define_lookup(pk_lookup_name, self.primary_key)
+                self.define_lookup(ReadOnlyTable.PK_LOOKUP, self.primary_key)
 
     def fill_cache_from_source(
             self,
@@ -1111,6 +1158,7 @@ class ReadOnlyTable(ETLComponent):
             exclude_cols: frozenset = None,
             order_by: list = None,
             assume_lookup_complete: bool = None,
+            allow_duplicates_in_src: bool = False,
             row_limit: int = None,
             parent_stats: Statistics = None,
             ):
@@ -1142,6 +1190,8 @@ class ReadOnlyTable(ETLComponent):
             Should later lookup calls assume the cache is complete?
             If so, lookups will raise an Exception if a key combination is not found.
             Default to False if filtering criteria was used, otherwise defaults to True.
+        allow_duplicates_in_src:
+            Should we quietly let the source provide multiple rows with the same key values? Default = False
         row_limit: int
             limit on number of rows to cache.
         parent_stats: bi_etl.statistics.Statistics
@@ -1158,6 +1208,7 @@ class ReadOnlyTable(ETLComponent):
             exclude_cols=exclude_cols,
             order_by=order_by,
             assume_lookup_complete=assume_lookup_complete,
+            allow_duplicates_in_src=allow_duplicates_in_src,
             row_limit=row_limit,
             parent_stats=parent_stats,
             )
@@ -1174,24 +1225,23 @@ class ReadOnlyTable(ETLComponent):
         self.always_fallback_to_db = not assume_lookup_complete
         self.log.info(f'Lookups will always_fallback_to_db = {self.always_fallback_to_db}')
 
-    @functools.lru_cache(maxsize=10)
-    def get_lookup(self, lookup_name: typing.Optional[str]) -> Lookup:
+    def get_lookup(self, lookup_name) -> Lookup:
+        self._check_pk_lookup()
+
         if lookup_name is None:
-            lookup_name = self._get_pk_lookup_name()
+            lookup_name = ReadOnlyTable.PK_LOOKUP
         return super().get_lookup(lookup_name=lookup_name)
 
-    def _get_pk_lookup_name(self):
-        return self.get_qualified_lookup_name(self.PK_LOOKUP)
-
-    def get_pk_lookup(self) -> Lookup:
-        self._check_pk_lookup()
-        return self.get_lookup(self._get_pk_lookup_name())
+    def get_pk_lookup(self):
+        return self.get_lookup(ReadOnlyTable.PK_LOOKUP)
 
     def get_primary_key_value_list(self, row) -> list:
-        return self.get_pk_lookup().get_list_of_lookup_column_values(row)
+        self._check_pk_lookup()
+        return self.lookups[ReadOnlyTable.PK_LOOKUP].get_list_of_lookup_column_values(row)
 
-    def get_primary_key_value_tuple(self, row) -> typing.Sequence:
-        return self.get_pk_lookup().get_hashable_combined_key(row)
+    def get_primary_key_value_tuple(self, row) -> tuple:
+        self._check_pk_lookup()
+        return self.lookups[ReadOnlyTable.PK_LOOKUP].get_hashable_combined_key(row)
 
     @property
     def natural_key(self) -> list:
@@ -1212,9 +1262,9 @@ class ReadOnlyTable(ETLComponent):
 
     def _get_nk_lookup_name(self):
         if self.__natural_key_override:
-            return self.get_qualified_lookup_name(self.NK_LOOKUP)
+            return self.NK_LOOKUP
         else:
-            return self._get_pk_lookup_name()
+            return self.PK_LOOKUP
 
     def get_nk_lookup_name(self):
         self.ensure_nk_lookup()
@@ -1230,25 +1280,6 @@ class ReadOnlyTable(ETLComponent):
         self.ensure_nk_lookup()
         nk_lookup_name = self._get_nk_lookup_name()
         return self.get_lookup(nk_lookup_name)
-
-    @functools.lru_cache(maxsize=10)
-    def get_default_lookup(self, row_iteration_header: RowIterationHeader) -> Lookup:
-        pk_lookup = self.get_pk_lookup()
-        row_has_pk = pk_lookup.row_iteration_header_has_lookup_keys(row_iteration_header)
-        if self.natural_key is None or len(self.natural_key) == 0:
-            if row_has_pk:
-                return pk_lookup
-            else:
-                raise LookupError(f"{row_iteration_header} has no keys for {self} PK lookup {pk_lookup} and no NK exists")
-        else:
-            if row_has_pk:
-                return pk_lookup
-            else:
-                nk_lookup = self.get_nk_lookup()
-                if nk_lookup.row_iteration_header_has_lookup_keys(row_iteration_header):
-                    return nk_lookup
-                else:
-                    raise LookupError(f"{row_iteration_header} has no keys for {self} PK {pk_lookup} or NK {nk_lookup}")
 
     def get_natural_key_value_list(self, row: Row) -> list:
         if self.natural_key is None:
@@ -1279,24 +1310,21 @@ class ReadOnlyTable(ETLComponent):
                 source_row = self.Row(source_row)
             else:
                 source_row = self.Row(zip(self.primary_key, [source_row]))
-        return self.get_by_lookup(
-            self._get_pk_lookup_name(),
-            source_row,
-            stats_id=stats_id,
-            parent_stats=parent_stats
-        )
+        return self.get_by_lookup(ReadOnlyTable.PK_LOOKUP,
+                                  source_row,
+                                  stats_id=stats_id,
+                                  parent_stats=parent_stats)
 
-    def get_by_lookup(
-            self,
-            lookup_name: str,
-            source_row: Row,
-            stats_id: str = 'get_by_lookup',
-            parent_stats: typing.Optional[Statistics] = None,
-            fallback_to_db: bool = False,
-        ) -> Row:
+    def get_by_lookup(self,
+                      lookup_name: str,
+                      source_row: Row,
+                      stats_id: str = 'get_by_lookup',
+                      parent_stats: typing.Optional[Statistics] = None,
+                      fallback_to_db: bool = False,
+                      ) -> Row:
 
         if lookup_name is None:
-            lookup_name = self._get_pk_lookup_name()
+            lookup_name = ReadOnlyTable.PK_LOOKUP
 
         fallback_to_db = fallback_to_db or self.always_fallback_to_db or not self.cache_clean
 

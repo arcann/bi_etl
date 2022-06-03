@@ -4,28 +4,23 @@ Created on Apr 14, 2015
 @author: Derek Wood
 """
 import codecs
-from datetime import datetime, timedelta
-import time
-import traceback
 import multiprocessing
 import textwrap
+import time
+import traceback
+import warnings
+from datetime import datetime, timedelta
+from queue import Empty
 
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm.exc import DetachedInstanceError
 
-
-from queue import Empty
-import warnings
-
-
 import bi_etl.scheduler
-from bi_etl.scheduler.messages import ChildSetDisplayName
-from bi_etl.conversions import replace_tilda
-from bi_etl.statistics import Statistics
-from bi_etl.utility import dict_to_pairs
-from bi_etl.scheduler.task import Status, TaskStopRequested, ETLTask
-from bi_etl.scheduler.scheduler_etl_jobs.etl_task_status_cd import ETL_Task_Status_CD
 import bi_etl.scheduler.dependent_reasons as dependent_reasons
-from bi_etl.scheduler.scheduler_interface import SchedulerInterface
+from bi_etl.conversions import replace_tilda
+from bi_etl.scheduler.exceptions import CircularDependency
+from bi_etl.scheduler.exceptions import DependencyDeeperThanLimit
+from bi_etl.scheduler.messages import ChildSetDisplayName
 from bi_etl.scheduler.messages import (ChildStatusUpdate,
                                        ChildRunRequested,
                                        ChildRunOK,
@@ -38,10 +33,12 @@ from bi_etl.scheduler.models import (ETL_Tasks,
                                      ETL_Task_Stats,
                                      ETL_Task_Dependency
                                      )
-from sqlalchemy.exc import InvalidRequestError
-from bi_etl.scheduler.exceptions import CircularDependency
-from bi_etl.scheduler.exceptions import DependencyDeeperThanLimit
-                                         
+from bi_etl.scheduler.scheduler_etl_jobs.etl_task_status_cd import ETL_Task_Status_CD
+from bi_etl.scheduler.scheduler_interface import SchedulerInterface
+from bi_etl.scheduler.task import Status, TaskStopRequested, ETLTask
+from bi_etl.statistics import Statistics
+from bi_etl.utility import dict_to_pairs
+
 
 #pylint: disable=too-many-instance-attributes, too-many-public-methods, too-many-nested-blocks 
 #pylint: disable=too-many-statements, too-many-branches, too-many-arguments, too-many-locals

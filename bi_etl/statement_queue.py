@@ -4,9 +4,9 @@ Created on Mar 2, 2015
 @author: Derek Wood
 """
 import logging
+from datetime import datetime, date
 
 import sqlalchemy
-from datetime import datetime, date
 
 
 class StatementQueue(object):

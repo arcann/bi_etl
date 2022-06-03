@@ -3,12 +3,12 @@ Created on Jan 5, 2016
 
 @author: Derek Wood
 """
+import os
+import tempfile
 import unittest
 
-from tests._test_base_lookup import _TestBase
 from bi_etl.lookups.disk_lookup import DiskLookup
-import tempfile
-import os
+from tests._test_base_lookup import _TestBase
 
 
 class TestDiskLookup(_TestBase):

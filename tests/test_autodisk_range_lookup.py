@@ -3,15 +3,13 @@ Created on Jan 5, 2016
 
 @author: Derek Wood
 """
-import unittest
 import tempfile
+import unittest
 from datetime import datetime
 
 from bi_etl.exceptions import NoResultFound, AfterExisting, BeforeAllExisting
-from tests._test_base_range_lookup import _TestBaseRangeLookup
 from bi_etl.lookups.autodisk_range_lookup import AutoDiskRangeLookup
-
-
+from tests._test_base_range_lookup import _TestBaseRangeLookup
 # pylint: disable=missing-docstring, protected-access
 from tests.dummy_etl_component import DummyETLComponent
 

@@ -10,6 +10,7 @@ from datetime import datetime
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
 from tests._test_base_lookup import _TestBase
 
+
 # pylint: disable=missing-docstring, protected-access
 
 

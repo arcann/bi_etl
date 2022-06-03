@@ -1,13 +1,13 @@
-
+# -*- coding: utf-8 -*-
 """
 Created on Apr 18, 2016
 
 @author: Derek Wood
 """
-from datetime import datetime
 import logging
 import random
 import time
+from datetime import datetime
 
 from bi_etl.scheduler.exceptions import ParameterError
 from bi_etl.scheduler.task import ETLTask

@@ -1,13 +1,13 @@
-from configparser import ConfigParser
 from time import sleep
 
-from bi_etl.notifiers.notifier import Notifier
+import bi_etl.config.notifiers_config as notifiers_config
+from bi_etl.notifiers.notifier_base import NotifierBase
 
 
-class Slack(Notifier):
-    def __init__(self, config: ConfigParser, config_section: str):
-        super().__init__(config=config,
-                         config_section=config_section)
+class Slack(NotifierBase):
+    def __init__(self, config_section: notifiers_config.SlackNotifier):
+        super().__init__()
+        self.config_section = config_section
 
         try:
             # noinspection PyUnresolvedReferences
@@ -25,14 +25,10 @@ class Slack(Notifier):
             self.SlackApiError = SlackClientError
             self._client_version = 1
 
-        slack_token = config[config_section]['token']
+        slack_token = self.config_section.token
         self.slack_client = SlackClient(slack_token)
-        self.slack_channel = config.get(config_section, 'channel', fallback=None)
-        self.mention = config.get(config_section, 'mention', fallback=None)
-
-        if self.slack_channel is not None and self.slack_channel.lower().startswith('get from'):
-            channel_section = self.slack_channel[9:]
-            self.slack_channel = config.get(channel_section, 'channel', fallback=None)
+        self.slack_channel = self.config_section.channel
+        self.mention = self.config_section.mention
 
         if self.slack_channel is None or self.slack_channel == 'OVERRIDE_THIS_SETTING':
             self.log.warning("Slack channel not set. No slack messages will be sent.")
@@ -58,6 +54,7 @@ class Slack(Notifier):
 
             while retry:
                 if self._client_version == 1:
+                    # noinspection PyArgumentList
                     result = self.slack_client.api_call(
                         "chat.postMessage",
                         channel=self.slack_channel,
@@ -92,6 +89,7 @@ class Slack(Notifier):
                         if e.response['error'] == 'ratelimited':
                             self.log.info('Waiting for slack ratelimited to clear')
                             sleep(1.5)
+                            # See retry loop above
                         else:
                             raise
         else:

@@ -8,7 +8,7 @@ class SharedTableMemory(BaseTableMemory):
         self.chunk_size = chunk_size
         self.lock = manager.Lock()
         self.current_key_values = manager.dict()
-        # These need to be None on init because init is done on main process
+        # These need to be None on init because init is done on test_config process
         self._local_current_keys = None
         self._local_max_allocated_keys = None
         self.log.debug(f"SharedTableMemory chunk_size= {chunk_size}")

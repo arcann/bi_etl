@@ -7,8 +7,8 @@ Created on May 15, 2015
 from __future__ import annotations
 
 import typing
-from configparser import ConfigParser
 
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.lookups.disk_lookup import DiskLookup
 from bi_etl.lookups.range_lookup import RangeLookup
 
@@ -25,8 +25,8 @@ class DiskRangeLookup(RangeLookup, DiskLookup):
                  parent_component: ETLComponent,
                  begin_date,
                  end_date,
+                 config: BI_ETL_Config_Base,
                  use_value_cache: bool = True,
-                 config: ConfigParser = None,
                  path: str = None):
         """
         Optional parameter path controls where the data is persisted

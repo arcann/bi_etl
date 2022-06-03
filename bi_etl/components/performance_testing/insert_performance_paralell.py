@@ -1,11 +1,8 @@
-from bi_etl.bi_config_parser import BIConfigParser
-
-from bi_etl.database.connect import Connect
-
-from datetime import datetime, date
 import time
+from datetime import datetime, date
 
 import bi_etl.parallel.mp as mp
+from etl.pepfar_etl_config import PEPFAR_ETL_Config
 
 
 def now():
@@ -51,7 +48,7 @@ def insert_deamon(config, Connect, con_name, queue, proc_number, max_rows=5000):
 
 def test_connection(test, config, con_name, row_list, pool_size=4):
     rows = len(row_list)
-    engine = Connect.get_sqlachemy_engine(config, con_name)
+    engine = config.target_database.get_engine()
     con = engine.connect()
     con.execute("TRUNCATE TABLE perf_test")
     con.execute("COMMIT; VACUUM perf_test; COMMIT;")
@@ -112,8 +109,8 @@ def main():
 
     print("Starting test")
 
-    config = BIConfigParser()
-    config.read_config_ini(file_name='perf_config.ini')
+    config = PEPFAR_ETL_Config(file_name='perf_config.ini')
+    config.logging.setup_logging()
     test_connection(f'sqlalchemy perf_test2 config',
                     config,
                     'perf_test2',

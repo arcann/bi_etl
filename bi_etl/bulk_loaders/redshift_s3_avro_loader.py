@@ -1,15 +1,16 @@
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
-import fastavro
 import itertools
 import os.path
 import os.path
 import typing
 from tempfile import TemporaryDirectory
 
-from bi_etl.bi_config_parser import BIConfigParser
+import fastavro
+
 from bi_etl.bulk_loaders.redshift_s3_base import RedShiftS3Base
+from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 
 if typing.TYPE_CHECKING:
     from bi_etl.components.table import Table
@@ -17,29 +18,13 @@ if typing.TYPE_CHECKING:
 
 
 class RedShiftS3AvroBulk(RedShiftS3Base):
-    def __init__(self,
-                 config: BIConfigParser,
-                 config_section: str = 's3_bulk',
-                 s3_user_id: typing.Optional[str] = None,
-                 s3_keyring_password_section: typing.Optional[str] = None,
-                 s3_bucket_name: typing.Optional[str] = None,
-                 s3_folder: typing.Optional[str] = None,
-                 s3_files_to_generate: typing.Optional[int] = None,
-                 ):
+    def __init__(
+        self,
+        config: S3_Bulk_Loader_Config,
+    ):
         super().__init__(
             config=config,
-            config_section=config_section,
-            s3_user_id=s3_user_id,
-            s3_keyring_password_section=s3_keyring_password_section,
-            s3_bucket_name=s3_bucket_name,
-            s3_folder=s3_folder,
-            s3_files_to_generate=s3_files_to_generate,
         )
-        self.s3_file_delimiter = '|'
-        self.null_value = ''
-        self.s3_clear_before = True
-        self.s3_clear_when_done = True
-        self.analyze_compression = None
 
     @property
     def needs_all_columns(self):
@@ -84,15 +69,15 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
         return [itertools.islice(it, index, None, n) for index, it in enumerate(children)]
 
     def load_from_iterator(
-            self,
-            iterator: typing.Iterator,
-            table_object: Table,
-            table_to_load: str = None,
-            perform_rename: bool = False,
-            progress_frequency: int = 10,
-            analyze_compression: str = None,
-            parent_task: typing.Optional[ETLTask] = None,
-    ):
+           self,
+           iterator: typing.Iterator,
+           table_object: Table,
+           table_to_load: str = None,
+           perform_rename: bool = False,
+           progress_frequency: int = 10,
+           analyze_compression: str = None,
+           parent_task: typing.Optional[ETLTask] = None,
+    ) -> int:
         with TemporaryDirectory() as temp_dir:
             # TODO: Genereate schema from table
             schema = {
@@ -117,14 +102,19 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
 
             file_number = 1
             filepath = os.path.join(temp_dir, f'data_{file_number}.json.gz')
-            with open(filepath, 'wb') as avro_file:
-                # avro_iterators = self.distribute(iterator, writer_pool_size)
-                fastavro.writer(avro_file, parsed_schema, iterator)
+            data = list(iterator)
+            if len(data) > 0:
+                with open(filepath, 'wb') as avro_file:
+                    # avro_iterators = self.distribute(iterator, writer_pool_size)
+                    fastavro.writer(avro_file, parsed_schema, data)
 
-            self.load_from_files(
-                [filepath],
-                table_object=table_object,
-                table_to_load=table_to_load,
-                perform_rename=perform_rename,
-                analyze_compression=analyze_compression,
-            )
+                self.load_from_files(
+                    [filepath],
+                    table_object=table_object,
+                    table_to_load=table_to_load,
+                    perform_rename=perform_rename,
+                    analyze_compression=analyze_compression,
+                )
+            else:
+                self.log.info(f"{self} had nothing to do with 0 rows found")
+            return len(data)

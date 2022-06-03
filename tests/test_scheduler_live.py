@@ -3,16 +3,15 @@ Created on Dec 23, 2015
 
 @author: Derek Wood
 """
-from datetime import timedelta
 import logging
 import operator
 import random
 import unittest
+from datetime import timedelta
 from unittest.case import SkipTest
 
 from bi_etl.scheduler.scheduler_interface import SchedulerInterface
 from bi_etl.scheduler.task import Status
-
 from tests.etl_jobs.etl_task_1 import ETL_Task_1
 from tests.etl_jobs.etl_task_d1 import ETL_Task_D1
 from tests.etl_jobs.etl_task_d2 import ETL_Task_D2

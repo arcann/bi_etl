@@ -6,14 +6,14 @@ Created on Oct 9, 2015
 import io
 import typing
 from collections import defaultdict
-from sys import stdout
 from decimal import Context, ROUND_HALF_EVEN
+from operator import itemgetter
+from sys import stdout
 
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.conversions import str2decimal, str2date
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.utility import get_integer_places
-from operator import itemgetter
 
 
 # noinspection PyBroadException
@@ -111,9 +111,10 @@ class DataAnalyzer(ETLComponent):
     def __iter__(self):
         return None
 
-    def close(self):
-        super(DataAnalyzer, self).close()
-        self._reset_storage()
+    def close(self, error: bool = False):
+        if not self.is_closed:
+            super(DataAnalyzer, self).close(error=error)
+            self._reset_storage()
 
     def _type_from_value(self, value):
         if isinstance(value, str):

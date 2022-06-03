@@ -4,7 +4,8 @@ Created on Apr 2, 2015
 import os
 import re
 import sys
-import typing
+from pathlib import Path
+from typing import *
 
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
@@ -20,7 +21,7 @@ __all__ = ['XLSXWriter']
 
 class XLSXWriter(XLSXReader):
     """
-    XLSXReader will read rows from an Microsoft Excel XLSX formatted sheet.
+    XLSXReader will read rows from a Microsoft Excel XLSX formatted sheet.
     
     Parameters
     ----------
@@ -76,8 +77,8 @@ class XLSXWriter(XLSXReader):
         not present in a given row (missing values).     
     """
     def __init__(self,
-                 task: typing.Optional[ETLTask],
-                 file_name: str,
+                 task: Optional[ETLTask],
+                 file_name: Union[str, Path],
                  logical_name: str = None,
                  write_only: bool = True,
                  **kwargs
@@ -163,7 +164,7 @@ class XLSXWriter(XLSXReader):
     def _obtain_column_names(self):
         raise ValueError(f'Column names must be explicitly set on {self}')
 
-    def set_columns_and_widths(self, columns_dict: typing.Dict[str, float]):
+    def set_columns_and_widths(self, columns_dict: Dict[str, float]):
         self.column_names = columns_dict.keys()
         self.set_widths(columns_dict.values())
 
@@ -250,7 +251,7 @@ class XLSXWriter(XLSXReader):
         self.active_worksheet.add_table(table)
 
     def insert(self,
-               source_row: typing.Union[Row, list],  # Could also be a whole list of rows
+               source_row: Union[Row, list],  # Could also be a whole list of rows
                parent_stats: Statistics = None,
                **kwargs
                ):
@@ -280,8 +281,11 @@ class XLSXWriter(XLSXReader):
                  **kwargs
              )
             
-    def close(self):
+    def close(self, error: bool = True):
         if self.has_workbook_init():
-            self.workbook.save(filename=self.file_name)
+            if not error:
+                self.workbook.save(filename=self.file_name)
+            else:
+                self.log.info(f"{self}.close not saving due to error")
             self.workbook.close()
-        super().close()
+        super().close(error=error)

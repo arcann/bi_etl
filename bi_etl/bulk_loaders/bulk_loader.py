@@ -7,7 +7,6 @@ from datetime import datetime
 
 import sqlalchemy
 
-from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_status import RowStatus
 
@@ -17,10 +16,9 @@ if typing.TYPE_CHECKING:
 
 
 class BulkLoader(object):
-    def __init__(self,
-                 config: BIConfigParser,
-                 ):
-        self.config = config
+    def __init__(
+        self,
+    ):
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
     @property

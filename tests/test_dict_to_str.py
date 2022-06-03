@@ -3,11 +3,13 @@ Created on Apr 1, 2015
 
 @author: Derek Wood
 """
-import unittest
-from bi_etl.utility import dict_to_str
-from datetime import datetime
-from collections import OrderedDict
 import sys
+import unittest
+from collections import OrderedDict
+from datetime import datetime
+
+from bi_etl.utility import dict_to_str
+
 OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
 
 

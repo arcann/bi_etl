@@ -4,7 +4,7 @@ Created on Nov 17, 2014
 @author: Derek Wood
 """
 import typing
-from datetime import date, timedelta
+from datetime import date, timedelta, timezone
 from datetime import datetime
 from datetime import time
 from decimal import Decimal, InvalidOperation
@@ -228,6 +228,18 @@ def change_tz(
         # Now we strip off the time zone info so it will match what comes out of Oracle
         result_datetime = result_datetime.replace(tzinfo=None)
         return result_datetime    
+
+
+def get_date_local(dt: datetime) -> datetime:
+    if dt.tzinfo is not None:
+        local_timezone = datetime.now(timezone.utc).astimezone().tzinfo
+        dt = dt.astimezone(local_timezone)
+    return dt
+
+
+def get_date_midnight(dt: datetime) -> datetime:
+    dt = get_date_local(dt)
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def ensure_datetime(dt: Union[datetime, date]) -> datetime:

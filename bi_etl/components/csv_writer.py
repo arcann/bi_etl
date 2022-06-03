@@ -6,7 +6,9 @@ import csv
 import io
 import logging
 import os
-import typing
+from typing import *
+from typing import TextIO
+from pathlib import Path
 
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.row.row import Row
@@ -149,14 +151,14 @@ class CSVWriter(ETLComponent):
             Enable support for csv columns bigger than 131,072 default limit.
     """
     def __init__(self,
-                 task: typing.Optional[ETLTask],
-                 file_data: typing.Union[typing.TextIO, str],
-                 column_names: typing.List[str],
-                 include_header: typing.Optional[bool] = True,
+                 task: Optional[ETLTask],
+                 file_data: Union[TextIO, str, Path],
+                 column_names: List[str],
+                 include_header: Optional[bool] = True,
                  append: bool = False,
-                 encoding: typing.Optional[str] = None,
+                 encoding: Optional[str] = None,
                  errors: str = 'strict',
-                 logical_name: typing.Optional[str] = None,
+                 logical_name: Optional[str] = None,
                  **kwargs
                  ):
 
@@ -171,6 +173,9 @@ class CSVWriter(ETLComponent):
         self._save_append = append
         self._save_encoding = encoding
         self._save_errors = errors
+        
+        if isinstance(file_data, Path):
+            file_data = str(file_data)
 
         # We have to check / open the file here to get the name for the logical name
         if isinstance(file_data, str):
@@ -306,13 +311,14 @@ class CSVWriter(ETLComponent):
             self.get_writer().writeheader()
         self._header_written = True
 
-    def close(self):
+    def close(self, error: bool = False):
         """
         Close the file
         """
-        if self.__close_file:
-            self.file.close()
-        super().close()
+        if not self.is_closed:
+            if self.__close_file:
+                self.file.close()
+            super().close(error=error)
 
     def insert_row(self,
                    source_row: Row,  # Must be a single row
@@ -364,7 +370,7 @@ class CSVWriter(ETLComponent):
         return new_row
 
     def insert(self,
-               source: typing.Union[Row, list],
+               source: Union[Row, list],
                additional_insert_values: dict = None,
                parent_stats: Statistics = None,
                **kwargs

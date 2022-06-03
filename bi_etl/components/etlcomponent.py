@@ -6,14 +6,11 @@ Created on Sep 25, 2014
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
-import functools
 import logging
-import typing
 import warnings
-from collections import defaultdict
 from enum import unique, IntEnum
 from operator import attrgetter
-from typing import Iterable
+from typing import *
 
 from sqlalchemy.sql.schema import Column
 
@@ -23,10 +20,12 @@ from bi_etl.components.row.row_status import RowStatus
 from bi_etl.exceptions import ColumnMappingError
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
 from bi_etl.lookups.lookup import Lookup
-from bi_etl.scheduler.task import ETLTask
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
+
+if TYPE_CHECKING:
+    from bi_etl.scheduler.task import ETLTask
 
 __all__ = ['ETLComponent']
 
@@ -46,7 +45,7 @@ class ETLComponent(Iterable):
     Attributes
     ----------
     log_first_row : boolean
-        Should we log progress on the the first row read. *Only applies if Table is used as a source.*
+        Should we log progress on the first row read. *Only applies if Table is used as a source.*
         
     max_rows : int, optional
         The maximum number of rows to read. *Only applies if Table is used as a source.*
@@ -78,12 +77,12 @@ class ETLComponent(Iterable):
 
     def __init__(
             self,
-            task: typing.Optional[ETLTask],
-            logical_name: typing.Optional[str] = None,
+            task: Optional[ETLTask],
+            logical_name: Optional[str] = None,
             **kwargs
                 ):
         self.default_stats_id = 'read'
-        self.task = task            
+        self.task = task
         self.logical_name = logical_name or "{cls}#{id}".format(cls=self.__class__.__name__,
                                                                 id=id(self))
         self._primary_key = None
@@ -117,7 +116,7 @@ class ETLComponent(Iterable):
                 ETLComponent.logging_level_reported = True
         self.row_object = Row
         
-        # Register this component with it's parent task        
+        # Register this component with its parent task
         if task is not None:
             task.register_object(self)
 
@@ -125,8 +124,6 @@ class ETLComponent(Iterable):
         # Default lookup class is AutoDiskLookup
         self.default_lookup_class = AutoDiskLookup
         self.default_lookup_class_kwargs = dict()
-        if self.task is not None:
-            self.default_lookup_class_kwargs['config'] = self.task.config
 
         self.sanity_check_default_iterator_done = False
         self.sanity_checked_sources = set()
@@ -141,27 +138,10 @@ class ETLComponent(Iterable):
         self.cache_clean = False
 
         # Should be the last call of every init            
-        self.set_kwattrs(**kwargs)
-
-    @staticmethod
-    def kwattrs_order() -> typing.Dict[str, int]:
-        """
-        Certain values need to be set before others in order to work correctly.
-        This method should return a dict mapping those key values = arg name to
-        a value less than the default of 9999, which will be used for any arg
-        not explicitly listed here.
-        """
-        return {
-        }
+        self.set_kwattrs(**kwargs) 
 
     def set_kwattrs(self, **kwargs):
-        # Certain values need to be set before others in order to work correctly
-        kw_order = defaultdict(lambda: 9999)
-        kw_order.update(self.kwattrs_order())
-
-        kw_arg_tuple_list = {arg: kw_order[arg] for arg in kwargs}
-
-        for attr in sorted(kw_arg_tuple_list, key=lambda x: kw_arg_tuple_list[x]):
+        for attr in kwargs:
             if attr == 'column_names':
                 # Use the setter
                 self.column_names = kwargs[attr]
@@ -169,12 +149,8 @@ class ETLComponent(Iterable):
                 setattr(self, attr, kwargs[attr])
     
     def __repr__(self):
-        return "{cls}(task={task},logical_name={logical_name},primary_key={primary_key})".format(
-            cls=self.__class__.__name__,
-            task=self.task,
-            logical_name=self.logical_name,
-            primary_key=self.primary_key,
-            )
+        return f"{self.__class__.__name__}" \
+               f"(task={self.task},logical_name={self.logical_name},primary_key={self.primary_key})"
         
     def __str__(self):
         if self.logical_name is not None:
@@ -194,7 +170,8 @@ class ETLComponent(Iterable):
             (self.task, self.logical_name),
 
             # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
-            # If the object has no such method then, the value must be a dictionary and it will be added to the object’s __dict__ attribute.
+            # If the object has no such method then, the value must be a dictionary,
+            # and it will be added to the object’s __dict__ attribute.
             self.__dict__,
 
             # Optionally, an iterator (and not a sequence) yielding successive items.
@@ -257,7 +234,7 @@ class ETLComponent(Iterable):
         self._column_names = []
     
     @property
-    def column_names(self) -> typing.List[str]:
+    def column_names(self) -> List[str]:
         """
         Column names
         """
@@ -269,7 +246,7 @@ class ETLComponent(Iterable):
     @column_names.setter
     def column_names(
             self,
-            value: typing.List[str],
+            value: List[str],
             ):
         if isinstance(value, list):
             self._column_names = value
@@ -388,12 +365,12 @@ class ETLComponent(Iterable):
     def iter_result(
             self,
             result_list: object,
-            columns_in_order: typing.Optional[list] = None,
-            criteria_dict: typing.Optional[dict] = None,
-            logical_name: typing.Optional[str] = None,
-            progress_frequency: typing.Optional[int] = None,
-            stats_id: typing.Optional[str] = None,
-            parent_stats: typing.Optional[Statistics] = None,
+            columns_in_order: Optional[list] = None,
+            criteria_dict: Optional[dict] = None,
+            logical_name: Optional[str] = None,
+            progress_frequency: Optional[int] = None,
+            stats_id: Optional[str] = None,
+            parent_stats: Optional[Statistics] = None,
             ) -> Iterable[Row]:
         """
         yields
@@ -494,15 +471,15 @@ class ETLComponent(Iterable):
         
     def where(
             self,
-            criteria_list: typing.Optional[list] = None,
-            criteria_dict: typing.Optional[dict] = None,
-            order_by: typing.Optional[list] = None,
-            column_list: typing.List[typing.Union[Column, str]] = None,
-            exclude_cols: typing.FrozenSet[typing.Union[Column, str]] = None,
-            use_cache_as_source: typing.Optional[bool] = None,
-            progress_frequency: typing.Optional[int] = None,
-            stats_id: typing.Optional[str] = None,
-            parent_stats: typing.Optional[Statistics] = None,
+            criteria_list: Optional[list] = None,
+            criteria_dict: Optional[dict] = None,
+            order_by: Optional[list] = None,
+            column_list: List[Union[Column, str]] = None,
+            exclude_cols: FrozenSet[Union[Column, str]] = None,
+            use_cache_as_source: Optional[bool] = None,
+            progress_frequency: Optional[int] = None,
+            stats_id: Optional[str] = None,
+            parent_stats: Optional[Statistics] = None,
             ) -> Iterable[Row]:
         """
 
@@ -510,7 +487,7 @@ class ETLComponent(Iterable):
         ----------
         criteria_list:
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
-            http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
+            https://docs.sqlalchemy.org/en/14/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
         criteria_dict:
             Dict keys should be columns, values are set using = or in
         order_by:
@@ -531,30 +508,34 @@ class ETLComponent(Iterable):
         assert order_by is None, '{} does not support order_by'.format(self)
         assert criteria_list is None, '{} does not support criteria_list'.format(self)
         return self.iter_result(self._raw_rows(), criteria_dict=criteria_dict, stats_id=stats_id, parent_stats=parent_stats)
-        
-    def close(self):
+
+    @property
+    def is_closed(self):
+        return self.__close_called
+
+    def close(self, error: bool = False):
         self.__close_called = True
         if self.default_stats_id in self._stats:
             self._stats[self.default_stats_id].timer.stop()
     
     def __del__(self):
-        # Close the any connections
+        # Close any connections and cleanup
         if hasattr(self, '__close_called'):
             if not self.__close_called:
                 warnings.warn("{o} used without calling close.  It's suggested to use 'with' to control lifespan.".format(o=self), stacklevel=2)
-                self.close()   
+                self.close(error=False)
     
     def __enter__(self) -> 'ETLComponent':
         self.__enter_called = True
         return self   
         
     def __exit__(self, exit_type, exit_value, exit_traceback):  
-        # Close the any connections
-        self.close()
+        # Close any connections and cleanup
+        self.close(error=False)
         
     def _get_stats_parent(
             self,
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
     ):
         if parent_stats is None:
             # Set parent stats as etl_components root stats entry
@@ -565,8 +546,8 @@ class ETLComponent(Iterable):
     def get_stats_entry(
             self,
             stats_id: str,
-            parent_stats: typing.Optional[Statistics] = None,
-            print_start_stop_times: typing.Optional[bool] = None
+            parent_stats: Optional[Statistics] = None,
+            print_start_stop_times: Optional[bool] = None
             ):
         parent_stats = self._get_stats_parent(parent_stats)
         
@@ -586,8 +567,8 @@ class ETLComponent(Iterable):
     def get_unique_stats_entry(
             self,
             stats_id: str,
-            parent_stats: typing.Optional[Statistics] = None,
-            print_start_stop_times: typing.Optional[bool] = None,
+            parent_stats: Optional[Statistics] = None,
+            print_start_stop_times: Optional[bool] = None,
             ):
         parent_stats = self._get_stats_parent(parent_stats)
         stats_id = parent_stats.get_unique_stats_id(stats_id)
@@ -601,9 +582,9 @@ class ETLComponent(Iterable):
     # noinspection PyPep8Naming
     def Row(
             self,
-            data: typing.Union[typing.MutableMapping, typing.Iterator, None] = None,
-            logical_name: typing.Optional[str] = None,
-            iteration_header: typing.Union[RowIterationHeader, str, None] = None,
+            data: Union[MutableMapping, Iterator, None] = None,
+            logical_name: Optional[str] = None,
+            iteration_header: Union[RowIterationHeader, str, None] = None,
             ):
         """
         Make a new empty row with this components structure.
@@ -618,8 +599,8 @@ class ETLComponent(Iterable):
 
     def generate_iteration_header(
             self,
-            logical_name: typing.Optional[str] = None,
-            columns_in_order: typing.Optional[list] = None,
+            logical_name: Optional[str] = None,
+            columns_in_order: Optional[list] = None,
             ) -> RowIterationHeader:
         if logical_name is None:
             logical_name = self.row_name
@@ -644,42 +625,32 @@ class ETLComponent(Iterable):
         else:
             raise KeyError(f'{self} does not have a column named {column}, it does have {self.column_names}')
 
-    @functools.lru_cache(maxsize=10)
-    def get_qualified_lookup_name(self, base_lookup_name: str) -> str:
-        if '.' in base_lookup_name:
-            return base_lookup_name
-        else:
-            return f"{self.logical_name}.{base_lookup_name}"
-
     def define_lookup(
             self,
             lookup_name: str,
             lookup_keys: list,
-            lookup_class: typing.Optional[Lookup] = None,
-            lookup_class_kwargs: typing.Optional[dict] = None,
+            lookup_class: Type[Lookup] = None,
+            lookup_class_kwargs: Optional[dict] = None,
             ):
         """
         Define a new lookup.
 
         Parameters
         ----------
-        lookup_name: str
+        lookup_name:
             Name for the lookup. Used to refer to it later.
 
-        lookup_keys: list
+        lookup_keys:
             list of lookup key columns
 
-        lookup_class: Class
+        lookup_class:
             Optional python class to use for the lookup. Defaults to value of default_lookup_class attribute.
 
-        lookup_class_kwargs: dict
+        lookup_class_kwargs:
             Optional dict of additional parameters to pass to lookup constructor. Defaults to empty dict.
         """
         if not self.__lookups:
             self.__lookups = dict()
-
-        lookup_name = self.get_qualified_lookup_name(lookup_name)
-
         if lookup_name in self.__lookups:
             self.log.warning("{} define_lookup is overriding the {} lookup with {}".format(
                 self,
@@ -695,11 +666,13 @@ class ETLComponent(Iterable):
         for key in lookup_keys:
             self.get_column_name(key)
 
-        lookup = lookup_class(lookup_name=lookup_name,
-                              lookup_keys=lookup_keys,
-                              parent_component=self,
-                              **lookup_class_kwargs
-                              )
+        lookup = lookup_class(
+            config=self.task.config,
+            lookup_name="{}.{}".format(self.logical_name, lookup_name),
+            lookup_keys=lookup_keys,
+            parent_component=self,
+            **lookup_class_kwargs
+        )
         self.__lookups[lookup_name] = lookup
         return lookup
 
@@ -707,7 +680,6 @@ class ETLComponent(Iterable):
     def lookups(self):
         return self.__lookups
 
-    @functools.lru_cache(maxsize=10)
     def get_lookup(
             self,
             lookup_name: str,
@@ -717,16 +689,8 @@ class ETLComponent(Iterable):
         try:
             return self.__lookups[lookup_name]
         except KeyError:
-            if '.' not in lookup_name:
-                qual_lookup_name = f"{self.logical_name}.{lookup_name}"
-                try:
-                    return self.__lookups[qual_lookup_name]
-                except KeyError:
-                    raise KeyError(f"{self} does not contain a lookup named {lookup_name} or {qual_lookup_name}")
-            else:
-                raise KeyError(f"{self} does not contain a lookup named {lookup_name}")
+            raise KeyError("{} does not contain a lookup named {}".format(self, lookup_name))
 
-    @functools.lru_cache(maxsize=10)
     def get_lookup_keys(
             self,
             lookup_name: str,
@@ -892,10 +856,10 @@ class ETLComponent(Iterable):
     def build_row(
             self,
             source_row: Row,
-            source_excludes: typing.Optional[frozenset] = None,
-            target_excludes: typing.Optional[frozenset] = None,
+            source_excludes: Optional[frozenset] = None,
+            target_excludes: Optional[frozenset] = None,
             stat_name: str = 'build_row_safe',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
     ) -> Row:
         """
         Use a source row to build a row with correct data types for this table.
@@ -997,14 +961,13 @@ class ETLComponent(Iterable):
         build_row_stats.timer.stop()
         return new_row
 
-
     def build_row_dynamic_source(
             self,
             source_row: Row,
-            source_excludes: typing.Optional[frozenset] = None,
-            target_excludes: typing.Optional[frozenset] = None,
+            source_excludes: Optional[frozenset] = None,
+            target_excludes: Optional[frozenset] = None,
             stat_name: str = 'build_row_dynamic_source',
-            parent_stats: typing.Optional[Statistics] = None,
+            parent_stats: Optional[Statistics] = None,
             ):
         build_row_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         build_row_stats.print_start_stop_times = False
@@ -1036,6 +999,7 @@ class ETLComponent(Iterable):
             exclude_cols: frozenset = None,
             order_by: list = None,
             assume_lookup_complete: bool = None,
+            allow_duplicates_in_src: bool = False,
             row_limit: int = None,
             parent_stats: Statistics = None,
             ):
@@ -1045,31 +1009,33 @@ class ETLComponent(Iterable):
         Parameters
         ----------
         source:
-            Source compontent to get rows from.
-        progress_frequency : int, optional
+            Source component to get rows from.
+        progress_frequency :
             How often (in seconds) to output progress messages. Default 10. None for no progress messages.
-        progress_message : str, optional
+        progress_message :
             The progress message to print.
             Default is ``"{component} fill_cache current row # {row_number:,}"``. Note ``logical_name`` and ``row_number``
             substitutions applied via :func:`format`.
-        criteria_list : string or list of strings
+        criteria_list :
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        criteria_dict : dict
+        criteria_dict :
             Dict keys should be columns, values are set using = or in
         column_list:
             List of columns to include
-        exclude_cols: frozenset
+        exclude_cols:
             Optional. Columns to exclude when filling the cache
-        order_by: list
+        order_by:
             list of columns to sort by when filling the cache (helps range caches)
-        assume_lookup_complete: boolean
+        assume_lookup_complete:
             Should later lookup calls assume the cache is complete?
             If so, lookups will raise an Exception if a key combination is not found.
             Default to False if filtering criteria was used, otherwise defaults to True.
-        row_limit: int
+        allow_duplicates_in_src:
+            Should we quietly let the source provide multiple rows with the same key values? Default = False
+        row_limit:
             limit on number of rows to cache.
-        parent_stats: bi_etl.statistics.Statistics
+        parent_stats:
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """
@@ -1078,7 +1044,7 @@ class ETLComponent(Iterable):
         # If we have, or can build a natural key
         if hasattr(self, 'natural_key'):
             if self.natural_key:
-                # Make sure to build the lookup so it can be filled
+                # Make sure to build the lookup, so it can be filled
                 if hasattr(self, 'ensure_nk_lookup'):
                     self.ensure_nk_lookup()
 
@@ -1125,7 +1091,7 @@ class ETLComponent(Iterable):
 
             # Actually cache the row now
             row.status = RowStatus.existing
-            self.cache_row(row, allow_update=False)
+            self.cache_row(row, allow_update=allow_duplicates_in_src)
 
             # noinspection PyTypeChecker
             if 0.0 < progress_frequency <= progress_timer.seconds_elapsed:
@@ -1181,6 +1147,7 @@ class ETLComponent(Iterable):
                    exclude_cols: frozenset = None,
                    order_by: list = None,
                    assume_lookup_complete: bool = None,
+                   allow_duplicates_in_src: bool = False,
                    row_limit: int = None,
                    parent_stats: Statistics = None,
                    ):
@@ -1189,30 +1156,34 @@ class ETLComponent(Iterable):
 
         Parameters
         ----------
-        progress_frequency : int, optional
+        progress_frequency :
             How often (in seconds) to output progress messages. Default 10. None for no progress messages.
-        progress_message : str, optional
+        progress_message :
             The progress message to print.
             Default is ``"{component} fill_cache current row # {row_number:,}"``. Note ``logical_name`` and ``row_number``
             substitutions applied via :func:`format`.
-        criteria_list : string or list of strings
+        criteria_list :
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        criteria_dict : dict
+        criteria_dict :
             Dict keys should be columns, values are set using = or in
         column_list:
             List of columns to include
         exclude_cols: frozenset
             Optional. Columns to exclude when filling the cache
-        order_by: list
+        order_by:
             list of columns to sort by when filling the cache (helps range caches)
-        assume_lookup_complete: boolean
+        assume_lookup_complete:
             Should later lookup calls assume the cache is complete?
             If so, lookups will raise an Exception if a key combination is not found.
             Default to False if filtering criteria was used, otherwise defaults to True.
-        row_limit: int
+        allow_duplicates_in_src:
+            Should we quietly let the source provide multiple rows with the same key values? Default = False
+        row_limit:
             limit on number of rows to cache.
-        parent_stats: bi_etl.statistics.Statistics
+        row_limit:
+            limit on number of rows to cache.
+        parent_stats:
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """
@@ -1226,6 +1197,7 @@ class ETLComponent(Iterable):
             exclude_cols=exclude_cols,
             order_by=order_by,
             assume_lookup_complete=assume_lookup_complete,
+            allow_duplicates_in_src=allow_duplicates_in_src,
             row_limit=row_limit,
             parent_stats=parent_stats,
             )
@@ -1234,7 +1206,7 @@ class ETLComponent(Iterable):
                       lookup_name: str,
                       source_row: Row,
                       stats_id: str = 'get_by_lookup',
-                      parent_stats: typing.Optional[Statistics] = None,
+                      parent_stats: Optional[Statistics] = None,
                       fallback_to_db: bool = False,
                       ) -> Row:
         """
@@ -1250,14 +1222,10 @@ class ETLComponent(Iterable):
 
         self._check_pk_lookup()
 
-        if isinstance(lookup_name, Lookup):
-            lookup = lookup_name
-        else:
-            lookup = self.get_lookup(lookup_name)
-            assert isinstance(lookup, Lookup)
+        lookup = self.get_lookup(lookup_name)
+        assert isinstance(lookup, Lookup)
 
         return lookup.find(row=source_row,
                            fallback_to_db=fallback_to_db,
                            stats=stats
                            )
-

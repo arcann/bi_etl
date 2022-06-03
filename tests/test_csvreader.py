@@ -1,16 +1,16 @@
-
+# -*- coding: utf-8 -*-
 """
 Created on Nov 30, 2015
 
 @author: Derek Wood
 """
-import unittest
 import inspect
 import os
+import unittest
 
-from bi_etl.bi_config_parser import BIConfigParser
-from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.csvreader import CSVReader
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
+from bi_etl.scheduler.task import ETLTask
 
 
 # pylint: disable=missing-docstring, protected-access
@@ -33,7 +33,7 @@ class Test(unittest.TestCase):
         self.assertRegex(actual, expectedRe, msg)
 
     def setUp(self):
-        self.task = ETLTask(config=BIConfigParser())
+        self.task = ETLTask(config=BI_ETL_Config_Base())
         self.test_files_path = self.get_test_files_path()
 
     def tearDown(self):
@@ -69,7 +69,7 @@ class Test(unittest.TestCase):
                 self.assertEqual(row['date'], '1/1/2000')
                 self.assertEqual(row['unicode'], u'©Me')
                 try:
-                    row = next(src_iter)
+                    _ = next(src_iter)
                     self.fail('StopIteration expected at end of file')
                 except StopIteration:
                     pass
@@ -113,7 +113,7 @@ class Test(unittest.TestCase):
             self.assertEqual(row['date'], '3/4/2015')
             self.assertEqual(row['unicode'], u'Middlӭ Ёarth')
             try:
-                row = next(src_iter)
+                _ = next(src_iter)
                 self.fail('StopIteration expected at end of file')
             except StopIteration:
                 pass
@@ -172,7 +172,7 @@ class Test(unittest.TestCase):
             self.assertEqual(row['unicode'], u'Middlӭ Ёarth')
             # Past end of rows
             with self.assertRaises(StopIteration):
-                row = next(src_iter)
+                _ = next(src_iter)
 
     def testUTF8_tab_no_header_start_3(self):
         src_file = os.path.join(self.test_files_path, 'utf8_no_header.tab')

@@ -4,16 +4,15 @@ Created on Sept 12 2016
 @author: Derek
 """
 import hashlib
-import os.path
+import os
 import re
-
-from typing import Union
-
-from CaseInsensitiveDict import CaseInsensitiveDict
+from pathlib import Path
+from typing import Union, Dict
 
 import sqlparse
+from CaseInsensitiveDict import CaseInsensitiveDict
 
-from bi_etl.bi_config_parser import BIConfigParser
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Base_From_Ini_Env
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.timer import Timer
@@ -21,16 +20,16 @@ from bi_etl.timer import Timer
 
 class RunSQLScript(ETLTask):
     def __init__(self,
-                 datbase_entry: Union[str, DatabaseMetadata],
-                 script_path: str,
-                 script_name: str,
-                 sql_replacements: dict = None,
+                 config: BI_ETL_Config_Base,
+                 database_entry: Union[str, DatabaseMetadata],
+                 script_name: Union[str, Path],
+                 script_path: Union[str, Path] = None,
+                 sql_replacements: Dict[str, str] = None,
                  task_id=None,
                  parent_task_id=None,
                  root_task_id=None,
                  scheduler=None,
                  task_rec=None,
-                 config=None
                  ):
         super().__init__(task_id=task_id,
                          parent_task_id=parent_task_id,
@@ -38,32 +37,41 @@ class RunSQLScript(ETLTask):
                          scheduler=scheduler,
                          task_rec=task_rec,
                          config=config)
-        self.datbase_entry = datbase_entry
-        self.script_path = script_path
-        self.script_name = script_name
+        self.database_entry = database_entry
         self.sql_replacements = sql_replacements
+        self.script_name = Path(script_name)
+        if script_path is None:
+            self.script_path = None
+        else:
+            self.script_path = Path(script_path)
 
-        root_path, _ = os.path.split(os.getcwd())
         paths_tried = list()
-        while not os.path.exists(self.script_path):
-            self.script_path = os.path.join(root_path, script_path)
-            if not os.path.exists(self.script_path):
-                paths_tried.append(self.script_path)
-                root_path, _ = os.path.split(root_path)
-                _, root_no_drive = os.path.splitdrive(root_path)
-                if root_no_drive in {'', '\\', os.path.sep}:
-                    raise ValueError("RunSQLScript could not find script_path {}".format(paths_tried))
+        paths_tried.append(self.script_full_name)
+        if not self.script_full_name.exists():
+            for path_to_try in Path.cwd().parents:
+                if script_path:
+                    self.script_path = path_to_try / script_path
+                else:
+                    self.script_path = path_to_try
+                paths_tried.append(self.script_full_name)
+                if self.script_full_name.exists():
+                    break
+
+        if not self.script_full_name.exists():
+            raise ValueError(f"RunSQLScript could not find the script {self.script_name} tried {paths_tried}")
 
     def __getstate__(self):
         odict = super().__getstate__()
-        odict['datbase_entry'] = self.datbase_entry
-        odict['script_path'] = self.datbase_entry
+        odict['config'] = self.config
+        odict['database_entry'] = self.database_entry
+        odict['script_path'] = self.script_path
         odict['script_name'] = self.script_name
         return odict
 
     def __setstate__(self, odict):
         self.__init__(
-            datbase_entry=odict['datbase_entry'],
+            config=odict['config'],
+            database_entry=odict['database_entry'],
             script_path=odict['script_path'],
             script_name=odict['script_name'],
             task_id=odict['task_id'],
@@ -79,62 +87,47 @@ class RunSQLScript(ETLTask):
 
     @property
     def name(self):
-        return 'run_sql_script.' + self.script_name.replace('/', '.').replace('\\', '.')
+        name = str(self.script_name).replace('/', '.').replace('\\', '.')
+        return f"run_sql_script.{name}"
 
     @property
-    def script_full_name(self):
-        return os.path.join(self.script_path, self.script_name)
+    def script_full_name(self) -> Path:
+        if self.script_path is None:
+            return self.script_name.resolve()
+        else:
+            return (self.script_path / self.script_name).resolve()
 
     def get_sha1_hash(self):
         block_size = 65536
         hasher = hashlib.sha1()
-        with open(self.script_full_name, 'rb') as afile:
-            buf = afile.read(block_size)
+        with self.script_full_name.open('rb') as file:
+            buf = file.read(block_size)
             while len(buf) > 0:
                 # Ignore newline differences by converting all to \n
                 buf = buf.replace(b'\r\n', b'\n')
                 buf = buf.replace(b'\r', b'\n')
                 hasher.update(buf)
-                buf = afile.read(block_size)
+                buf = file.read(block_size)
         return hasher.hexdigest()
 
     def load(self):
-        if isinstance(self.datbase_entry, DatabaseMetadata):
-            database = self.datbase_entry
+        if isinstance(self.database_entry, DatabaseMetadata):
+            database = self.database_entry
         else:
-            database = self.get_database(self.datbase_entry)
-        sql_replacements_str = self.config.get(database.database_name, 'SQL_Replacements', fallback='')
+            database = self.get_database(self.database_entry)
         if self.sql_replacements is None:
-            sql_replacements = dict()
-        else:
-            sql_replacements = self.sql_replacements
-        for replacement_line in sql_replacements_str.split('\n'):
-            replacement_line = replacement_line.strip()
-            if ':' in replacement_line:
-                old, new = replacement_line.split(':')
-                old = old.strip()
-                new = new.strip()
-                sql_replacements[old] = new
-            elif replacement_line != '':
-                self.log.error('Invalid SQL_Replacements entry {} line "{}"'.format(
-                    sql_replacements_str,
-                    replacement_line
-                ))
+            self.sql_replacements = dict()
 
         self.log.info("database={}".format(database))
         conn = database.bind.engine.raw_connection()
         try:
-            try:
-                conn.autocommit(True)
-            except TypeError:
-                conn.autocommit = True
+            conn.autocommit = True
             with conn.cursor() as cursor:
-                script_full_name = self.script_full_name
-                self.log.info("Running {}".format(script_full_name))
-                with open(script_full_name, "rt", encoding="utf-8-sig") as sql_file:
+                self.log.info(f"Running {self.script_full_name}")
+                with self.script_full_name.open("rt", encoding="utf-8-sig") as sql_file:
                     sql = sql_file.read()
 
-                for old, new in sql_replacements.items():
+                for old, new in self.sql_replacements.items():
                     if old in sql:
                         self.log.info('replacing "{}" with "{}"'.format(old, new))
                         sql = sql.replace(old, new)
@@ -213,12 +206,43 @@ class RunSQLScript(ETLTask):
 
 
 def main():
-    config = BIConfigParser()
-    config.read_config_ini()
-    base_path = config['SQL Scripts']['path']
-    script = RunSQLScript('BI_Cache', base_path, "bi/cd_indicator.sql")
-    # script.load()
-    print(f"Has is {script.get_sha1_hash()}")
+    os.environ['notifiers_failures'] = ''
+    os.environ['notifiers_failed_notifications'] = ''
+    config = BI_ETL_Config_Base_From_Ini_Env()
+    package_path = Path(__file__).parents[1]
+    save_cwd = Path.cwd()
+    try:
+        for cwd in [
+            package_path,
+            package_path / 'tests',
+            package_path / 'tests' / 'etl_jobs',
+        ]:
+            os.chdir(cwd)
+            script = RunSQLScript(
+                config=config,
+                database_entry='target_database',
+                script_path='tests',
+                script_name="sql/test1.sql"
+            )
+            # script.load()
+            print(f"{script} in {script.script_full_name} has hash {script.get_sha1_hash()}")
+
+            script = RunSQLScript(
+                config=config,
+                database_entry='target_database',
+                script_name="tests/sql/test1.sql",
+            )
+            print(f"{script} in {script.script_full_name} has hash {script.get_sha1_hash()}")
+
+            script = RunSQLScript(
+                config=config,
+                database_entry='target_database',
+                script_name="test1.sql",
+                script_path='tests/sql',
+            )
+            print(f"{script} in {script.script_full_name} has hash {script.get_sha1_hash()}")
+    finally:
+        os.chdir(save_cwd)
 
 
 if __name__ == '__main__':

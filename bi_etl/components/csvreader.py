@@ -4,13 +4,15 @@ Created on Sep 17, 2014
 """
 import codecs
 import csv
-import os
-import typing
-
-from bi_etl.timer import Timer
-from bi_etl.scheduler.task import ETLTask
-from bi_etl.components.etlcomponent import ETLComponent
 import logging
+import os
+from typing import *
+from typing import TextIO
+from pathlib import Path
+
+from bi_etl.components.etlcomponent import ETLComponent
+from bi_etl.scheduler.task import ETLTask
+from bi_etl.timer import Timer
 
 __all__ = ['CSVReader']
 
@@ -148,8 +150,8 @@ class CSVReader(ETLComponent):
             Enable support for csv columns bigger than 131,072 default limit.
     """
     def __init__(self,
-                 task: typing.Optional[ETLTask],
-                 filedata: typing.Union[typing.TextIO, str],
+                 task: Optional[ETLTask],
+                 filedata: Union[TextIO, str, Path],
                  encoding: str = None,
                  errors: str = 'strict',
                  logical_name: str = None,
@@ -160,9 +162,12 @@ class CSVReader(ETLComponent):
         
         self.__close_file = False
         
+        if isinstance(filedata, Path):
+            filedata = str(filedata)
+        
         # We have to check / open the file here to get the name for the logical name
         if isinstance(filedata, str):
-            self.log.info("Opening file {}".format(filedata))
+            self.log.debug(f"Opening file {filedata}")
 
             if encoding is None or encoding in {'utf8', 'utf-8'}:
                 with open(filedata, 'rb') as binary_file:
@@ -240,16 +245,13 @@ class CSVReader(ETLComponent):
         if self.__reader is None:
             if not hasattr(self, 'delimiter'):
                 delimiters = [',', '|', '\t']
-                try:
-                    dialect = csv.Sniffer().sniff(self.file.read(8096), delimiters=delimiters)
-                except csv.Error as e:
-                    raise ValueError(f"{e} in file {self.file.name} delimiters={delimiters}")
+                dialect = csv.Sniffer().sniff('\n'.join(self.file.readlines(10)), delimiters=delimiters)
                 if dialect.delimiter not in delimiters:
                     msg = f'Invalid delimiter \'{dialect.delimiter}\' found in {self.file.name} csv file.'
                     self.log.warning(msg)
                     raise ValueError(msg)
                 else:
-                    self.log.info(f'Found delimiter \'{dialect.delimiter}\' in {self.file.name} csv file.')
+                    self.log.debug(f'Found delimiter \'{dialect.delimiter}\' in {self.file.name} csv file.')
                 self.dialect = dialect
 
                 self.file.seek(0)
@@ -381,10 +383,11 @@ class CSVReader(ETLComponent):
             else:
                 raise e
         
-    def close(self):
+    def close(self, error: bool = False):
         """
         Close the file
         """
-        if self.__close_file:
-            self.file.close()
-        super(CSVReader, self).close()
+        if not self.is_closed:
+            if self.__close_file:
+                self.file.close()
+            super(CSVReader, self).close(error=error)

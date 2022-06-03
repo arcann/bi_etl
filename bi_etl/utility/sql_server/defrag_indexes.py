@@ -5,8 +5,8 @@ Created on Sept 12 2016
 """
 from argparse import ArgumentParser
 
-from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.components.sqlquery import SQLQuery
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base_From_Ini_Env
 from bi_etl.scheduler.task import ETLTask
 
 
@@ -15,11 +15,11 @@ class DefragIndexes(ETLTask):
         return []
 
     def load(self):
-        db_name = self.get_parameter('database', default='BI_Cache')
+        db_name = self.get_parameter('database', default='target_database')
         database = self.get_database(db_name)
-        self.log.info("Defragmenting indexes in {} = {}".format(db_name, database))
-        # (user_id, password) = self.config.get_database_connection_tuple('BI_Cache', 'systemBI')
+        self.log.info(f"Defragmenting indexes in {db_name} = {database}")
 
+        # noinspection SqlResolve
         sql = """
                 SELECT
                        rtrim(ltrim(ns.name)) + '.' + nt.name AS table_name,
@@ -46,15 +46,15 @@ class DefragIndexes(ETLTask):
                 """
         with SQLQuery(self, database, sql, logical_name="fragged_indexes") as fragged_indexes:
             for row in fragged_indexes:
-                self.log.info("Rebuilding {index} ON {table} which is {pct:5.1f}% fragmented".format(
-                    index=row['index_name'],
-                    table=row['table_name'],
-                    pct=row['avg_fragmentation_in_percent']
-                ))
-                rebuild_sql = "ALTER INDEX [{index}] ON {table} REBUILD WITH (SORT_IN_TEMPDB = ON)".format(
-                    index=row['index_name'],
-                    table=row['table_name'],
+                self.log.info(
+                    f"Rebuilding {row['index_name']} ON {row['table_name']} "
+                    f"which is {row['avg_fragmentation_in_percent']:5.1f}% fragmented"
                 )
+                rebuild_sql = f"""
+                    ALTER INDEX [{row['index_name']}] 
+                    ON {row['table_name']} 
+                    REBUILD WITH (SORT_IN_TEMPDB = ON)
+                    """
                 database.execute_direct(rebuild_sql)
 
             self.log.info("-" * 80)
@@ -62,10 +62,10 @@ class DefragIndexes(ETLTask):
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="Run ETL")
-    parser.add_argument('--database', type=str, help='Database entry in config.ini to use', default='BI_Cache')
+    parser.add_argument('--database', type=str, help='Database entry in config.ini to use')
     args = parser.parse_args()
-    config = BIConfigParser()
-    config.read_config_ini()
-    df = DefragIndexes()
+    config = BI_ETL_Config_Base_From_Ini_Env()
+    config.logging.setup_logging()
+    df = DefragIndexes(config=config)
     df.add_parameter("database", args.database)
     df.run()

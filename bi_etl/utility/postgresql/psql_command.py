@@ -1,9 +1,8 @@
 import logging
 import os
+import subprocess
 import tempfile
 from pprint import pformat
-
-import subprocess
 
 log = logging.getLogger('etl.utils.psql_command')
 

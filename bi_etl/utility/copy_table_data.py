@@ -4,8 +4,8 @@ Created on Sept 12 2016
 @author: Derek
 """
 from bi_etl.components.readonlytable import ReadOnlyTable
-from bi_etl.scheduler.task import ETLTask
 from bi_etl.database.database_metadata import DatabaseMetadata
+from bi_etl.scheduler.task import ETLTask
 
 
 class CopyTableData(ETLTask):
@@ -13,11 +13,8 @@ class CopyTableData(ETLTask):
         return []
 
     def load(self):
-        datbase_entry = self.get_parameter('datbase_entry')
-        if isinstance(datbase_entry, DatabaseMetadata):
-            database = datbase_entry
-        else:
-            database = self.get_database(self.get_parameter('datbase_entry'))
+        database = self.get_parameter('database')
+        assert isinstance(database, DatabaseMetadata)
         source_table_name = self.get_parameter('source_table')
         target_table_name = self.get_parameter('target_table')
 

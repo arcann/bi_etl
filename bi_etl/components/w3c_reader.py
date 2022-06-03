@@ -3,16 +3,16 @@ Created on Sep 17, 2014
 
 """
 import csv
+import logging
 import os
 import typing
 
 from sqlalchemy import Column
 
-from bi_etl.components.row.row import Row
-from bi_etl.statistics import Statistics
-from bi_etl.scheduler.task import ETLTask
 from bi_etl.components.etlcomponent import ETLComponent
-import logging
+from bi_etl.components.row.row import Row
+from bi_etl.scheduler.task import ETLTask
+from bi_etl.statistics import Statistics
 
 __all__ = ['W3CReader']
 
@@ -233,10 +233,11 @@ class W3CReader(ETLComponent):
         finally:
             pass
 
-    def close(self):
+    def close(self, error: bool = False):
         """
         Close the file
         """
-        if self.__close_file:
-            self.file.close()
-        super().close()
+        if not self.is_closed:
+            if self.__close_file:
+                self.file.close()
+            super().close(error=error)

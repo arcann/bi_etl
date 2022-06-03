@@ -6,8 +6,7 @@ import keyring
 import sqlalchemy
 from sqlalchemy.exc import ProgrammingError
 
-from bi_etl.bi_config_parser import BIConfigParser
-from bi_etl.database.connect import Connect
+from etl.pepfar_etl_config import PEPFAR_ETL_Config
 
 
 def encapsulate_value(value) -> str:
@@ -157,10 +156,10 @@ def test_connection(test, con, row_list, do_execute_many=True, do_enlist=True, d
 
 
 def main():
-    server = 'db-dev.pdh.datim.internal'
+    server = 'example_server'
     user = 'systemBI'
-    password = keyring.get_password('BI_Cache', user)
-    database_name = 'data_warehouse_qnext'
+    password = keyring.get_password('target_database', user)
+    database_name = 'example'
     # charset=utf8
     # {SQL Server} - released with SQL Server 2000
     row_list = []
@@ -212,9 +211,9 @@ def main():
     #                 )
     # con.close()
 
-    config = BIConfigParser()
-    config.read_config_ini()
-    engine = Connect.get_sqlachemy_engine(config, 'perf_test')
+    config = PEPFAR_ETL_Config(file_name='perf_config.ini')
+    config.logging.setup_logging()
+    engine = config.target_database.get_engine()
     con = engine.connect()
     test_connection(f'sqlalchemy perf_test {engine}', con, row_list,
                     do_enlist=False,

@@ -3,9 +3,10 @@ Created on May 5, 2015
 
 @author: Derek Wood
 """
-from bi_etl.scheduler.task import ETLTask
 from bi_etl.informatica.pmcmd import PMCMD
 from bi_etl.scheduler.exceptions import ParameterError
+from bi_etl.scheduler.task import ETLTask
+
 
 class PMCMD_Task(ETLTask):
     """

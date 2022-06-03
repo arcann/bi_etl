@@ -8,6 +8,7 @@ import unittest
 from bi_etl.lookups.lookup import Lookup
 from tests._test_base_lookup import _TestBase
 
+
 class TestLookup(_TestBase):
 
     def setUp(self):

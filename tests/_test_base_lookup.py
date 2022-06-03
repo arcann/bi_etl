@@ -3,14 +3,15 @@ Created on Jan 5, 2016
 
 @author: Derek Wood
 """
-import unittest
 import logging
 import sys
+import unittest
 from datetime import datetime, date
 
 from bi_etl.exceptions import NoResultFound
-from tests.dummy_etl_component import DummyETLComponent
 from bi_etl.lookups.lookup import Lookup
+from tests.dummy_etl_component import DummyETLComponent
+
 
 #pylint: disable=missing-docstring, protected-access
 

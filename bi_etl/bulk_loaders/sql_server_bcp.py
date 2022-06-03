@@ -1,21 +1,22 @@
 import os
+import re
 import tempfile
 import typing
-import re
 
-from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.components.table import Table
 from bi_etl.scheduler.task import ETLTask
-from bi_etl.utility.bcp_helpers import create_bcp_format_file, run_bcp, BCPError
+from bi_etl.utility.bcp_helpers import create_bcp_format_file, run_bcp, BCPError, BCP_Config
 
 
 class SQLServerBCP(BulkLoader):
-    def __init__(self,
-                 config: BIConfigParser,
-                 bcp_encoding: str = 'utf-8',
-                 ):
-        super().__init__(config=config)
+    def __init__(
+        self,
+        bcp_config: BCP_Config,
+        bcp_encoding: str = 'utf-8',
+    ):
+        super().__init__()
+        self.bcp_config = bcp_config
         self.delimiter = '\013'
         self._bcp_encoding = bcp_encoding
 
@@ -23,6 +24,7 @@ class SQLServerBCP(BulkLoader):
     def multiple_replace_safe(string, rep_dict):
         if string == '':
             return '\000'
+        # noinspection PyTypeChecker
         pattern = re.compile("|".join([re.escape(k) for k in sorted(rep_dict, key=len, reverse=True)]), flags=re.DOTALL)
         return pattern.sub(lambda x: rep_dict[x.group(0)], string)
 
@@ -44,7 +46,7 @@ class SQLServerBCP(BulkLoader):
             else:
                 try:
                     rows_inserted = run_bcp(
-                        config=self.config,
+                        config=self.bcp_config,
                         table_name=table_object.qualified_table_name,
                         database_bind=table_object.database.bind,
                         file_path=file_name,

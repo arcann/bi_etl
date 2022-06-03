@@ -1,59 +1,42 @@
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
+
 import os.path
 import textwrap
-import typing
 import time
+from pathlib import Path
+from typing import *
+
 import boto3
-import keyring
 import sqlalchemy
 
-from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.bulk_loaders.bulk_loader_exception import BulkLoaderException
+from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 from bi_etl.conversions import strip
 from bi_etl.utility import quote_delimited_list
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     from bi_etl.scheduler.task import ETLTask
     from bi_etl.components.table import Table
 
 
 class RedShiftS3Base(BulkLoader):
     def __init__(self,
-                 config: BIConfigParser,
-                 config_section: str = 's3_bulk',
-                 s3_user_id: typing.Optional[str] = None,
-                 s3_keyring_password_section: typing.Optional[str] = None,
-                 s3_bucket_name: typing.Optional[str] = None,
-                 s3_folder: typing.Optional[str] = None,
-                 s3_files_to_generate: typing.Optional[int] = None,
-                 s3_clear_when_done: bool = True,
+                 config: S3_Bulk_Loader_Config,
                  ):
         super().__init__(
-            config=config
         )
-        self.config_section = config_section
-        self.s3_user_id = s3_user_id or self.config.get(config_section, 'user_id')
-        self.s3_region = self.config.get(config_section, 's3_region', fallback=None)
-        self.s3_keyring_password_section = s3_keyring_password_section
-        self.s3_keyring_service_name = s3_keyring_password_section or self.config.get(
-            config_section,
-            'keyring_service_name',
-            fallback='s3',
-        )
-        self.s3_bucket_name = s3_bucket_name or self.config.get(config_section, 'bucket_name')
-        self.s3_folder = s3_folder or self.config.get(config_section, 's3_folder')
-        self.s3_files_to_generate = s3_files_to_generate or self.config.getint(
-            config_section,
-            's3_files_to_generate',
-            fallback=3,
-        )
-        self.s3_clear_before = True
-        self.s3_clear_when_done = s3_clear_when_done
-        self.analyze_compression = None
-        self.s3_password = keyring.get_password(self.s3_keyring_service_name, self.s3_user_id)
-        assert self.s3_password is not None, f'Password for s3 {self.s3_keyring_service_name} {self.s3_user_id} not found in keyring'
+        self.config = config
+        self.s3_user_id = self.config.user_id
+        self.s3_region = self.config.region_name
+        self.s3_bucket_name = self.config.bucket_name
+        self.s3_folder = self.config.folder
+        self.s3_files_to_generate = self.config.s3_files_to_generate
+        self.s3_clear_before = self.config.s3_clear_before
+        self.s3_clear_when_done = self.config.s3_clear_when_done
+        self.analyze_compression = self.config.analyze_compression
+        self.s3_password = self.config.get_password()
         self.session = boto3.session.Session(
             aws_access_key_id=self.s3_user_id,
             aws_secret_access_key=self.s3_password
@@ -103,8 +86,8 @@ class RedShiftS3Base(BulkLoader):
             self.log.info(f"Uploading from '{local_path}' to {self.s3_bucket_name}' key '{s3_path}' ")
             s3_files.append(f's3://{self.s3_bucket_name}/{s3_path}')
             self.bucket.upload_file(
-                local_path,
-                s3_path,
+                str(local_path),
+                str(s3_path),
             )
 
             response = None
@@ -130,7 +113,7 @@ class RedShiftS3Base(BulkLoader):
             copy_sql: str,
             s3_full_folder: str,
             table_object: Table,
-            file_list: typing.Optional[list] = None,
+            file_list: Optional[list] = None,
     ):
         copy_sql = textwrap.dedent(copy_sql)
         sql_safe_pw = copy_sql.replace(self.s3_password, '*' * 8)
@@ -220,7 +203,7 @@ class RedShiftS3Base(BulkLoader):
             table_object: Table,
             table_to_load: str = None,
             s3_source_path_is_absolute: bool = True,
-            file_list: typing.Optional[typing.List[str]] = None,
+            file_list: Optional[List[str]] = None,
             file_compression: str = '',
             options: str = '',
             analyze_compression: str = None,
@@ -266,7 +249,7 @@ class RedShiftS3Base(BulkLoader):
 
     def load_from_files(
             self,
-            local_files: list,
+            local_files: List[Union[str, Path]],
             table_object: Table,
             table_to_load: str = None,
             perform_rename: bool = False,
@@ -292,13 +275,13 @@ class RedShiftS3Base(BulkLoader):
 
     def load_from_iterator(
         self,
-        iterator: typing.Iterator,
+        iterator: Iterator,
         table_object: Table,
         table_to_load: str = None,
         perform_rename: bool = False,
         progress_frequency: int = 10,
-        analyze_compression: str = None,
-        parent_task: typing.Optional[ETLTask] = None,
+        analyze_compression: bool = None,
+        parent_task: Optional[ETLTask] = None,
     ):
 
         raise NotImplementedError()
