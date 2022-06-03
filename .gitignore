@@ -93,3 +93,4 @@ ENV/
 .idea/*
 **/.pytest_cache/
 unit_tests_sqlite.db
+/tests/test_db
