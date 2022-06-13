@@ -1186,7 +1186,7 @@ test = ["pytest", "psycopg2", "testcontainers"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7,<4.0"
-content-hash = "2986f098541691232e9fff25a7e16321363c814b1f8c0a8166186a05dd026acf"
+content-hash = "2d7408ebb67f924bd15b9c8040f1da6e4656b92ed474b4d0274f196803ee4098"
 
 [metadata.files]
 alabaster = [

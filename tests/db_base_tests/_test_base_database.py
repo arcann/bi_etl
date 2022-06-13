@@ -58,7 +58,11 @@ class _TestBaseDatabase(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         if cls.__name__[0] == '_':
+            # if unittest
             raise unittest.SkipTest("Not a test class")
+            # if pytest ... but how do we detect?
+            # For now we'll detect if db_container is None in setUp
+            # pytest.skip("Not a test class")
         cls.db_container = SqliteDB()
 
     @classmethod
@@ -71,6 +75,8 @@ class _TestBaseDatabase(unittest.TestCase):
         return module_path.parents[1]
 
     def setUp(self):
+        if self.db_container is None:
+            raise unittest.SkipTest("Pytest not skipping whole class on raise unittest.SkipTest from setUpClass")
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.DEBUG)
         logging.getLogger().setLevel(logging.DEBUG)
