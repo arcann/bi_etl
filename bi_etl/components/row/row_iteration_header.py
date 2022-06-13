@@ -9,16 +9,15 @@ from __future__ import annotations
 import functools
 import os
 import threading
-import typing
 from collections import defaultdict
 from operator import attrgetter
-from typing import Union, List
+from typing import *
 
 from sqlalchemy.sql.schema import Column
 
 from bi_etl.components.row.cached_frozenset import get_cached_frozen_set
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     import bi_etl.components.row.row.Row
     from bi_etl.components.etlcomponent import ETLComponent
 
@@ -53,14 +52,16 @@ class RowIterationHeader(object):
             if process_iteration_id in RowIterationHeader._process_instance_dict[process_pid]:
                 return RowIterationHeader._process_instance_dict[process_pid][process_iteration_id]
         # Else not found
-        raise ValueError(f"Iteration header for PID={process_pid} ID={process_iteration_id} has not been sent to this process")
+        raise ValueError(
+            f"Iteration header for PID={process_pid} ID={process_iteration_id} has not been sent to this process"
+        )
 
     def __init__(
             self,
-            logical_name: typing.Optional[str] = None,
-            primary_key: typing.Optional[typing.Iterable] = None,
-            parent: typing.Optional[ETLComponent] = None,
-            columns_in_order: typing.Optional[typing.Iterable] = None,
+            logical_name: Optional[str] = None,
+            primary_key: Optional[Iterable] = None,
+            parent: Optional[ETLComponent] = None,
+            columns_in_order: Optional[Iterable] = None,
             owner_pid: int = None,
             ):
         with RowIterationHeader.lock:
@@ -81,15 +82,14 @@ class RowIterationHeader(object):
         self.parent = parent
         self._actions_to_next_headers = dict()
         self._columns_positions = dict()
+        self._name_map_db = self.__shared_name_map_db
         if columns_in_order is not None:
             self._columns_in_order = None
             self.columns_in_order = columns_in_order
             with RowIterationHeader.lock:
-                self.__name_map_db = RowIterationHeader.__shared_name_map_db
-                self.__name_map_db.update({col: col for col in columns_in_order})
+                self._name_map_db.update({col: col for col in columns_in_order})
         else:
             self._columns_in_order = list()
-            self.__name_map_db = RowIterationHeader.__shared_name_map_db
         self.columns_frozen = False
         self._cached_column_set = None
         self._cached_positioned_column_set = None
@@ -133,10 +133,10 @@ class RowIterationHeader(object):
             # If not None, this callable will have priority over obj’s __setstate__().
         )
 
-    def get_column_name(self, input_name: typing.Union[str, Column]) -> str:
+    def get_column_name(self, input_name: Union[str, Column]) -> str:
         try:
             with RowIterationHeader.lock:
-                return self.__name_map_db[input_name]
+                return self._name_map_db[input_name]
         except KeyError:
             # If the input_name is an SA Column use it's name.
             # In Python 2.7 to 3.4, isinstance is a lot faster than try-except or hasattr (which does a try)
@@ -147,7 +147,7 @@ class RowIterationHeader(object):
             else:
                 raise ValueError("Row column name must be str, unicode, or Column. Got {}".format(type(input_name)))
             with RowIterationHeader.lock:
-                self.__name_map_db[input_name] = name_str
+                self._name_map_db[input_name] = name_str
             return name_str
 
     def get_action_header(
@@ -191,7 +191,7 @@ class RowIterationHeader(object):
 
         """
         if action not in self._actions_to_next_headers:
-            new_header = RowIterationHeader(
+            new_header = self.__class__(
                 logical_name=self.logical_name,
                 primary_key=self.primary_key,
                 parent=None
@@ -220,7 +220,7 @@ class RowIterationHeader(object):
         return repr(self)
 
     @property
-    def columns_in_order(self) -> typing.Sequence:
+    def columns_in_order(self) -> Sequence:
         """
         A list of the columns of this row in the order they were defined.
         """
@@ -229,7 +229,7 @@ class RowIterationHeader(object):
         return self._cached_columns_in_order_tuple
 
     @columns_in_order.setter
-    def columns_in_order(self, value: typing.Iterable):
+    def columns_in_order(self, value: Iterable):
         if self._columns_in_order is not None:
             if self.column_count > 0:
                 raise ValueError("Setting columns_in_order is only allowed on an empty RowIterationHeader")
@@ -239,7 +239,7 @@ class RowIterationHeader(object):
         self._clear_caches()
 
     @property
-    def primary_key(self) -> typing.Optional[typing.List]:
+    def primary_key(self) -> Optional[List]:
         try:
             if self._primary_key is not None and len(self._primary_key) > 0:
                 # Check if primary_key is list of Column objects and needs to be turned into a list of str name values
@@ -253,7 +253,7 @@ class RowIterationHeader(object):
             return None
 
     @primary_key.setter
-    def primary_key(self, value: typing.Optional[typing.Union[str, typing.Iterable]]):
+    def primary_key(self, value: Optional[Union[str, Iterable]]):
         if value is not None:
             if isinstance(value, str):
                 value = [value]
@@ -278,7 +278,7 @@ class RowIterationHeader(object):
         return self._cached_column_set
 
     @property
-    def positioned_column_set(self) -> typing.Set[tuple]:
+    def positioned_column_set(self) -> Set[tuple]:
         """
         An ImmutableSet of the the tuples (column, position) for this row.
         Used to store different row configurations in a dictionary or set.
@@ -308,12 +308,10 @@ class RowIterationHeader(object):
         return column_name in self._columns_positions
 
     def _key_error(self, column_name) -> KeyError:
-        return KeyError("{name} has no item {column_name} it does have {cols}"
-                        .format(name=self.logical_name,
-                                column_name=column_name,
-                                cols=self._columns_in_order
-                                )
-                        )
+        return KeyError(
+            f"{self.logical_name} has no item {column_name} "
+            f"it does have {self._columns_in_order}"
+            )
 
     @functools.lru_cache(maxsize=1000)
     def get_column_position(
@@ -465,7 +463,7 @@ class RowIterationHeader(object):
             new_header = self._actions_to_next_headers[action_tuple]
         except KeyError:
             # Results of rename not already stored, perform the renames one by one
-            if isinstance(rename_map, typing.Mapping):
+            if isinstance(rename_map, Mapping):
                 for k in rename_map.keys():
                     new_header = new_header.rename_column(k, rename_map[k],
                                                           ignore_missing=ignore_missing,
@@ -514,9 +512,9 @@ class RowIterationHeader(object):
     def row_subset(
             self,
             row: bi_etl.components.row.row.Row,
-            exclude: typing.Optional[typing.Iterable] = None,
-            rename_map: typing.Optional[typing.Union[dict, List[tuple]]] = None,
-            keep_only: typing.Optional[typing.Iterable] = None,
+            exclude: Optional[Iterable] = None,
+            rename_map: Optional[Union[dict, List[tuple]]] = None,
+            keep_only: Optional[Iterable] = None,
             ) -> bi_etl.components.row.row.Row:
         """
         Return a new row instance with a subset of the columns. Original row is not modified

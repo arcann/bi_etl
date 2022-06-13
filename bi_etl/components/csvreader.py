@@ -244,14 +244,21 @@ class CSVReader(ETLComponent):
         """
         if self.__reader is None:
             if not hasattr(self, 'delimiter'):
-                delimiters = [',', '|', '\t']
-                dialect = csv.Sniffer().sniff('\n'.join(self.file.readlines(10)), delimiters=delimiters)
+                delimiters = ''.join([',', '|', '\t'])
+                try:
+                    dialect = csv.Sniffer().sniff(self.file.read(8096), delimiters=delimiters)
+                except csv.Error as e:
+                    try:
+                        name = self.file.name
+                    except AttributeError:
+                        name = self.file
+                    raise ValueError(f"{e} in file {name} delimiters={delimiters}")
                 if dialect.delimiter not in delimiters:
                     msg = f'Invalid delimiter \'{dialect.delimiter}\' found in {self.file.name} csv file.'
                     self.log.warning(msg)
                     raise ValueError(msg)
                 else:
-                    self.log.debug(f'Found delimiter \'{dialect.delimiter}\' in {self.file.name} csv file.')
+                    self.log.info(f'Found delimiter \'{dialect.delimiter}\' in {self.file.name} csv file.')
                 self.dialect = dialect
 
                 self.file.seek(0)
@@ -352,9 +359,7 @@ class CSVReader(ETLComponent):
         len_column_names = len(self.column_names)
         try:
             self.seek_row(self.start_row)
-            this_iteration_header = self.generate_iteration_header(
-                columns_in_order=self.column_names,
-            )
+            this_iteration_header = self.full_iteration_header
             # noinspection PyTypeChecker
             for row in self.reader:
                 if len(row) != 0:     

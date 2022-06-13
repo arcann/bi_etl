@@ -239,7 +239,7 @@ def dict_to_str(obj,
     Parameters:
     obj is the object to convert to a string format
 
-    entry_name is the test_config title to put at the top (default blank)
+    entry_name is the main title to put at the top (default blank)
 
     depth is the starting depth (default 0)
 
@@ -291,7 +291,7 @@ def log_logging_level(log):
 
 
 def get_integer_places(number):
-    abs_number = abs(number)
+    abs_number = int(abs(number))
     if abs_number == 0:
         return 0
     # For numbers larger than 999999999999997 the log10 function's rounding causes the result to be too big

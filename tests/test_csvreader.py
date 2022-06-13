@@ -9,11 +9,9 @@ import os
 import unittest
 
 from bi_etl.components.csvreader import CSVReader
-from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.scheduler.task import ETLTask
+from tests.config_for_tests import build_config
 
-
-# pylint: disable=missing-docstring, protected-access
 
 class Test(unittest.TestCase):
     @staticmethod
@@ -26,14 +24,15 @@ class Test(unittest.TestCase):
     def get_test_files_path():
         return os.path.join(Test.get_package_path(), 'test_files')
 
-    def assertRegexMsg(self, actual, expectedRe):
-        msg = "---\nexpected:\n{}\n---\ngot:\n{}\n---\n".format(expectedRe.replace('\n', '\\n\n'),
-                                                                actual.replace('\n', '\\n\n')
-                                                                )
-        self.assertRegex(actual, expectedRe, msg)
+    def assertRegexMsg(self, actual, expected_re):
+        expected_str = expected_re.replace('\n', '\\n\n')
+        actual_str = actual.replace('\n', '\\n\n')
+        msg = f"---\nexpected:\n{expected_str}\n---\ngot:\n{actual_str}\n---\n"
+        self.assertRegex(actual, expected_re, msg)
 
     def setUp(self):
-        self.task = ETLTask(config=BI_ETL_Config_Base())
+        config = build_config()
+        self.task = ETLTask(config=config)
         self.test_files_path = self.get_test_files_path()
 
     def tearDown(self):
@@ -75,14 +74,14 @@ class Test(unittest.TestCase):
                     pass
 
     def testUTF8_pipe_with_header(self):
-        srcFile = os.path.join(self.test_files_path, 'utf8_with_header.pipe')
-        logical_name = os.path.basename(srcFile)
+        src_file = os.path.join(self.test_files_path, 'utf8_with_header.pipe')
+        logical_name = os.path.basename(src_file)
         # print(srcFile)
-        quoted_src_file = repr(srcFile)
+        quoted_src_file = repr(src_file)
         # print(quotedSrcFile)
         self.maxDiff = None
         # Test passing string filename and encoding
-        with CSVReader(self.task, srcFile, encoding='utf-8') as src:
+        with CSVReader(self.task, src_file, encoding='utf-8') as src:
             src.delimiter = '|'
             self.assertEqual(src.column_names, ['str', 'int', 'float', 'date', 'unicode'])
             expected_repr = "CSVReader(task={task},logical_name={logical_name},filedata=<_io.TextIOWrapper " \
@@ -119,9 +118,9 @@ class Test(unittest.TestCase):
                 pass
 
     def testUTF8_large_file(self):
-        srcFile = os.path.join(self.test_files_path, 'utf8_large_field.pipe')
+        src_file = os.path.join(self.test_files_path, 'utf8_large_field.pipe')
         # Test passing string filename and encoding
-        with CSVReader(self.task, srcFile, encoding='utf-8') as src:
+        with CSVReader(self.task, src_file, encoding='utf-8') as src:
             src.large_field_support = True
             src.delimiter = '|'
             self.assertEqual(src.column_names, ['str', 'unicode', 'after'])
@@ -188,10 +187,9 @@ class Test(unittest.TestCase):
             src.restkey = 'extraStuff'
             src.column_names = ['str', 'int', 'float', 'date', 'unicode']
             self.assertEqual(src.column_names, ['str', 'int', 'float', 'date', 'unicode'])
-            expected_repr = "CSVReader(task={task},logical_name={logical_name},filedata=<_io.TextIOWrapper " \
-                            "name={file} mode='rt' encoding='utf-8'>," \
-                            "primary_key=[],column_names=['str', 'int', 'float', 'date', 'unicode'])"
-            expected_repr = expected_repr.format(task=self.task, logical_name=logical_name, file=quoted_src_file)
+            expected_repr = f"CSVReader(task={self.task},logical_name={logical_name}," \
+                            f"filedata=<_io.TextIOWrapper name={quoted_src_file} mode='rt' encoding='utf-8'>," \
+                            f"primary_key=[],column_names=['str', 'int', 'float', 'date', 'unicode'])"
             self.assertEqual(repr(src), expected_repr)
             src_iter = iter(src)
             row = next(src_iter)
@@ -215,10 +213,9 @@ class Test(unittest.TestCase):
         with CSVReader(self.task, src_file, encoding='utf-8') as src:
             src.delimiter = '|'
             self.assertEqual(src.column_names, ['str', 'col2', 'col3'])
-            expected_repr = "CSVReader(task={task},logical_name={logical_name},filedata=<_io.TextIOWrapper " \
-                            "name={file} mode='rt' encoding='utf-8'>," \
-                            "primary_key=[],column_names=['str', 'col2', 'col3'])"
-            expected_repr = expected_repr.format(task=self.task, logical_name=logical_name, file=quoted_src_file)
+            expected_repr = f"CSVReader(task={self.task},logical_name={logical_name}," \
+                            f"filedata=<_io.TextIOWrapper name={quoted_src_file} mode='rt' encoding='utf-8'>," \
+                            f"primary_key=[],column_names=['str', 'col2', 'col3'])"
             self.assertEqual(repr(src), expected_repr)
             src_iter = iter(src)
             # Row 1 after header = Row 2 in file

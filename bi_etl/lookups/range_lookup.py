@@ -33,7 +33,7 @@ class RangeLookup(Lookup):
                  parent_component: ETLComponent,
                  begin_date,
                  end_date,
-                 config: BI_ETL_Config_Base,
+                 config: BI_ETL_Config_Base = None,
                  use_value_cache: bool = True,
                  ):
         super().__init__(
@@ -298,17 +298,18 @@ class RangeLookup(Lookup):
         Only works if parent_component is based on bi_etl.components.readonlytable
         """
         self.stats.timer.start()
-        if self._remote_lookup_stmt is None:
+        if self._remote_lookup_stmt_no_date is None:
             # noinspection PyUnresolvedReferences
             stmt = self.parent_component.select()
+            # Call parent _add_remote_stmt_where_clause so that it doesn't add the date filter
             stmt = super()._add_remote_stmt_where_clause(stmt)
             stmt = stmt.order_by(self.begin_date)
-            self._remote_lookup_stmt = stmt.compile()
+            self._remote_lookup_stmt_no_date = stmt.compile()
 
         values_dict = super()._get_remote_stmt_where_values(row)
 
         # noinspection PyUnresolvedReferences
-        result = list(self.parent_component.execute(self._remote_lookup_stmt, values_dict))
+        result = list(self.parent_component.execute(self._remote_lookup_stmt_no_date, values_dict))
         rows = list()
         for result_proxy_row in result:
             row = self.parent_component.Row(data=result_proxy_row)

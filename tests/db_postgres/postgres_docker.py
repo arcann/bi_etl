@@ -1,29 +1,50 @@
 import logging
 import random
+import time
+import unittest
 
 from testcontainers.postgres import PostgresContainer
 from testcontainers.core import config as tc_config
 
-from tests.sqlite.sqlite_db import SqliteDB
+from tests.db_sqlite.sqlite_db import SqliteDB
+
+__all__ = ['PostgresTestDB']
 
 
 class PostgresTestDB(SqliteDB):
     """
 
-    Note: On Windows this currently requires
+    Note: On Windows this currently requires docker desktop
 
     """
+    SKIP_POSTGRES = False
 
     def __init__(self):
+        if PostgresTestDB.SKIP_POSTGRES:
+            raise unittest.SkipTest(f"Skip Postgres due to PostgresTestDB.SKIP_POSTGRES")
         super().__init__()
-        self.container = self.get_container()
+        tries = 0
+        done = False
+        while not done:
+            # noinspection PyBroadException
+            try:
+                self.container = self.get_container()
+                done = True
+            except Exception as e:
+                tries += 1
+                if tries <= 2:
+                    print(f"Got {e} will retry")
+                    time.sleep(5)
+                else:
+                    PostgresTestDB.SKIP_POSTGRES = True
+                    raise unittest.SkipTest(f"Skip Postgres due to {e}")
 
     def get_container(self) -> PostgresContainer:
         tc_config.SLEEP_TIME = 1
         tc_config.MAX_TRIES = 60
 
-        # image = "postgres:9.5"
-        image = "postgres:latest"
+        # image = "db_postgres:9.5"
+        image = "db_postgres:latest"
         container = PostgresContainer(image=image)
         try:
             # The testcontainers implementation of get_container_host_ip
@@ -38,7 +59,13 @@ class PostgresTestDB(SqliteDB):
             # Don't show errors while waiting for the server to start
             waiting_log = logging.getLogger('testcontainers.core.waiting_utils')
             waiting_log.setLevel(logging.WARNING)
-            container.start()
+            try:
+                container.start()
+            except Exception as e:
+                raise RuntimeError(
+                    "Unable to start Docker container. "
+                    f"Make sure Docker Desktop is running. Error = {e}"
+                )
         except Exception:
             del container
             raise

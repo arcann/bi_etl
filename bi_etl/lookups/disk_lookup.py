@@ -38,7 +38,7 @@ class DiskLookup(Lookup):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: ETLComponent,
-                 config: BI_ETL_Config_Base,
+                 config: BI_ETL_Config_Base = None,
                  use_value_cache: bool = True,
                  path=None,
                  init_parent: bool = True,
@@ -137,39 +137,3 @@ class DiskLookup(Lookup):
             self._cache.close()
             self._cache_dir_mgr.cleanup()
         self._cache = None
-
-
-def test():
-    from _datetime import datetime
-    from bi_etl.timer import Timer
-    from tests.dummy_etl_component import DummyETLComponent
-    from bi_etl.components.row.row_iteration_header import RowIterationHeader
-    from bi_etl.components.row.row import Row
-
-    iteration_header = RowIterationHeader()
-    data = list()
-    for i in range(10000):
-        row = Row(iteration_header,
-                  data={'col1': i,
-                        'col2': 'Two',
-                        'col3': datetime(2012, 1, 3, 12, 25, 33),
-                        'col4': 'All good pickles',
-                        'col5': 123.23,
-                        'col6': 'This is a long value. It should be ok.',
-                        })
-        data.append(row)
-
-    parent_component = DummyETLComponent(data=data)
-    dc = DiskLookup("test", ['col1'], parent_component=parent_component)
-    start_time = Timer()
-    for row in parent_component:
-        dc.cache_row(row)
-
-    for row in parent_component:
-        _ = dc.find_in_cache(row)
-
-    print(start_time.seconds_elapsed_formatted)
-
-
-if __name__ == "__main__":
-    test()

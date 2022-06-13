@@ -46,7 +46,7 @@ class AutoDiskLookup(Lookup):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: ETLComponent,
-                 config: BI_ETL_Config_Base,
+                 config: BI_ETL_Config_Base = None,
                  use_value_cache: bool = True,
                  path=None,
                  max_percent_ram_used=None,
@@ -345,38 +345,3 @@ class AutoDiskLookup(Lookup):
             self._cache.report_on_value_cache_effectiveness(f'{lookup_name} RAM')
         if self.disk_cache:
             self.disk_cache.report_on_value_cache_effectiveness(f'{lookup_name} DISK')
-
-
-def test():
-    from _datetime import datetime
-    from bi_etl.timer import Timer
-    from tests.dummy_etl_component import DummyETLComponent
-    from bi_etl.components.row.row_iteration_header import RowIterationHeader
-    from bi_etl.components.row.row import Row
-
-    iteration_header = RowIterationHeader()
-    data = list()
-    rows_to_use = 100000
-    for i in range(rows_to_use):
-        row = Row(iteration_header,
-                  data={'col1': i,
-                        'col2': 'Two',
-                        'col3': datetime(2012, 1, 3, 12, 25, 33),
-                        'col4': 'All good pickles',
-                        'col5': 123.23,
-                        'col6': 'This is a long value. It should be ok.',
-                        })
-        data.append(row)
-
-    parent_component = DummyETLComponent(data=data)
-    dc = AutoDiskLookup("test", ['col1'], parent_component=parent_component)
-    dc.ram_check_row_interval = int(rows_to_use * 0.5)
-    dc.max_process_ram_usage_mb = 1
-    start_time = Timer()
-    for row in parent_component:
-        dc.cache_row(row)
-    print(start_time.seconds_elapsed_formatted)
-
-
-if __name__ == "__main__":
-    test()

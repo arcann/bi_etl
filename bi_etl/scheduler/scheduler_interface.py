@@ -106,7 +106,7 @@ class SchedulerInterface(object):
             raise ValueError("Config does not contain bi_etl.scheduler setting")
 
         # Pickup schema name from config
-        schema = self.config.bi_etl.scheduler.db_schema
+        schema = self.config.bi_etl.scheduler.db.database_schema
         self.schema = schema
         if self.schema is not None:
             self.log.info("Using etl_tasks tables in schema {}".format(schema))

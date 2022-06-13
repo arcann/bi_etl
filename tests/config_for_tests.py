@@ -12,9 +12,23 @@ class ConfigForTests(BI_ETL_Config_Base):
     target_database: SQLAlchemyDatabase
 
 
-def build_config(db_config: SQLAlchemyDatabase, tmp: Union[str, TemporaryDirectory]) -> ConfigForTests:
+def build_config(
+        tmp: Union[str, TemporaryDirectory] = None,
+        db_config: SQLAlchemyDatabase = None,
+) -> ConfigForTests:
     if isinstance(tmp, TemporaryDirectory):
         tmp = tmp.name
+    elif tmp is None:
+        tmp_obj = TemporaryDirectory()
+        tmp = tmp_obj.name
+
+    if db_config is None:
+        db_config = SQLAlchemyDatabase(
+            dialect='sqlite',
+            database_name='mock',
+            host='local',
+            user_id='sqlite',
+        )
     config = ConfigForTests(
             target_database=db_config,
             logging=LoggingConfig(

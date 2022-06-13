@@ -6,10 +6,10 @@ Created on Jan 5, 2016
 import unittest
 
 from bi_etl.lookups.lookup import Lookup
-from tests._test_base_lookup import _TestBase
+from tests._test_base_lookup import _TestBaseLookup
 
 
-class TestLookup(_TestBase):
+class TestLookup(_TestBaseLookup):
 
     def setUp(self):
         self.TestClass = Lookup
@@ -17,7 +17,6 @@ class TestLookup(_TestBase):
 
     def tearDown(self):
         super().tearDown()
+
+    # All tests we need here are in _TestBaseLookup
         
-if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test']
-    unittest.main()

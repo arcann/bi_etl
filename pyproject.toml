@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bi_etl"
-version = "1.0.6"
+version = "1.1"
 description = "Python ETL Framework"
 keywords=["etl"]
 classifiers = [
@@ -17,6 +17,7 @@ repository = "https://bitbucket.org/DatastrongTeam/bi_etl/src/master/"
 
 [tool.poetry.dependencies]
 python = "^3.7,<4.0"
+config-wrangler = ">=0.3.12"
 SQLAlchemy = ">=1.4.35"
 semidbm = ">=0.5.1"
 psutil = ">=5.7.2"
@@ -26,6 +27,7 @@ btrees = ">=4.7.2"
 gevent = ">=21.8.0"
 sqlparse = ">=0.4.2"
 keyring = "=>21"
+pydicti = "^1.1.6"
 
 # Optional
 pyramid = { version = ">=1.10.4", optional = true }
@@ -34,8 +36,8 @@ fastavro = {version = ">=1.0.0", optional = true}
 boto3 = {version = ">=1.21", optional = true}
 psycopg2 = {version = ">=2.8.6", optional = true}
 pytest = {version = ">=7.1", optional = true}
-testcontainers = {version = ">=3.5.3", optional = true}
-config-wrangler = ">=0.3.11"
+testcontainers = "3.5.4"
+
 
 [tool.poetry.extras]
 # Install with:

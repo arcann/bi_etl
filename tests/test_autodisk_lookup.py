@@ -8,13 +8,13 @@ import unittest
 from datetime import datetime
 
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
-from tests._test_base_lookup import _TestBase
+from tests._test_base_lookup import _TestBaseLookup
 
 
 # pylint: disable=missing-docstring, protected-access
 
 
-class TestAutodiskLookup(_TestBase):
+class TestAutodiskLookup(_TestBaseLookup):
     def setUp(self):
         self.TestClass = AutoDiskLookup
         self.temp_dir = tempfile.TemporaryDirectory()

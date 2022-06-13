@@ -12,11 +12,11 @@ import math
 import sys
 import textwrap
 import traceback
-from typing import *
 import warnings
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from decimal import InvalidOperation
+from typing import *
 from typing import Iterable, Callable, List, Union
 
 import sqlalchemy
@@ -36,7 +36,6 @@ from bi_etl.components.get_next_key.local_table_memory import LocalTableMemory
 from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row import Row
-from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.conversions import nvl
 from bi_etl.conversions import replace_tilda
@@ -58,6 +57,7 @@ from bi_etl.utility import dict_to_str
 from bi_etl.utility import get_integer_places
 
 
+# noinspection SqlDialectInspection
 class Table(ReadOnlyTable):
     """
     A class for accessing and updating a table.
@@ -188,19 +188,20 @@ class Table(ReadOnlyTable):
             task: Optional[ETLTask],
             database: DatabaseMetadata,
             table_name: str,
-            table_name_case_sensitive: bool = False,
+            table_name_case_sensitive: bool = None,
             schema: Optional[str] = None,
             exclude_columns: Optional[set] = None,
             **kwargs
-            ):
+    ):
         # Don't pass kwargs up. They should be set here at the end
-        super(Table, self).__init__(task=task,
-                                    database=database,
-                                    table_name=table_name,
-                                    table_name_case_sensitive=table_name_case_sensitive,
-                                    schema=schema,
-                                    exclude_columns=exclude_columns,
-                                    )
+        super(Table, self).__init__(
+            task=task,
+            database=database,
+            table_name=table_name,
+            table_name_case_sensitive=table_name_case_sensitive,
+            schema=schema,
+            exclude_columns=exclude_columns,
+            )
         self.support_multiprocessing = False
         self._special_row_header = None
         self._insert_method = Table.InsertMethod.execute_many
@@ -220,6 +221,7 @@ class Table(ReadOnlyTable):
         self.auto_generate_key = False
         self.upsert_called = False
         self.last_update_date = None
+        self.use_utc_times = False
         self.default_date_format = '%Y-%m-%d'
         self.default_date_time_format = '%Y-%m-%d %H:%M:%S'
         self.default_time_format = '%H:%M:%S'
@@ -278,7 +280,9 @@ class Table(ReadOnlyTable):
         if not self.is_closed:
             if self.in_bulk_mode:
                 if self._bulk_load_performed:
-                    self.log.debug(f"{self}.close() NOT causing bulk load since a bulk load has already been performed.")
+                    self.log.debug(
+                        f"{self}.close() NOT causing bulk load since a bulk load has already been performed."
+                        )
                 elif error:
                     self.log.info(f"{self}.close() NOT causing bulk load due to error.")
                 else:
@@ -324,7 +328,7 @@ class Table(ReadOnlyTable):
     def set_bulk_loader(
             self,
             bulk_loader: BulkLoader
-            ):
+    ):
         self.log.info(f'Changing {self} to bulk load method')
 
         self.__batch_size = sys.maxsize
@@ -334,10 +338,10 @@ class Table(ReadOnlyTable):
         self.bulk_loader = bulk_loader
 
     def cache_row(
-        self,
-        row: Row,
-        allow_update: bool = False,
-        allow_insert: bool = True,
+            self,
+            row: Row,
+            allow_update: bool = False,
+            allow_insert: bool = True,
     ):
         if self.in_bulk_mode:
             self._bulk_load_performed = False
@@ -414,7 +418,7 @@ class Table(ReadOnlyTable):
             row: Row,
             seq_column: str,
             force_override: bool = True,
-            ):
+    ):
         # Make sure we have a column object
         seq_column_obj = self.get_column(seq_column)
         # If key value is not already set, or we are supposed to force override                    
@@ -427,7 +431,7 @@ class Table(ReadOnlyTable):
             self,
             row: Row,
             force_override: bool = True,
-            ):
+    ):
         if self.auto_generate_key:
             if self.primary_key is None:
                 raise ValueError("No primary key set")
@@ -446,17 +450,17 @@ class Table(ReadOnlyTable):
             target_name: str,
             t_type: TypeEngine,
             target_column_value: object,
-            ):
+    ):
         try:
-            self.log.debug("{} t_type={}".format(target_name, t_type))
-            self.log.debug("{} t_type.precision={}".format(target_name, t_type.precision))
-            self.log.debug("{} target_column_value={}"
-                           .format(target_name, target_column_value))
-            self.log.debug("{} get_integer_places(target_column_value)={}"
-                           .format(target_name, get_integer_places(target_column_value)))
-            self.log.debug("{} (t_type.precision - t_type.scale)={}"
-                           .format(target_name,
-                                   (nvl(t_type.precision, 0) - nvl(t_type.scale, 0))))
+            self.log.debug(f"{target_name} t_type={t_type}")
+            self.log.debug(f"{target_name} t_type.precision={t_type.precision}")
+            self.log.debug(f"{target_name} target_column_value={target_column_value}")
+            self.log.debug(
+                f"{target_name} get_integer_places(target_column_value)={get_integer_places(target_column_value)}"
+            )
+            self.log.debug(
+                f"{target_name} (t_type.precision - t_type.scale)={(nvl(t_type.precision, 0) - nvl(t_type.scale, 0))}"
+            )
         except AttributeError as e:
             self.log.error(traceback.format_exc())
             self.log.debug(repr(e))
@@ -464,20 +468,22 @@ class Table(ReadOnlyTable):
     def _generate_null_check(
             self,
             target_column_object: ColumnElement
-            ) -> str:
+    ) -> str:
         target_name = target_column_object.name
         code = ''
         if not target_column_object.nullable:
             if not (self.auto_generate_key and target_name in self.primary_key):
                 # Check for nulls. Not as an ELSE because the conversion logic might have made the value null
-                code = textwrap.dedent(f"""\
+                code = textwrap.dedent(
+                    f"""\
                 # base indent            
                     if target_column_value is None:                                            
                         msg = "{self}.{target_name} has is not nullable and this cannot accept value '{{val}}'".format(
                             val=target_column_value,
                         )
                         raise ValueError(msg)                    
-                """)
+                """
+                    )
         return code
 
     def _get_coerce_method_name_by_str(self, target_column_name: str) -> str:
@@ -485,30 +491,41 @@ class Table(ReadOnlyTable):
             self._build_coerce_methods()
         return f"_coerce_{target_column_name}"
 
-    def _get_coerce_method_name_by_object(self, target_column_object: Union[str, 'sqlalchemy.sql.expression.ColumnElement']) -> str:
+    def _get_coerce_method_name_by_object(
+            self,
+            target_column_object: Union[str, 'sqlalchemy.sql.expression.ColumnElement']
+    ) -> str:
         target_column_name = self.get_column_name(target_column_object)
         return self._get_coerce_method_name_by_str(target_column_name)
 
-    def get_coerce_method(self, target_column_object: Union[str, 'sqlalchemy.sql.expression.ColumnElement']) -> Callable:
+    def get_coerce_method(
+            self,
+            target_column_object: Union[str, 'sqlalchemy.sql.expression.ColumnElement']
+    ) -> Callable:
         if not self._coerce_methods_built:
             self._build_coerce_methods()
         method_name = self._get_coerce_method_name_by_object(target_column_object)
         try:
             return getattr(self, method_name)
         except AttributeError:
-            raise AttributeError(f'{self} does not have a coerce method for {target_column_object} - check that vs columns list {self.column_names}')
+            raise AttributeError(
+                f'{self} does not have a coerce method for {target_column_object} '
+                f'- check that vs columns list {self.column_names}'
+            )
 
     def _make_generic_coerce(
             self,
             target_column_object: ColumnElement,
-            ):
+    ):
         name = self._get_coerce_method_name_by_object(target_column_object)
         code = f"def {name}(self, target_column_value):"
         code += self._generate_null_check(target_column_object)
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             exec(code)
         except SyntaxError as e:
@@ -519,45 +536,54 @@ class Table(ReadOnlyTable):
     def _make_str_coerce(
             self,
             target_column_object: ColumnElement,
-            ):
+    ):
         target_name = target_column_object.name
         t_type = target_column_object.type
         name = self._get_coerce_method_name_by_object(target_column_object)
         code = f"def {name}(self, target_column_value):"
-        code += textwrap.dedent("""\
-        # base indent
-            if isinstance(target_column_value, str):
-        """)
+        code += textwrap.dedent(
+            """\
+                    # base indent
+                        if isinstance(target_column_value, str):
+                    """
+            )
         if self.force_ascii:
             # Passing ascii bytes to cx_Oracle is not working.
             # We need to pass a str value.
             # So we'll use encode with 'replace' to force ascii compatibility
-            code += textwrap.dedent("""\
-            # base indent                
-                    target_column_value = \
-                        target_column_value.encode('ascii', 'replace_tilda').decode('ascii')
-            """)
+            code += textwrap.dedent(
+                """\
+                            # base indent                
+                                    target_column_value = \
+                                        target_column_value.encode('ascii', 'replace_tilda').decode('ascii')
+                            """
+                )
         else:
-            code += textwrap.dedent("""\
-            # base indent                
-                    pass
-            """)
-        code += textwrap.dedent("""\
-        # base indent            
-            elif isinstance(target_column_value, bytes):
-                target_column_value = target_column_value.decode('ascii')
-            elif target_column_value is None:
-                return None
-            else:
-                target_column_value = str(target_column_value)
-            """)
+            code += textwrap.dedent(
+                """\
+                            # base indent                
+                                    pass
+                            """
+                )
+        code += textwrap.dedent(
+            """\
+                    # base indent            
+                        elif isinstance(target_column_value, bytes):
+                            target_column_value = target_column_value.decode('ascii')
+                        elif target_column_value is None:
+                            return None
+                        else:
+                            target_column_value = str(target_column_value)
+                        """
+            )
         # Note: t_type.length is None for CLOB fields
         if t_type.length is not None:
             try:
                 if t_type.length > 0:
                     if self.database.uses_bytes_length_limits:
                         # Encode the str as uft-8 to get the byte length
-                        code += textwrap.dedent(f"""\
+                        code += textwrap.dedent(
+                            f"""\
                             # base indent
                                 value_len = len(target_column_value.encode('utf-8'))
                                 if value_len > {t_type.length}:
@@ -567,9 +593,11 @@ class Table(ReadOnlyTable):
                                            f"Note: char length is {{len(target_column_value)}}" 
                                            )  
                                     raise ValueError(msg)                        
-                            """)
+                            """
+                            )
                     else:
-                        code += textwrap.dedent(f"""\
+                        code += textwrap.dedent(
+                            f"""\
                             # base indent
                                 value_len = len(target_column_value) 
                                 if value_len > {t_type.length}:
@@ -578,21 +606,26 @@ class Table(ReadOnlyTable):
                                            f"char length of {{len(target_column_value)}} > {t_type.length} limit (_make_str_coerce)"
                                            )
                                     raise ValueError(msg)                        
-                            """)
+                            """
+                            )
             except TypeError:
                 # t_type.length is not a comparable type
                 pass
         if isinstance(t_type, CHAR):
-            code += textwrap.dedent(f"""\
+            code += textwrap.dedent(
+                f"""\
                                     # base indent
                                         if value_len < {t_type.length}:
                                             target_column_value += ' ' * ({t_type.length} -  len(target_column_value))                    
-                                    """)
+                                    """
+                )
         code += str(self._generate_null_check(target_column_object))
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             exec(code)
         except SyntaxError as e:
@@ -603,22 +636,24 @@ class Table(ReadOnlyTable):
     def _make_bytes_coerce(
             self,
             target_column_object: ColumnElement,
-            ):
+    ):
         target_name = target_column_object.name
         t_type = target_column_object.type
         name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
-        code += textwrap.dedent("""\
-        # base indent            
-            if isinstance(target_column_value, bytes):
-                pass
-            elif isinstance(target_column_value, str):
-                target_column_value = target_column_value.encode('utf-8')
-            elif target_column_value is None:
-                return None
-            else:
-                target_column_value = str(target_column_value).encode('utf-8')
-            """).format()
+        code += textwrap.dedent(
+            """\
+                    # base indent            
+                        if isinstance(target_column_value, bytes):
+                            pass
+                        elif isinstance(target_column_value, str):
+                            target_column_value = target_column_value.encode('utf-8')
+                        elif target_column_value is None:
+                            return None
+                        else:
+                            target_column_value = str(target_column_value).encode('utf-8')
+                        """
+            ).format()
         # t_type.length is None for BLOB, LargeBinary fields.
         # This really might not be required since all
         # discovered types with python_type == bytes:
@@ -626,28 +661,33 @@ class Table(ReadOnlyTable):
         if t_type.length is not None:
             try:
                 if t_type.length > 0:
-                    code += textwrap.dedent("""\
-                    # base indent                
-                        if len(target_column_value) > {len}:
-                            msg = "{table}.{column} has type {type} which cannot accept value '{{val}}' because length {{val_len}} > {len} limit (_make_bytes_coerce)"
-                            msg = msg.format(                                
-                                val=target_column_value,
-                                val_len=len(target_column_value),
-                            )
-                            raise ValueError(msg)                        
-                        """).format(len=t_type.length,
-                                    table=self,
-                                    column=target_name,
-                                    type=str(t_type).replace('"', "'"),
-                                    )
+                    code += textwrap.dedent(
+                        """\
+                                            # base indent                
+                                                if len(target_column_value) > {len}:
+                                                    msg = "{table}.{column} has type {type} which cannot accept value '{{val}}' because length {{val_len}} > {len} limit (_make_bytes_coerce)"
+                                                    msg = msg.format(                                
+                                                        val=target_column_value,
+                                                        val_len=len(target_column_value),
+                                                    )
+                                                    raise ValueError(msg)                        
+                                                """
+                        ).format(
+                        len=t_type.length,
+                        table=self,
+                        column=target_name,
+                        type=str(t_type).replace('"', "'"),
+                        )
             except TypeError:
                 # t_type.length is not a comparable type
                 pass
         code += self._generate_null_check(target_column_object)
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             exec(code)
         except SyntaxError as e:
@@ -658,32 +698,36 @@ class Table(ReadOnlyTable):
     def _make_int_coerce(
             self,
             target_column_object: ColumnElement,
-            ):
+    ):
         name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
-        code += textwrap.dedent("""\
-        # base indent
-            try:            
-                if isinstance(target_column_value, int):
-                    pass
-                elif target_column_value is None:
-                    return None
-                elif isinstance(target_column_value, str):
-                    target_column_value = str2int(target_column_value)
-                elif isinstance(target_column_value, float):
-                    target_column_value = int(target_column_value)            
-            except ValueError as e:
-                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_int_coerce)".format(                            
-                            val=target_column_value,
-                            e=e,
-                        )
-                raise ValueError(msg)
-            """).format(table=self, column=target_column_object.name)
+        code += textwrap.dedent(
+            """\
+                    # base indent
+                        try:            
+                            if isinstance(target_column_value, int):
+                                pass
+                            elif target_column_value is None:
+                                return None
+                            elif isinstance(target_column_value, str):
+                                target_column_value = str2int(target_column_value)
+                            elif isinstance(target_column_value, float):
+                                target_column_value = int(target_column_value)            
+                        except ValueError as e:
+                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_int_coerce)".format(                            
+                                        val=target_column_value,
+                                        e=e,
+                                    )
+                            raise ValueError(msg)
+                        """
+            ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             exec(code)
         except SyntaxError as e:
@@ -694,41 +738,45 @@ class Table(ReadOnlyTable):
     def _make_float_coerce(
             self,
             target_column_object: ColumnElement,
-            ):
+    ):
         name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
         # can explicitly use float
-        code += textwrap.dedent("""\
-        # base indent
-            try:            
-                if isinstance(target_column_value, float):
-                    if math.isnan(target_column_value):
-                        target_column_value = self.NAN_REPLACEMENT_VALUE
-                elif target_column_value is None:
-                    return None            
-                elif isinstance(target_column_value, str):
-                    target_column_value = str2float(target_column_value)            
-                elif isinstance(target_column_value, int):
-                    target_column_value = float(target_column_value)
-                elif isinstance(target_column_value, Decimal):
-                    if math.isnan(target_column_value):
-                        target_column_value = self.NAN_REPLACEMENT_VALUE
-                    else:
-                        target_column_value = float(target_column_value)
-            except ValueError as e:
-                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_float_coerce)".format(                            
-                            val=target_column_value,
-                            e=e,
-                        )
-                raise ValueError(msg)
-            """).format(table=self, column=target_column_object.name)
+        code += textwrap.dedent(
+            """\
+                    # base indent
+                        try:            
+                            if isinstance(target_column_value, float):
+                                if math.isnan(target_column_value):
+                                    target_column_value = self.NAN_REPLACEMENT_VALUE
+                            elif target_column_value is None:
+                                return None            
+                            elif isinstance(target_column_value, str):
+                                target_column_value = str2float(target_column_value)            
+                            elif isinstance(target_column_value, int):
+                                target_column_value = float(target_column_value)
+                            elif isinstance(target_column_value, Decimal):
+                                if math.isnan(target_column_value):
+                                    target_column_value = self.NAN_REPLACEMENT_VALUE
+                                else:
+                                    target_column_value = float(target_column_value)
+                        except ValueError as e:
+                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_float_coerce)".format(                            
+                                        val=target_column_value,
+                                        e=e,
+                                    )
+                            raise ValueError(msg)
+                        """
+            ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             exec(code)
         except SyntaxError as e:
@@ -739,39 +787,43 @@ class Table(ReadOnlyTable):
     def _make_decimal_coerce(
             self,
             target_column_object: ColumnElement,
-            ):
+    ):
         target_name = target_column_object.name
         t_type = target_column_object.type
         name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
 
-        code += textwrap.dedent("""\
-        # base indent            
-            if isinstance(target_column_value, Decimal):
-                pass
-            elif isinstance(target_column_value, float):
-                pass
-            elif target_column_value is None:
-                return None
-            """)
+        code += textwrap.dedent(
+            """\
+                    # base indent            
+                        if isinstance(target_column_value, Decimal):
+                            pass
+                        elif isinstance(target_column_value, float):
+                            pass
+                        elif target_column_value is None:
+                            return None
+                        """
+            )
 
         # If for performance reasons you don't want this conversion...
         #   DON'T send in a string!
         # str2decimal takes 765 ns vs 312 ns for Decimal() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can
         # guarantee no commas can explicitly use float or Decimal
-        code += textwrap.dedent("""\
-        # base indent            
-            elif isinstance(target_column_value, str):
-                try:
-                    target_column_value = str2decimal(target_column_value)
-                except ValueError as e:
-                    msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_decimal_coerce)".format(                            
-                                val=target_column_value,
-                                e=e,
-                            )
-                    raise ValueError(msg)
-        """).format(table=self, column=target_column_object.name)
+        code += textwrap.dedent(
+            """\
+                    # base indent            
+                        elif isinstance(target_column_value, str):
+                            try:
+                                target_column_value = str2decimal(target_column_value)
+                            except ValueError as e:
+                                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_decimal_coerce)".format(                            
+                                            val=target_column_value,
+                                            e=e,
+                                        )
+                                raise ValueError(msg)
+                    """
+            ).format(table=self, column=target_column_object.name)
 
         # t_type.length is None for BLOB, LargeBinary fields.
         # This really might not be required since all
@@ -780,30 +832,34 @@ class Table(ReadOnlyTable):
         if t_type.precision is not None:
             scale = nvl(t_type.scale, 0)
             integer_digits_allowed = t_type.precision - scale
-            code += textwrap.dedent("""\
-            # base indent
-                if target_column_value is not None:
-                    digits = get_integer_places(target_column_value)            
-                    if digits > {integer_digits_allowed}:
-                        msg = "{table}.{column} can't accept '{{val}}' since it has {{digits}} digits (_make_decimal_coerce)"\
-                              "which is > {integer_digits_allowed} by (prec {precision} - scale {scale}) limit".format(                            
-                                val=target_column_value,
-                                digits=digits,
-                            )
-                        raise ValueError(msg)
-                """).format(
-                    table=self,
-                    column=target_name,
-                    integer_digits_allowed=integer_digits_allowed,
-                    precision=t_type.precision,
-                    scale=scale
-                )
+            code += textwrap.dedent(
+                """\
+                            # base indent
+                                if target_column_value is not None:
+                                    digits = get_integer_places(target_column_value)            
+                                    if digits > {integer_digits_allowed}:
+                                        msg = "{table}.{column} can't accept '{{val}}' since it has {{digits}} integer digits (_make_decimal_coerce)"\
+                                              "which is > {integer_digits_allowed} by (prec {precision} - scale {scale}) limit".format(                            
+                                                val=target_column_value,
+                                                digits=digits,
+                                            )
+                                        raise ValueError(msg)
+                                """
+                ).format(
+                table=self,
+                column=target_name,
+                integer_digits_allowed=integer_digits_allowed,
+                precision=t_type.precision,
+                scale=scale
+            )
 
         code += self._generate_null_check(target_column_object)
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             exec(code)
         except SyntaxError as e:
@@ -814,41 +870,45 @@ class Table(ReadOnlyTable):
     def _make_date_coerce(
             self,
             target_column_object: ColumnElement,
-            ):
+    ):
         name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
         # can explicitly use float
-        code += textwrap.dedent("""\
-        # base indent  
-            try:
-                # Note datetime check must be 1st because datetime tests as an instance of date  
-                if isinstance(target_column_value, datetime):
-                    target_column_value = date(target_column_value.year,
-                                               target_column_value.month,
-                                               target_column_value.day)        
-                elif isinstance(target_column_value, date):
-                    pass            
-                elif target_column_value is None:
-                    return None
-                elif isinstance(target_column_value, str):
-                    target_column_value = str2date(target_column_value, dt_format=self.default_date_format)
-                else:
-                    target_column_value = str2date(str(target_column_value), dt_format=self.default_date_format)
-            except ValueError as e:
-                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_date_coerce) {{fmt}}".format(                            
-                            val=target_column_value,
-                            e=e,
-                            fmt=self.default_date_format,
-                        )
-                raise ValueError(msg)
-            """).format(table=self, column=target_column_object.name)
+        code += textwrap.dedent(
+            """\
+                    # base indent  
+                        try:
+                            # Note datetime check must be 1st because datetime tests as an instance of date  
+                            if isinstance(target_column_value, datetime):
+                                target_column_value = date(target_column_value.year,
+                                                           target_column_value.month,
+                                                           target_column_value.day)        
+                            elif isinstance(target_column_value, date):
+                                pass            
+                            elif target_column_value is None:
+                                return None
+                            elif isinstance(target_column_value, str):
+                                target_column_value = str2date(target_column_value, dt_format=self.default_date_format)
+                            else:
+                                target_column_value = str2date(str(target_column_value), dt_format=self.default_date_format)
+                        except ValueError as e:
+                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_date_coerce) {{fmt}}".format(                            
+                                        val=target_column_value,
+                                        e=e,
+                                        fmt=self.default_date_format,
+                                    )
+                            raise ValueError(msg)
+                        """
+            ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             exec(code)
         except SyntaxError as e:
@@ -859,32 +919,36 @@ class Table(ReadOnlyTable):
     def _make_datetime_coerce(
             self,
             target_column_object: ColumnElement,
-            ):
+    ):
         name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
-        code += textwrap.dedent("""\
-        # base indent
-            try:            
-                if isinstance(target_column_value, datetime):
-                    pass
-                elif target_column_value is None:
-                    return None            
-                elif isinstance(target_column_value, date):
-                    target_column_value = datetime.combine(target_column_value, time.min)            
-                elif isinstance(target_column_value, str):
-                    target_column_value = str2datetime(target_column_value,
-                                                       dt_format=self.default_date_time_format)
-                else:
-                    target_column_value = str2datetime(str(target_column_value),
-                                                       dt_format=self.default_date_time_format)
-            except ValueError as e:
-                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_datetime_coerce) {{fmt}}".format(                            
-                            val=target_column_value,
-                            e=e,
-                            fmt=self.default_date_time_format,
-                        )
-                raise ValueError(msg)
-            """).format(table=self, column=target_column_object.name)
+        code += textwrap.dedent(
+            """\
+                    # base indent
+                        try:            
+                            if isinstance(target_column_value, datetime):
+                                pass
+                            elif isinstance(target_column_value, timedelta):
+                                pass
+                            elif target_column_value is None:
+                                return None            
+                            elif isinstance(target_column_value, date):
+                                target_column_value = datetime.combine(target_column_value, time.min)            
+                            elif isinstance(target_column_value, str):
+                                target_column_value = str2datetime(target_column_value,
+                                                                   dt_format=self.default_date_time_format)
+                            else:
+                                target_column_value = str2datetime(str(target_column_value),
+                                                                   dt_format=self.default_date_time_format)
+                        except ValueError as e:
+                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_datetime_coerce) {{fmt}}".format(                            
+                                        val=target_column_value,
+                                        e=e,
+                                        fmt=self.default_date_time_format,
+                                    )
+                            raise ValueError(msg)
+                        """
+            ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         if self.table.bind.dialect.dialect_description == 'mssql+pyodbc':
             # fast_executemany Currently causes this error on datetime update (dimension load)
@@ -896,14 +960,18 @@ class Table(ReadOnlyTable):
             if str(target_column_object.type) == 'DATETIME':
                 self.log.warning(f"Rounding microseconds on {target_column_object}")
 
-                code += textwrap.dedent("""
-                        # base indent
-                            target_column_value = round_datetime_ms(target_column_value, 3)
-                        """)
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+                code += textwrap.dedent(
+                    """
+                                            # base indent
+                                                target_column_value = round_datetime_ms(target_column_value, 3)
+                                            """
+                    )
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             code = compile(code, filename='_make_datetime_coerce', mode='exec')
             exec(code)
@@ -915,42 +983,46 @@ class Table(ReadOnlyTable):
     def _make_time_coerce(
             self,
             target_column_object: ColumnElement,
-            ):
+    ):
         name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
         # can explicitly use float
-        code += textwrap.dedent("""\
-        # base indent
-            try:            
-                if isinstance(target_column_value, time):
-                    pass
-                elif target_column_value is None:
-                    return None            
-                elif isinstance(target_column_value, datetime):
-                    target_column_value = time(target_column_value.hour,
-                                               target_column_value.minute,
-                                               target_column_value.second,
-                                               target_column_value.microsecond,
-                                               target_column_value.tzinfo,
-                                               )            
-                elif isinstance(target_column_value, str):
-                    target_column_value = str2time(target_column_value, dt_format=self.default_time_format)
-                else:
-                    target_column_value = str2time(str(target_column_value), dt_format=self.default_time_format)
-            except ValueError as e:
-                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_time_coerce)".format(                            
-                            val=target_column_value,
-                            e=e,
-                        )
-                raise ValueError(msg)
-            """).format(table=self, column=target_column_object.name)
+        code += textwrap.dedent(
+            """\
+                    # base indent
+                        try:            
+                            if isinstance(target_column_value, time):
+                                pass
+                            elif target_column_value is None:
+                                return None            
+                            elif isinstance(target_column_value, datetime):
+                                target_column_value = time(target_column_value.hour,
+                                                           target_column_value.minute,
+                                                           target_column_value.second,
+                                                           target_column_value.microsecond,
+                                                           target_column_value.tzinfo,
+                                                           )            
+                            elif isinstance(target_column_value, str):
+                                target_column_value = str2time(target_column_value, dt_format=self.default_time_format)
+                            else:
+                                target_column_value = str2time(str(target_column_value), dt_format=self.default_time_format)
+                        except ValueError as e:
+                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_time_coerce)".format(                            
+                                        val=target_column_value,
+                                        e=e,
+                                    )
+                            raise ValueError(msg)
+                        """
+            ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             exec(code)
         except SyntaxError as e:
@@ -961,33 +1033,46 @@ class Table(ReadOnlyTable):
     def _make_timedelta_coerce(
             self,
             target_column_object: ColumnElement,
-            ):
+    ):
         name = self._get_coerce_method_name_by_object(target_column_object)
         code = "def {name}(self, target_column_value):".format(name=name)
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
         # can explicitly use float
-        code += textwrap.dedent("""\
-        # base indent            
-            try:
-                if isinstance(target_column_value, timedelta):
-                    pass
-                elif target_column_value is None:
-                    return None                         
-                else:
-                    target_column_value = timedelta(seconds=target_column_value)
-            except (TypeError, ValueError) as e:
-                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_timedelta_coerce)".format(                            
-                            val=target_column_value,
-                            e=e,
-                        )
-                raise ValueError(msg)
-            """).format(table=self, column=target_column_object.name)
+        code += textwrap.dedent(
+            """\
+                    # base indent            
+                        try:
+                            if isinstance(target_column_value, timedelta):
+                                pass
+                            elif target_column_value is None:
+                                return None
+                            elif isinstance(target_column_value, float):
+                                if math.isnan(target_column_value):
+                                    target_column_value = self.NAN_REPLACEMENT_VALUE
+                                target_column_value = timedelta(seconds=target_column_value)
+                            elif isinstance(target_column_value, str):
+                                target_column_value = str2float(target_column_value)
+                                target_column_value = timedelta(seconds=target_column_value)
+                            elif isinstance(target_column_value, int):
+                                target_column_value = timedelta(seconds=target_column_value)
+                            else:
+                                target_column_value = timedelta(seconds=target_column_value)
+                        except (TypeError, ValueError) as e:
+                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_timedelta_coerce)".format(                            
+                                        val=target_column_value,
+                                        e=e,
+                                    )
+                            raise ValueError(msg)
+                        """
+            ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             exec(code)
         except SyntaxError as e:
@@ -1002,39 +1087,43 @@ class Table(ReadOnlyTable):
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
         # can explicitly use float
-        code += textwrap.dedent("""\
-        # base indent
-            try:            
-                if isinstance(target_column_value, bool):
-                    pass                        
-                elif target_column_value is None:
-                    return None
-                elif isinstance(target_column_value, str):
-                    target_column_value = target_column_value.lower()
-                    if target_column_value in ['true', 'yes', 'y']:
-                        target_column_value = True
-                    elif target_column_value in ['false', 'no', 'n']:
-                        target_column_value = True
-                    else:
-                        type_error = True
-                        msg = "{table}.{column} unexpected value {{val}} (expected true/false, yes/no, y/n)".format(                            
-                                val=target_column_value,                            
-                            )
-                        raise ValueError(msg)
-                else:
-                    target_column_value = bool(target_column_value)
-            except (TypeError, ValueError) as e:
-                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_bool_coerce)".format(                            
-                            val=target_column_value,
-                            e=e,
-                        )
-                raise ValueError(msg)
-            """).format(table=self, column=target_name,)
+        code += textwrap.dedent(
+            """\
+                    # base indent
+                        try:            
+                            if isinstance(target_column_value, bool):
+                                pass                        
+                            elif target_column_value is None:
+                                return None
+                            elif isinstance(target_column_value, str):
+                                target_column_value = target_column_value.lower()
+                                if target_column_value in ['true', 'yes', 'y']:
+                                    target_column_value = True
+                                elif target_column_value in ['false', 'no', 'n']:
+                                    target_column_value = True
+                                else:
+                                    type_error = True
+                                    msg = "{table}.{column} unexpected value {{val}} (expected true/false, yes/no, y/n)".format(                            
+                                            val=target_column_value,                            
+                                        )
+                                    raise ValueError(msg)
+                            else:
+                                target_column_value = bool(target_column_value)
+                        except (TypeError, ValueError) as e:
+                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_bool_coerce)".format(                            
+                                        val=target_column_value,
+                                        e=e,
+                                    )
+                            raise ValueError(msg)
+                        """
+            ).format(table=self, column=target_name, )
         code += self._generate_null_check(target_column_object)
-        code += textwrap.dedent("""
-        # base indent
-            return target_column_value
-        """)
+        code += textwrap.dedent(
+            """
+                    # base indent
+                        return target_column_value
+                    """
+            )
         try:
             code = compile(code, filename='_make_bool_coerce', mode='exec')
             exec(code)
@@ -1081,7 +1170,7 @@ class Table(ReadOnlyTable):
             self,
             target_column_object: ColumnElement,
             target_column_value: object,
-            ):
+    ):
         """
         This is the slower non-dynamic code based data type conversion routine
         """
@@ -1157,17 +1246,20 @@ class Table(ReadOnlyTable):
                             type_error = True
                             err_msg = "{digits} digits > {t_digits} = " \
                                       "(prec {prec} - scale {scale}) limit" \
-                                .format(digits=get_integer_places(target_column_value),
-                                        t_digits=(t_type.precision - scale),
-                                        prec=t_type.precision,
-                                        scale=t_type.scale,
-                                        )
+                                .format(
+                                digits=get_integer_places(target_column_value),
+                                t_digits=(t_type.precision - scale),
+                                prec=t_type.precision,
+                                scale=t_type.scale,
+                                )
                 elif t_type.python_type == date:
                     # If we already have a datetime, make it a date
                     if isinstance(target_column_value, datetime):
-                        target_column_value = date(target_column_value.year,
-                                                   target_column_value.month,
-                                                   target_column_value.day)
+                        target_column_value = date(
+                            target_column_value.year,
+                            target_column_value.month,
+                            target_column_value.day
+                            )
                     # If we already have a date
                     elif isinstance(target_column_value, date):
                         pass
@@ -1189,26 +1281,33 @@ class Table(ReadOnlyTable):
                             if str(target_column_object.type) == 'DATETIME':
                                 target_column_value = round_datetime_ms(target_column_value, 3)
                     elif isinstance(target_column_value, str):
-                        target_column_value = str2datetime(target_column_value,
-                                                           dt_format=self.default_date_time_format)
+                        target_column_value = str2datetime(
+                            target_column_value,
+                            dt_format=self.default_date_time_format
+                            )
                     else:
-                        target_column_value = str2datetime(str(target_column_value),
-                                                           dt_format=self.default_date_time_format)
+                        target_column_value = str2datetime(
+                            str(target_column_value),
+                            dt_format=self.default_date_time_format
+                            )
                 elif t_type.python_type == time:
                     # If we already have a datetime, make it a time
                     if isinstance(target_column_value, datetime):
-                        target_column_value = time(target_column_value.hour,
-                                                   target_column_value.minute,
-                                                   target_column_value.second,
-                                                   target_column_value.microsecond,
-                                                   target_column_value.tzinfo,
-                                                   )
+                        target_column_value = time(
+                            target_column_value.hour,
+                            target_column_value.minute,
+                            target_column_value.second,
+                            target_column_value.microsecond,
+                            target_column_value.tzinfo,
+                            )
                     # If we already have a date or time value
                     elif isinstance(target_column_value, time):
                         pass
                     else:
-                        target_column_value = str2time(str(target_column_value),
-                                                       dt_format=self.default_time_format)
+                        target_column_value = str2time(
+                            str(target_column_value),
+                            dt_format=self.default_time_format
+                            )
                 elif t_type.python_type == timedelta:
                     # If we already have an interval value
                     if isinstance(target_column_value, timedelta):
@@ -1274,7 +1373,7 @@ class Table(ReadOnlyTable):
             ignore_target_not_in_source: Optional[bool] = None,
             raise_on_source_not_in_target: Optional[bool] = None,
             raise_on_target_not_in_source: Optional[bool] = None,
-            ):
+    ):
         if target_excludes is None:
             target_excludes = set()
         else:
@@ -1315,7 +1414,7 @@ class Table(ReadOnlyTable):
             target_excludes: Optional[frozenset] = None,
             ignore_source_not_in_target: Optional[bool] = None,
             ignore_target_not_in_source: Optional[bool] = None,
-            ):
+    ):
         self.sanity_check_source_mapping(
             example_source_row,
             example_source_row.name,
@@ -1338,7 +1437,7 @@ class Table(ReadOnlyTable):
             self,
             stat_name: str = 'insert',
             parent_stats: Optional[Statistics] = None,
-            ):
+    ):
         if self.in_bulk_mode:
             raise InvalidOperation('_insert_pending_batch is not allowed for bulk loader')
         # Need to delete pending first in case we are doing delete & insert pairs
@@ -1402,7 +1501,9 @@ class Table(ReadOnlyTable):
                 try:
                     pending_insert_statements.execute_singly(self.connection())
                     # If that didn't cause the error... re raise the original error
-                    self.log.error(f"Single inserts on {self} did not produce the error. Original error will be issued below.")
+                    self.log.error(
+                        f"Single inserts on {self} did not produce the error. Original error will be issued below."
+                        )
                     self.rollback()
                     raise
                 except Exception as e_single:
@@ -1425,7 +1526,7 @@ class Table(ReadOnlyTable):
                         for c in new_row:
                             try:
                                 col_obj = self.get_column(c)
-                                stmt = stmt.values({col_obj.name: bindparam(col_obj, type_=col_obj.type)})
+                                stmt = stmt.values({col_obj.name: bindparam(col_obj.name, type_=col_obj.type)})
                             except KeyError:
                                 self.log.error(f'Extra column found in pending_insert_rows row {new_row}')
                                 raise
@@ -1452,14 +1553,18 @@ class Table(ReadOnlyTable):
                 del self.pending_insert_rows
                 self.pending_insert_rows = list()
             except SQLAlchemyError as e:
-                self.log.error(f"Bulk insert on {self} failed with error {e}. Applying as single inserts to find error row...")
+                self.log.error(
+                    f"Bulk insert on {self} failed with error {e}. Applying as single inserts to find error row..."
+                    )
                 self.rollback()
                 self.begin()
                 # Retry one at a time
                 try:
                     pending_insert_statements.execute_singly(self.connection())
                     # If that didn't cause the error... re raise the original error
-                    self.log.error(f"Single inserts on {self} did not produce the error. Original error will be issued below.")
+                    self.log.error(
+                        f"Single inserts on {self} did not produce the error. Original error will be issued below."
+                        )
                     self.rollback()
                     raise
                 except Exception as e_single:
@@ -1475,7 +1580,7 @@ class Table(ReadOnlyTable):
             target_excludes: Optional[frozenset] = None,
             stat_name: str = 'insert',
             parent_stats: Optional[Statistics] = None,
-            ) -> Row:
+    ) -> Row:
         """
         Inserts a row into the database (batching rows as batch_size)
 
@@ -1504,7 +1609,7 @@ class Table(ReadOnlyTable):
             source_excludes=source_excludes,
             target_excludes=target_excludes,
             parent_stats=stats,
-            )
+        )
 
         self.autogenerate_key(new_row, force_override=False)
 
@@ -1572,7 +1677,7 @@ class Table(ReadOnlyTable):
             target_excludes: Optional[frozenset] = None,
             parent_stats: Optional[Statistics] = None,
             **kwargs
-            ):
+    ):
         """
         Insert a row or list of rows in the table.
         
@@ -1622,7 +1727,7 @@ class Table(ReadOnlyTable):
             self,
             stat_name: str = 'delete',
             parent_stats: Iterable[Statistics] = None,
-            ):
+    ):
         if self.in_bulk_mode:
             raise InvalidOperation('_delete_pending_batch not allowed in bulk mode')
         if self.pending_delete_statements.row_count > 0:
@@ -1648,7 +1753,7 @@ class Table(ReadOnlyTable):
             maintain_cache: Optional[bool] = None,
             stat_name: str = 'delete',
             parent_stats: Optional[Statistics] = None,
-            ):
+    ):
         """
         Delete rows matching key_values. 
         
@@ -1804,11 +1909,12 @@ class Table(ReadOnlyTable):
         # Builds static list of cache content so that we can modify (physically delete) cache rows
         # while iterating over
 
-        row_list = list(self.where(
-            criteria_list=criteria_list,
-            criteria_dict=criteria_dict,
-            use_cache_as_source=use_cache_as_source,
-            parent_stats=stats
+        row_list = list(
+            self.where(
+                criteria_list=criteria_list,
+                criteria_dict=criteria_dict,
+                use_cache_as_source=use_cache_as_source,
+                parent_stats=stats
             )
         )
         for row in row_list:
@@ -1819,7 +1925,7 @@ class Table(ReadOnlyTable):
                 progress_timer.reset()
                 self.log.info(
                     f"delete_not_in_set current row={stats['rows read']} key={existing_key} deletes_done = {stats['rows deleted']}"
-                    )
+                )
             if existing_key not in set_of_key_tuples:
                 stats['rows deleted'] += 1
 
@@ -1827,7 +1933,7 @@ class Table(ReadOnlyTable):
                 # In bulk mode we just need to remove them from the cache,
                 # which is done below where we loop over deleted_rows
                 if not self.in_bulk_mode:
-                    self.delete(key_values=row, lookup_name=self.PK_LOOKUP, maintain_cache=False)
+                    self.delete(key_values=row, lookup_name=self._get_pk_lookup_name(), maintain_cache=False)
 
         for row in deleted_rows:
             self.uncache_row(row)
@@ -1846,7 +1952,7 @@ class Table(ReadOnlyTable):
             stat_name: str = 'delete_not_processed',
             parent_stats: Optional[Statistics] = None,
             **kwargs
-            ):
+    ):
         """
         WARNING: This does physical deletes !! See :meth:`logically_delete_not_processed` for logical deletes.
         
@@ -1876,11 +1982,13 @@ class Table(ReadOnlyTable):
             # But that's only an issue if there are target rows
             if any(True for _ in self.where(criteria_list=criteria_list, criteria_dict=criteria_dict, )):
                 raise RuntimeError(f"{stat_name} called before any source rows were processed on {self}.")
-        self.delete_not_in_set(set_of_key_tuples=self.source_keys_processed,
-                               criteria_list=criteria_list,
-                               criteria_dict=criteria_dict,
-                               stat_name=stat_name,
-                               parent_stats=parent_stats)
+        self.delete_not_in_set(
+            set_of_key_tuples=self.source_keys_processed,
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            stat_name=stat_name,
+            parent_stats=parent_stats
+            )
         self.source_keys_processed = set()
 
     def logically_delete_not_in_set(
@@ -1894,7 +2002,7 @@ class Table(ReadOnlyTable):
             progress_frequency: Optional[int] = 10,
             parent_stats: Optional[Statistics] = None,
             **kwargs
-            ):
+    ):
         """
         Logically deletes rows matching criteria that are not in the list_of_key_tuples pass in.
         
@@ -1903,39 +2011,52 @@ class Table(ReadOnlyTable):
         set_of_key_tuples
             List of tuples comprising the primary key values.
             This list represents the rows that should *not* be logically deleted.
-        lookup_name: str
+        lookup_name:
             Name of the lookup to use
-        criteria_list : string or list of strings
+        criteria_list : 
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        criteria_dict : dict
+        criteria_dict : 
             Dict keys should be columns, values are set using = or in
         use_cache_as_source: bool
             Attempt to read existing rows from the cache?
-        stat_name: string
+        stat_name: 
             Name of this step for the ETLTask statistics. Default = 'delete_not_in_set'    
-        progress_frequency: int
+        progress_frequency: 
             How often (in seconds) to output progress messages. Default = 10.
-        parent_stats: bi_etl.statistics.Statistics
+        parent_stats: 
             Optional Statistics object to nest this steps statistics in.         
             Default is to place statistics in the ETLTask level statistics.
+        kwargs:
+            IF child class HistoryTable 
+                effective_date:
+                    The effective date to use for this operation.
         """
         if self._logical_delete_update is None:
-            self._logical_delete_update = Row(RowIterationHeader(logical_name='logical_delete'))
+            iteration_header = self.generate_iteration_header(
+                logical_name='logically_deleted',
+                columns_in_order=[self.delete_flag],
+            )
+            self._logical_delete_update = self.row_object(iteration_header=iteration_header)
             self._logical_delete_update[self.delete_flag] = self.delete_flag_yes
 
         if criteria_dict is None:
-            # Default to not processing rows that are already deleted
-            criteria_dict = {self.delete_flag: self.delete_flag_no}
+            criteria_dict = dict()
+        # Do no process rows that are already deleted
+        criteria_dict = {self.delete_flag: self.delete_flag_no}
 
-        self.update_not_in_set(updates_to_make=self._logical_delete_update,
-                               set_of_key_tuples=set_of_key_tuples,
-                               lookup_name=lookup_name,
-                               criteria_list=criteria_list,
-                               criteria_dict=criteria_dict,
-                               progress_frequency=progress_frequency,
-                               stat_name=stat_name,
-                               parent_stats=parent_stats)
+        self.update_not_in_set(
+            updates_to_make=self._logical_delete_update,
+            set_of_key_tuples=set_of_key_tuples,
+            lookup_name=lookup_name,
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            use_cache_as_source=use_cache_as_source,
+            progress_frequency=progress_frequency,
+            stat_name=stat_name,
+            parent_stats=parent_stats,
+            **kwargs
+        )
 
     def logically_delete_not_processed(
             self,
@@ -1968,9 +2089,10 @@ class Table(ReadOnlyTable):
         stat_name: string
             Name of this step for the ETLTask statistics. Default = 'logically_delete_not_processed'
         """
-        assert self.track_source_rows, """
-            logically_delete_not_processed can't be used if we don't track source rows
-            """
+        if not self.track_source_rows:
+            raise ValueError(
+                "logically_delete_not_processed can't be used if we don't track source rows"
+            )
         if not allow_delete_all and (self.source_keys_processed is None or len(self.source_keys_processed) == 0):
             # We don't want to logically delete all the rows
             # But that's only an issue if there are target rows
@@ -1981,7 +2103,9 @@ class Table(ReadOnlyTable):
             criteria_list=criteria_list,
             criteria_dict=criteria_dict,
             stat_name='logically_delete_not_processed',
-            parent_stats=parent_stats)
+            parent_stats=parent_stats,
+            **kwargs
+        )
         self.source_keys_processed = set()
 
     def logically_delete_not_in_source(
@@ -1992,7 +2116,8 @@ class Table(ReadOnlyTable):
             target_criteria_list: Optional[list] = None,
             target_criteria_dict: Optional[dict] = None,
             use_cache_as_source: Optional[bool] = True,
-            parent_stats: Optional[Statistics] = None):
+            parent_stats: Optional[Statistics] = None
+    ):
         """
         Logically deletes rows matching criteria that are not in the source component passed to this method.
         The primary use case for this method is when the upsert method is only passed new/changed records and so cannot 
@@ -2027,7 +2152,7 @@ class Table(ReadOnlyTable):
                 criteria_list=source_criteria_list,
                 criteria_dict=source_criteria_dict,
                 parent_stats=parent_stats,
-                ):
+        ):
             set_of_source_keys.add(source.get_primary_key_value_tuple(row))
 
         self.log.info("...logically_delete_not_in_set of source keys")
@@ -2037,12 +2162,19 @@ class Table(ReadOnlyTable):
             criteria_dict=target_criteria_dict,
             use_cache_as_source=use_cache_as_source,
             parent_stats=parent_stats,
-            )
+        )
+
+    def get_current_time(self) -> datetime:
+        if self.use_utc_times:
+            # Returns the current UTC date and time, as a naive datetime object.
+            return datetime.utcnow()
+        else:
+            return datetime.now()
 
     def set_last_update_date(self, row):
         last_update_date_col = self.get_column_name(self.last_update_date)
         last_update_coerce = self.get_coerce_method(last_update_date_col)
-        last_update_value = last_update_coerce(datetime.now())
+        last_update_value = last_update_coerce(self.get_current_time())
         row.set_keeping_parent(last_update_date_col, last_update_value)
 
     def get_bind_name(self, column_name: str) -> str:
@@ -2072,7 +2204,8 @@ class Table(ReadOnlyTable):
     def _update_pending_batch(
             self,
             stat_name: str = 'update',
-            parent_stats: Optional[Statistics] = None):
+            parent_stats: Optional[Statistics] = None
+    ):
         """
 
         Parameters
@@ -2149,7 +2282,9 @@ class Table(ReadOnlyTable):
             # len(self.pending_update_rows)
         except Exception as e:
             # Retry one at a time
-            self.log.error(f"Bulk update on {self} failed with error {e}. Applying as single updates to find error row...")
+            self.log.error(
+                f"Bulk update on {self} failed with error {e}. Applying as single updates to find error row..."
+                )
             connection = self.connection(connection_name='singly')
             for (stmt, row_dict) in pending_update_statements.iter_single_statements():
                 try:
@@ -2169,7 +2304,7 @@ class Table(ReadOnlyTable):
             self,
             row: Row,
             parent_stats: Optional[Statistics] = None,
-            ):
+    ):
         assert self.primary_key, "add_pending_update called for table with no primary key"
         assert row.status != RowStatus.insert, "add_pending_update called with row that's pending insert"
         assert row.status != RowStatus.deleted, "add_pending_update called with row that's pending delete"
@@ -2195,7 +2330,7 @@ class Table(ReadOnlyTable):
             stat_name: str = 'update',
             parent_stats: Optional[Statistics] = None,
             **kwargs
-            ):
+    ):
         """
         This method should only be called with a row that has already been transformed into the correct datatypes
         and column names.
@@ -2212,7 +2347,7 @@ class Table(ReadOnlyTable):
         changes_list:
             A list of ColumnDifference objects to apply to the row
         additional_update_values:
-            A Row or dict of additional values to apply to the test_config row
+            A Row or dict of additional values to apply to the main row
         add_to_cache:
             Should this method update the cache (not if caller will)
         allow_insert: boolean
@@ -2258,9 +2393,9 @@ class Table(ReadOnlyTable):
                 else:
                     # Support partial updates.
                     # We could save significant network transit times in some cases if we didn't send the whole row
-                    # back as an update. However, we might also not want a different update statement for each combination
-                    # of updated columns. Unfortunately, having code in update_pending_batch scan the combinations for the
-                    # most efficient ways to group the updates would also likely be slow.
+                    # back as an update. However, we might also not want a different update statement for each
+                    # combination of updated columns. Unfortunately, having code in update_pending_batch scan the
+                    # combinations for the most efficient ways to group the updates would also likely be slow.
                     update_columns = set(self.primary_key)
                     for d_chg in changes_list:
                         update_columns.add(d_chg.column_name)
@@ -2287,7 +2422,7 @@ class Table(ReadOnlyTable):
             target_excludes: Optional[frozenset] = None,
             stat_name: str = 'update_where_pk',
             parent_stats: Optional[Statistics] = None,
-            ):
+    ):
         """
         Updates the table using the primary key for the where clause.
         
@@ -2319,7 +2454,7 @@ class Table(ReadOnlyTable):
             source_excludes=source_excludes,
             target_excludes=target_excludes,
             parent_stats=stats,
-            )
+        )
 
         key_names = self.primary_key
         key_values_dict, _ = self._generate_key_values_dict(key_names, key_values, other_values_dict=updates_to_make)
@@ -2346,7 +2481,7 @@ class Table(ReadOnlyTable):
             stat_name: str = 'direct update',
             parent_stats: Optional[Statistics] = None,
             connection_name: Optional[str] = None,
-            ):
+    ):
         """
         Directly performs a database update. Invalidates caching.
         THIS METHOD IS SLOW!  If you have a full target row, use apply_updates instead.
@@ -2392,18 +2527,21 @@ class Table(ReadOnlyTable):
 
         # Check if we can pass this of to update_where_pk
         if key_names is None and not update_all_rows:
-            self.update_where_pk(updates_to_make=updates_to_make,
-                                 key_values=key_values,
-                                 source_excludes=source_excludes,
-                                 target_excludes=target_excludes,
-                                 parent_stats=stats)
+            self.update_where_pk(
+                updates_to_make=updates_to_make,
+                key_values=key_values,
+                source_excludes=source_excludes,
+                target_excludes=target_excludes,
+                parent_stats=stats
+                )
             return
 
-        source_mapped_as_target_row = self.build_row(source_row=updates_to_make,
-                                                     source_excludes=source_excludes,
-                                                     target_excludes=target_excludes,
-                                                     parent_stats=stats,
-                                                     )
+        source_mapped_as_target_row = self.build_row(
+            source_row=updates_to_make,
+            source_excludes=source_excludes,
+            target_excludes=target_excludes,
+            parent_stats=stats,
+            )
 
         stmt = self._update_stmt()
         if not update_all_rows:
@@ -2458,7 +2596,7 @@ class Table(ReadOnlyTable):
             stat_name: str = 'update_not_in_set',
             parent_stats: Statistics = None,
             **kwargs
-            ):
+    ):
         """
         Applies update to all rows matching criteria that are not in the list_of_key_tuples pass in.
         
@@ -2511,11 +2649,13 @@ class Table(ReadOnlyTable):
             criteria_dict[self.delete_flag] = self.delete_flag_no
 
         # Note, here we select only lookup columns from self
-        for row in self.where(column_list=lookup.lookup_keys,
-                              criteria_list=criteria_list,
-                              criteria_dict=criteria_dict,
-                              connection_name='select',
-                              parent_stats=stats):
+        for row in self.where(
+                column_list=lookup.lookup_keys,
+                criteria_list=criteria_list,
+                criteria_dict=criteria_dict,
+                connection_name='select',
+                parent_stats=stats
+                ):
             if row.status == RowStatus.unknown:
                 pass
             stats['rows read'] += 1
@@ -2523,7 +2663,9 @@ class Table(ReadOnlyTable):
 
             if 0 < progress_frequency <= progress_timer.seconds_elapsed:
                 progress_timer.reset()
-                self.log.info(f"update_not_in_set current current row#={stats['rows read']:,} row key={existing_key} updates done so far = {stats['updates count']:,}")
+                self.log.info(
+                    f"update_not_in_set current current row#={stats['rows read']:,} row key={existing_key} updates done so far = {stats['updates count']:,}"
+                    )
 
             if existing_key not in set_of_key_tuples:
                 stats['updates count'] += 1
@@ -2534,7 +2676,7 @@ class Table(ReadOnlyTable):
                 except NoResultFound:
                     raise RuntimeError(
                         f"keys {row.as_key_value_list} found in database or cache but not found now by get_by_lookup"
-                        )
+                    )
 
                 # Then we can apply the updates to it
                 self.apply_updates(
@@ -2554,50 +2696,66 @@ class Table(ReadOnlyTable):
             lookup_name: Optional[str] = None,
             criteria_list: Optional[Iterable] = None,
             criteria_dict: Optional[MutableMapping] = None,
+            use_cache_as_source: bool = True,
             stat_name: Optional[str] = 'update_not_processed',
             parent_stats: Optional[Statistics] = None,
-            ):
+            **kwargs
+    ):
         """
         Applies update to all rows matching criteria that are not in the Table memory of rows passed to :meth:`upsert`.
         
         Parameters
         ----------
-        update_row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
+        update_row: 
             :class:`~bi_etl.components.row.row_case_insensitive.Row` or dict of updates to make
-        criteria_list : string or list of strings
+        criteria_list : 
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
         criteria_dict:
             Dict keys should be columns, values are set using = or in
-        lookup_name: str
+        lookup_name: 
             Optional lookup name those key values are from.
-        stat_name: str
+        use_cache_as_source: 
+            Attempt to read existing rows from the cache?
+        stat_name: 
             Name of this step for the ETLTask statistics.
-        parent_stats: bi_etl.statistics.Statistics
+        parent_stats: 
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
+        kwargs:
+            IF HistoryTable or child thereof:
+                effective_date: datetime
+                    The effective date to use for the update
         """
         assert self.track_source_rows, "update_not_processed can't be used if we don't track source rows"
         if self.source_keys_processed is None or len(self.source_keys_processed) == 0:
             # We don't want to logically delete all the rows
             # But that's only an issue if there are target rows
-            if any(True for _ in self.where(
-                    criteria_list=criteria_list,
-                    criteria_dict=criteria_dict,
-            )):
+            if any(
+                    True for _ in self.where(
+                            criteria_list=criteria_list,
+                            criteria_dict=criteria_dict,
+                    )
+                    ):
                 raise RuntimeError(f"{stat_name} called before any source rows were processed.")
-        self.update_not_in_set(updates_to_make=update_row,
-                               set_of_key_tuples=self.source_keys_processed,
-                               lookup_name=lookup_name,
-                               criteria_list=criteria_list,
-                               criteria_dict=criteria_dict,
-                               stat_name=stat_name,
-                               parent_stats=parent_stats)
+        self.update_not_in_set(
+            updates_to_make=update_row,
+            set_of_key_tuples=self.source_keys_processed,
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            use_cache_as_source=use_cache_as_source,
+            stat_name=stat_name,
+            parent_stats=parent_stats,
+            **kwargs
+        )
         self.source_keys_processed = set()
 
     def _set_upsert_mode(self):
         if self._bulk_iter_sentinel is not None:
-            raise ValueError("Upsert called on a table that is using insert_row method.  Please manually set upsert_called = True before load operations.")
+            raise ValueError(
+                "Upsert called on a table that is using insert_row method.  "
+                "Please manually set upsert_called = True before load operations."
+                )
         if self.in_bulk_mode and not self.upsert_called:
             # One time setup
             pk_lookup = self.get_pk_lookup()
@@ -2623,7 +2781,7 @@ class Table(ReadOnlyTable):
             stat_name: str = 'upsert',
             parent_stats: Statistics = None,
             **kwargs
-            ):
+    ):
         """
         Update (if changed) or Insert a row in the table.
         This command will look for an existing row in the target table 
@@ -2677,7 +2835,7 @@ class Table(ReadOnlyTable):
             source_excludes=source_excludes,
             target_excludes=target_excludes,
             parent_stats=stats,
-            )
+        )
 
         if self.delete_flag is not None:
             if self.delete_flag not in source_mapped_as_target_row \
@@ -2685,11 +2843,9 @@ class Table(ReadOnlyTable):
                 source_mapped_as_target_row.set_keeping_parent(self.delete_flag, self.delete_flag_no)
 
         try:
-            # We'll default to using the natural key or primary key provided
+            # We'll default to using the natural key or primary key or NK based on row columns present
             if lookup_name is None:
-                lookup_name = self.get_nk_lookup_name()
-                if not self.primary_key:
-                    raise AssertionError("upsert needs a lookup_key or a table with a primary key!")
+                lookup_name = self.get_default_lookup(source_row.iteration_header)
 
             if isinstance(lookup_name, Lookup):
                 lookup_object = lookup_name
@@ -2697,7 +2853,7 @@ class Table(ReadOnlyTable):
                 lookup_object = self.get_lookup(lookup_name)
             if not lookup_object.cache_enabled and self.maintain_cache_during_load and self.batch_size > 1:
                 raise AssertionError("Caching needs to be turned on if batch mode is on!")
-            if self.in_bulk_mode and not(lookup_object.cache_enabled and self.maintain_cache_during_load):
+            if self.in_bulk_mode and not (lookup_object.cache_enabled and self.maintain_cache_during_load):
                 raise AssertionError("Caching needs to be turned on if bulk mode is on!")
             del lookup_object
 
@@ -2735,7 +2891,7 @@ class Table(ReadOnlyTable):
                     if self.trace_data:
                         self.log.debug(
                             f"{lookup_keys} {chg.column_name} changed from {chg.old_value} to {chg.new_value}"
-                            )
+                        )
                 if len(changes_list) > 0:
                     conditional_changes_msg = 'Conditional change applied'
                 else:
@@ -2746,7 +2902,7 @@ class Table(ReadOnlyTable):
                     if self.trace_data:
                         self.log.debug(
                             f"{lookup_keys} {conditional_changes_msg}: {chg.column_name} changed from {chg.old_value} to {chg.new_value}"
-                            )
+                        )
 
             if len(changes_list) > 0:
                 changes_list = list(changes_list) + list(conditional_changes)
@@ -2786,7 +2942,7 @@ class Table(ReadOnlyTable):
             stat_name='upsert_by_pk',
             parent_stats: Optional[Statistics] = None,
             **kwargs
-            ):
+    ):
         """
         Used by upsert_special_values_rows to find and update rows by the full PK.
         Not expected to be useful outside that use case.
@@ -2820,6 +2976,7 @@ class Table(ReadOnlyTable):
                     changes_list=changes_list,
                     stat_name=stat_name,
                     parent_stats=stats,
+                    **kwargs
                 )
         except NoResultFound:
             self.insert_row(source_row)
@@ -2829,7 +2986,7 @@ class Table(ReadOnlyTable):
             self,
             stat_name: str = 'upsert_special_values_rows',
             parent_stats: Optional[Statistics] = None,
-            ):
+    ):
         """
         Send all special values rows to upsert to ensure they exist and are current.
         Rows come from :meth:`get_missing_row`, :meth:`get_invalid_row`, :meth:`get_not_applicable_row`, :meth:`get_various_row`
@@ -2858,7 +3015,7 @@ class Table(ReadOnlyTable):
         ]
 
         for source_row in special_rows:
-            self.upsert(source_row, parent_stats=stats, lookup_name=self.PK_LOOKUP)
+            self.upsert(source_row, parent_stats=stats, lookup_name=self._get_pk_lookup_name())
 
         if not self.in_bulk_mode:
             self.commit(parent_stats=stats)
@@ -2870,7 +3027,7 @@ class Table(ReadOnlyTable):
             timeout: int = 60,
             stat_name: str = 'truncate',
             parent_stats: Optional[Statistics] = None,
-            ):
+    ):
         """
         Truncate the table if possible, else delete all.
         
@@ -2888,11 +3045,12 @@ class Table(ReadOnlyTable):
         stats['calls'] += 1
         stats.timer.start()
         database_type = self.database.dialect_name
+        truncate_sql = sqlalchemy.text(f'TRUNCATE TABLE "{self.qualified_table_name}"')
         if database_type == 'oracle':
             self.execute(f'alter session set ddl_lock_timeout={timeout}')
-            self.execute(f"TRUNCATE TABLE {self.qualified_table_name}")
-        elif database_type in ['mssql', 'mysql', 'postgresql', 'sybase', 'redshift']:
-            self.database.execute_direct(f"TRUNCATE TABLE {self.qualified_table_name}")
+            self.execute(truncate_sql)
+        elif database_type in {'mssql', 'mysql', 'postgresql', 'sybase', 'redshift'}:
+            self.execute(truncate_sql)
         else:
             self.execute(self._delete_stmt(autocommit=True))
 
@@ -2901,7 +3059,7 @@ class Table(ReadOnlyTable):
     def transaction(
             self,
             connection_name: Optional[str] = None
-            ):
+    ):
         connection_name = self._get_usable_connection_name(connection_name)
         if connection_name in self.__transaction_pool:
             return self.__transaction_pool[connection_name]
@@ -2911,7 +3069,7 @@ class Table(ReadOnlyTable):
     def begin(
             self,
             connection_name: Optional[str] = None
-            ):
+    ):
         if not self.in_bulk_mode:
             connection_name = self._get_usable_connection_name(connection_name)
             transaction = self.transaction(connection_name=connection_name)
@@ -2936,7 +3094,9 @@ class Table(ReadOnlyTable):
                 if self.bulk_loader is not None:
                     stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
                     stats.timer.start()
-                    assert isinstance(self.bulk_loader, BulkLoader), f'bulk_loader property needs to be instance of bulk_loader not {type(self.bulk_loader)}'
+                    assert isinstance(
+                        self.bulk_loader, BulkLoader
+                        ), f'bulk_loader property needs to be instance of bulk_loader not {type(self.bulk_loader)}'
                     self.close_connections()
                     if self._bulk_iter_sentinel is None:
                         if self.upsert_called:
@@ -2946,7 +3106,9 @@ class Table(ReadOnlyTable):
                             row_count = self.bulk_loader.load_table_from_cache(self, temp_table)
                             stats['rows_loaded'] = row_count
                         else:
-                            self.log.info(f"Bulk for {self} -- nothing to do. Neither Upsert nor insert_row was called.")
+                            self.log.info(
+                                f"Bulk for {self} -- nothing to do. Neither Upsert nor insert_row was called."
+                                )
                     else:
                         self.log.info(f"Bulk load from insert_row for {self}")
                         # Finish the iterator on the queue
@@ -2971,7 +3133,7 @@ class Table(ReadOnlyTable):
             print_to_log: bool = True,
             connection_name: Optional[str] = None,
             begin_new: bool = True,
-            ):
+    ):
         """
         Flush any buffered deletes, updates, or inserts
         
@@ -3028,7 +3190,7 @@ class Table(ReadOnlyTable):
             parent_stats: Optional[Statistics] = None,
             connection_name: Optional[str] = None,
             begin_new: bool = True,
-            ):
+    ):
         """
         Rollback any uncommitted deletes, updates, or inserts.
         
@@ -3063,3 +3225,210 @@ class Table(ReadOnlyTable):
             if begin_new:
                 self.begin(connection_name=connection_name)
             stats.timer.stop()
+
+    @staticmethod
+    def _sql_column_not_equals(column_name, alias_1='e', alias_2='s'):
+        return "(" \
+               f"( {alias_1}.{column_name} != {alias_2}.{column_name} )" \
+               f" OR ({alias_1}.{column_name} IS NULL AND {alias_2}.{column_name} IS NOT NULL)" \
+               f" OR ({alias_1}.{column_name} IS NOT NULL AND {alias_2}.{column_name} IS NULL)" \
+               ")"
+
+    @staticmethod
+    def _sql_indent_join(
+            statement_list: Iterable[str],
+            indent: int,
+            prefix: str = '',
+            suffix: str = '',
+            add_newline: bool = True,
+            prefix_if_not_empty: str = '',
+    ) -> str:
+        if add_newline:
+            newline = '\n'
+        else:
+            newline = ''
+
+        statement_list = list(statement_list)
+        if len(statement_list) == 0:
+            prefix_if_not_empty = ''
+        return prefix_if_not_empty + f"{suffix}{newline}{' ' * indent}{prefix}".join(statement_list)
+
+    def _sql_primary_key_name(self) -> str:
+        if len(self.primary_key) != 1:
+            raise ValueError(f"{self}.upsert_db_exclusive requires single primary_key column. Got {self.primary_key}")
+        return self.primary_key[0]
+
+    def _sql_now(self) -> str:
+        return "CURRENT_TIMESTAMP"
+
+    def _sql_add_seconds(
+            self,
+            column_name: str,
+            seconds: int,
+    ) -> str:
+        database_type = self.database.dialect_name
+        if database_type in {'oracle'}:
+            return f"{column_name} + INTERVAL '{seconds}' SECOND"
+        elif database_type in {'postgresql'}:
+            return f"{column_name} + INTERVAL '{seconds} SECONDS'"
+        elif database_type in {'mysql'}:
+            return f"DATE_ADD({column_name}, INTERVAL {seconds} SECOND)"
+        elif database_type in {'sqlite'}:
+            return f"datetime({column_name}, '{seconds:+d} SECOND')"
+        else:
+            return f"DATEADD(second, {seconds}, {column_name})"
+
+    def _sql_date_literal(
+            self,
+            dt: datetime,
+    ):
+        database_type = self.database.dialect_name
+        if database_type in {'oracle'}:
+            return f"TIMESTAMP '{dt.isoformat()}'"
+        elif database_type in {'postgresql', 'redshift'}:
+            return f"'{dt.isoformat()}'::TIMESTAMP"
+        elif database_type in {'sqlite'}:
+            return f"datetime('{dt.isoformat()}')"
+        else:
+            return f"TIMESTAMP('{dt.isoformat()}')"
+
+    def _sql_insert_new(
+            self,
+            source_table: ReadOnlyTable,
+            matching_columns: Iterable,
+            effective_date: Optional[datetime] = None,
+            connection_name: str = 'sql_upsert',
+    ):
+        if not self.auto_generate_key:
+            raise ValueError(f"_sql_insert_new expects to only be used with auto_generate_key = True")
+
+        now_str = self.get_current_time().isoformat()
+        insert_new_sql = f"""
+                    INSERT INTO {self.qualified_table_name} (
+                        {self._sql_primary_key_name()},
+                        {self.delete_flag},
+                        {self.last_update_date},
+                        {Table._sql_indent_join(matching_columns, 24, suffix=',')}
+                    )  
+                    WITH max_srgt AS (SELECT coalesce(max({self._sql_primary_key_name()}),0)  as max_srgt FROM {self.qualified_table_name})
+                    SELECT 
+                        max_srgt.max_srgt + ROW_NUMBER() OVER () as {self._sql_primary_key_name()},
+                        '{self.delete_flag_no}' as {self.delete_flag},
+                        '{now_str}' as {self.last_update_date},
+                        {Table._sql_indent_join(matching_columns, 16, suffix=',')}
+                    FROM max_srgt
+                         CROSS JOIN
+                         {source_table.qualified_table_name} s
+                    WHERE NOT EXISTS(
+                        SELECT 1 
+                        FROM {self.qualified_table_name} e
+                        WHERE {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}" for nk_col in self.natural_key], 18, prefix='AND ')}
+                    )
+                """
+
+        self.log.debug('=' * 80)
+        self.log.debug('insert_new_sql')
+        self.log.debug('=' * 80)
+        self.log.debug(insert_new_sql)
+        sql_timer = Timer()
+        results = self.execute(insert_new_sql, connection_name=connection_name)
+        self.log.debug(f"Impacted rows = {results.rowcount} (meaningful count? {results.supports_sane_rowcount()})")
+        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
+
+    def _sql_update_from(
+            self,
+            update_name: str,
+            source_sql: str,
+            list_of_joins: List[Tuple[str, Tuple[str, str]]],
+            list_of_sets: List[Tuple[str, str]],
+            target_alias_in_source: str = 'tgt',
+            extra_where: Optional[str] = None,
+            connection_name: str = 'sql_upsert',
+    ):
+        # Multiple Table Updates
+        # https://docs.sqlalchemy.org/en/14/core/tutorial.html#multiple-table-updates
+        conn = self.connection(connection_name)
+        database_type = self.database.dialect_name
+
+        if extra_where is not None:
+            and_extra_where = f"AND {extra_where}"
+        else:
+            extra_where = ''
+            and_extra_where = ''
+
+        sql = None
+        if database_type in {'oracle'}:
+            sql = f"""
+                MERGE INTO {self.qualified_table_name} tgt
+                USING (
+                    SELECT
+                        {Table._sql_indent_join([f"{join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 16, suffix=',')}
+                        {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
+                        {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
+                    FROM {source_sql}
+                ) src
+                ON {Table._sql_indent_join([f"tgt.{self.qualified_table_name}.{join_entry[0]} = src.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
+                WHEN MATCHED THEN UPDATE
+                SET {Table._sql_indent_join([f"tgt.{set_entry[0]} = src.col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
+            """
+        elif database_type in {'mysql'}:
+            sql = f"""
+                UPDATE {self.qualified_table_name} INNER JOIN {source_sql}
+                   ON  {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {'.'.join(join_entry[1])}" for join_entry in list_of_joins], 19, prefix='AND ')}
+                SET {Table._sql_indent_join([f"{target_alias_in_source}.{set_entry[0]} = {set_entry[1]}" for set_entry in list_of_sets], 16, suffix=',')}
+            """
+        # SQL Server
+        elif database_type in {'mssql'}:
+            sql = f"""
+                UPDATE {self.qualified_table_name}
+                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}" for set_entry in list_of_sets], 16, suffix=',')}
+                FROM {self.qualified_table_name}
+                     INNER JOIN 
+                     {source_sql}
+                        ON  {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {'.'.join(join_entry[1])}" for join_entry in list_of_joins], 24, prefix='AND ')}
+                {and_extra_where}
+            """
+        elif database_type == 'sqlite':
+            import sqlite3
+            from packaging import version
+
+            if version.parse(sqlite3.sqlite_version) > version.parse('3.33.0'):
+                # Use PostgreSQL below
+                pass
+            else:
+                # Older
+                set_statement_list = []
+                where_stmt = f"""
+                    {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
+                    {and_extra_where}
+                """
+                for set_entry in list_of_sets:
+                    select_part = f"""
+                        SELECT {set_entry[1]} 
+                        FROM {source_sql} 
+                        WHERE {where_stmt}
+                    """
+                    set_statement_list.append(f"{set_entry[0]} = ({select_part})")
+
+                set_delimiter = ',\n'
+                sql = f"""
+                    UPDATE {self.qualified_table_name} SET {set_delimiter.join(set_statement_list)}
+                    WHERE EXISTS ({select_part})
+                    """
+
+        if sql is None:  # SQLite 3.33+ and PostgreSQL
+            # https://sqlite.org/lang_update.html
+            sql = f"""
+                UPDATE {self.qualified_table_name}
+                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}" for set_entry in list_of_sets], 16, suffix=',')}
+                FROM {source_sql}
+                WHERE {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = {join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
+                {and_extra_where}
+            """
+        sql_timer = Timer()
+        self.log.debug(f"Running {update_name}")
+        self.log.debug(sql)
+        sql = sqlalchemy.text(sql)
+        results = self.execute(sql, connection_name=connection_name)
+        self.log.debug(f"Impacted rows = {results.rowcount:,} (meaningful count? {results.supports_sane_rowcount()})")
+        self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")

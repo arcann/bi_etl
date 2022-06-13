@@ -6,9 +6,7 @@ Created on Apr 18, 2016
 import logging
 import unittest
 
-from config_wrangler.config_templates.logging_config import LoggingConfig
-
-from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Section
+from tests.config_for_tests import build_config
 from tests.etl_jobs.etl_task_d1 import ETL_Task_D1
 from tests.etl_jobs.etl_task_d2 import ETL_Task_D2
 from tests.etl_jobs.etl_task_d3 import ETL_Task_D3
@@ -18,22 +16,15 @@ class TestTask(unittest.TestCase):
 
     def setUp(self):
         self.log = logging.getLogger("TestTask")
-        self.config = BI_ETL_Config_Base(
-            bietl=BI_ETL_Config_Section(
-                task_finder_base_module='tests.etl_jobs',
-            ),
-            logging=LoggingConfig(
-                log_levels={
-                    'root': 'DEBUG',
-                }
-            )
-        )
+        self.config = build_config()
+        self.config.bi_etl.task_finder_base_module = 'tests.etl_jobs'
         self.config.logging.setup_logging()
         self.log.setLevel(logging.DEBUG)        
 
     def tearDown(self):
         pass
 
+    @unittest.skip
     def test_normalized_dependents_set(self):
         d1 = ETL_Task_D1(config=self.config)
         d1_deps = d1.normalized_dependents_set

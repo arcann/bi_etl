@@ -6,6 +6,7 @@ Created on Feb 26, 2015
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
+import functools
 import logging
 import math
 import sys
@@ -20,6 +21,7 @@ from sqlalchemy.sql import Selectable
 from sqlalchemy.sql.expression import bindparam
 
 from bi_etl.components.row.row import Row
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.conversions import ensure_datetime
@@ -60,6 +62,8 @@ class Lookup(object):
             self.config = config
         else:
             self.config = parent_component.task.config
+            if self.config is None:
+                raise ValueError(f'{self} caller needs to provide config or parent_component that has a config ')
         self._cache = None
         self.parent_component = parent_component
         self.stats = parent_component.get_unique_stats_entry(
@@ -82,7 +86,11 @@ class Lookup(object):
         self._hashable_key_type = tuple
         self._fallback_to_db_count = 0
 
-    def _get_version(self, versions_collection: Lookup.VERSION_COLLECTION_TYPE[datetime, Row], effective_date: datetime):
+    def _get_version(
+            self,
+            versions_collection: Lookup.VERSION_COLLECTION_TYPE[datetime, Row],
+            effective_date: datetime
+    ):
         # SortedDict version
         # first_effective_index = versions_collection.bisect_right(effective_date) - 1
         # if first_effective_index <= -1:
@@ -98,7 +106,7 @@ class Lookup(object):
         return first_effective_row
         
     def __repr__(self):
-        return "{cls}(lookup_name={name}, lookup_keys={keys})".format(cls=self.__class__.__name__, name=self.lookup_name, keys=self.lookup_keys)
+        return f"{self.__class__.__name__}(lookup_name={self.lookup_name}, lookup_keys={self.lookup_keys})"
     
     @property
     def lookup_keys_set(self):
@@ -144,6 +152,13 @@ class Lookup(object):
         else:
             lookup_values = [row[k] for k in self.lookup_keys]
             return lookup_values
+
+    @functools.lru_cache(maxsize=10)
+    def row_iteration_header_has_lookup_keys(self, row_iteration_header: RowIterationHeader) -> bool:
+        for col in self.lookup_keys:
+            if col not in row_iteration_header.column_set:
+                return False
+        return True
 
     @staticmethod
     def rstrip_key_value(val: object) -> object:
@@ -517,7 +532,9 @@ class Lookup(object):
         -------
         A row
         """
-        assert hasattr(self.parent_component, 'execute'), f'ReadOnlyTable or class with execute method needed for DB lookup {type(self.parent_component)} will not work'
+        assert hasattr(self.parent_component, 'execute'), \
+            f'ReadOnlyTable or class with execute method needed ' \
+            f'for DB lookup {type(self.parent_component)} will not work'
 
         self.stats.timer.start()        
         if self._remote_lookup_stmt is None:
@@ -644,7 +661,9 @@ class Lookup(object):
                 if fallback_to_db:
                     self._fallback_to_db_count += 1
                     if (self._fallback_to_db_count % self.DB_LOOKUP_WARNING) == 0:
-                        self.log.warning(f"{self} has done {self._fallback_to_db_count} lookups on the DB due to fallback_to_db")
+                        self.log.warning(
+                            f"{self} has done {self._fallback_to_db_count} lookups on the DB due to fallback_to_db"
+                        )
                 else:
                     #  Don't pass onto SQL if the lookup cache has initialized but the value isn't there
                     if stats is not None:
@@ -729,7 +748,9 @@ class Lookup(object):
             max_usage = max(value_cache.values())
             total_usage = sum(value_cache.values())
             total_bytes_saved = sum([sys.getsizeof(key) * value for key, value in value_cache.items()])
-            return f'{lookup_name} {type_name} value cache stored {key_count:,} values. Max key usage = {max_usage:,}. Avg key usage = {100.0 * total_usage / key_count :.2f}%. total_bytes_saved = {total_bytes_saved:,}'
+            return f'{lookup_name} {type_name} value cache stored {key_count:,} values. ' \
+                   f'Max key usage = {max_usage:,}. ' \
+                   f'Avg key usage = {100.0 * total_usage / key_count :.2f}%. total_bytes_saved = {total_bytes_saved:,}'
         else:
             return f'{lookup_name} {type_name} value cache stored no values in cache'
 
@@ -738,38 +759,3 @@ class Lookup(object):
             lookup_name = self.lookup_name
         self.log.info(self._str_report_on_value_cache_usage(lookup_name, 'str', self._value_cache_str_usage))
         self.log.info(self._str_report_on_value_cache_usage(lookup_name, 'datetime', self._value_cache_datetime_usage))
-
-
-def test():
-    from _datetime import datetime
-    from bi_etl.timer import Timer
-    from tests.dummy_etl_component import DummyETLComponent
-    from bi_etl.components.row.row_iteration_header import RowIterationHeader
-    from bi_etl.components.row.row import Row
-
-    iteration_header = RowIterationHeader()
-    data = list()
-    rows_to_use = 100000
-    for i in range(rows_to_use):
-        row = Row(iteration_header,
-                  data={'col1': i,
-                        'col2': 'Two',
-                        'col3': datetime(2012, 1, 3, 12, 25, 33),
-                        'col4': 'All good pickles',
-                        'col5': 123.23,
-                        'col6': 'This is a long value. It should be ok.',
-                        })
-        data.append(row)
-
-    parent_component = DummyETLComponent(data=data)
-    dc = Lookup("test", ['col1'], parent_component=parent_component)
-    dc.ram_check_row_interval = rows_to_use // 2
-    dc.max_process_ram_usage_mb = 1
-    start_time = Timer()
-    for row in parent_component:
-        dc.cache_row(row)
-    print(start_time.seconds_elapsed_formatted)
-
-
-if __name__ == "__main__":
-    test()

@@ -7,26 +7,16 @@ Created on Dec 23, 2015
 import logging
 import unittest
 
-from config_wrangler.config_templates.logging_config import LoggingConfig
-
-from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Section
 from bi_etl.scheduler.scheduler_interface import SchedulerInterface
+from tests.config_for_tests import build_config
 
 
+@unittest.skip
 class IntegrationTestScheduler(unittest.TestCase):
 
     def setUp(self):
-        self.log = logging.getLogger( "TestScheduler")
-        self.config = BI_ETL_Config_Base(
-            bietl=BI_ETL_Config_Section(
-                task_finder_base_module='tests.etl_jobs',
-            ),
-            logging=LoggingConfig(
-                log_levels={
-                    'root': 'DEBUG',
-                }
-            )
-        )
+        self.log = logging.getLogger("TestScheduler")
+        self.config = build_config()
         self.config.logging.setup_logging()
         self.log.setLevel(logging.DEBUG)
         self.scheduler = SchedulerInterface(log=self.log, config=self.config)

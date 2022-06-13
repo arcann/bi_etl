@@ -246,9 +246,7 @@ class XLSXReader(ETLComponent):
         # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
         self.__active_row = self.start_row
         len_column_names = len(self.column_names)
-        this_iteration_header = self.generate_iteration_header(
-            columns_in_order=self.column_names,
-        )
+        this_iteration_header = self.full_iteration_header
         for row in self.active_worksheet.iter_rows(min_row=self.start_row):
             self.__active_row += 1
             row_values = XLSXReader._get_cell_values(row)           

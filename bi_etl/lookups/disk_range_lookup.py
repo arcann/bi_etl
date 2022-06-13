@@ -25,7 +25,7 @@ class DiskRangeLookup(RangeLookup, DiskLookup):
                  parent_component: ETLComponent,
                  begin_date,
                  end_date,
-                 config: BI_ETL_Config_Base,
+                 config: BI_ETL_Config_Base = None,
                  use_value_cache: bool = True,
                  path: str = None):
         """

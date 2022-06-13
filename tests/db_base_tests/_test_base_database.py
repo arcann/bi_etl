@@ -2,13 +2,15 @@ import inspect
 import logging
 import os
 import random
+import typing
 import unittest
-
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import sqlalchemy
-import typing
+from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.schema import Index
 from sqlalchemy.sql.sqltypes import BOOLEAN
@@ -25,12 +27,12 @@ from sqlalchemy.sql.sqltypes import String
 from sqlalchemy.sql.sqltypes import TEXT
 from sqlalchemy.sql.sqltypes import Time
 
-from bi_etl.bi_config_parser import BIConfigParser
 from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.row.row import Row
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
-from tests.sqlite.sqlite_db import SqliteDB
+from tests.config_for_tests import build_config
+from tests.db_sqlite.sqlite_db import SqliteDB
 from tests.dummy_etl_component import DummyETLComponent
 
 
@@ -55,6 +57,8 @@ class _TestBaseDatabase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        if cls.__name__[0] == '_':
+            raise unittest.SkipTest("Not a test class")
         cls.db_container = SqliteDB()
 
     @classmethod
@@ -63,16 +67,24 @@ class _TestBaseDatabase(unittest.TestCase):
 
     @staticmethod
     def get_package_path():
-        module_path = inspect.getfile(_TestBaseDatabase)
-        tests_path, _ = os.path.split(module_path)
-        return tests_path
+        module_path = Path(inspect.getfile(_TestBaseDatabase))
+        return module_path.parents[1]
 
     def setUp(self):
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.DEBUG)
         logging.getLogger().setLevel(logging.DEBUG)
-        self.config = BIConfigParser()
+        self.tmp = TemporaryDirectory()
+        database_name = 'test_db'
+        db_config = SQLAlchemyDatabase(
+            dialect='sqlite',
+            database_name=database_name,
+            host='local',
+            user_id='sqlite',
+        )
+        self.config = build_config(db_config=db_config, tmp=self.tmp)
         self.task = ETLTask(config=self.config)
+        self.dummy_etl_component = DummyETLComponent(task=self.task)
         engine = self.db_container.create_engine()
         self.log.info(f"Using DB connection {engine}")
 
@@ -85,6 +97,7 @@ class _TestBaseDatabase(unittest.TestCase):
 
     def tearDown(self):
         self.mock_database.dispose()
+        self.tmp.cleanup()
 
     def assertEquivalentNumber(self, first, second, msg=None):
         if first is None or second is None:
@@ -108,7 +121,6 @@ class _TestBaseDatabase(unittest.TestCase):
             Column('interval_col', Interval),
             Column('large_binary_col', LargeBinary),
             Column('strin_10_col', String(10)),
-            Column('text_col', TEXT),
             Column('num_col', NUMERIC(38, 6)),
             Column('numeric13_col', Numeric(13)),
             Column('delete_flag', TEXT),
@@ -139,7 +151,7 @@ class _TestBaseDatabase(unittest.TestCase):
         return sa_table
 
     def _gen_src_rows_1(self, int_range: typing.Union[range, int]) -> typing.Iterator[Row]:
-        source_compontent = DummyETLComponent()
+        source_compontent = self.dummy_etl_component
         iteration_header = source_compontent.generate_iteration_header()
 
         if isinstance(int_range, int):

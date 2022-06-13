@@ -12,7 +12,7 @@ class StaticReader(ETLComponent):
         self._column_names = [f'x{i}' for i in range(self.COLS)]
 
     def _raw_rows(self):
-        this_iteration_header = self.generate_iteration_header(columns_in_order=self.column_names)
+        this_iteration_header = self.full_iteration_header
         for row_num in range(self.ROWS):
             row_list = [f'x{i}[{row_num}]' for i in range(self.TEXT_COLS)]
             row_list.extend([i + row_num for i in range(self.INT_COLS)])

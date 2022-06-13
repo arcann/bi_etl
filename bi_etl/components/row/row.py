@@ -8,12 +8,15 @@ Created on Sep 17, 2014
 from __future__ import annotations
 
 import collections.abc
+import dataclasses
 import textwrap
-import typing
+from typing import *
 import warnings
+from collections import namedtuple
 from decimal import Decimal
 from typing import Union, List, Iterable
 
+from pydantic import BaseModel
 from sqlalchemy.sql.schema import Column
 
 from bi_etl.components.row.column_difference import ColumnDifference
@@ -22,7 +25,7 @@ from bi_etl.components.row.row_status import RowStatus
 from bi_etl.utility import dict_to_str
 
 
-class Row(typing.MutableMapping):
+class Row(MutableMapping):
     """
     Replacement for core SQL Alchemy, CSV or other dictionary based rows.
     Handles column names that are SQL Alchemy column objects.
@@ -37,12 +40,13 @@ class Row(typing.MutableMapping):
     ]
     NUMERIC_TYPES = {int, float, Decimal}
     RAISE_ON_NOT_EXIST_NAME = 'raise_on_not_exist'
+    RowIterationHeader_Class = RowIterationHeader
     # For performance with the Column to str conversion we keep a cache of converted values
 
     def __init__(self,
                  iteration_header: RowIterationHeader,
-                 data: typing.Union[typing.MutableMapping, list, None] = None,
-                 status: typing.Optional[RowStatus] = None,
+                 data: Union[MutableMapping, list, namedtuple, None] = None,
+                 status: Optional[RowStatus] = None,
                  allocate_space: bool = True):
         # Whatever we store here we need to either store on disk for a lookup,
         # or have a way of retrieving in __setstate__
@@ -50,12 +54,12 @@ class Row(typing.MutableMapping):
         # We need to accept None for iteration_header for shelve to be efficient
         self._data_values = list()
         if isinstance(iteration_header, int):
-            self.iteration_header = RowIterationHeader.get_by_id(iteration_header)
+            self.iteration_header = self.RowIterationHeader_Class.get_by_id(iteration_header)
         elif isinstance(iteration_header, tuple):
-            self.iteration_header = RowIterationHeader.get_by_process_and_id(iteration_header)
+            self.iteration_header = self.RowIterationHeader_Class.get_by_process_and_id(iteration_header)
         else:
-            assert isinstance(iteration_header, RowIterationHeader), \
-                "First argument to Row needs to be RowIterationHeader type, got {}".format(type(iteration_header))
+            assert isinstance(iteration_header, self.RowIterationHeader_Class), \
+                f"First argument to Row needs to be RowIterationHeader type, got {type(iteration_header)}"
             self.iteration_header = iteration_header
         self.iteration_header.add_row(self)
         if allocate_space:
@@ -79,25 +83,30 @@ class Row(typing.MutableMapping):
             # A callable object that will be called to create the initial version of the object.
             self.__class__,
 
-            # A tuple of arguments for the callable object. An empty tuple must be given if the callable does not accept any argument
+            # A tuple of arguments for the callable object.
+            # An empty tuple must be given if the callable does not accept any argument
             (
                 self.iteration_header.get_cross_process_iteration_header(),
                 self._data_values,
                 status_value
             ),
-            # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
-            # If the object has no such method then, the value must be a dictionary and it will be added to the object’s __dict__ attribute.
+            # Optionally, the object’s state, which will be passed to the object’s __setstate__() method
+            # as previously described.
+            # If the object has no such method then, the value must be a dictionary
+            # and it will be added to the object’s __dict__ attribute.
             None,
 
             # Optionally, an iterator (and not a sequence) yielding successive items.
-            # These items will be appended to the object either using obj.append(item) or, in batch, using obj.extend(list_of_items).
+            # These items will be appended to the object either using obj.append(item) or,
+            # in batch, using obj.extend(list_of_items).
 
             # Optionally, an iterator (not a sequence) yielding successive key-value pairs.
             # These items will be stored to the object using obj[key] = value
 
             # PROTOCOL 5+ only
             # Optionally, a callable with a (obj, state) signature.
-            # This callable allows the user to programmatically control the state-updating behavior of a specific object,
+            # This callable allows the user to programmatically control
+            # the state-updating behavior of a specific object,
             # instead of using obj’s static __setstate__() method.
             # If not None, this callable will have priority over obj’s __setstate__().
         )
@@ -127,6 +136,12 @@ class Row(typing.MutableMapping):
         # Restore column values
         self._data_values = incoming_dict['v']
 
+    def update_from_namedtuple(self, source_data: namedtuple):
+        # noinspection PyProtectedMember
+        for column_specifier, value in zip(source_data._fields, source_data):
+            column_name = self.iteration_header.get_column_name(column_specifier)
+            self._raw_setitem(column_name, value)
+
     def update_from_dict(self, source_dict: dict):
         for column_specifier, value in source_dict.items():
             column_name = self.iteration_header.get_column_name(column_specifier)
@@ -137,10 +152,18 @@ class Row(typing.MutableMapping):
             column_name = self.iteration_header.get_column_name(column_specifier)
             self._raw_setitem(column_name, value)
 
-    def update_from_tuples(self, tuples_list: typing.List[tuple]):
+    def update_from_tuples(self, tuples_list: List[tuple]):
         for column_specifier, value in tuples_list:
             column_name = self.iteration_header.get_column_name(column_specifier)
             self._raw_setitem(column_name, value)
+
+    def update_from_dataclass(self, dataclass_inst):
+        self.update_from_dict(dataclass_inst.__dict__)
+
+    def update_from_pydantic(self, pydantic_inst: BaseModel):
+        # Internally pydantic __iter__ uses __dict__ but is a bit more complex
+        # So going straight to __dict__ is faster
+        self.update_from_dict(pydantic_inst.__dict__)
 
     def update_from_values(self, values_list: list):
         if len(self.columns_in_order) >= len(values_list):
@@ -154,22 +177,21 @@ class Row(typing.MutableMapping):
 
         for source_data in args:
             try:
-                # noinspection PyStatementEffect
-                source_data[None]
-                # Is a dict with None it it! That's odd, but...
-                self.update_from_dict(source_data)
-            except KeyError:
-                # Is a dict
-                self.update_from_dict(source_data)
-            except AttributeError:
-                self.update_from_row_proxy(source_data)
-            except TypeError as e:
-                # Not a dict
-                if hasattr(source_data, '__iter__') and not isinstance(source_data, str):
+                if hasattr(source_data, '_fields'):
+                    self.update_from_namedtuple(source_data)
+                else:
+                    # Is a dict
+                    self.update_from_dict(source_data)
+            except AttributeError as e:
+                # Not a dict or sqlalchemy Row
+                if dataclasses.is_dataclass(source_data):
+                    self.update_from_dataclass(source_data)
+                elif hasattr(source_data, '__iter__') and not isinstance(source_data, str):
                     try:
                         source_data = list(source_data)
                         if len(source_data) > 0:
-                            # List of tuples (column_name, value) or list of values (only if we have column names already)
+                            # List of tuples (column_name, value) or list of values
+                            # (only if we have column names already)
                             if isinstance(source_data[0], tuple):
                                 self.update_from_tuples(source_data)
                             else:
@@ -182,17 +204,15 @@ class Row(typing.MutableMapping):
                             for a in attributes:  # instance of sqlalchemy.orm.state.AttributeState
                                 self._raw_setitem(a.key, getattr(source_data, a.key))
                         except AttributeError as e2:  # Not iterable
-                            raise ValueError("Row couldn't get set with {args}."
-                                             " First Error {e1}."
-                                             "Error when assuming SQLAlchemy ORM row object {e2})"
-                                             .format(e1=e1, e2=e2, args=source_data)
-                                             )
+                            raise ValueError(
+                                f"Row couldn't get set with {source_data}. "
+                                f"First Error {e1}. Error when assuming SQLAlchemy ORM row object {e2})"
+                                )
                 else:
                     args = str(source_data)
-                    raise ValueError("Row instance couldn't be built with source type {atype} value={args}."
-                                     " Error was {e}."
-                                     .format(e=e, args=args, atype=type(args))
-                                     )
+                    raise ValueError(
+                        f"Row instance couldn't be built with source type {type(args)} value={args}. Error was {e}."
+                        )
 
     def get_column_position(self, column_specifier):
         column_name = self.iteration_header.get_column_name(column_specifier)
@@ -231,13 +251,8 @@ class Row(typing.MutableMapping):
             return None
 
     def __repr__(self):
-        return '{cls}(name={name},status={status},primary_key={pk},\n{content}'.format(
-            cls=self.__class__.__name__,
-            name=self.name,
-            status=self.status,
-            pk=self.primary_key,
-            content=self.str_formatted()
-        )
+        return f'{self.__class__.__name__}(name={self.name},status={self.status},primary_key={self.primary_key},\n' \
+               f'{self.str_formatted()}'
 
     def __str__(self):
         if self.primary_key is not None:
@@ -312,14 +327,14 @@ class Row(typing.MutableMapping):
         if current_length < desired_size:
             self._data_values.extend([None for _ in range(desired_size - current_length)])
 
-    def _raw_setitem(self, column_name: typing.Union[str, Column], value):
+    def _raw_setitem(self, column_name: Union[str, Column], value):
         self.iteration_header = self.iteration_header.row_set_item(column_name, value, self)
 
     def __setitem__(self, key, value):
         key_name = self.iteration_header.get_column_name(key)
         self._raw_setitem(key_name, value)
 
-    def set_keeping_parent(self, column_name: typing.Union[str, Column], value):
+    def set_keeping_parent(self, column_name: Union[str, Column], value):
         """
         Save and restore the iteration header parent in case we are adding
         the key to the header.  This saves time in build_row since it can
@@ -466,9 +481,9 @@ class Row(typing.MutableMapping):
 
     def subset(
             self,
-            exclude: typing.Optional[Iterable] = None,
-            rename_map: typing.Optional[Union[dict, List[tuple]]] = None,
-            keep_only: typing.Optional[Iterable] = None,
+            exclude: Optional[Iterable] = None,
+            rename_map: Optional[Union[dict, List[tuple]]] = None,
+            keep_only: Optional[Iterable] = None,
             ) -> 'Row':
         """
         Return a new row instance with a subset of the columns. Original row is not modified
@@ -553,7 +568,7 @@ class Row(typing.MutableMapping):
         return self.columns_in_order.index(normalized_name) + 1  # index is 0 based, positions are 1 based
 
     @property
-    def columns_in_order(self) -> typing.Sequence:
+    def columns_in_order(self) -> Sequence:
         """
         A list of the columns of this row in the order they were defined.
 
@@ -588,9 +603,9 @@ class Row(typing.MutableMapping):
 
     def compare_to(self,
                    other_row: 'Row',
-                   exclude: typing.Iterable = None,
-                   compare_only: typing.Iterable = None,
-                   coerce_types: bool = True) -> typing.MutableSequence[ColumnDifference]:
+                   exclude: Iterable = None,
+                   compare_only: Iterable = None,
+                   coerce_types: bool = True) -> MutableSequence[ColumnDifference]:
         """
         Compare one RowCaseInsensitive to another. Returns a list of differences.
 
@@ -639,7 +654,7 @@ class Row(typing.MutableMapping):
 
     def transform(self,
                   column_specifier: str,
-                  transform_function: typing.Callable,
+                  transform_function: Callable,
                   *args,
                   **kwargs):
         # noinspection PyIncorrectDocstring

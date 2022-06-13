@@ -7,6 +7,7 @@ Created on Dec 23, 2015
 
 import logging
 
+
 #pylint: disable=abstract-method
 class MockDatabaseMetadata(object):
     """
@@ -34,8 +35,8 @@ class MockDatabaseMetadata(object):
         sqlalchemy.exc.DatabaseError:
             Maybe?            
         """
-        ##TODO: Capture statistics (basic Timer)
-        ##TODO: support other database
+        # TODO: Capture statistics (basic Timer)
+        # TODO: support other database
         log = logging.getLogger(__name__)
         sql_command = 'BEGIN {}; END;'.format(procedure_name)         
         log.debug("SQL = {}".format(sql_command))

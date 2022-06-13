@@ -21,10 +21,10 @@ __all__ = ['NonUniqueLookup']
 
 class NonUniqueLookup(Lookup):
     def __init__(self,
-                 config: BI_ETL_Config_Base,
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: ETLComponent,
+                 config: BI_ETL_Config_Base = None,
                  use_value_cache: bool = True,
                  value_for_none='<None>',  # Needs to be comparable to datatypes in the key actual None is not.
                  ):
@@ -33,7 +33,7 @@ class NonUniqueLookup(Lookup):
             lookup_keys=lookup_keys,
             parent_component=parent_component,
             use_value_cache=use_value_cache,
-            config=config
+            config=config,
             )
         self.value_for_none = value_for_none
         self._remote_lookup_stmt_no_date = None

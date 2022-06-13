@@ -22,13 +22,13 @@ class CopyTableData(ETLTask):
                 self,
                 database,
                 source_table_name,
-                table_name_case_sensitive=True,
+                table_name_case_sensitive=None,
                 ) as source_data:
             with ReadOnlyTable(
                     self,
                     database,
                     target_table_name,
-                    table_name_case_sensitive=True,
+                    table_name_case_sensitive=None,
                     ) as target_tbl:
                 target_column_set = set(target_tbl.column_names)
                 common_columns = list()

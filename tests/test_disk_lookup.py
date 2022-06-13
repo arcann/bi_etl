@@ -8,10 +8,10 @@ import tempfile
 import unittest
 
 from bi_etl.lookups.disk_lookup import DiskLookup
-from tests._test_base_lookup import _TestBase
+from tests._test_base_lookup import _TestBaseLookup
 
 
-class TestDiskLookup(_TestBase):
+class TestDiskLookup(_TestBaseLookup):
 
     def setUp(self):
         self.TestClass = DiskLookup

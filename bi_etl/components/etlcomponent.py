@@ -6,8 +6,10 @@ Created on Sep 25, 2014
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
+import functools
 import logging
 import warnings
+from collections import defaultdict
 from enum import unique, IntEnum
 from operator import attrgetter
 from typing import *
@@ -57,7 +59,8 @@ class ETLComponent(Iterable):
         How often (in seconds) to output progress messages. None for no progress messages.
     
     progress_message: str
-        The progress message to print. Default is ``"{logical_name} row # {row_number}"``. Note ``logical_name`` and ``row_number`` subs.    
+        The progress message to print. Default is ``"{logical_name} row # {row_number}"``.
+        Note ``logical_name`` and ``row_number`` subs.
             
     """
     DEFAULT_PROGRESS_FREQUENCY = 10  # Seconds
@@ -80,15 +83,14 @@ class ETLComponent(Iterable):
             task: Optional[ETLTask],
             logical_name: Optional[str] = None,
             **kwargs
-                ):
+    ):
         self.default_stats_id = 'read'
         self.task = task
-        self.logical_name = logical_name or "{cls}#{id}".format(cls=self.__class__.__name__,
-                                                                id=id(self))
+        self.logical_name = logical_name or f"{self.__class__.__name__}#{id(self)}"
         self._primary_key = None
         self.__progress_frequency = self.DEFAULT_PROGRESS_FREQUENCY
         self.progress_message = self.DEFAULT_PROGRESS_MESSAGE
-        self.max_rows = None        
+        self.max_rows = None
         self.log_first_row = True
         if not hasattr(self, '_column_names'):
             self._column_names = None
@@ -101,13 +103,12 @@ class ETLComponent(Iterable):
         self.__close_called = False
         self.read_batch_size = 1000
         self._iterator_applied_filters = False
+        self._empty_iteration_header = None
         self._full_iteration_header = None
         self.time_first_read = True
         self.time_all_reads = False
         self.warnings_issued = 0
         self.warnings_limit = 100
-
-        self.empty_iteration_header = RowIterationHeader(logical_name='empty')
 
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         if self.task is not None:
@@ -115,7 +116,7 @@ class ETLComponent(Iterable):
                 self.task.log_logging_level()
                 ETLComponent.logging_level_reported = True
         self.row_object = Row
-        
+
         # Register this component with its parent task
         if task is not None:
             task.register_object(self)
@@ -138,20 +139,37 @@ class ETLComponent(Iterable):
         self.cache_clean = False
 
         # Should be the last call of every init            
-        self.set_kwattrs(**kwargs) 
+        self.set_kwattrs(**kwargs)
+
+    @staticmethod
+    def kwattrs_order() -> Dict[str, int]:
+        """
+        Certain values need to be set before others in order to work correctly.
+        This method should return a dict mapping those key values = arg name to
+        a value less than the default of 9999, which will be used for any arg
+        not explicitly listed here.
+        """
+        return {
+        }
 
     def set_kwattrs(self, **kwargs):
-        for attr in kwargs:
+        # Certain values need to be set before others in order to work correctly
+        kw_order = defaultdict(lambda: 9999)
+        kw_order.update(self.kwattrs_order())
+
+        kw_arg_tuple_list = {arg: kw_order[arg] for arg in kwargs}
+
+        for attr in sorted(kw_arg_tuple_list, key=lambda x: kw_arg_tuple_list[x]):
             if attr == 'column_names':
                 # Use the setter
                 self.column_names = kwargs[attr]
             else:
                 setattr(self, attr, kwargs[attr])
-    
+
     def __repr__(self):
         return f"{self.__class__.__name__}" \
                f"(task={self.task},logical_name={self.logical_name},primary_key={self.primary_key})"
-        
+
     def __str__(self):
         if self.logical_name is not None:
             if isinstance(self.logical_name, str):
@@ -166,26 +184,45 @@ class ETLComponent(Iterable):
             # A callable object that will be called to create the initial version of the object.
             self.__class__,
 
-            # A tuple of arguments for the callable object. An empty tuple must be given if the callable does not accept any argument
+            # A tuple of arguments for the callable object.
+            # An empty tuple must be given if the callable does not accept any argument
             (self.task, self.logical_name),
 
-            # Optionally, the object’s state, which will be passed to the object’s __setstate__() method as previously described.
+            # Optionally, the object’s state, which will be passed to the object’s __setstate__()
+            # method as previously described.
             # If the object has no such method then, the value must be a dictionary,
             # and it will be added to the object’s __dict__ attribute.
             self.__dict__,
 
             # Optionally, an iterator (and not a sequence) yielding successive items.
-            # These items will be appended to the object either using obj.append(item) or, in batch, using obj.extend(list_of_items).
+            # These items will be appended to the object either using obj.append(item) or,
+            # in batch, using obj.extend(list_of_items).
 
             # Optionally, an iterator (not a sequence) yielding successive key-value pairs.
             # These items will be stored to the object using obj[key] = value
 
             # PROTOCOL 5+ only
             # Optionally, a callable with a (obj, state) signature.
-            # This callable allows the user to programmatically control the state-updating behavior of a specific object,
+            # This callable allows the user to programmatically control
+            # the state-updating behavior of a specific object,
             # instead of using obj’s static __setstate__() method.
             # If not None, this callable will have priority over obj’s __setstate__().
         )
+
+    @property
+    def empty_iteration_header(self) -> RowIterationHeader:
+        if self._empty_iteration_header is None:
+            self._empty_iteration_header = self.generate_iteration_header(
+                logical_name='empty',
+                columns_in_order=[],
+            )
+        return self._empty_iteration_header
+
+    @property
+    def full_iteration_header(self) -> RowIterationHeader:
+        if self._full_iteration_header is None:
+            self._full_iteration_header = self.generate_iteration_header()
+        return self._full_iteration_header
 
     def get_manager(self):
         return self.task.get_manager()
@@ -193,35 +230,37 @@ class ETLComponent(Iterable):
     def debug_log(
             self,
             state: bool = True
-            ):
+    ):
         if state:
             self.log.setLevel(logging.DEBUG)
             self.task.log_logging_level()
         else:
             self.log.setLevel(logging.INFO)
             self.task.log_logging_level()
-    
+
     def clear_statistics(self):
         pass
-    
+
     def check_row_limit(self):
         if self.max_rows is not None and self.rows_read >= self.max_rows:
             self.log.info('Max rows limit {rows:,} reached'.format(rows=self.max_rows))
             return True
         else:
             return False
-    
+
     def log_progress(
             self,
             row: Row,
             stats: Statistics,
-            ):
+    ):
         try:
-            self.log.info(self.progress_message.format(row_number=stats['rows_read'],
-                                                       logical_name=self.logical_name,
-                                                       **row.as_dict
-                                                       )
-                          )
+            self.log.info(
+                self.progress_message.format(
+                    row_number=stats['rows_read'],
+                    logical_name=self.logical_name,
+                    **row.as_dict
+                    )
+                )
         except (IndexError, ValueError, KeyError) as e:
             self.log.error(repr(e))
             self.log.info("Bad format. Changing to default progress_message. Was {}".format(self.progress_message))
@@ -232,7 +271,7 @@ class ETLComponent(Iterable):
         Override to provide a way to lookup column names as they are asked for.
         """
         self._column_names = []
-    
+
     @property
     def column_names(self) -> List[str]:
         """
@@ -247,7 +286,7 @@ class ETLComponent(Iterable):
     def column_names(
             self,
             value: List[str],
-            ):
+    ):
         if isinstance(value, list):
             self._column_names = value
         else:
@@ -265,20 +304,22 @@ class ETLComponent(Iterable):
                 else:
                     instance_list = list()
                     # Put the first instance int to the list
-                    instance_list.append(name_dict[name])                    
+                    instance_list.append(name_dict[name])
                 instance_list.append(col_index)
-                duplicates[name] = instance_list 
+                duplicates[name] = instance_list
             else:
                 name_dict[name] = col_index
-    
+
         for name, instance_list in duplicates.items():
             for instance_number, instance_index in enumerate(instance_list):
                 new_name = name + '_' + str(instance_number + 1)
-                self.log.warning('Column name {} in position {} was duplicated and was renamed to {}'.format(
-                    self._column_names[instance_index],
-                    instance_index,
-                    new_name,
-                    ))
+                self.log.warning(
+                    'Column name {} in position {} was duplicated and was renamed to {}'.format(
+                        self._column_names[instance_index],
+                        instance_index,
+                        new_name,
+                    )
+                )
                 self._column_names[instance_index] = new_name
 
     @property
@@ -286,7 +327,7 @@ class ETLComponent(Iterable):
         if self._column_names_set is None:
             self._column_names_set = set(self.column_names)
         return self._column_names_set
-    
+
     @property
     def primary_key(self) -> list:
         try:
@@ -303,7 +344,7 @@ class ETLComponent(Iterable):
     def primary_key(self, value: Iterable[str]):
         if value is None:
             self._primary_key = []
-        else:            
+        else:
             if isinstance(value, str):
                 value = [value]
             assert hasattr(value, '__iter__'), "Row primary_key must be iterable or string"
@@ -323,15 +364,15 @@ class ETLComponent(Iterable):
         # If we are tracing data, automatically set logging level to DEBUG
         if value:
             self.log.setLevel(logging.DEBUG)
-    
+
     @property
     def progress_frequency(self) -> int:
         return self.__progress_frequency
-    
+
     @progress_frequency.setter
     def progress_frequency(self, value: int):
         self.__progress_frequency = value
-            
+
     @property
     def row_name(self) -> str:
         return str(self)
@@ -343,14 +384,15 @@ class ETLComponent(Iterable):
             The number of rows read and returned.
         """
         return self._rows_read
-    
+
     def process_messages(self):
         """
-        Processes messages for this components task.  Should be called somewhere in any row looping. The standard iterator does this for you.
+        Processes messages for this components task.  Should be called somewhere in any row looping.
+        The standard iterator does this for you.
         """
         if self.task is not None:
             self.task.process_messages()
-    
+
     def _fetch_many_iter(self, result):
         while True:
             chunk = result.fetchmany(self.read_batch_size)
@@ -361,7 +403,7 @@ class ETLComponent(Iterable):
 
     def _raw_rows(self):
         pass
-                
+
     def iter_result(
             self,
             result_list: object,
@@ -371,7 +413,7 @@ class ETLComponent(Iterable):
             progress_frequency: Optional[int] = None,
             stats_id: Optional[str] = None,
             parent_stats: Optional[Statistics] = None,
-            ) -> Iterable[Row]:
+    ) -> Iterable[Row]:
         """
         yields
         ------
@@ -395,8 +437,8 @@ class ETLComponent(Iterable):
         else:
             result_iter = result_list
         this_iteration_header = self.generate_iteration_header(
-            logical_name=logical_name,
             columns_in_order=columns_in_order,
+            logical_name=logical_name,
         )
 
         # noinspection PyTypeChecker
@@ -416,7 +458,7 @@ class ETLComponent(Iterable):
             # If we already have a Row object, we'll keep the same iteration header
 
             # Add to global read counter
-            self._rows_read += 1 
+            self._rows_read += 1
             # Add to current stat counter
             stats['rows_read'] += 1
             if self.time_first_read:
@@ -434,13 +476,14 @@ class ETLComponent(Iterable):
                     # Log every row
                     self.log_progress(row, stats)
             if self.trace_data:
-                self.log.debug("READ {name}:\n{row}".format(
-                    name=self,
-                    row=dict_to_str(row).encode(
-                        'utf-8',
-                        errors='replace'
+                self.log.debug(
+                    "READ {name}:\n{row}".format(
+                        name=self,
+                        row=dict_to_str(row).encode(
+                            'utf-8',
+                            errors='replace'
+                        )
                     )
-                )
                 )
             if self.time_all_reads:
                 stats.timer.stop()
@@ -467,8 +510,8 @@ class ETLComponent(Iterable):
         """
         # Note: iter_result has a lot of important statistics keeping features
         # So we use that on top of _raw_rows 
-        return self.iter_result(self._raw_rows()) 
-        
+        return self.iter_result(self._raw_rows())
+
     def where(
             self,
             criteria_list: Optional[list] = None,
@@ -480,7 +523,7 @@ class ETLComponent(Iterable):
             progress_frequency: Optional[int] = None,
             stats_id: Optional[str] = None,
             parent_stats: Optional[Statistics] = None,
-            ) -> Iterable[Row]:
+    ) -> Iterable[Row]:
         """
 
         Parameters
@@ -507,7 +550,12 @@ class ETLComponent(Iterable):
         """
         assert order_by is None, '{} does not support order_by'.format(self)
         assert criteria_list is None, '{} does not support criteria_list'.format(self)
-        return self.iter_result(self._raw_rows(), criteria_dict=criteria_dict, stats_id=stats_id, parent_stats=parent_stats)
+        return self.iter_result(
+            self._raw_rows(),
+            criteria_dict=criteria_dict,
+            stats_id=stats_id,
+            parent_stats=parent_stats,
+        )
 
     @property
     def is_closed(self):
@@ -517,22 +565,26 @@ class ETLComponent(Iterable):
         self.__close_called = True
         if self.default_stats_id in self._stats:
             self._stats[self.default_stats_id].timer.stop()
-    
+
     def __del__(self):
         # Close any connections and cleanup
         if hasattr(self, '__close_called'):
             if not self.__close_called:
-                warnings.warn("{o} used without calling close.  It's suggested to use 'with' to control lifespan.".format(o=self), stacklevel=2)
+                warnings.warn(
+                    f"{self} used without calling close.  "
+                    f"It's suggested to use 'with' to control lifespan.",
+                    stacklevel=2
+                )
                 self.close(error=False)
-    
+
     def __enter__(self) -> 'ETLComponent':
         self.__enter_called = True
-        return self   
-        
-    def __exit__(self, exit_type, exit_value, exit_traceback):  
+        return self
+
+    def __exit__(self, exit_type, exit_value, exit_traceback):
         # Close any connections and cleanup
         self.close(error=False)
-        
+
     def _get_stats_parent(
             self,
             parent_stats: Optional[Statistics] = None,
@@ -542,18 +594,18 @@ class ETLComponent(Iterable):
             return self.statistics
         else:
             return parent_stats
-        
+
     def get_stats_entry(
             self,
             stats_id: str,
             parent_stats: Optional[Statistics] = None,
             print_start_stop_times: Optional[bool] = None
-            ):
+    ):
         parent_stats = self._get_stats_parent(parent_stats)
-        
+
         # Default to showing start stop times if parent_stats is self stats
         default_print_start_stop_times = (parent_stats == self._stats)
-            
+
         if print_start_stop_times is None:
             print_start_stop_times = default_print_start_stop_times
 
@@ -561,7 +613,7 @@ class ETLComponent(Iterable):
             stats = Statistics(stats_id=stats_id, parent=parent_stats, print_start_stop_times=print_start_stop_times)
         else:
             stats = parent_stats[stats_id]
-             
+
         return stats
 
     def get_unique_stats_entry(
@@ -569,12 +621,12 @@ class ETLComponent(Iterable):
             stats_id: str,
             parent_stats: Optional[Statistics] = None,
             print_start_stop_times: Optional[bool] = None,
-            ):
+    ):
         parent_stats = self._get_stats_parent(parent_stats)
         stats_id = parent_stats.get_unique_stats_id(stats_id)
         new_stats = Statistics(stats_id=stats_id, parent=parent_stats, print_start_stop_times=print_start_stop_times)
-        return new_stats 
-        
+        return new_stats
+
     @property
     def statistics(self):
         return self._stats
@@ -585,45 +637,56 @@ class ETLComponent(Iterable):
             data: Union[MutableMapping, Iterator, None] = None,
             logical_name: Optional[str] = None,
             iteration_header: Union[RowIterationHeader, str, None] = None,
-            ):
+    ):
         """
         Make a new empty row with this components structure.
         """
         if iteration_header is None:
-            iteration_header = self.generate_iteration_header(logical_name=logical_name)
+            iteration_header = self.empty_iteration_header
         elif iteration_header == self.FULL_ITERATION_HEADER:
-            if self._full_iteration_header is None:
-                self._full_iteration_header = self.generate_iteration_header(logical_name=logical_name, columns_in_order=self.column_names)
-            iteration_header = self._full_iteration_header
+            iteration_header = self.full_iteration_header
         return self.row_object(iteration_header=iteration_header, data=data)
 
     def generate_iteration_header(
             self,
             logical_name: Optional[str] = None,
             columns_in_order: Optional[list] = None,
-            ) -> RowIterationHeader:
+            result_primary_key: Optional[list] = None,
+    ) -> RowIterationHeader:
         if logical_name is None:
             logical_name = self.row_name
 
         if columns_in_order is None:
-            result_primary_key = self.primary_key
-        else:
-            result_primary_key = None
+            columns_in_order = self.column_names
 
-        return RowIterationHeader(logical_name=logical_name,
-                                  primary_key=result_primary_key,
-                                  parent=self,
-                                  columns_in_order=columns_in_order,
-                                  )
+        if result_primary_key is None:
+            result_primary_key = self.primary_key
+
+        # noinspection PyPep8Naming
+        RowIterationHeader_Class = self.row_object.RowIterationHeader_Class
+
+        return RowIterationHeader_Class(
+            logical_name=logical_name,
+            primary_key=result_primary_key,
+            parent=self,
+            columns_in_order=columns_in_order,
+        )
 
     def get_column_name(
             self,
             column: str,
-            ):
+    ):
         if column in self.column_names:
             return column
         else:
             raise KeyError(f'{self} does not have a column named {column}, it does have {self.column_names}')
+
+    @functools.lru_cache(maxsize=10)
+    def get_qualified_lookup_name(self, base_lookup_name: str) -> str:
+        if '.' in base_lookup_name:
+            return base_lookup_name
+        else:
+            return f"{self.logical_name}.{base_lookup_name}"
 
     def define_lookup(
             self,
@@ -631,7 +694,7 @@ class ETLComponent(Iterable):
             lookup_keys: list,
             lookup_class: Type[Lookup] = None,
             lookup_class_kwargs: Optional[dict] = None,
-            ):
+    ):
         """
         Define a new lookup.
 
@@ -651,12 +714,16 @@ class ETLComponent(Iterable):
         """
         if not self.__lookups:
             self.__lookups = dict()
+
+        lookup_name = self.get_qualified_lookup_name(lookup_name)
+
         if lookup_name in self.__lookups:
-            self.log.warning("{} define_lookup is overriding the {} lookup with {}".format(
-                self,
-                lookup_name,
-                lookup_keys
-            )
+            self.log.warning(
+                "{} define_lookup is overriding the {} lookup with {}".format(
+                    self,
+                    lookup_name,
+                    lookup_keys
+                )
             )
         if lookup_class is None:
             lookup_class = self.default_lookup_class
@@ -668,7 +735,7 @@ class ETLComponent(Iterable):
 
         lookup = lookup_class(
             config=self.task.config,
-            lookup_name="{}.{}".format(self.logical_name, lookup_name),
+            lookup_name=lookup_name,
             lookup_keys=lookup_keys,
             parent_component=self,
             **lookup_class_kwargs
@@ -680,28 +747,37 @@ class ETLComponent(Iterable):
     def lookups(self):
         return self.__lookups
 
+    @functools.lru_cache(maxsize=10)
     def get_lookup(
             self,
             lookup_name: str,
-            ) -> Lookup:
+    ) -> Lookup:
         self._check_pk_lookup()
 
         try:
             return self.__lookups[lookup_name]
         except KeyError:
-            raise KeyError("{} does not contain a lookup named {}".format(self, lookup_name))
+            if '.' not in lookup_name:
+                qual_lookup_name = f"{self.logical_name}.{lookup_name}"
+                try:
+                    return self.__lookups[qual_lookup_name]
+                except KeyError:
+                    raise KeyError(f"{self} does not contain a lookup named {lookup_name} or {qual_lookup_name}")
+            else:
+                raise KeyError(f"{self} does not contain a lookup named {lookup_name}")
 
+    @functools.lru_cache(maxsize=10)
     def get_lookup_keys(
             self,
             lookup_name: str,
-            ) -> list:
+    ) -> list:
         return self.get_lookup(lookup_name).lookup_keys
 
     def get_lookup_tuple(
             self,
             lookup_name: str,
             row: Row,
-            ) -> tuple:
+    ) -> tuple:
         return self.__lookups[lookup_name].get_hashable_combined_key(row)
 
     def init_cache(self):
@@ -726,7 +802,7 @@ class ETLComponent(Iterable):
             row: Row,
             allow_update: bool = False,
             allow_insert: bool = True,
-            ):
+    ):
         for lookup in self.__lookups.values():
             if lookup.cache_enabled:
                 lookup.cache_row(
@@ -815,7 +891,8 @@ class ETLComponent(Iterable):
                     if src_col not in target_set:
                         if isinstance(source_definition, set):
                             pos = 'N/A'
-                        msg = f"Sanity Check: Source {source_name} contains column {src_col}({pos}) not in target {self} ({target_set})"
+                        msg = f"Sanity Check: Source {source_name} contains column " \
+                              f"{src_col}({pos}) not in target {self} ({target_set})"
                         if raise_on_source_not_in_target:
                             raise ColumnMappingError(msg)
                         else:
@@ -835,20 +912,22 @@ class ETLComponent(Iterable):
             if show_source_defn:
                 self.log.warning(f"Source {source_name} definition {source_definition}")
 
-    def sanity_check_example_row(self,
-                                 example_source_row,
-                                 source_excludes=None,
-                                 target_excludes=None,
-                                 ignore_source_not_in_target=None,
-                                 ignore_target_not_in_source=None,
-                                 ):
-        self.sanity_check_source_mapping(example_source_row,
-                                         example_source_row.name,
-                                         source_excludes=source_excludes,
-                                         target_excludes=target_excludes,
-                                         ignore_source_not_in_target=ignore_source_not_in_target,
-                                         ignore_target_not_in_source=ignore_target_not_in_source,
-                                         )
+    def sanity_check_example_row(
+            self,
+            example_source_row,
+            source_excludes=None,
+            target_excludes=None,
+            ignore_source_not_in_target=None,
+            ignore_target_not_in_source=None,
+            ):
+        self.sanity_check_source_mapping(
+            example_source_row,
+            example_source_row.name,
+            source_excludes=source_excludes,
+            target_excludes=target_excludes,
+            ignore_source_not_in_target=ignore_source_not_in_target,
+            ignore_target_not_in_source=ignore_target_not_in_source,
+            )
 
     def _get_coerce_method_name_by_str(self, target_column_name: str) -> str:
         return ''
@@ -908,7 +987,9 @@ class ETLComponent(Iterable):
 
             source_row_columns = source_row.columns_in_order
             if source_excludes is not None:
-                source_row_columns = [column_name for column_name in source_row_columns if column_name not in source_excludes]
+                source_row_columns = [column_name for column_name in source_row_columns
+                                      if column_name not in source_excludes
+                                      ]
 
             target_column_set = self.column_names_set
             if target_excludes is not None:
@@ -919,7 +1000,8 @@ class ETLComponent(Iterable):
             build_row_method_name = f"_build_row_{iteration_id}_{id(source_excludes)}_{id(target_excludes)}"
 
             new_row_iteration_header = self.generate_iteration_header(
-                logical_name=f'{self} built from source {source_row.iteration_header.iteration_id} {source_row.iteration_header.logical_name} ',
+                logical_name=f'{self} built from source {source_row.iteration_header.iteration_id} '
+                             f'{source_row.iteration_header.logical_name} ',
                 columns_in_order=new_row_columns,
             )
 
@@ -928,9 +1010,9 @@ class ETLComponent(Iterable):
             code += f"    source_values = source_row.values()\n"
             # TODO: It's worth spending more time here to see if we can do the quick build
             if (set(new_row_columns).issubset(self.column_names)
-                and source_excludes is None
-                and source_row.iteration_header.parent == self
-                and len(source_row.values()) == len(new_row_columns)
+                    and source_excludes is None
+                    and source_row.iteration_header.parent == self
+                    and len(source_row.values()) == len(new_row_columns)
             ):
                 code += f"    new_row._data_values = source_values.copy()\n"
             else:
@@ -968,7 +1050,7 @@ class ETLComponent(Iterable):
             target_excludes: Optional[frozenset] = None,
             stat_name: str = 'build_row_dynamic_source',
             parent_stats: Optional[Statistics] = None,
-            ):
+    ):
         build_row_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         build_row_stats.print_start_stop_times = False
         build_row_stats.timer.start()
@@ -1002,7 +1084,7 @@ class ETLComponent(Iterable):
             allow_duplicates_in_src: bool = False,
             row_limit: int = None,
             parent_stats: Statistics = None,
-            ):
+    ):
         """
         Fill all lookup caches from the table.
 
@@ -1014,7 +1096,8 @@ class ETLComponent(Iterable):
             How often (in seconds) to output progress messages. Default 10. None for no progress messages.
         progress_message :
             The progress message to print.
-            Default is ``"{component} fill_cache current row # {row_number:,}"``. Note ``logical_name`` and ``row_number``
+            Default is ``"{component} fill_cache current row # {row_number:,}"``.
+            Note ``logical_name`` and ``row_number``
             substitutions applied via :func:`format`.
         criteria_list :
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
@@ -1049,7 +1132,8 @@ class ETLComponent(Iterable):
                     self.ensure_nk_lookup()
 
         assert isinstance(progress_frequency, int), "fill_cache progress_frequency expected to be int not {}".format(
-            type(progress_frequency))
+            type(progress_frequency)
+        )
         self.log.info(f'{self}.fill_cache started')
         stats = self.get_unique_stats_entry('fill_cache', parent_stats=parent_stats)
         stats.timer.start()
@@ -1097,11 +1181,12 @@ class ETLComponent(Iterable):
             if 0.0 < progress_frequency <= progress_timer.seconds_elapsed:
                 self.process_messages()
                 progress_timer.reset()
-                self.log.info(progress_message.format(
-                    row_number=rows_read,
-                    component=self,
-                    table=self,
-                )
+                self.log.info(
+                    progress_message.format(
+                        row_number=rows_read,
+                        component=self,
+                        table=self,
+                    )
                 )
         if not limit_reached:
             self.cache_filled = True
@@ -1114,11 +1199,12 @@ class ETLComponent(Iterable):
             for lookup in self.__lookups.values():
                 this_ram_size = lookup.get_memory_size()
                 this_disk_size = lookup.get_disk_size()
-                self.log.info('Lookup {} Rows {:,} Size RAM= {:,} bytes DISK={:,} bytes'.format(
-                    lookup,
-                    len(lookup),
-                    this_ram_size,
-                    this_disk_size
+                self.log.info(
+                    'Lookup {} Rows {:,} Size RAM= {:,} bytes DISK={:,} bytes'.format(
+                        lookup,
+                        len(lookup),
+                        this_ram_size,
+                        this_disk_size
                     )
                 )
                 if lookup.use_value_cache:
@@ -1138,19 +1224,20 @@ class ETLComponent(Iterable):
         # Restore read progress messages
         # self.__progress_frequency = saved_read_progress
 
-    def fill_cache(self,
-                   progress_frequency: float = 10,
-                   progress_message="{component} fill_cache current row # {row_number:,}",
-                   criteria_list: list = None,
-                   criteria_dict: dict = None,
-                   column_list: list = None,
-                   exclude_cols: frozenset = None,
-                   order_by: list = None,
-                   assume_lookup_complete: bool = None,
-                   allow_duplicates_in_src: bool = False,
-                   row_limit: int = None,
-                   parent_stats: Statistics = None,
-                   ):
+    def fill_cache(
+            self,
+            progress_frequency: float = 10,
+            progress_message="{component} fill_cache current row # {row_number:,}",
+            criteria_list: list = None,
+            criteria_dict: dict = None,
+            column_list: list = None,
+            exclude_cols: frozenset = None,
+            order_by: list = None,
+            assume_lookup_complete: bool = None,
+            allow_duplicates_in_src: bool = False,
+            row_limit: int = None,
+            parent_stats: Statistics = None,
+    ):
         """
         Fill all lookup caches from the table.
 
@@ -1160,7 +1247,8 @@ class ETLComponent(Iterable):
             How often (in seconds) to output progress messages. Default 10. None for no progress messages.
         progress_message :
             The progress message to print.
-            Default is ``"{component} fill_cache current row # {row_number:,}"``. Note ``logical_name`` and ``row_number``
+            Default is ``"{component} fill_cache current row # {row_number:,}"``.
+            Note ``logical_name`` and ``row_number``
             substitutions applied via :func:`format`.
         criteria_list :
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
@@ -1200,15 +1288,16 @@ class ETLComponent(Iterable):
             allow_duplicates_in_src=allow_duplicates_in_src,
             row_limit=row_limit,
             parent_stats=parent_stats,
-            )
+        )
 
-    def get_by_lookup(self,
-                      lookup_name: str,
-                      source_row: Row,
-                      stats_id: str = 'get_by_lookup',
-                      parent_stats: Optional[Statistics] = None,
-                      fallback_to_db: bool = False,
-                      ) -> Row:
+    def get_by_lookup(
+            self,
+            lookup_name: str,
+            source_row: Row,
+            stats_id: str = 'get_by_lookup',
+            parent_stats: Optional[Statistics] = None,
+            fallback_to_db: bool = False,
+            ) -> Row:
         """
         Get by an alternate key.
         Returns a :class:`~bi_etl.components.row.row_case_insensitive.Row`
@@ -1222,10 +1311,14 @@ class ETLComponent(Iterable):
 
         self._check_pk_lookup()
 
-        lookup = self.get_lookup(lookup_name)
-        assert isinstance(lookup, Lookup)
+        if isinstance(lookup_name, Lookup):
+            lookup = lookup_name
+        else:
+            lookup = self.get_lookup(lookup_name)
+            assert isinstance(lookup, Lookup)
 
-        return lookup.find(row=source_row,
-                           fallback_to_db=fallback_to_db,
-                           stats=stats
-                           )
+        return lookup.find(
+            row=source_row,
+            fallback_to_db=fallback_to_db,
+            stats=stats
+            )

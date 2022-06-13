@@ -437,7 +437,7 @@ class ETLTask(object):
         Get the existing :class`bi_etl.scheduler.scheduler.Scheduler` that this task is running under.
         or
         Get an instance of :class`bi_etl.scheduler.scheduler_interface.SchedulerInterface` that can be
-        used to interact with the test_config Scheduler.
+        used to interact with the main Scheduler.
         """
         if self._scheduler is None:
             # Import is done here to prevent circular module level imports
@@ -807,7 +807,7 @@ class ETLTask(object):
 
     def load(self):
         """
-        Placeholder for load. This is where the test_config body of the ETLTask's work should be performed.
+        Placeholder for load. This is where the main body of the ETLTask's work should be performed.
         """
         raise AttributeError("{} load not implemented".format(self))
 
