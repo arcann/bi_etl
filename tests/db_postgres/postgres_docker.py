@@ -21,23 +21,15 @@ class PostgresTestDB(SqliteDB):
 
     def __init__(self):
         if PostgresTestDB.SKIP_POSTGRES:
-            raise unittest.SkipTest(f"Skip Postgres due to PostgresTestDB.SKIP_POSTGRES")
+            raise unittest.SkipTest(f"Skip Postgres due to PostgresTestDB.SKIP_POSTGRES. Is Docker running?")
         super().__init__()
-        tries = 0
-        done = False
-        while not done:
-            # noinspection PyBroadException
-            try:
-                self.container = self.get_container()
-                done = True
-            except Exception as e:
-                tries += 1
-                if tries <= 2:
-                    print(f"Got {e} will retry")
-                    time.sleep(5)
-                else:
-                    PostgresTestDB.SKIP_POSTGRES = True
-                    raise unittest.SkipTest(f"Skip Postgres due to {e}")
+
+        # noinspection PyBroadException
+        try:
+            self.container = self.get_container()
+        except Exception as e:
+            PostgresTestDB.SKIP_POSTGRES = True
+            raise unittest.SkipTest(f"Skip Postgres due to {repr(e)}. Is Docker running?")
 
     def get_container(self) -> PostgresContainer:
         tc_config.SLEEP_TIME = 1
