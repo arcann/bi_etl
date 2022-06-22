@@ -7,9 +7,7 @@ Created on Sep 17, 2014
 from collections import namedtuple
 from typing import Union, MutableMapping
 
-from CaseInsensitiveDict import CaseInsensitiveDict
 from pydicti import dicti
-from sqlalchemy.sql.schema import Column
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header_case_insensitive import RowIterationHeaderCaseInsensitive

@@ -24,7 +24,7 @@ pipelines:
           - apt-get -y install gcc
           - poetry install -E "test keyring"
           - export PYTHONPATH=.
-          - poetry run python -m unittest discover -s tests -v
+          - poetry run python -m unittest discover -s tests -b -v
 
     - step:
         name: test-3.8
@@ -39,4 +39,4 @@ pipelines:
           - apt-get -y install gcc
           - poetry install -E "test keyring"
           - export PYTHONPATH=.
-          - poetry run python -m unittest discover -s tests -v
+          - poetry run python -m unittest discover -s tests -b -v

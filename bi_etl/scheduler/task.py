@@ -13,9 +13,9 @@ from pathlib import Path
 from queue import Empty
 from typing import *
 
-from CaseInsensitiveDict import CaseInsensitiveDict
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase, SQLAlchemyMetadata
 from config_wrangler.config_types.dynamically_referenced import DynamicallyReferenced
+from pydicti import dicti, Dicti
 
 import bi_etl.config.notifiers_config as notifiers_config
 import bi_etl.parallel.mp as mp
@@ -132,7 +132,7 @@ class ETLTask(object):
         if self.status is None:
             self.status = Status.new
         self._parameters_loaded = False
-        self._parameter_dict = CaseInsensitiveDict()
+        self._parameter_dict = dicti()
         self.parent_to_child = None
         self.child_to_parent = None
         self.object_registry = list()
@@ -196,7 +196,7 @@ class ETLTask(object):
                       )
         self.parent_to_child = odict['parent_to_child']
         self.child_to_parent = odict['child_to_parent']
-        self._parameter_dict = CaseInsensitiveDict(odict['_parameter_dict'])
+        self._parameter_dict = Dicti(odict['_parameter_dict'])
 
     def get_manager(self):
         if self._manager is None:

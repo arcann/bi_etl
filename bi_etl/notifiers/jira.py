@@ -7,24 +7,10 @@ class Jira(NotifierBase):
         super().__init__()
         self.config_section = config_section
 
-        # BEGIN New code to fix jira.client
-        import jira.client
-        # Jira Client 2.0 comes with a faulty version of CaseInsensitiveDict.
-        # Replace it with a better implementation
-        # Note: The jira github version at https://github.com/pycontribs/jira
-        #       has a fix for this, but that is not available on pypi https://pypi.org/project/jira/#history
-        from CaseInsensitiveDict import CaseInsensitiveDict
-        jira.client.CaseInsensitiveDict = CaseInsensitiveDict
-        # END New code to fix jira.client
-
-        import jira.client
-        # Jira Client 2.0 comes with a faulty version of CaseInsensitiveDict.
-        # Replace it with a better implementation
-        # Note: The jira github version at https://github.com/pycontribs/jira
-        #       has a fix for this, but that is not available on pypi https://pypi.org/project/jira/#history
-        from CaseInsensitiveDict import CaseInsensitiveDict
-        jira.client.CaseInsensitiveDict = CaseInsensitiveDict
+        # On-instance import since jira is an optional requirement
+        # noinspection PyUnresolvedReferences
         from jira.client import JIRA
+        # noinspection PyUnresolvedReferences
         from jira.exceptions import JIRAError
 
         self.config_section = config_section

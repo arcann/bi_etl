@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Union, Dict
 
 import sqlparse
-from CaseInsensitiveDict import CaseInsensitiveDict
+from pydicti import Dicti
 
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Base_From_Ini_Env
 from bi_etl.database import DatabaseMetadata
@@ -80,7 +80,7 @@ class RunSQLScript(ETLTask):
             # We don't pass scheduler or config from the Scheduler to the running instance
             # scheduler= odict['scheduler']
         )
-        self._parameter_dict = CaseInsensitiveDict(odict['_parameter_dict'])
+        self._parameter_dict = Dicti(odict['_parameter_dict'])
 
     def depends_on(self):
         return []
