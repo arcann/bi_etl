@@ -138,7 +138,7 @@ class _TestBaseDatabase(unittest.TestCase):
 
     def _create_index_table_1(self, sa_table) -> typing.List[sqlalchemy.schema.Index]:
         idx = Index(sa_table.name + '_idx',
-                    sa_table.c.int_col,
+                    sa_table.c.id,
                     unique=True
                     )
         idx.create()
@@ -242,6 +242,9 @@ class _TestBaseDatabase(unittest.TestCase):
             for col in errors_dict:
                 error_parts.append(f"   {col}: {errors_dict[col]}")
             raise AssertionError("\n".join(error_parts))
+
+    def _sql_query_date_conv(self, dt_val):
+        return dt_val
 
     def _check_table_rows(
             self,

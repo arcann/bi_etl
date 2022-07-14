@@ -44,6 +44,7 @@ class SQLQuery(ETLComponent):
         self.engine = database.bind
         self.sql = sql
         self.param_mode = SQLQuery.ParamType.bind
+        self._first_row = None
         
         # Should be the last call of every init
         self.set_kwattrs(**kwargs) 
@@ -59,9 +60,11 @@ class SQLQuery(ETLComponent):
         Run the SQL as is with no parameters or substitutions.
         """
         if self.param_mode == SQLQuery.ParamType.bind:
-            return self._raw_rows_bind_parameters()
+            select_result = self._raw_rows_bind_parameters()
         else:
-            return self._raw_rows_format_parameters()
+            select_result = self._raw_rows_format_parameters()
+        self.column_names = list(select_result.keys())
+        return select_result
     
     def _obtain_column_names(self):
         # Column_names can be slow to obtain

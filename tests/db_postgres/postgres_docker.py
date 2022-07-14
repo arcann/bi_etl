@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import time
 import unittest
@@ -35,16 +36,16 @@ class PostgresTestDB(SqliteDB):
         tc_config.SLEEP_TIME = 1
         tc_config.MAX_TRIES = 60
 
-        # image = "db_postgres:9.5"
-        image = "db_postgres:latest"
+        # image = "postgres:9.5"
+        image = "postgres:latest"
         container = PostgresContainer(image=image)
         try:
             # The testcontainers implementation of get_container_host_ip
             # returns an incorrect value of localnpipe, at least on Windows 10
             # https://github.com/testcontainers/testcontainers-python/issues/108
-            if container.get_container_host_ip() == 'localnpipe':
-                # Monkey-patch the get_container_host_ip method
-                container.get_container_host_ip = lambda: 'localhost'
+            os.environ['TC_HOST'] = 'localhost'
+            print(f"docker container on host {container.get_docker_client().host()}")
+            print(f"docker container on url {container.get_docker_client().client.api.base_url}")
 
             port = random.randint(49152, 65534)
             container.with_bind_ports(container.port_to_expose, port)

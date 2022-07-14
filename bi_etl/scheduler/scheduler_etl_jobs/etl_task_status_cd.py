@@ -49,8 +49,9 @@ class ETL_Task_Status_CD(ETLTask):
             # etl_task_status_cd.trace_data = True
             etl_task_status_cd.fill_cache()
 
+            iteration_header = etl_task_status_cd.full_iteration_header
             for status in Status:
-                row = etl_task_status_cd.Row(logical_name='Status')
+                row = etl_task_status_cd.Row(iteration_header=iteration_header)
                 row['status_id'] = status.value
                 status_name = status.name.replace('_', ' ').title()
                 status_name = status_name.replace('Cpu', 'CPU')

@@ -18,7 +18,6 @@ from config_wrangler.config_types.dynamically_referenced import DynamicallyRefer
 from pydicti import dicti, Dicti
 
 import bi_etl.config.notifiers_config as notifiers_config
-import bi_etl.parallel.mp as mp
 from bi_etl import utility
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Base_From_Ini_Env
@@ -197,11 +196,6 @@ class ETLTask(object):
         self.parent_to_child = odict['parent_to_child']
         self.child_to_parent = odict['child_to_parent']
         self._parameter_dict = Dicti(odict['_parameter_dict'])
-
-    def get_manager(self):
-        if self._manager is None:
-            self._manager = mp.Manager()
-        return self._manager
 
     def shutdown(self):
         if self._manager is not None:

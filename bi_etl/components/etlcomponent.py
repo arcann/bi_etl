@@ -224,9 +224,6 @@ class ETLComponent(Iterable):
             self._full_iteration_header = self.generate_iteration_header()
         return self._full_iteration_header
 
-    def get_manager(self):
-        return self.task.get_manager()
-
     def debug_log(
             self,
             state: bool = True
@@ -635,7 +632,6 @@ class ETLComponent(Iterable):
     def Row(
             self,
             data: Union[MutableMapping, Iterator, None] = None,
-            logical_name: Optional[str] = None,
             iteration_header: Union[RowIterationHeader, str, None] = None,
     ):
         """
