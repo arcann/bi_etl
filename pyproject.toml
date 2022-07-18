@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bi_etl"
-version = "1.1.2"
+version = "1.1.5"
 description = "Python ETL Framework"
 keywords=["etl"]
 classifiers = [
@@ -17,7 +17,7 @@ repository = "https://bitbucket.org/DatastrongTeam/bi_etl/src/master/"
 
 [tool.poetry.dependencies]
 python = "^3.7,<4.0"
-config-wrangler = ">=0.3.12"
+config-wrangler = ">= 0.3.14"
 SQLAlchemy = ">=1.4.35"
 semidbm = ">=0.5.1"
 psutil = ">=5.7.2"
@@ -58,5 +58,6 @@ testcontainers = {version = ">=3.5.4", extras = ["mysql oracle postgresql mssqls
 tox = "^3.25.0"
 
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+

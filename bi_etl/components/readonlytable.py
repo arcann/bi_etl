@@ -262,6 +262,16 @@ class ReadOnlyTable(ETLComponent):
             return self._table_name
 
     @property
+    def quoted_qualified_table_name(self):
+        """
+        The table name
+        """
+        if self._table.schema is not None:
+            return f'"{self._table.schema}"."{self._table_name}"'
+        else:
+            return f'"{self._table_name}"'
+
+    @property
     def table(self):
         return self._table
 

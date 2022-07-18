@@ -3045,7 +3045,7 @@ class Table(ReadOnlyTable):
         stats['calls'] += 1
         stats.timer.start()
         database_type = self.database.dialect_name
-        truncate_sql = sqlalchemy.text(f'TRUNCATE TABLE "{self.qualified_table_name}"')
+        truncate_sql = sqlalchemy.text(f'TRUNCATE TABLE {self.quoted_qualified_table_name}')
         if database_type == 'oracle':
             self.execute(f'alter session set ddl_lock_timeout={timeout}')
             self.execute(truncate_sql)

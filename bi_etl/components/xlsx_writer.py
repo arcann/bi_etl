@@ -281,7 +281,7 @@ class XLSXWriter(XLSXReader):
                  **kwargs
              )
             
-    def close(self, error: bool = True):
+    def close(self, error: bool = False):
         if self.has_workbook_init():
             if not error:
                 self.workbook.save(filename=self.file_name)
