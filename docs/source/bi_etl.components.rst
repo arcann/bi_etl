@@ -8,7 +8,6 @@ Subpackages
    :maxdepth: 4
 
    bi_etl.components.get_next_key
-   bi_etl.components.performance_testing
    bi_etl.components.row
 
 Submodules

@@ -7,9 +7,7 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
-   bi_etl.database.connect
    bi_etl.database.database_metadata
-   bi_etl.database.mock_connect
    bi_etl.database.mock_database_metadata
 
 Module contents

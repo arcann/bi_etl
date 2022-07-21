@@ -51,11 +51,17 @@ scheduler = ["pyramid", "pyjtable"]
 test = ["psycopg2", "testcontainers"]
 
 [tool.poetry.dev-dependencies]
-Sphinx = "^3.2.1"
-sphinx-autodoc-annotation = "^1.0-1"
+Sphinx = "4.5.0"
+# sphinx-autodoc-annotation = "^1.0-1"
 toml = "^0.10.1"
 testcontainers = {version = ">=3.5.4", extras = ["mysql oracle postgresql mssqlserver"]}
 tox = "^3.25.0"
+Jinja2 = "^3.1.2"
+sphinx-pydantic = "^0.1.1"
+boto3 = "^1.24.33"
+fastavro = "^1.5.3"
+autodoc-pydantic = "^1.7.2"
+sphinx-paramlinks = "^0.5.4"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

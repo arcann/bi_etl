@@ -10,7 +10,7 @@ Submodules
    bi_etl.notifiers.email
    bi_etl.notifiers.jira
    bi_etl.notifiers.log_notifier
-   bi_etl.notifiers.notifier
+   bi_etl.notifiers.notifier_base
    bi_etl.notifiers.slack
 
 Module contents

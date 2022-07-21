@@ -22,6 +22,7 @@ Submodules
    bi_etl.utility.copy_table_data
    bi_etl.utility.line_counter
    bi_etl.utility.logging_helpers
+   bi_etl.utility.package_root
    bi_etl.utility.run_sql_script
    bi_etl.utility.ssh_forward
 

@@ -1,7 +1,7 @@
-bi\_etl.database.mock\_connect module
+bi\_etl.boto3\_helper.dynamodb module
 =====================================
 
-.. automodule:: bi_etl.database.mock_connect
+.. automodule:: bi_etl.boto3_helper.dynamodb
    :members:
    :undoc-members:
    :show-inheritance:

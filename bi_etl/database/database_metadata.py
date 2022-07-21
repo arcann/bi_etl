@@ -17,7 +17,7 @@ from bi_etl.utility.case_insentive_set import CaseInsentiveSet
 
 class DatabaseMetadata(sqlalchemy.schema.MetaData):
     """
-    A light wrapper over sqlalchemy.schema.MetaData
+    A light wrapper over :class:`sqlalchemy.schema.MetaData`
     """
 
     def __init__(self,

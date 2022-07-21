@@ -14,8 +14,6 @@ Submodules
    bi_etl.lookups.lookup
    bi_etl.lookups.non_unique_lookup
    bi_etl.lookups.range_lookup
-   bi_etl.lookups.sqlite_lookup
-   bi_etl.lookups.sqlite_range_lookup
 
 Module contents
 ---------------

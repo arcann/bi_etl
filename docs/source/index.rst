@@ -88,7 +88,7 @@ This documentation will henceforth refer to that class as simply ``ETLTask``.
 
 To run a task you use :func:`bi_etl.scheduler.task.run_task`.  When ``run_task`` is called it is given a module name. It will:
 
-1. Load the configuration file using :class:`bi_etl.bi_config_parser.BIConfigParser`.
+1. Load the configuration file using :class:`bi_etl.config.bi_etl_config_base.BI_ETL_Config_Base_From_Ini_Env`.
 
 2. Setup a file based log using task_name via :meth:`config.set_dated_log_file_name` using the module name passed into run_task.
 

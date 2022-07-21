@@ -2944,7 +2944,8 @@ class Table(ReadOnlyTable):
             **kwargs
     ):
         """
-        Used by upsert_special_values_rows to find and update rows by the full PK.
+        Used by :meth:`bi_etl.components.table.Table.upsert_special_values_rows` to find and
+        update rows by the full PK.
         Not expected to be useful outside that use case.
 
         Parameters

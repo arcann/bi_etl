@@ -16,7 +16,6 @@ Submodules
    :maxdepth: 4
 
    bi_etl.scheduler.dependent_reasons
-   bi_etl.scheduler.etl_task_status_cd
    bi_etl.scheduler.exceptions
    bi_etl.scheduler.messages
    bi_etl.scheduler.models

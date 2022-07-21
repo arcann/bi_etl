@@ -51,13 +51,7 @@ class ETLComponent(Iterable):
         
     max_rows : int, optional
         The maximum number of rows to read. *Only applies if Table is used as a source.*
-    
-    primary_key: list
-        The name of the primary key column(s). Only impacts trace messages.  Default=None.
-    
-    progress_frequency: int
-        How often (in seconds) to output progress messages. None for no progress messages.
-    
+
     progress_message: str
         The progress message to print. Default is ``"{logical_name} row # {row_number}"``.
         Note ``logical_name`` and ``row_number`` subs.
@@ -272,7 +266,7 @@ class ETLComponent(Iterable):
     @property
     def column_names(self) -> List[str]:
         """
-        Column names
+        The list of column names for this component.
         """
         if self._column_names is None:
             self._obtain_column_names()
@@ -327,6 +321,9 @@ class ETLComponent(Iterable):
 
     @property
     def primary_key(self) -> list:
+        """
+        The name of the primary key column(s). Only impacts trace messages.  Default=Empty list.
+        """
         try:
             if self._primary_key is not None and len(self._primary_key) > 0:
                 if isinstance(self._primary_key[0], Column):
@@ -339,6 +336,9 @@ class ETLComponent(Iterable):
 
     @primary_key.setter
     def primary_key(self, value: Iterable[str]):
+        """
+        :noindex:
+        """
         if value is None:
             self._primary_key = []
         else:
@@ -364,6 +364,9 @@ class ETLComponent(Iterable):
 
     @property
     def progress_frequency(self) -> int:
+        """
+        How often (in seconds) to output progress messages. None for no progress messages.
+        """
         return self.__progress_frequency
 
     @progress_frequency.setter

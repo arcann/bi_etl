@@ -8,6 +8,7 @@ Submodules
    :maxdepth: 4
 
    bi_etl.informatica.exceptions
+   bi_etl.informatica.pm_config
    bi_etl.informatica.pmcmd
    bi_etl.informatica.pmcmd_task
    bi_etl.informatica.pmrep

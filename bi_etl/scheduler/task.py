@@ -67,7 +67,7 @@ class ETLTask(object):
         Constructor. This code will run on the scheduler thread and the execution thread.
         It should do as little as possible.
 
-         Parameters
+        Parameters
         ----------
         task_id: int
             The task_id of the job (only for :class:`bi_etl.scheduler.scheduler.Scheduler`).
@@ -1219,7 +1219,7 @@ def run_task(task_name,
         queue_out_stream = queue_io.redirect_output_to(child_to_parent)
         print("run_task...")
         if config is None:
-            config = BI_ETL_Config_Base()
+            config = BI_ETL_Config_Base_From_Ini_Env()
         elif isinstance(config, str):
             config = BI_ETL_Config_Base_From_Ini_Env(file_name=config)
         else:

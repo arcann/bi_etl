@@ -44,7 +44,11 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.todo',
     'sphinx.ext.viewcode',
+    'sphinx-pydantic',
     #'sphinxcontrib.restbuilder',
+    'sphinx.ext.intersphinx',
+    'sphinxcontrib.autodoc_pydantic',
+    'sphinx_paramlinks',
 ]
 autodoc_default_options = {
     'members': 'var1, var2',
@@ -52,8 +56,17 @@ autodoc_default_options = {
     'undoc-members': True,
     'inherited-members': True,
     'show-inheritance': True,
-    'exclude-members': '__weakref__'
+    'exclude-members': '__weakref__',
 }
+
+# suppress_warnings = [
+#     'epub.duplicated_toc_entry',
+# ]
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'sqlalchemy': ('http://docs.sqlalchemy.org/en/latest', None),
+  }
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -74,6 +87,9 @@ project = 'bi_etl'
 copyright = '2015, Derek Wood'  # @ReservedAssignment
 author = 'Derek Wood'
 
+autodoc_pydantic_model_show_json = False
+autodoc_pydantic_settings_show_json = False
+
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
@@ -88,7 +104,7 @@ release = bi_etl.version.full_version
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # There are two options for replacing |today|: either, you set today to some
 # non-false value, then it is used:
@@ -132,13 +148,13 @@ todo_include_todos = True
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-#html_theme = 'alabaster'
+# html_theme = 'alabaster'
 html_theme = 'classic'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-html_theme_options = {'stickysidebar':True}
+html_theme_options = {'stickysidebar': True}
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []

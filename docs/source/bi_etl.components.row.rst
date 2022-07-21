@@ -12,6 +12,7 @@ Submodules
    bi_etl.components.row.row
    bi_etl.components.row.row_case_insensitive
    bi_etl.components.row.row_iteration_header
+   bi_etl.components.row.row_iteration_header_case_insensitive
    bi_etl.components.row.row_status
 
 Module contents

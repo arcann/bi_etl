@@ -1765,14 +1765,18 @@ class HistoryTable(Table):
     ):
         """
         Send all special values rows to upsert to ensure they exist and are current.
-        Rows come from :meth:`get_missing_row`, :meth:`get_invalid_row`,
-                        :meth:`get_not_applicable_row`, :meth:`get_various_row`
+        Rows come from:
+          - :meth:`get_missing_row`
+          - :meth:`get_invalid_row`
+          - :meth:`get_not_applicable_row`
+          - :meth:`get_various_row`
 
         Parameters
         ----------
-        stat_name: str
-            Name of this step for the ETLTask statistics. Default = 'upsert_special_values_rows'
-        parent_stats: bi_etl.statistics.Statistics
+        stat_name:
+            Name of this step for the ETLTask statistics.
+            Default = 'upsert_special_values_rows'
+        parent_stats:
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """
