@@ -13,7 +13,7 @@ authors = ["Derek Wood <bietl_info@bietl.dev>"]
 documentation = "https://bietl.dev/docs/"
 readme="README.md"
 license = "MIT"
-repository = "https://bitbucket.org/DatastrongTeam/bi_etl/src/master/"
+repository = "https://github.com/arcann/bi_etl"
 
 [tool.poetry.dependencies]
 python = "^3.7,<4.0"
