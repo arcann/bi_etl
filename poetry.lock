@@ -1202,7 +1202,7 @@ test = ["psycopg2"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7,<4.0"
-content-hash = "a6c9686e8ef566c87888c9fa6e135c5226bda7056f3a5a846cb3187f31c46a91"
+content-hash = "a43234139fd4eec92a14a51287ccdf9a8a4d5f31ea2c8057b5bf531414f574fd"
 
 [metadata.files]
 alabaster = [
