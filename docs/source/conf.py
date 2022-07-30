@@ -1,5 +1,4 @@
 
-#
 # bi_etl documentation build configuration file, created by
 # sphinx-quickstart on Fri Nov 06 14:18:50 2015.
 #
@@ -39,13 +38,13 @@ import shlex
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    #'sphinx.ext.autosummary',
+    # 'sphinx.ext.autosummary',
     'sphinx.ext.napoleon',
     'sphinx.ext.intersphinx',
     'sphinx.ext.todo',
     'sphinx.ext.viewcode',
     'sphinx-pydantic',
-    #'sphinxcontrib.restbuilder',
+    # 'sphinxcontrib.restbuilder',
     'sphinx.ext.intersphinx',
     'sphinxcontrib.autodoc_pydantic',
     'sphinx_paramlinks',
@@ -118,7 +117,7 @@ exclude_patterns = []
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
-#default_role = None
+# default_role = None
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
 #add_function_parentheses = True
@@ -149,12 +148,19 @@ todo_include_todos = True
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 # html_theme = 'alabaster'
-html_theme = 'classic'
+# html_theme = 'pyramid'
+
+html_theme = 'sizzle'
+# Sizzle docs: https://docs.red-dove.com/sphinx_sizzle_theme/index.html
+
+# import sphinx_theme
+# html_theme = 'stanford_theme'
+# html_theme_path = [sphinx_theme.get_html_theme_path('stanford-theme')]
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-html_theme_options = {'stickysidebar': True}
+# html_theme_options = {'stickysidebar': True}
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
@@ -195,7 +201,10 @@ html_theme_options = {'stickysidebar': True}
 
 # Custom sidebar templates, maps document names to template names.
 html_sidebars = {
-   '**': ['localtoc.html', 'relations.html', 'searchbox.html'],
+   '**': [
+       'localtoc.html',
+       'searchbox.html'
+   ],
 }
 
 # Additional templates that should be rendered to pages, maps page names to
@@ -328,10 +337,7 @@ texinfo_documents = [
 
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
-
 nitpick_ignore = [('py:class', 'type'),
-                  ('py:class', 'configparser.ConfigParser'),
                   ]
 
 rst_file_suffix = '.rst'
