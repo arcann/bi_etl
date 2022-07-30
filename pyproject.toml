@@ -61,7 +61,7 @@ sphinx-paramlinks = ">=0.5.4"
 sphinx-pydantic = ">=0.1.1"
 autodoc-pydantic = ">=1.7.2"
 # sphinx-autodoc-annotation = "^1.0-1"
-psycopg2 = "#=2.9.3"
+psycopg2 = ">=2.9.3"
 sphinx-sizzle-theme = ">=0.1.1"
 
 [build-system]
