@@ -100,7 +100,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                      {options}; commit;
                 """
 
-    def load_from_iterator(
+    def load_from_iterator_paritition_fixed(
            self,
            iterator: typing.Iterator,
            table_object: Table,
@@ -172,3 +172,101 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             else:
                 self.log.info(f"{self} had nothing to do with 0 rows found")
             return row_count
+
+    def load_from_iterator_parition_max_rows(
+            self,
+            iterator: typing.Iterator,
+            table_object: Table,
+            table_to_load: str = None,
+            perform_rename: bool = False,
+            progress_frequency: int = 10,
+            analyze_compression: str = None,
+            parent_task: typing.Optional[ETLTask] = None,
+    ) -> int:
+        with TemporaryDirectory() as temp_dir:
+            local_files = []
+            file_number = 0
+            current_file = None
+            current_row_number = 0
+            try:
+                progress_timer = Timer()
+                for row_number, row in enumerate(iterator):
+                    if current_file is None or current_row_number >= self.s3_file_max_rows:
+                        if current_file is not None:
+                            file_number += 1
+                            current_file.close()
+                            text_wrapper.close()
+                            zip_file.close()
+
+                        current_row_number = 0
+                        filepath = os.path.join(temp_dir, f'data_{file_number}.csv.gz')
+                        local_files.append(filepath)
+                        zip_file = gzip.open(filepath, 'wb')
+                        text_wrapper = io.TextIOWrapper(zip_file, encoding='utf-8')
+                        current_file = CSVWriter(
+                            parent_task,
+                            text_wrapper,
+                            delimiter=self.s3_file_delimiter,
+                            column_names=table_object.column_names,
+                            include_header=self.has_header,
+                            encoding='utf-8',
+                            escapechar='\\',
+                            quoting=QUOTE_MINIMAL,
+                        )
+                    current_row_number += 1
+                    current_file.insert_row(row)
+                    if progress_frequency is not None:
+                        # noinspection PyTypeChecker
+                        if 0 < progress_frequency < progress_timer.seconds_elapsed:
+                            self.log.info(f"Wrote row {row_number:,}")
+                            progress_timer.reset()
+                self.log.info(f"Wrote {row_number:,} rows to bulk loader file")
+
+            finally:
+                current_file.close()
+                text_wrapper.close()
+                zip_file.close()
+
+            if row_number > 0:
+                self.load_from_files(
+                    local_files,
+                    file_compression='GZIP',
+                    table_object=table_object,
+                    table_to_load=table_to_load,
+                    perform_rename=perform_rename,
+                    analyze_compression=analyze_compression,
+                )
+            else:
+                self.log.info(f"{self} had nothing to do with 0 rows found")
+            return row_number
+
+    def load_from_iterator(
+            self,
+            iterator: typing.Iterator,
+            table_object: Table,
+            table_to_load: str = None,
+            perform_rename: bool = False,
+            progress_frequency: int = 10,
+            analyze_compression: str = None,
+            parent_task: typing.Optional[ETLTask] = None,
+    ) -> int:
+        if self.s3_file_max_rows is not None:
+            return self.load_from_iterator_parition_max_rows(
+                iterator=iterator,
+                table_object=table_object,
+                table_to_load=table_to_load,
+                perform_rename=perform_rename,
+                progress_frequency=progress_frequency,
+                analyze_compression=analyze_compression,
+                parent_task=parent_task,
+            )
+        else:
+            return self.load_from_iterator_paritition_fixed(
+                iterator=iterator,
+                table_object=table_object,
+                table_to_load=table_to_load,
+                perform_rename=perform_rename,
+                progress_frequency=progress_frequency,
+                analyze_compression=analyze_compression,
+                parent_task=parent_task,
+            )

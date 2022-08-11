@@ -10,6 +10,8 @@ from typing import *
 from typing import TextIO
 from pathlib import Path
 
+from itertools import islice
+
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.timer import Timer
@@ -149,6 +151,9 @@ class CSVReader(ETLComponent):
         large_field_support: boolean
             Enable support for csv columns bigger than 131,072 default limit.
     """
+
+    DELIMITER_SNIFF_LINES = 10
+
     def __init__(self,
                  task: Optional[ETLTask],
                  filedata: Union[TextIO, str, Path],
@@ -203,7 +208,7 @@ class CSVReader(ETLComponent):
         
         # Begin csv module params        
         self.dialect = "excel"
-        # self.delimiter = ','
+        self.delimiter = None
         self.doublequote = True
         self.escapechar = None
         self.quotechar = '"'
@@ -243,10 +248,14 @@ class CSVReader(ETLComponent):
         Build or get the csv.reader object.
         """
         if self.__reader is None:
-            if not hasattr(self, 'delimiter'):
+            if self.delimiter is None:
                 delimiters = ''.join([',', '|', '\t'])
                 try:
-                    dialect = csv.Sniffer().sniff(self.file.read(8096), delimiters=delimiters)
+                    # Note: The sniff routine builds a histogram for delimiter frequency
+                    #       So we want to make sure to give it whole lines and not cut the
+                    #       last line off in the middle.
+                    sample_data = ''.join(islice(self.file, self.DELIMITER_SNIFF_LINES))
+                    dialect = csv.Sniffer().sniff(sample_data, delimiters=delimiters)
                 except csv.Error as e:
                     try:
                         name = self.file.name
@@ -254,7 +263,8 @@ class CSVReader(ETLComponent):
                         name = self.file
                     raise ValueError(f"{e} in file {name} delimiters={delimiters}")
                 if dialect.delimiter not in delimiters:
-                    msg = f'Invalid delimiter \'{dialect.delimiter}\' found in {self.file.name} csv file.'
+                    msg = f'Invalid delimiter \'{dialect.delimiter}\' found in {self.file.name} csv file. ' \
+                          f'Expected one of {delimiters}'
                     self.log.warning(msg)
                     raise ValueError(msg)
                 else:
@@ -350,10 +360,12 @@ class CSVReader(ETLComponent):
             assert header_row is not None, "Header row not found (or empty)"
             # Make sure to use setter here! It deals with duplicate names                
             self.column_names = header_row
-            if self.trace_data:
-                self.log.debug("Column names read: {}".format(self.column_names))
+
         except StopIteration:
-            pass
+            self.column_names = []
+
+        if self.trace_data:
+            self.log.debug(f"Column names read: {self.column_names}")
     
     def _raw_rows(self):
         len_column_names = len(self.column_names)

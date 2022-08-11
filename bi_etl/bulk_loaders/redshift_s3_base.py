@@ -33,6 +33,7 @@ class RedShiftS3Base(BulkLoader):
         self.s3_bucket_name = self.config.bucket_name
         self.s3_folder = self.config.folder
         self.s3_files_to_generate = self.config.s3_files_to_generate
+        self.s3_file_max_rows = self.config.s3_file_max_rows
         self.s3_clear_before = self.config.s3_clear_before
         self.s3_clear_when_done = self.config.s3_clear_when_done
         self.analyze_compression = self.config.analyze_compression

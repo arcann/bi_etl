@@ -146,8 +146,10 @@ class Jira(NotifierBase):
                 case_number = iss.key
                 self.log.info(f"One of multiple existing open cases is {case_number}.")
                 # Fixed the issue in the file by getting the int value for case_number
-                if int(case_number.replace('DMA-','')) > newest_case_number:
-                    newest_case_number = int(case_number.replace('DMA-',''))
+                proj_code, case_num = case_number.split('-')
+                case_num_int = int(case_num)
+                if case_num_int > newest_case_number:
+                    newest_case_number = case_num_int
                     newest_iss = iss
             existing_issues = [newest_iss]
             # Allow the section below to comment on the newest issue

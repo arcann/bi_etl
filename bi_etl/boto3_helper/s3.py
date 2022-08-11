@@ -11,7 +11,7 @@ from enum import Enum
 from typing import *
 
 import botocore
-from config_wrangler.config_templates.s3_bucket import S3_Bucket
+from config_wrangler.config_templates.aws.s3_bucket import S3_Bucket
 
 from bi_etl.database import DatabaseMetadata
 

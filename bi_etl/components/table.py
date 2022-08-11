@@ -213,6 +213,7 @@ class Table(ReadOnlyTable):
         self._bulk_iter_sentinel = None
         self._bulk_iter_queue = None
         self._bulk_iter_worker = None
+        self._bulk_iter_max_q_length = 0
         self._bulk_defaulted_columns = set()
 
         self.track_update_columns = True
@@ -1640,6 +1641,7 @@ class Table(ReadOnlyTable):
                         progress_frequency=None,
                     )
                 self._bulk_iter_queue.put(new_row)
+                self._bulk_iter_max_q_length = max(self._bulk_iter_max_q_length, len(self._bulk_iter_queue))
                 # Allow worker to act if it is ready
                 sleep()
         else:
@@ -3114,9 +3116,13 @@ class Table(ReadOnlyTable):
                         self.log.info(f"Bulk load from insert_row for {self}")
                         # Finish the iterator on the queue
                         self._bulk_iter_queue.put(self._bulk_iter_sentinel)
+                        self._bulk_iter_max_q_length = max(self._bulk_iter_max_q_length, len(self._bulk_iter_queue))
+                        stats['max_insert_queue'] = self._bulk_iter_max_q_length
+                        stats['ending_insert_queue'] = len(self._bulk_iter_queue)
                         self.log.info("Waiting for bulk loader")
                         self._bulk_iter_worker.join()
                         stats['rows_loaded'] = self._bulk_iter_worker.value
+
                         self._bulk_iter_sentinel = None
                         if self._bulk_iter_worker.exception is not None:
                             raise self._bulk_iter_worker.exception
