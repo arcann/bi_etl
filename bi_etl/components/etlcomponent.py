@@ -283,6 +283,7 @@ class ETLComponent(Iterable):
         else:
             self._column_names = list(value)
         self._column_names_set = None
+        self._full_iteration_header = None
         # Ensure names are unique
         name_dict = dict()
         duplicates = dict()

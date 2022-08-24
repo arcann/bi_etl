@@ -166,10 +166,11 @@ class Row(MutableMapping):
         self.update_from_dict(pydantic_inst.__dict__)
 
     def update_from_values(self, values_list: list):
-        if len(self.columns_in_order) >= len(values_list):
-            self._data_values = values_list.copy()
-        else:
-            raise ValueError("Insufficient columns to store list of values in row.")
+        header_col_cnt = len(self.columns_in_order)
+        self._data_values = values_list[:header_col_cnt]
+        dv_col_cnt = len(self._data_values)
+        if dv_col_cnt < header_col_cnt:
+            self._data_values.extend([None] * (header_col_cnt - dv_col_cnt))
 
     def update(self, *args, **key_word_arguments):
         if len(key_word_arguments) > 0:

@@ -82,7 +82,7 @@ class XLSXReader(ETLComponent):
         if logical_name is None:
             try: 
                 logical_name = os.path.basename(self.file_name)
-            except AttributeError:
+            except (AttributeError, TypeError):
                 logical_name = str(self.file_name)
         
         # Don't pass kwargs up. They should be set here at the end
@@ -150,6 +150,7 @@ class XLSXReader(ETLComponent):
         self._active_worksheet = self.workbook[sheet_name]
         self._active_worksheet_name = sheet_name
         self._column_names = None
+        self._full_iteration_header = None
         
     def set_active_worksheet_by_number(self, sheet_number: int):
         sheet_names = self.get_sheet_names()
@@ -173,7 +174,7 @@ class XLSXReader(ETLComponent):
         return self.active_worksheet.title
     
     def get_sheet_names(self):
-        return self.workbook.get_sheet_names()
+        return self.workbook.sheetnames
     
     def get_sheet_by_name(self, name):
         """Returns a worksheet by its name.
@@ -248,7 +249,10 @@ class XLSXReader(ETLComponent):
         len_column_names = len(self.column_names)
         this_iteration_header = self.full_iteration_header
         for row in self.active_worksheet.iter_rows(min_row=self.start_row):
-            self.__active_row += 1
+            if len(row) > 0:
+                self.__active_row = row[0].row
+            else:
+                self.__active_row += 1
             row_values = XLSXReader._get_cell_values(row)           
             d = self.Row(data=row_values[:len_column_names], iteration_header=this_iteration_header)
             len_column_names = len(self.column_names)

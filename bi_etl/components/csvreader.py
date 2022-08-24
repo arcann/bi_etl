@@ -377,7 +377,8 @@ class CSVReader(ETLComponent):
                 if len(row) != 0:     
                     # Convert empty strings to None to be consistent with DB reads
                     row = [None if s == '' else s for s in row]
-                    d = self.Row(data=row[:len_column_names], iteration_header=this_iteration_header)
+                    d = self.Row(iteration_header=this_iteration_header)
+                    d.update_from_values(row[:len_column_names])
                     
                     len_row = len(row)
                     if len_column_names < len_row:
