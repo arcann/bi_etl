@@ -51,6 +51,26 @@ class ReadOnlyTable(ETLComponent):
     table_name : str
         The name of the table/view.
 
+    table_name_case_sensitive: bool
+        Should the table name be treated in a case-sensitive manner?
+
+        If false, it will convert the table name to lower case which indicates to SQLAlchemy that it should be
+        not case-sensitive in the Oracle dialect.
+
+        if None, this defaults based on the case sensitivity of the SQLAlchemy dialect being used.
+
+        NOTE from SQLAlchemy:
+            In Oracle, the data dictionary represents all case-insensitive identifier names using UPPERCASE text.
+            SQLAlchemy on the other hand considers an all-lower case identifier name to be case insensitive.
+            The Oracle dialect converts all case insensitive identifiers to and from those two formats during
+            schema level communication, such as reflection of tables and indexes.
+            Using an UPPERCASE name on the SQLAlchemy side indicates a case sensitive identifier,
+            and SQLAlchemy will quote the name - this will cause mismatches against data dictionary data
+            received from Oracle, so unless identifier names have been truly created as case sensitive
+            (i.e. using quoted names), all lowercase names should be used on the SQLAlchemy side.
+            https://docs.sqlalchemy.org/en/14/dialects/oracle.html?highlight=oracle#module-sqlalchemy.dialects.oracle.cx_oracle
+
+
     include_only_columns : list, optional
         Optional. A list of specific columns to include when reading the table/view.
         All other columns are excluded.

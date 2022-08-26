@@ -1,0 +1,1 @@
+poetry run sphinx-autobuild .\source\ .\build\ --watch ..\bi_etl\ --port 8000 --open-browser

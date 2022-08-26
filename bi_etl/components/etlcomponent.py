@@ -10,7 +10,6 @@ import functools
 import logging
 import warnings
 from collections import defaultdict
-from enum import unique, IntEnum
 from operator import attrgetter
 from typing import *
 
@@ -57,20 +56,29 @@ class ETLComponent(Iterable):
         Note ``logical_name`` and ``row_number`` subs.
             
     """
-    DEFAULT_PROGRESS_FREQUENCY = 10  # Seconds
-    DEFAULT_PROGRESS_MESSAGE = "{logical_name} current row # {row_number:,}"
-    FULL_ITERATION_HEADER = 'full'
-    logging_level_reported = False
+    DEFAULT_PROGRESS_FREQUENCY = 10
+    """
+    Default for number of seconds between progress messages when reading from this component.
+    See :py:attr:`ETLComponent.progress_frequency`` to override.
+    """
 
-    @unique
-    class RowBuildMethod(IntEnum):
-        """
-        Methods of building a Row instance from source data
-        """
-        none = 0
-        clone = 1
-        full_target = 2
-        safe = 3
+    DEFAULT_PROGRESS_MESSAGE = "{logical_name} current row # {row_number:,}"
+    """
+    Default progress message when reading from this component.
+    See :py:attr:`ETLComponent.progress_message`` to override. 
+    """
+
+    FULL_ITERATION_HEADER = 'full'
+    """
+    Constant value passed into :py:meth:`ETLComponent.Row` to request all columns in the row.
+    **Deprecated**: Please use :py:meth:`ETLComponent.full_row_instance` to get a row with all columns.
+    """
+
+    logging_level_reported = False
+    """
+    Has the logging level of this component been reported (logged) yet?
+    Stored at class level so that it can be logged only once.
+    """
 
     def __init__(
             self,
@@ -316,6 +324,12 @@ class ETLComponent(Iterable):
 
     @property
     def column_names_set(self) -> set:
+        """
+        A set containing the column names for this component.
+        Usable to quickly check if the component contains a certain column.
+        """
+        # TODO: Make this a frozenset
+
         if self._column_names_set is None:
             self._column_names_set = set(self.column_names)
         return self._column_names_set
@@ -634,18 +648,46 @@ class ETLComponent(Iterable):
 
     # noinspection PyPep8Naming
     def Row(
-            self,
-            data: Union[MutableMapping, Iterator, None] = None,
-            iteration_header: Union[RowIterationHeader, str, None] = None,
-    ):
+        self,
+        data: Union[MutableMapping, Iterator, None] = None,
+        iteration_header: Union[RowIterationHeader, str, None] = None,
+    ) -> Row:
         """
         Make a new empty row with this components structure.
         """
         if iteration_header is None:
             iteration_header = self.empty_iteration_header
         elif iteration_header == self.FULL_ITERATION_HEADER:
+            warnings.warn('Use of FULL_ITERATION_HEADER is deprecated. Please use full_row_instance instead.')
             iteration_header = self.full_iteration_header
         return self.row_object(iteration_header=iteration_header, data=data)
+
+    def full_row_instance(
+        self,
+        data: Union[MutableMapping, Iterator, None] = None,
+    ) -> Row:
+        """
+        Build a full row (all columns) using the source data.
+
+        Note: If data is passed here, it uses :py:meth:`bi_etl.components.row.row.Row.update` to map the data
+        into the columns.  That is nicely automatic, but slower since it has to try various
+        ways to read the data container object.
+
+        Consider using the appropriate one of the more specific update methods
+        based on the source data container.
+
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_namedtuple`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_dict`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_row_proxy`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_tuples`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_dataclass`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_pydantic`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_values`
+        """
+        return self.row_object(
+            iteration_header=self.full_iteration_header,
+            data=data,
+        )
 
     def generate_iteration_header(
             self,
@@ -954,7 +996,7 @@ class ETLComponent(Iterable):
 
         Returns
         -------
-            row
+            Row
         """
         build_row_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         build_row_stats.print_start_stop_times = False
@@ -1050,7 +1092,24 @@ class ETLComponent(Iterable):
             target_excludes: Optional[frozenset] = None,
             stat_name: str = 'build_row_dynamic_source',
             parent_stats: Optional[Statistics] = None,
-    ):
+    ) -> Row:
+        """
+        Use a source row to build a row with correct data types for this table.
+        This version expects dynamically changing source rows, so it sanity checks **all** rows.
+
+        Parameters
+        ----------
+        source_row
+        source_excludes
+        target_excludes
+        stat_name
+            Name of this step for the ETLTask statistics. Default = 'build rows'
+        parent_stats
+
+        Returns
+        -------
+            Row
+        """
         build_row_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         build_row_stats.print_start_stop_times = False
         build_row_stats.timer.start()
@@ -1086,7 +1145,10 @@ class ETLComponent(Iterable):
             parent_stats: Statistics = None,
     ):
         """
-        Fill all lookup caches from the table.
+        Fill all lookup caches from the database table.  Note that filtering criteria can be specified so that
+        the resulting cache is not the entire current contents.  See ``assume_lookup_complete`` for how the lookup will
+        handle cache misses -- note only database table backed components have the ability to fall back to querying
+        the existing data on cache misses.
 
         Parameters
         ----------

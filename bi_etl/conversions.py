@@ -12,6 +12,9 @@ from typing import Union
 
 
 def strip(s: str):
+    """
+    Python str.strip() except that it handles None values.
+    """
     if s is None:
         return None
     else:
@@ -85,7 +88,7 @@ def str2decimal(s: str):
 def str2decimal_end_sign(s: str):
     """
     String to decimal (AKA numeric).
-    This version is almost 4 times faster than tr2decimal 
+    This version is almost 4 times faster than str2decimal
     in handling signs at the end of the string.
     """
     if s is None or s == '':
@@ -132,7 +135,8 @@ def str2time(
     s: str
         String value to convert
     dt_format: str
-        For format options please see https://docs.python.org/3.5/library/datetime.html#strftime-strptime-behavior
+        For format options please see
+        https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
     """
     tm = str2datetime(s, dt_format)
     if tm is not None:
@@ -159,7 +163,8 @@ def str2datetime(
     s: str
         String value to convert
     dt_format: str
-        For format options please see https://docs.python.org/3.5/library/datetime.html#strftime-strptime-behavior
+        For format options please see
+        https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
     """
     if s is None or s == '':
         return None
@@ -194,6 +199,9 @@ def round_datetime_ms(
         source_datetime: typing.Optional[datetime],
         digits_to_keep: int,
         ):
+    """
+    Round a datetime value microseconds to a given number of significant digits.
+    """
     if source_datetime is None:
         return None
     new_microseconds = round(source_datetime.microsecond, digits_to_keep-6)
@@ -251,7 +259,7 @@ def ensure_datetime(dt: Union[datetime, date]) -> datetime:
     elif isinstance(dt, date):
         return datetime(dt.year, dt.month, dt.day)
     else:
-        raise ValueError('expected datetime, got {}'.format(dt))
+        raise ValueError(f'expected datetime, got {dt}')
 
 
 def ensure_datetime_dict(
@@ -259,7 +267,8 @@ def ensure_datetime_dict(
         key: str,
         ):
     """
-    Takes a date or a datetime as input, outputs a datetime
+    Takes a dict containing a date or a datetime as input.
+    Changes the dict entry to be a datetime
     """
     dt = d[key]
     if isinstance(dt, datetime):
@@ -267,7 +276,7 @@ def ensure_datetime_dict(
     elif isinstance(dt, date):
         d[key] = datetime(dt.year, dt.month, dt.day)
     else:
-        raise ValueError('expected datetime for {key}, got {dt}'.format(key=key, dt=dt))
+        raise ValueError(f'expected datetime for {key}, got {dt}')
 
 
 def nvl(value, default):
@@ -298,35 +307,36 @@ def nullif(v, value_to_null):
     else:
         return v
 
-def default_to_missing(v):
+
+def default_to_missing(v: str) -> str:
     """
     Same as nvl(v, 'Missing')
     """
     return nvl(v, 'Missing')    
 
 
-def default_to_invalid(v):
+def default_to_invalid(v: str) -> str:
     """
     Same as nvl(v, 'Invalid')
     """
     return nvl(v, 'Invalid')
 
 
-def defaultQuestionmark(v):
+def default_to_question_mark(v: str) -> str:
     """
     Same as nvl(v, '?')
     """
     return nvl(v, '?')
 
 
-def defaultNines(v):
+def default_nines(v: int) -> int:
     """
     Same as nvl(v, -9999)
     """
     return nvl(v, -9999)
 
 
-def str2bytes_size(str_size: str):
+def str2bytes_size(str_size: str) -> str:
     """
     Parses a string containing a size in bytes including KB, MB, GB, TB codes
     into an integer with the actual number of bytes (using 1 KB = 1024). 
@@ -382,11 +392,11 @@ SYMBOLS = {
 
 def bytes2human(
         n: int,
-        format_str='%(value).1f %(symbol)s',
-        symbols='customary'
-        ):
+        format_str: str = '%(value).1f %(symbol)s',
+        symbols: str = 'customary'
+        ) -> str:
     """
-    Convert n bytes into a human readable string based on format_str.
+    Convert n bytes into a human-readable string based on format_str.
     symbols can be either "customary", "customary_ext", "iec" or "iec_ext",
     see: http://goo.gl/kTQMs
 
@@ -435,7 +445,7 @@ def bytes2human(
     return format_str % dict(symbol=symbols[0], value=n)
 
 
-def human2bytes(s: str):
+def human2bytes(s: str) -> int:
     """
     Attempts to guess the string format based on default symbols
     set and return the corresponding bytes as an integer.
@@ -489,5 +499,15 @@ def human2bytes(s: str):
 def replace_tilda(e):
     """
     Used for unicode error to replace invalid ascii with ~
+
+    Apply this with this code
+
+    .. code-block:: python
+
+        codecs.register_error('replace_tilda', replace_tilda)
+        ...
+        bytes_value = str_value.encode('ascii', errors='replace_tilda')
+
+    See https://docs.python.org/3/library/codecs.html#codecs.register_error
     """
     return u'~', e.start + 1

@@ -161,6 +161,9 @@ html_theme = 'sizzle'
 # further.  For a list of options available for each theme, see the
 # documentation.
 # html_theme_options = {'stickysidebar': True}
+html_theme_options = {
+    'globaltoc_collapse': False,
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
@@ -200,12 +203,14 @@ html_theme = 'sizzle'
 #html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
-html_sidebars = {
-   '**': [
-       'localtoc.html',
-       'searchbox.html'
-   ],
-}
+# html_sidebars = {
+#    '**': [
+#        'localtoc.html',
+#        'searchbox.html'
+#    ],
+# }
+
+html_copy_source = False
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.

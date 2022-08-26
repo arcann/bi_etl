@@ -17,7 +17,7 @@ __all__ = ['XLSXReader']
 
 class XLSXReader(ETLComponent):
     """
-    XLSXReader will read rows from an Microsoft Excel XLSX formatted sheet.
+    XLSXReader will read rows from a Microsoft Excel XLSX formatted workbook.
     
     Parameters
     ----------
@@ -66,11 +66,12 @@ class XLSXReader(ETLComponent):
         (inherited from ETLComponent)
         
     restkey: str
-        Column name to catch long rows (extra values).
-        
+        Column name to catch extra long rows (more columns than we have column names)
+        when reading values (extra values).
+
     restval: str
-        The value to put in columns that are in the column_names but 
-        not present in a given row (missing values).     
+        The value to put in columns that are in the column_names but
+        not present in a given row when reading (missing values).
     """
     def __init__(self,
                  task: Optional[ETLTask],
@@ -111,22 +112,21 @@ class XLSXReader(ETLComponent):
         return f"XLSXReader({self.logical_name})"
     
     @property
-    def header_row(self):
+    def header_row(self) -> int:
         """
-        int
-            The sheet row to read headers from. Default = 1.
+        The sheet row to read headers from. Default = 1.
         """
         return self.__header_row
 
     @header_row.setter
-    def header_row(self, value):
+    def header_row(self, value: int):
         self.__header_row = value
         
     @property
-    def start_row(self):
+    def start_row(self) -> int:
         """
-        int
-            The sheet row to start reading data from. Default = header_row + 1
+        The sheet row to start reading data from.
+        Default = header_row + 1
         """
         if self.__start_row is not None:
             return self.__start_row
@@ -134,7 +134,7 @@ class XLSXReader(ETLComponent):
             return self.header_row + 1
 
     @start_row.setter
-    def start_row(self, value):
+    def start_row(self, value: int):
         self.__start_row = value
 
     def has_workbook_init(self) -> bool:
@@ -153,6 +153,9 @@ class XLSXReader(ETLComponent):
         self._full_iteration_header = None
         
     def set_active_worksheet_by_number(self, sheet_number: int):
+        """
+        Change to an existing worksheet based on the sheet number.
+        """
         sheet_names = self.get_sheet_names()
         if len(sheet_names) >= (sheet_number + 1):
             sheet_name = sheet_names[sheet_number]

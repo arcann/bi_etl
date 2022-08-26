@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import collections.abc
 import dataclasses
-import textwrap
-from typing import *
 import warnings
 from collections import namedtuple
 from decimal import Decimal
+from typing import *
 from typing import Union, List, Iterable
 
 from pydantic import BaseModel
@@ -32,7 +31,7 @@ class Row(MutableMapping):
     Keeps order of the columns (see columns_in_order)
     """
 
-    # Using slots to fix the attributes to just these allows CPython to create Row objects 10% faster
+    # Using slots to fix the attributes to just these. This allows CPython to create Row objects 10% faster
     __slots__ = [
         '_data_values',
         'iteration_header',
@@ -48,6 +47,32 @@ class Row(MutableMapping):
                  data: Union[MutableMapping, list, namedtuple, None] = None,
                  status: Optional[RowStatus] = None,
                  allocate_space: bool = True):
+        """
+        Note: If data is passed here, it uses :py:meth:`bi_etl.components.row.row.Row.update` to map the data
+        into the columns.  That is nicely automatic, but slower since it has to try various
+        ways to read the data object.
+
+        Fastest way would be to not pass any data values, and follow with a call to one of:
+
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_namedtuple`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_dict`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_row_proxy`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_tuples`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_dataclass`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_pydantic`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_values`
+
+
+        Attributes:
+        ----------
+        iteration_header:
+            The :py:class:`bi_etl.components.row.row_iteration_header.RowIterationHeader` instance that
+            provides a shared definition of columns across many Row instances.
+
+            NOTE: Changes to the columns, such as adding a new column, will replace the iteration_header
+            of this Row.  If two or more Row's get the same change, they will all share the same new
+            RowIterationHeader instance as their iteration_header value.
+        """
         # Whatever we store here we need to either store on disk for a lookup,
         # or have a way of retrieving in __setstate__
         super().__init__()
@@ -137,35 +162,70 @@ class Row(MutableMapping):
         self._data_values = incoming_dict['v']
 
     def update_from_namedtuple(self, source_data: namedtuple):
+        """
+        Update the row values from a ``namedtuple`` instance.
+        Adds columns for any new names found.
+        """
         # noinspection PyProtectedMember
         for column_specifier, value in zip(source_data._fields, source_data):
             column_name = self.iteration_header.get_column_name(column_specifier)
             self._raw_setitem(column_name, value)
 
     def update_from_dict(self, source_dict: dict):
+        """
+        Update the row values from a ``dict`` instance.
+        Adds columns for any new names found.
+        """
         for column_specifier, value in source_dict.items():
             column_name = self.iteration_header.get_column_name(column_specifier)
             self._raw_setitem(column_name, value)
 
     def update_from_row_proxy(self, source_row: Row):
+        """
+        Update the row values from a SQL Alchemy result row instance.
+        Adds columns for any new names found.
+        """
         for column_specifier, value in source_row.items():
             column_name = self.iteration_header.get_column_name(column_specifier)
             self._raw_setitem(column_name, value)
 
     def update_from_tuples(self, tuples_list: List[tuple]):
+        """
+        Update the row values from a ``list`` of ``tuples``.
+
+        Each tuple should have 2 values:
+          1. Column name
+          2. Column value
+
+        Adds columns for any new names found.
+        """
         for column_specifier, value in tuples_list:
             column_name = self.iteration_header.get_column_name(column_specifier)
             self._raw_setitem(column_name, value)
 
     def update_from_dataclass(self, dataclass_inst):
+        """
+        Update the row values from a ``dataclass`` instance.
+        Adds columns for any new names found.
+        """
         self.update_from_dict(dataclass_inst.__dict__)
 
     def update_from_pydantic(self, pydantic_inst: BaseModel):
+        """
+        Update the row values from a ``pydantic`` instance of ``BaseModel``.
+        Adds columns for any new names found.
+        """
         # Internally pydantic __iter__ uses __dict__ but is a bit more complex
         # So going straight to __dict__ is faster
         self.update_from_dict(pydantic_inst.__dict__)
 
     def update_from_values(self, values_list: list):
+        """
+        Update the row from a list of values.
+        The length of the list should be at least as long as the
+        number of columns (un-filled columns will be null).
+        Extra values past the number of columns will be discarded.
+        """
         header_col_cnt = len(self.columns_in_order)
         self._data_values = values_list[:header_col_cnt]
         dv_col_cnt = len(self._data_values)
@@ -173,6 +233,24 @@ class Row(MutableMapping):
             self._data_values.extend([None] * (header_col_cnt - dv_col_cnt))
 
     def update(self, *args, **key_word_arguments):
+        """
+        Update the row values from a ``dict`` instance.
+        Adds columns for any new names found.
+
+        NOTE: This method is easy (nicely automatic) to use but slow
+        since it has to try various ways to read the data container object.
+
+        Consider using the appropriate one of the more specific update methods
+        based on the source data container.
+
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_namedtuple`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_dict`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_row_proxy`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_tuples`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_dataclass`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_pydantic`
+        * :py:meth:`bi_etl.components.row.row.Row.update_from_values`
+        """
         if len(key_word_arguments) > 0:
             self.update_from_dict(key_word_arguments)
 
@@ -215,7 +293,10 @@ class Row(MutableMapping):
                         f"Row instance couldn't be built with source type {type(args)} value={args}. Error was {e}."
                         )
 
-    def get_column_position(self, column_specifier):
+    def get_column_position(self, column_specifier) -> int:
+        """
+        Get the ordinal column position based on a column name (str or :py:class:`sqlalchemy.sql.schema.Column`)
+        """
         column_name = self.iteration_header.get_column_name(column_specifier)
         return self.iteration_header.get_column_position(column_name)
 
@@ -268,9 +349,6 @@ class Row(MutableMapping):
                                                             cv=cv,
                                                             s=self.status
                                                             )
-
-    def values(self):
-        return self._data_values
 
     def __contains__(self, column_specifier):
         column_name = self.iteration_header.get_column_name(column_specifier)
@@ -338,7 +416,7 @@ class Row(MutableMapping):
     def set_keeping_parent(self, column_name: Union[str, Column], value):
         """
         Save and restore the iteration header parent in case we are adding
-        the key to the header.  This saves time in build_row since it can
+        the key to the header. This saves time in build_row since it can
         know the row is "safe" for quick building
 
         :param column_name:
@@ -453,7 +531,7 @@ class Row(MutableMapping):
                        remove_list,
                        ignore_missing=False):
         """
-        Remove columns from this row instance.
+        Remove columns from this row instance (changes to a new RowIterationHeader)
 
         Parameters
         ----------
@@ -489,6 +567,7 @@ class Row(MutableMapping):
         """
         Return a new row instance with a subset of the columns. Original row is not modified
         Excludes are done first, then renames and finally keep_only.
+        New instance will have a different RowIterationHeader.
 
         Parameters
         ----------
@@ -531,28 +610,36 @@ class Row(MutableMapping):
         return sub_row
 
     @property
-    def column_set(self):
+    def column_set(self) -> frozenset:
         """
-        An ImmutableSet of the the columns of this row.
+        An ImmutableSet of the columns of this row.
         Used to store different row configurations in a dictionary or set.
 
         WARNING: The resulting set is not ordered. Do not use if the column order affects the operation.
         See positioned_column_set instead.
+
+        Pass through call to iteration_header.column_set.
         """
         return self.iteration_header.column_set
 
     @property
-    def column_count(self):
+    def column_count(self) -> int:
+        """
+        Returns count of how many columns are in this row.
+
+        Pass through call to iteration_header.column_count.
+        """
         return self.iteration_header.column_count
 
     @property
-    def positioned_column_set(self):
+    def positioned_column_set(self) -> Set[tuple]:
         """
-        An ImmutableSet of the the tuples (column, position) for this row.
+        An ImmutableSet of the tuples (column, position) for this row.
         Used to store different row configurations in a dictionary or set.
 
         Note: column_set would not always work here because the set is not ordered even though the columns are.
 
+        Pass through call to iteration_header.positioned_column_set.
         """
         return self.iteration_header.positioned_column_set
 
@@ -577,7 +664,16 @@ class Row(MutableMapping):
         """
         return self.iteration_header.columns_in_order
 
-    def values_in_order(self):
+    def values(self) -> List:
+        """
+        Return a list of the row values in the same order as the columns.
+        """
+        # TODO: Change to return either ValuesView or tuple of values.
+        #       tuple tests as a lot faster, but ValuesView is what callers might expect
+        #       since MutableMapping returns ValuesView.
+        #       In either case, the call will be slower, but safer since the caller
+        #       would not be able to break the row by changing the list of values.
+        #       See also values_in_order.  We also need to deprecate one of the methods.
         return self._data_values
 
     def _values_equal_coerce(self, val1, val2, col_name):
@@ -707,55 +803,4 @@ class Row(MutableMapping):
 
         return self
 
-
-def test_pickle():
-    from _datetime import datetime
-    import pickle
-    from timeit import timeit
-    iteration_header = RowIterationHeader()
-    row = Row(iteration_header,
-              data={'col1': 54321,
-                    'col2': 'Two',
-                    'col3': datetime(2012, 1, 3, 12, 25, 33),
-                    'col4': 'All good pickles',
-                    'col5': 123.23,
-                    })
-    s = pickle.dumps(row, pickle.HIGHEST_PROTOCOL)
-    print(f"Length of pickled row = {len(s)}")
-    print(f"Pickled row data = '{s}'")
-
-    row2 = pickle.loads(s)
-    print(f"UnPickled row matches = {row == row2}")
-    print(f"UnPickled row compare_to = {row.compare_to(row2)}")
-    iterations = 1000000
-    r = timeit("pickle.loads(pickle.dumps(row, pickle.HIGHEST_PROTOCOL))",
-               textwrap.dedent("""\
-                   import pickle;
-                   from bi_etl.components.row.row import Row;
-                   from bi_etl.components.row.row_iteration_header import RowIterationHeader;
-                   from _datetime import datetime
-                   iteration_header = RowIterationHeader()
-                   row = Row(iteration_header,
-                             data={'col1': 54321,
-                                   'col2': 'Two',
-                                   'col3': datetime(2012, 1, 3, 12, 25, 33),
-                                   'col4': 'All good pickles',
-                                   'col5': 123.23,
-                                   })
-                   """),
-               number=iterations,
-               )
-    print(f"timeit results = {r} for {iterations} iterations")
-
-
-def main():
-    test_pickle()
-
-    print("V1--------")
-    Row.__reduce__ = Row.__reduce_v1__
-    Row.__setstate__ = Row.__setstate_v1__
-    test_pickle()
-
-
-if __name__ == "__main__":
-    main()
+Row.values_in_order = Row.values
