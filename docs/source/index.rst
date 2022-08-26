@@ -2,9 +2,21 @@
 BI ETL Python Framework (bi_etl)
 ################################
 
-Python based ETL (Extract Transform Load) framework geared towards BI databases in particular.
+Python based data engineering framework. The bi_etl framework is geared towards BI databases in particular.
 The goal of the project is to create reusable objects with typical technical transformations
 used in loading dimension tables.
+
+For simple staging of data with little to no transformation, bi_etl helps with some
+abstraction layers over the database bulk loader tools.
+
+For dimension loading bi_etl offers components that perform SCD type 1 and type 2 upsert (update / insert)
+operations. Unlike other tools, bi_etl automates as much of the "technical" transformation as possible. Your code
+performs the main "business" transformation in SQL or Python code without worrying about the upsert logic. The
+bi_etl component then accepts those records, matches source column names to target column names, checks for existing
+rows, and either updates them (type 1 or 2 updates), updates the metadata columns (e.g. date of last update), or
+inserts a new row.
+
+PyPI page: `bi-etl <https://pypi.org/project/bi-etl/>`_
 
 *************************
 Guiding Design Principles
@@ -17,10 +29,10 @@ Guiding Design Principles
    If a datatype must be changed, only that one column's new type should be specified.
    If a column name must be changed, only the source & target column names that differ should be specified.
 
-2. Data Quality is King
+2. Data Quality is the top priority
 
    Data quality is more important than performance.  For example, the process should fail before truncating data
-   contents (i.e. loading 6 characters into a 5 character field) even if that means sacrificing some load performance.
+   contents (e.g. loading 6 characters into a 5 character field) even if that means sacrificing some load performance.
 
 3. Give helpful error messages.
 
@@ -35,7 +47,9 @@ should be supported.
     is handled in re-usable Python classes that are part of the bi_etl framework.
 
     Transform Extract Load (TEL) - The data is transformed using the source systems SQL engine. It then follows a
-    similar pattern to the ELT model.
+    similar pattern to the ELT model. This model is not often used since it puts a lot of computational strain on the
+    source system.  However, if the transformation yields a much smaller data volume (e.g. aggregation) then it might
+    be more efficient than extracting & loading all the details.
 
 ****************
 Areas to Work on
