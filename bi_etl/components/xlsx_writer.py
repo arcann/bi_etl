@@ -21,7 +21,7 @@ __all__ = ['XLSXWriter']
 
 class XLSXWriter(XLSXReader):
     """
-    XLSXReader will read rows from a Microsoft Excel XLSX formatted sheet.
+    XLSXWriter will write rows to a Microsoft Excel XLSX formatted workbook.
     
     Parameters
     ----------
@@ -33,6 +33,10 @@ class XLSXWriter(XLSXReader):
         
     logical_name: str
         The logical name of this source. Used for log messages.
+
+    write_only: bool
+        Should we use the faster write only mode ?
+        (only supports brand-new files not adding data to an existing file)
 
     Attributes
     ----------
@@ -49,7 +53,7 @@ class XLSXWriter(XLSXReader):
         The workbook that was opened.
         
     log_first_row : boolean
-        Should we log progress on the the first row read. *Only applies if Table is used as a source.*
+        Should we log progress on the first row read. *Only applies if Table is used as a source.*
         (inherited from ETLComponent)
         
     max_rows : int, optional
@@ -70,11 +74,12 @@ class XLSXWriter(XLSXReader):
         (inherited from ETLComponent)
         
     restkey: str
-        Column name to catch long rows (extra values).
+        Column name to catch extra long rows (more columns than we have column names)
+        when reading values (extra values).
         
     restval: str
         The value to put in columns that are in the column_names but 
-        not present in a given row (missing values).     
+        not present in a given row when reading (missing values).
     """
     def __init__(self,
                  task: Optional[ETLTask],
@@ -155,8 +160,10 @@ class XLSXWriter(XLSXReader):
             self._insert_cnt_this_sheet = 0
 
     def set_active_worksheet_by_number(self, sheet_number: int):
+        """
+        Change to an existing worksheet based on the sheet number.
+        """
         try:
-            self.log.warning("Chaning sheets by number does not reset the ")
             super().set_active_worksheet_by_number(sheet_number)
         except ValueError as e:
             raise ValueError(f"{e}. Use set_active_worksheet_by_name to create new sheets.")
@@ -165,29 +172,43 @@ class XLSXWriter(XLSXReader):
         raise ValueError(f'Column names must be explicitly set on {self}')
 
     def set_columns_and_widths(self, columns_dict: Dict[str, float]):
+        """
+        Set the column names and widths at the same time.
+        See :py:meth:`set_widths`.
+        """
         self.column_names = columns_dict.keys()
         self.set_widths(columns_dict.values())
 
     def write_header(self):
+        """
+        Write the header row.
+        """
         if self.column_names is None:
             raise ValueError("insert called before column_names set (or possibly column_names needs to be set after set_active_worksheet_by_name call.")
         self.active_worksheet.append(self.column_names)
         self.headers_written = True
 
-    def insert_row(self,
-                   source_row: Row,  # Must be a single row
-                   stat_name: str = 'insert',
-                   parent_stats: Statistics = None,
-                   ):
+    def insert_row(
+        self,
+        source_row: Row,  # Must be a single row
+        additional_insert_values: dict = None,
+        stat_name: str = 'insert',
+        parent_stats: Statistics = None,
+    ) -> Row:
         """
         Inserts a row into the database (batching rows as batch_size)
 
         Parameters
         ----------
-        source_row
+        source_row:
             The row with values to insert
-        stat_name
-        parent_stats
+        additional_insert_values:
+            Values to add / override in the row before inserting.
+        stat_name:
+            Name of this step for the ETLTask statistics.
+        parent_stats:
+            Optional Statistics object to nest this steps statistics in.
+            Default is to place statistics in the ETLTask level statistics.
 
         Returns
         -------
@@ -201,16 +222,25 @@ class XLSXWriter(XLSXReader):
         if not self.headers_written:
             self.write_header()
 
-        # Remove invalid XML characters
+        assert len(source_row) > 0, f"Empty row passed into {self} insert"
+
         values = []
         for column_name in self.column_names:
-            try:
-                col_value = source_row[column_name]
-                if isinstance(col_value, str):
-                    col_value = self._illegal_xml_chars_RE.sub('\\?', col_value)
-            except KeyError:
-                col_value = None
+            if additional_insert_values and column_name in additional_insert_values:
+                col_value = additional_insert_values[column_name]
+            else:
+                try:
+                    col_value = source_row[column_name]
+                except KeyError:
+                    col_value = None
+            if isinstance(col_value, str):
+                col_value = self._illegal_xml_chars_RE.sub('\\?', col_value)
             values.append(col_value)
+
+        new_row = self.row_object(iteration_header=self.full_iteration_header)
+        new_row.update_from_values(values)
+
+        assert len(values) > 0, f"No values with column names from {self} found in {source_row}"
 
         self.active_worksheet.append(values)
 
@@ -219,11 +249,25 @@ class XLSXWriter(XLSXReader):
 
         stats.timer.stop()
 
-    def set_widths(self, column_widths):
+        return new_row
+
+    def set_widths(self, column_widths: Iterable[float]):
+        """
+        Set the column widths in the xlsx for the currently active worksheet.
+        """
         for i, column_width in enumerate(column_widths):
             self.active_worksheet.column_dimensions[get_column_letter(i + 1)].width = column_width
 
     def make_table_from_inserted_data(self, style_name: str = 'TableStyleMedium2'):
+        """
+        Format the newly inserted worksheet data as a table.
+
+        Parameters
+        ----------
+
+        style_name:
+            The name of the Excel style to apply to the table.
+        """
         if self._insert_cnt_this_sheet == 0:
             return
         last_col_letter = get_column_letter(len(self.column_names))
@@ -250,19 +294,20 @@ class XLSXWriter(XLSXReader):
             column.name = value
         self.active_worksheet.add_table(table)
 
-    def insert(self,
-               source_row: Union[Row, list],  # Could also be a whole list of rows
-               parent_stats: Statistics = None,
-               **kwargs
-               ):
+    def insert(
+        self,
+        source_row: Union[Row, list],  # Could also be a whole list of rows
+        parent_stats: Statistics = None,
+        **kwargs
+    ):
         """
         Insert a row or list of rows in the table.
 
         Parameters
         ----------
-        source_row: :class:`Row` or list thereof
+        source_row:
             Row(s) to insert
-        parent_stats: bi_etl.statistics.Statistics
+        parent_stats:
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         """
@@ -282,6 +327,15 @@ class XLSXWriter(XLSXReader):
              )
             
     def close(self, error: bool = False):
+        """
+        Close the xlsx file, saving first if ``error`` is false.
+
+        Parameters
+        ----------
+        error:
+            Did we run into an error during processing?
+            Errors cause a rollback, which skips the save of the file.
+        """
         if self.has_workbook_init():
             if not error:
                 self.workbook.save(filename=self.file_name)

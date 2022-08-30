@@ -16,7 +16,10 @@ bi_etl component then accepts those records, matches source column names to targ
 rows, and either updates them (type 1 or 2 updates), updates the metadata columns (e.g. date of last update), or
 inserts a new row.
 
-PyPI page: `bi-etl <https://pypi.org/project/bi-etl/>`_
+For configuration of the bi_etl framework itself as well as, optionally, your ETL jobs
+please see `config_wrangler <https://bietl.dev/config_wrangler/>`_
+
+This project on PyPI: `bi-etl <https://pypi.org/project/bi-etl/>`_
 
 *************************
 Guiding Design Principles
@@ -24,10 +27,16 @@ Guiding Design Principles
 
 1. Don't Repeat Yourself (DRY).
 
-   The source or target of an ETL owns the metadata (list of columns and data types).
-   The ETL generally has no reason to define those again unless the ETL requires a change.
-   If a datatype must be changed, only that one column's new type should be specified.
-   If a column name must be changed, only the source & target column names that differ should be specified.
+   - The source or target of an ETL owns the metadata (list of columns and data types).
+     The ETL generally has no reason to define those again unless the ETL requires a change.
+
+   - If a datatype must be changed, only that one column's new type should be specified.
+
+   - If source & target column names differ, only the column names that differ should be specified
+     as mapping to a new name. All column names that match should flow through with no extra code.
+     With bi_etl we map input columns to output columns by renaming any input columns that do not
+     match to the output column name
+     (not renamed in the input system, but inside the ETL task itself).
 
 2. Data Quality is the top priority
 
@@ -39,17 +48,65 @@ Guiding Design Principles
 4. Make it as easy as possible to create re-usable modules.
 
 5. SQL is a very powerful transformation language. The data pipelines that support SQL as the transformation language
-should be supported.
+   should be supported.
 
-    Extract Load Transform (ELT) - Data is loaded with no transformation (or as little as possible) into the BI database
+    - **Extract Load Transform (ELT)** - Data is loaded with no transformation (or as little as possible) into the BI database
     in a staging area. SQL jobs are then used to transform the data for both dimension and fact tables. For dimensions,
     especially type-2 slowly changing dimensions, the technical transformations in the upsert (update or insert) logic
     is handled in re-usable Python classes that are part of the bi_etl framework.
 
-    Transform Extract Load (TEL) - The data is transformed using the source systems SQL engine. It then follows a
+    - **Transform Extract Load (TEL)** - The data is transformed using the source systems SQL engine. It then follows a
     similar pattern to the ELT model. This model is not often used since it puts a lot of computational strain on the
     source system.  However, if the transformation yields a much smaller data volume (e.g. aggregation) then it might
     be more efficient than extracting & loading all the details.
+
+    - **Extract Transform Load (ETL)** - ETL, the most traditional approach does **not** use SQL for the transformation.
+    This framework does support ETL with transformations done in the Python code. However, Python transformations are
+    often slower than SQL transformations. Python transformations are also accessible to a smaller audience than SQL
+    transformations are.
+
+********
+Features
+********
+
+Sources supported:
+~~~~~~~~~~~~~~~~~~
+
+* Database tables
+* Database SQL Queries
+* Delimited text files
+* Excel files
+* W3C web logs
+
+Targets supported:
+~~~~~~~~~~~~~~~~~~
+
+* Database tables
+  -  Works with any database supported by `SQL Alchemy <https://www.sqlalchemy.org/>`_
+* Delimited text files
+* Excel files
+
+
+Load types supported:
+~~~~~~~~~~~~~~~~~~~~~
+
+* Truncate
+* Insert
+* Upsert (Update if row with matching key is present, else insert)
+
+  - Works best in conjunction with a Lookup which is an indexed RAM / Disk storage of the existing rows
+  - Optional addition of a surrogate key (`SCD type 1 <https://en.wikipedia.org/wiki/Slowly_changing_dimension#Type_1:_overwrite>`_)
+
+* Upsert with `SCD Type 2 versioning <https://en.wikipedia.org/wiki/Slowly_changing_dimension#Type_2:_add_new_row>`_
+
+  - Generating both type 2 and type 1 surrogate keys if desired.
+
+* Bulk loading the results of any of the methods above
+
+Transformations supported:
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Anything you can do in SQL or in Python -- including with the hundreds of thousands of Python libraries.
 
 ****************
 Areas to Work on
@@ -65,325 +122,28 @@ Areas to Work on
 
 * Performance.
 
-  There is a limit to how much performance is possible with Python.  Some tools offer C/C++ integration
-  however, the slowest CPU bound step is the Table.build_row module and that depends heavily on dynamic
-  data-type nature of Python.
+  There is a limit to how much performance is possible with Python. However, we have found that
+  Python makes it easier to write "smarter" loads that limit the scope of the load to gain
+  performance rather than quickly hammering in the data with few quality checks the way some ETL
+  tools do it.
 
   Multi-threaded insert/updates appear to provide some good benefit on certain database platforms
-  (e.g. SQL Server)
+  (e.g. SQL Server).
 
 *******************
-Configuration Files
+Details
 *******************
 
 .. toctree::
-   :hidden:
-
-   config_ini
-   coding_standards
-   modules
-
-======================== ================================================
-File                     Contents                                       
-======================== ================================================
-:doc:`config_ini`        This is the main configuration file for the
-                         bi_etl module. By default the module will look
-                         for the file in your user directory.
-======================== ================================================
-
-To configure the bi_etl system you **must** setup :doc:`config_ini`
-
-***********************
-Sequence of an ETL Task
-***********************
-
-The definition of an ETL Task will be a python class inheriting from :class:`bi_etl.scheduler.task.ETLTask`. 
-This documentation will henceforth refer to that class as simply ``ETLTask``.
-
-To run a task you use :func:`bi_etl.scheduler.task.run_task`.  When ``run_task`` is called it is given a module name. It will:
-
-1. Load the configuration file using :class:`bi_etl.config.bi_etl_config_base.BI_ETL_Config_Base_From_Ini_Env`.
-
-2. Setup a file based log using task_name via :meth:`config.set_dated_log_file_name` using the module name passed into run_task.
-
-3. Search for that a module named task_name in the ``PYTHONPATH``.
-   
-   * It looks for the module under the package (folder) ``etl_jobs``. For example ``run_task('my_table')`` would match *any* of:
-   
-      * ``etl_jobs.my_table``
-      * ``etl_jobs.foo.my_table``
-      * ``etl_jobs.foo.bar.my_table``
-      * ``etl_jobs.not_my_table`` (which might be a problem)
-
-4. After finding the module, look for a class based on ``ETLTask`` in that module.  
-**By default it will fail if there is more than one such class.** You can add an optional parameter ``class_name`` to 
-the ``run_task`` function to have it use a specific class and thus not fail if there is more than one.
-
-5. Start the ``run`` method of ``ETLTask``. This a standard framework method. It will:
-
-   a.	Initialize the task statistics (start times, etc.)
-   b.	Call the :meth:`init <bi_etl.scheduler.task.ETLTask.init>` method that you can override in your class.
-   c.	Call the :meth:`load <bi_etl.scheduler.task.ETLTask.load>` method that you must override in your class.
-   d.	Call the :meth:`finish <bi_etl.scheduler.task.ETLTask.finish>` method that you can override in your class.
-   e.	Finalize the statistics
-   f.	Send an e-mail on failure (see configuration file section ``SMTP`` item ``distro_list``)
-
-
-**************************
-Source / Target Components
-**************************
-
-Within a task you will use source / target components to extract and load the data. 
-
-=================================================================== ========== ========== ====================================================================
-Component Class                                                     Usable as  Usable as  Notes
-                                                                    Source     Target
-=================================================================== ========== ========== ====================================================================
-:class:`~bi_etl.components.csvreader.CSVReader`                     Yes        No         Can read *any* delimited file (see ''delimiter'' parameter) 
-                                                                                          It is based on the Python csv module.
-                                                                                          See https://docs.python.org/3.5/library/csv.html
-:class:`~bi_etl.components.csv_writer.CSVWriter`                    No         Yes        Can write *any* delimited file (see ''delimiter'' parameter)
-                                                                                          It is based on the Python csv module.
-                                                                                          See https://docs.python.org/3.5/library/csv.html
-:class:`~bi_etl.components.xlsx_reader.XLSXReader`                  Yes        No         Reads from Excel files; although only those in xlsx format.
-:class:`~bi_etl.components.xlsx_writer.XLSXWriter`                  Yes        Yes        Writes to Excel xlsx files (can also read files).
-:class:`~bi_etl.components.sqlquery.SQLQuery`                       Yes        No         Reads from the result of a SQL query.
-:class:`~bi_etl.components.readonlytable.ReadOnlyTable`             Yes        No         Useful when reading all columns from a database table or view.
-                                                                                          Rows can be filtered using the where method.
-:class:`~bi_etl.components.table.Table`                             Yes        Yes        Inherits from ReadOnlyTable. Added features:                                                                                 
-                                                                                          * lookups, optional data cache
-                                                                                          * insert, update, delete and upsert
-                                                                                          * delete_not_in_set, and delete_not_processed
-                                                                                          * logically_delete_not_in_set, and not_processed
-                                                                                          * update_not_in_set, update_not_processed
-:class:`~bi_etl.components.hst_table.HistoryTable`                  Yes        Yes        Inherits from Table. Adds ability to correctly load versioned
-                                                                                          tables. Supports both type 2 dimensions and date versioned
-                                                                                          warehouse tables. Also has cleanup_versions method
-                                                                                          to remove version rows that are not needed (due to being
-                                                                                          redundant).
-
-:class:`~bi_etl.components.w3c_reader.W3CReader`                    Yes        No         Reads W3C based log files (web server logs).
-
-:class:`~bi_etl.components.data_analyzer.DataAnalyzer`              No         Yes        Produces a summary of the columns in the data rows passed to the
-                                                                                          :meth:`~bi_etl.components.data_analyzer.DataAnalyzer.analyze_row`
-                                                                                          method.
-                                                                                          The output currently goes to the task log.
-=================================================================== ========== ========== ====================================================================                                                                                          
-
-Functionality common to all sources
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-All source components share the following common functionality.
-
-The source can output progress messages to the task log every X
-seconds. This defaults to every 10 seconds with the message format
-being ``"{logical_name} current row # {row_number:,}"``. See parameters
-``progress_frequency``, and ``progress_message``.
-
-They can limit the number of rows to process. See parameter ``max_rows``
-(Default None)
-
-They can print a debug trace of all rows processed. See class property
-``trace_data`` (default False).
-
-They can print a debug trace of the first row processed. See parameter
-and class property ``log_first_row`` (default False).
-
-They track statistics on how long it took to retrieve the first row
-and all rows. The read timer is starts and stops as rows are passed
-onto other code, so it should represent just the read elapsed time.
-
-.. include:: source_transformations.rst
-
-
-*********************
-Coding Standards Used
-*********************
-
-Please see :doc:`coding_standards`
-
-
-********
-Examples
-********
-
-
-Example task definition - Simple Table Truncate and Load
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   from bi_etl.scheduler.task import ETLTask
-   from bi_etl.components.csvreader import CSVReader
-   from bi_etl.components.table import Table
-   
-   
-   class STAGE_TABLE(ETLTask):
-
-       def load( self):
-           ## get_database is a method of ETLTask that will get a connected
-           ## database instance. See docs.
-           target_database = self.get_database('EXAMPLE_DB')
-   
-           ## Make an ETL Component to read the source file
-           with CSVReader(self,
-                          filedata = r"E:\Data\training\ExampleData1-a.csv",
-                          ) as source_file:
-   
-               ## Make an ETL Component to write the target dimension data.
-               with Table(task= self,
-                          database= target_database,
-                          table_name= 'example_1',
-                          ) as target_table:
-   
-                   ## Truncate the table before load
-                   target_table.truncate()
-   
-                   ## Start looping through source data
-                   for row in source_file:
-                       target_table.insert(row)
-   
-                   ## Issue a commit at the end.
-                   ## If your database needs more frequent commits, that can be done as well.
-                   target_table.commit()
-   
-                   self.log.info("Done")
-   
-   ### Code to run the load when run directly
-   if __name__ == '__main__':
-       ## Should only be invoked directly when testing code.
-       ## So don't send error e-mails.
-       STAGE_TABLE().run(no_mail = True)
-
-If you do need to commit in smaller batches you can add these lines inside the ``for row in source`` file loop
-
-.. code-block:: python
-
-   if source_file.rows_read % 10000 == 0:
-      source_file.commit()
-
-Example task definition - Simple Table Load with Update/Insert
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-This example will start and end the same as the Truncate and Load example.  
-So the code block below is only the contents of the two ``with`` blocks.  
-
-.. code-block:: python
-
-         with Table...
-               ## <-- Removed truncate from here
-
-               ## Start looping through source data
-               for row in source_file:
-                   target_tbl.upsert(row)  ### <-- changed to upsert instead of insert
-
-               ## Issue a commit at the end
-               target_table.commit()
-
-               self.log.info("Done")
-
-
-In summary:
-1) We removed the call to the ``truncate`` command
-2) We changed the  ``insert`` call to an :meth:`~bi_etl.components.table.Table.upsert` call.
-
-The :meth:`~bi_etl.components.table.Table.upsert` command will look for an existing row in the target table 
-(using the primary key lookup if no alternate lookup name is provided). If no existing row is found, an insert
-will be generated. If an existing row is found, it will be compared to the row passed in. If changes are found,
-an update will be generated.  
-
-
-Example task definition - Simple Dimension Load
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-In this example we add in features to
-1) Generate a surrogate key
-2) Lookup using the natural key (not the primar key)
-3) Logically delete rows that were not in the source 
-
-.. code-block:: python
-
-   from bi_etl.scheduler.task import ETLTask   
-   from bi_etl.components.readonlytable import ReadOnlyTable   
-   from bi_etl.components.table import Table
-   
-   class D_WBS(ETLTask):
-      def load( self):
-         ## get_database is a method of ETLTask that will get a connected
-         ## database instance. See docs.
-         source_database = self.get_database('WAREHOUSE')
-         target_database = self.get_database('DATAMART')
-
-         ## Make an ETL Component to read the source view.
-         with ReadOnlyTable(task= self,
-                            database= source_database,
-                            table_name= 'd_wbs_src_vw',
-                            ) as source_data:
-
-            ## Make an ETL Component to write
-            ## the target dimension data.
-            with Table(task= self,
-                       database= target_database,
-                       table_name= 'd_wbs',
-                       ) as target_table:
-
-               ## Enable option to generate a surrogate key value for
-               ## the primary key
-               target_table.auto_generate_key= True
-
-               ## Specify the column to get the last update
-               ## date value (from system date)
-               target_table.last_update_date= 'last_update_date'
-
-               ## Specify the column to get Y/N delete flag values.
-               target_table.delete_flag = 'delete_flag'
-
-               ## Track rows processed for logically_delete_not_processed
-               target_table.track_source_rows=True
-
-               ## Define an alternate key lookup using the
-               ## natural key column. If we don't, the
-               ## upsert process would try and use the primary key
-               ## which is the surrogate key.
-               target_table.define_lookup('AK',['wbs_natural_key'])
-
-               ## Fill the cache to improve performance
-               target_table.fill_cache()
-
-               ## Log entry
-               self.log.info("Processing rows from {}".format(source_data))
-
-               ## Start looping through source data
-               for row in source_data:
-                  ## Upsert (Update else Insert) each source row
-                  target_table.upsert(row,
-                                      ## Use the alternate key define above
-                                      ## to perform lookup for existing row
-                                      lookup_name = 'AK'
-                                      )
-               target_table.commit()
-
-               self.log.info("Processing deletes from {}".format(target_table))
-               target_table.logically_delete_not_processed()
-               target_table.commit()
-
-               self.log.info("Done")
-
-   ### Code to run the load when run directly
-   if __name__ == '__main__':
-      ## Should only be invoked directly when testing code.
-      ## So don't send error e-mails.
-      D_WBS().run(no_mail = True)
-
-
-************
-Modules APIs
-************
-.. toctree::
-   :maxdepth: 5
-
-   source_transformations
-   bi_etl   
+    :maxdepth: 1
+
+    etl_task
+    components
+    source_transformations
+    examples
+    config_ini
+    documentation_standards
+    bi_etl
 
 ******************
 Indices and tables

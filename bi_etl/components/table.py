@@ -1589,7 +1589,8 @@ class Table(ReadOnlyTable):
         ----------
         source_row
             The row with values to insert
-        additional_insert_values
+        additional_insert_values:
+            Values to add / override in the row before inserting.
         source_excludes:
             set of source columns to exclude
         target_excludes

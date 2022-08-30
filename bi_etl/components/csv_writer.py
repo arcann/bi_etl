@@ -29,31 +29,40 @@ class CSVWriter(ETLComponent):
     However, instead of a dict it uses our :class:`~bi_etl.components.row.row.Row` class as it's return type.
     It uses :class:`csv.reader` (in :mod:`csv`) to read the file.
     
-    Note optional, but important, parameter ``delimiter``.
+    Note the optional, but important, parameter ``delimiter``.
     
-    **Valid values for `errors` parameter:**
+    **Valid values for ``errors`` parameter:**
              
-    +--------------------+-----------------------------------------------------------+
-    | Value              | Meaning                                                   |
-    +====================+===========================================================+
-    | 'strict'           | raise a ValueError error (or a subclass)                  |
-    +--------------------+-----------------------------------------------------------+
-    | 'ignore'           | ignore the character and continue with the next           |
-    +--------------------+-----------------------------------------------------------+
-    | 'replace'          | replace with a suitable replacement character;            |
-    |                    | Python will use the official U+FFFD REPLACEMENT           |
-    |                    | CHARACTER for the builtin Unicode codecs on               |
-    |                    | decoding and '?' on encoding.                             |
-    +--------------------+-----------------------------------------------------------+
-    | 'surrogateescape'  | replace with private code points U+DCnn.                  |
-    +--------------------+-----------------------------------------------------------+               
-    
+    +-----------------------+-----------------------------------------------------------+
+    | Value                 | Meaning                                                   |
+    +=======================+===========================================================+
+    | ``'strict'``          | raise a ValueError error (or a subclass)                  |
+    +-----------------------+-----------------------------------------------------------+
+    | ``'ignore'``          | ignore the character and continue with the next           |
+    +-----------------------+-----------------------------------------------------------+
+    | ``'replace'``         | replace with a suitable replacement character;            |
+    |                       | Python will use the official U+FFFD REPLACEMENT           |
+    |                       | CHARACTER for the builtin Unicode codecs on               |
+    |                       | decoding and '?' on encoding.                             |
+    +-----------------------+-----------------------------------------------------------+
+    | ``'surrogateescape'`` | replace with private code points U+DCnn.                  |
+    +-----------------------+-----------------------------------------------------------+
+
     Args:
-        task: The  instance to register in (if not None)
+        task: The ETLTask instance to register in (if not None)
         
-        filedata: 
+        file_data:
             The file to parse as delimited. If str then it's assumed to be a filename. 
-            Otherwise it's assumed to be a file object.
+            Otherwise, it's assumed to be a file object.
+
+        column_names:
+            The names to use for columns
+
+        include_header:
+            Should the first line of the output file be a header with the column names?
+
+        append:
+            Should the file be appended to instead of overwritten (if it already exists)?
     
         encoding: 
             The encoding to use when opening the file, 
@@ -63,21 +72,22 @@ class CSVWriter(ETLComponent):
         errors: 
             The error handling to use when opening the file 
             (if it was a filename and not already opened)
-            Default is 'strict'
-            See above for valid errors values.            
+            Default is ``'strict'``
+            See tabke above for valid errors values.
             
         logical_name:
-            The logical name of this source. Used for log messages.  
+            The logical name of this source. Used for log messages.
+
+        kwargs:
+            Optional Key word arguments. See below.
     
     Attributes:
-        column_names: list
-            The names to use for columns
 
         dialect: str or subclass of :class:`csv.Dialect`
             Default "excel". The dialect value to pass to :mod:`csv`
         
         delimiter: str
-            The delimiter used in the file. Default is ','.
+            The delimiter used in the file. Default is comma ``','``.
         
         doublequote: boolean
             Controls how instances of quotechar appearing inside a column should themselves be quoted. 
@@ -176,7 +186,7 @@ class CSVWriter(ETLComponent):
 
         # We have to check / open the file here to get the name for the logical name
         if isinstance(file_data, str):
-            self.log.info("Opening file {} for writing".format(file_data))
+            self.log.info(f"Opening file {file_data} for writing")
             if append:
                 file_mode = 'at'
                 if os.path.exists(file_data):
@@ -194,7 +204,7 @@ class CSVWriter(ETLComponent):
             self.__close_file = True            
         else:
             if not isinstance(file_data, io.IOBase):
-                self.log.info("Treating input as file object {}".format(file_data))
+                self.log.info(f"Treating input as file object {file_data}")
             self.file = file_data
 
         if logical_name is None:
@@ -301,8 +311,7 @@ class CSVWriter(ETLComponent):
         
     def write_header(self):
         """
-        Write the header row. This is a function so it can be overridden with more
-        complex header parsing.
+        Write the header row.
         """
         if self.include_header:
             self.get_writer().writeheader()
@@ -317,22 +326,27 @@ class CSVWriter(ETLComponent):
                 self.file.close()
             super().close(error=error)
 
-    def insert_row(self,
-                   source_row: Row,  # Must be a single row
-                   additional_insert_values: dict = None,
-                   stat_name: str = 'insert',
-                   parent_stats: Statistics = None,
-                   ) -> Row:
+    def insert_row(
+        self,
+        source_row: Row,  # Must be a single row
+        additional_insert_values: dict = None,
+        stat_name: str = 'insert',
+        parent_stats: Statistics = None,
+    ) -> Row:
         """
-        Inserts a row into the database (batching rows as batch_size)
+        Inserts a row into the target file.
 
         Parameters
         ----------
-        source_row
+        source_row:
             The row with values to insert
-        additional_insert_values
-        stat_name
-        parent_stats
+        additional_insert_values:
+            Values to add / override in the row before inserting.
+        stat_name:
+            Name of this step for the ETLTask statistics.
+        parent_stats:
+            Optional Statistics object to nest this steps statistics in.
+            Default is to place statistics in the ETLTask level statistics.
 
         Returns
         -------
@@ -355,7 +369,7 @@ class CSVWriter(ETLComponent):
         if self.trace_data:
             self.log.debug("{} Raw row being inserted:\n{}".format(self, new_row.str_formatted()))
 
-        # Set blank strings to single space so they differ from None values
+        # Set blank strings to single space, so that they differ from None values
         if self.fix_blank_strings:
             for colName, value in new_row.items():
                 if value == '':

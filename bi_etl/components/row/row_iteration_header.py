@@ -267,7 +267,7 @@ class RowIterationHeader(object):
     @property
     def column_set(self) -> frozenset:
         """
-        An ImmutableSet of the the columns of this row.
+        An ImmutableSet of the columns of this row.
         Used to store different row configurations in a dictionary or set.
 
         WARNING: The resulting set is not ordered. Do not use if the column order affects the operation.
@@ -280,7 +280,7 @@ class RowIterationHeader(object):
     @property
     def positioned_column_set(self) -> Set[tuple]:
         """
-        An ImmutableSet of the the tuples (column, position) for this row.
+        An ImmutableSet of the tuples (column, position) for this row.
         Used to store different row configurations in a dictionary or set.
 
         Note: column_set would not always work here because the set is not ordered even though the columns are.
@@ -319,6 +319,19 @@ class RowIterationHeader(object):
             column_name: str,
             allow_create: bool = False,
             ) -> int:
+        """
+        Get the ordinal column position based on a column name (str)
+
+        Parameters
+        ----------
+
+        column_name:
+            String column name
+        allow_create:
+            Is this method allowed to create a new column.
+            Note: if :py:attr:`columns_frozen` is True this method will return a KeyError
+            even if allow_create is True.
+        """
         try:
             position = self._columns_positions[column_name]
         except KeyError:

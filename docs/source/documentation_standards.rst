@@ -1,5 +1,5 @@
-Coding Standards
-================
+Code Documentation Standards
+============================
 
 docstrings
 ~~~~~~~~~~
@@ -19,14 +19,15 @@ Building the HTML Version
 
 From ``.\doc`` run the command::
 
-   make.bat html
-   
+    rebuild_all.cmd
+
 Check and fix the cause of any warnings or errors.
 
-If you remove any .rst files you will need to run a clean build. From ``.\doc`` run the commands::
+If it builds with no errors then you may want to start up an autobuild process so that you can see the html update
+within a few seconds after you save any changes to the documentation source or configuration::
 
-   make.bat clean
-   make.bat html
+    autobuild.cmd
+
 
 reStructuredText Header Levels
 ==============================
