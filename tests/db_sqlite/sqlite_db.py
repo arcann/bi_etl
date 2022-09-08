@@ -1,12 +1,44 @@
 import os
 
 import sqlalchemy
+from sqlalchemy import TEXT
 
 
 class SqliteDB(object):
+    SUPPORTS_DECIMAL = False
+    SUPPORTS_TIME = True
+    SUPPORTS_BOOLEAN = True
+    MAX_NAME_LEN = 128
+
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            print(f"Creating the {cls} instance")
+            self = super().__new__(cls)
+            cls._instance = self
+            self._new_init()
+
+        else:
+            print("Existing singleton used")
+        return cls._instance
+
+    def _new_init(self):
+        self.instance_count = 0
+        self.temp_file = f"unit_tests_sqlite.db"
+        self.container = None
 
     def __init__(self):
-        self.temp_file = f"unit_tests_sqlite.db"
+        self.instance_count += 1
+        print(f"init {self.__class__} now {self.instance_count} instance refs")
+
+    def __del__(self):
+        self.instance_count -= 1
+        print(f"del {self.__class__} now {self.instance_count} instance refs")
+
+    @property
+    def TEXT(self):
+        return TEXT
 
     def get_url(self):
         # return f'sqlite://'

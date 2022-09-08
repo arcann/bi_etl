@@ -1,5 +1,7 @@
-from tests.db_base_tests.test_hst_table_source_based import _TestHistoryTableSourceBased
+from tests.db_base_tests.base_test_hst_table_source_based import BaseTestHistoryTableSourceBased
 
 
-class TestHistoryTableSourceBasedSqlite(_TestHistoryTableSourceBased):
+class TestHistoryTableSourceBasedSqlite(BaseTestHistoryTableSourceBased):
     pass
+
+del BaseTestHistoryTableSourceBased

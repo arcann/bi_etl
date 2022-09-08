@@ -28,20 +28,19 @@ from sqlalchemy.sql.sqltypes import NUMERIC
 from sqlalchemy.sql.sqltypes import Numeric
 from sqlalchemy.sql.sqltypes import REAL
 from sqlalchemy.sql.sqltypes import String
-from sqlalchemy.sql.sqltypes import TEXT
 from sqlalchemy.sql.sqltypes import Time
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.table import Table
 from bi_etl.utility import dict_to_str
-from tests.db_base_tests._test_base_database import _TestBaseDatabase
+from tests.db_base_tests.base_test_database import BaseTestDatabase
 
 
 # pylint: disable=missing-docstring, protected-access
 
 
-class _TestTable(_TestBaseDatabase):
+class BaseTestTable(BaseTestDatabase):
     class MyEnum(enum.Enum):
         a = "a"
         b = "b"
@@ -52,7 +51,7 @@ class _TestTable(_TestBaseDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -64,11 +63,11 @@ class _TestTable(_TestBaseDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
-            Column('del_flg', TEXT),
+            Column('del_flg', self._text_datatype()),
         )
         sa_table.create()
 
@@ -77,7 +76,7 @@ class _TestTable(_TestBaseDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT, primary_key=True),
+            Column('col2', self._text_datatype(), primary_key=True),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -105,7 +104,7 @@ class _TestTable(_TestBaseDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -130,7 +129,7 @@ class _TestTable(_TestBaseDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -182,7 +181,7 @@ class _TestTable(_TestBaseDatabase):
             assign_col1: bool = True,
             commit: bool = True,
     ):
-        _TestTable._generate_test_rows_range(
+        BaseTestTable._generate_test_rows_range(
             tbl,
             range(rows_to_insert),
             assign_col1=assign_col1,
@@ -196,7 +195,7 @@ class _TestTable(_TestBaseDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -225,14 +224,13 @@ class _TestTable(_TestBaseDatabase):
                 self.assertEquivalentNumber(row['col4'], i / 100000000.0)
                 self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
 
-
     def testInsertAndIterateWithKey(self):
         tbl_name = self._get_table_name('testInsertAndIterateWithKey')
         sa_table = sqlalchemy.schema.Table(
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -275,7 +273,7 @@ class _TestTable(_TestBaseDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -309,12 +307,12 @@ class _TestTable(_TestBaseDatabase):
                 self.assertIn('stmt_values', full_output)
 
     def testInsertAutogenerateContinue(self):
-        tbl_name = self._get_table_name('testInsertAutogenerateContinue')
+        tbl_name = self._get_table_name('testInsertAutogenCont')
         sa_table = sqlalchemy.schema.Table(
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -334,7 +332,7 @@ class _TestTable(_TestBaseDatabase):
                    table_name=tbl_name) as tbl:
             tbl.auto_generate_key = True
             tbl.batch_size = 5
-            _TestTable._generate_test_rows_range(
+            BaseTestTable._generate_test_rows_range(
                 tbl,
                 range(rows_to_insert1, rows_to_insert1 + rows_to_insert2),
                 # col1 should be autogenerated
@@ -363,12 +361,12 @@ class _TestTable(_TestBaseDatabase):
                     raise KeyError(f'Row key {i} did not exist')
 
     def testInsertAutogenerateContinueNegative(self):
-        tbl_name = self._get_table_name('testInsertAutogenerateContinueNegative')
+        tbl_name = self._get_table_name('testInsertAutogenContNeg')
         sa_table = sqlalchemy.schema.Table(
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -418,7 +416,7 @@ class _TestTable(_TestBaseDatabase):
             self.mock_database,
             Column('col1', Integer, primary_key=True),
             Column('alt_key', Integer),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -474,7 +472,7 @@ class _TestTable(_TestBaseDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', TEXT),
+            Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -845,7 +843,7 @@ class _TestTable(_TestBaseDatabase):
             src_tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2a', TEXT),
+            Column('col2a', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -857,7 +855,7 @@ class _TestTable(_TestBaseDatabase):
             tgt_tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2a', TEXT),
+            Column('col2a', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
         )
@@ -962,7 +960,7 @@ class _TestTable(_TestBaseDatabase):
             src_tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2a', TEXT),
+            Column('col2a', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -975,7 +973,7 @@ class _TestTable(_TestBaseDatabase):
             tgt_tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2b', TEXT),
+            Column('col2b', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
             Column('col5', LargeBinary),
@@ -1058,21 +1056,29 @@ class _TestTable(_TestBaseDatabase):
 
     def testBuildRow2(self):
         tbl_name = self._get_table_name('testBuildRow2')
-        sa_table = sqlalchemy.schema.Table(
-            tbl_name,
-            self.mock_database,
+
+        cols = [
             Column('float_col', Float),
             Column('date_col', Date),
             Column('datetime_col', DateTime),
-            Column('time_col', Time),
             Column('interval_col', Interval),
             Column('large_binary_col', LargeBinary),
             Column('numeric13_col', Numeric(13)),
             Column('numeric25_col', Numeric(25)),
             Column('numeric25_15_col', Numeric(25, 15)),
             Column('strin_10_col', String(10)),
-            Column('bool_col', BOOLEAN),
-            Column('enum_col', Enum(_TestTable.MyEnum)),
+            Column('enum_col', Enum(BaseTestTable.MyEnum)),
+        ]
+        if self.db_container.SUPPORTS_TIME:
+            cols.append(Column('time_col', Time))
+
+        if self.db_container.SUPPORTS_BOOLEAN:
+            cols.append(Column('bool_col', BOOLEAN))
+
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            *cols
         )
         sa_table.create()
 
@@ -1095,10 +1101,12 @@ class _TestTable(_TestBaseDatabase):
                     #
                     # Use full table row
                     src_row = src_tbl.Row()
-                    src_row['bool_col'] = 0
+                    if self.db_container.SUPPORTS_BOOLEAN:
+                        src_row['bool_col'] = 0
                     src_row['date_col'] = '01/01/2015'
                     src_row['datetime_col'] = '01/01/2001 12:51:43'  # default format '%m/%d/%Y %H:%M:%S'
-                    src_row['time_col'] = '22:13:55'
+                    if self.db_container.SUPPORTS_TIME:
+                        src_row['time_col'] = '22:13:55'
                     src_row['enum_col'] = 'a'
                     src_row['float_col'] = '123.45'
                     src_row['interval_col'] = timedelta(seconds=50)
@@ -1117,10 +1125,12 @@ class _TestTable(_TestBaseDatabase):
                         log.warning.called,
                         f'unexpected warning from sanity_check_source_mapping. {log.mock_calls}'
                     )
-                    self.assertEqual(tgt_row['bool_col'], False)
+                    if self.db_container.SUPPORTS_BOOLEAN:
+                        self.assertEqual(tgt_row['bool_col'], False)
                     self.assertEqual(tgt_row['date_col'], date(2015, 1, 1))
                     self.assertEqual(tgt_row['datetime_col'], datetime(2001, 1, 1, 12, 51, 43))
-                    self.assertEqual(tgt_row['time_col'], time(22, 13, 55))
+                    if self.db_container.SUPPORTS_TIME:
+                        self.assertEqual(tgt_row['time_col'], time(22, 13, 55))
                     self.assertEqual(tgt_row['enum_col'], 'a')
                     self.assertAlmostEqual(tgt_row['float_col'], 123.45, places=2)
                     self.assertEqual(tgt_row['interval_col'], timedelta(seconds=50))
@@ -1150,19 +1160,20 @@ class _TestTable(_TestBaseDatabase):
                     self.assertEqual(tgt_row['date_col'], date(2001, 1, 1), " Test date to date")
 
                     # Test datetime to time
-                    src_row['time_col'] = datetime(2001, 1, 1, 12, 51, 43)
-                    tgt_row = tgt_tbl.build_row(src_row)
-                    self.assertEqual(tgt_row['time_col'], time(12, 51, 43), " datetime to time")
+                    if self.db_container.SUPPORTS_TIME:
+                        src_row['time_col'] = datetime(2001, 1, 1, 12, 51, 43)
+                        tgt_row = tgt_tbl.build_row(src_row)
+                        self.assertEqual(tgt_row['time_col'], time(12, 51, 43), " datetime to time")
 
-                    # Test time to time
-                    src_row['time_col'] = time(12, 51, 43)
-                    tgt_row = tgt_tbl.build_row(src_row)
-                    self.assertEqual(tgt_row['time_col'], time(12, 51, 43), "Test time to time")
+                        # Test time to time
+                        src_row['time_col'] = time(12, 51, 43)
+                        tgt_row = tgt_tbl.build_row(src_row)
+                        self.assertEqual(tgt_row['time_col'], time(12, 51, 43), "Test time to time")
 
-                    # Test timedelta to interval
-                    src_row['time_col'] = time(12, 51, 43)
-                    tgt_row = tgt_tbl.build_row(src_row)
-                    self.assertEqual(tgt_row['time_col'], time(12, 51, 43), " timedelta to interval")
+                        # Test timedelta to interval
+                        src_row['time_col'] = time(12, 51, 43)
+                        tgt_row = tgt_tbl.build_row(src_row)
+                        self.assertEqual(tgt_row['time_col'], time(12, 51, 43), " timedelta to interval")
 
                     # Test force_ascii
                     tgt_tbl.force_ascii = True
@@ -1243,7 +1254,7 @@ class _TestTable(_TestBaseDatabase):
         self.assertEqual(row['col4'], -6666)
 
     def test_upsert_special_values_rows(self):
-        tbl_name = self._get_table_name('test_upsert_special_values_rows')
+        tbl_name = self._get_table_name('test_ups_spec_val_rows')
         self._create_table(tbl_name)
         self._test_upsert_special_values_rows_check(tbl_name)
         # Run a second time to make sure rows stay the same
@@ -1296,7 +1307,7 @@ class _TestTable(_TestBaseDatabase):
             tbl_name,
             self.mock_database,
             Column('col_int', Integer),
-            Column('col_txt', TEXT),
+            Column('col_txt', self._text_datatype()),
             Column('col_real', REAL),
             Column('col_num', NUMERIC),
             Column('col_blob', LargeBinary),
@@ -1364,7 +1375,7 @@ class _TestTable(_TestBaseDatabase):
             self.assertIsInstance(result_row['col_d'], date)
 
     def test_upsert_override_autogen_pk(self):
-        tbl_name = self._get_table_name('test_upsert_override_autogen_pk')
+        tbl_name = self._get_table_name('test_ups_overr_autogen_pk')
         self._create_table_2(tbl_name)
 
         rows_to_insert = 10

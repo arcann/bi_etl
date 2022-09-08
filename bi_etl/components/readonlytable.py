@@ -130,7 +130,6 @@ class ReadOnlyTable(ETLComponent):
     """
     PK_LOOKUP = 'PK'
     NK_LOOKUP = 'NK'
-    DEFAULT_CONNECTION_NAME = 'default'
 
     def __init__(self,
                  task: typing.Optional[ETLTask],
@@ -160,7 +159,6 @@ class ReadOnlyTable(ETLComponent):
         self._special_row_header = None
 
         self.database = database
-        self.__connection_pool = dict()
         self._table = None
         if table_name_case_sensitive is None:
             table_name_case_sensitive = self.database.dialect.case_sensitive
@@ -206,8 +204,6 @@ class ReadOnlyTable(ETLComponent):
 
     def __reduce_ex__(self, protocol):
         dict_to_pass = copy(self.__dict__)
-        if '__connection_pool' in dict_to_pass:
-            del dict_to_pass['__connection_pool']
         del dict_to_pass['_table']
 
         return (
@@ -320,10 +316,6 @@ class ReadOnlyTable(ETLComponent):
         self.primary_key = list(self._table.primary_key)
 
     @property
-    def connection_pool(self):
-        return self.__connection_pool.copy()
-
-    @property
     def maintain_cache_during_load(self) -> bool:
         return True
 
@@ -402,20 +394,8 @@ class ReadOnlyTable(ETLComponent):
         columns_to_exclude = self.column_names_set.difference(columns_to_include)
         self.exclude_columns(set(columns_to_exclude))
 
-    def _get_usable_connection_name(self, connection_name: typing.Optional[str] = None) -> str:
-        if connection_name is None:
-            connection_name = self.DEFAULT_CONNECTION_NAME
-        # When using sqlite don't make new connections, reuse the existing one
-        if self.database.dialect_name == 'sqlite':
-            connection_name = 'sqlite'
-        return connection_name
-
     def is_connected(self, connection_name: typing.Optional[str] = None) -> bool:
-        try:
-            con = self.connection(connection_name, open_if_not_exist=False, open_if_closed=False)
-            return con.closed
-        except ValueError:
-            return False
+        return self.database.is_connected(connection_name)
 
     def connection(
             self,
@@ -423,43 +403,17 @@ class ReadOnlyTable(ETLComponent):
             open_if_not_exist: bool = True,
             open_if_closed: bool = True,
     ) -> sqlalchemy.engine.base.Connection:
-        if self.table is None:
-            raise ValueError("connection called with no table defined")
-        connection_name = self._get_usable_connection_name(connection_name)
-
-        if connection_name in self.__connection_pool:
-            con = self.__connection_pool[connection_name]
-            if con.closed and open_if_closed:
-                con = self.database.connect()
-                self.__connection_pool[connection_name] = con
-        else:
-            if open_if_not_exist:
-                con = self.database.connect()
-                self.__connection_pool[connection_name] = con
-            else:
-                raise ValueError(f'Connection {connection_name} does not exist, and open_if_not_exist = False')
-        return con
-
-    def set_connection(self, connection, connection_name: str = None):
-        connection_name = self._get_usable_connection_name(connection_name)
-        if connection_name in self.__connection_pool:
-            self.__connection_pool[connection_name].close()
-        self.__connection_pool[connection_name] = connection
+        return self.database.connection(
+            connection_name=connection_name,
+            open_if_not_exist=open_if_not_exist,
+            open_if_closed=open_if_closed,
+        )
 
     def close_connection(self, connection_name: str = None):
-        connection_name = self._get_usable_connection_name(connection_name)
-        if connection_name in self.__connection_pool:
-            self.log.debug(f'Closing connection {self} {connection_name}')
-            con = self.__connection_pool[connection_name]
-            con.close()
+        self.database.close_connection()
 
     def close_connections(self, exceptions: typing.Optional[set] = None):
-        if exceptions is None:
-            exceptions = set()
-        for connection_name, con in self.__connection_pool.items():
-            if connection_name not in exceptions:
-                self.log.debug(f'Closing connection {self} {connection_name}')
-                con.close()
+        self.database.close_connections(exceptions=exceptions)
 
     def close(self, error: bool = False):
         if not self.is_closed:
@@ -483,7 +437,13 @@ class ReadOnlyTable(ETLComponent):
         # Close the database connection
         self.close()
 
-    def execute(self, statement, *list_params, **params) -> sqlalchemy.engine.ResultProxy:
+    def execute(
+            self,
+            statement,
+            *list_params,
+            connection_name: str = None,
+            **params
+    ) -> sqlalchemy.engine.ResultProxy:
         """
 
         Parameters
@@ -511,13 +471,14 @@ class ReadOnlyTable(ETLComponent):
             self.log.debug(f'list_params={list_params}')
             self.log.debug(f'params={params}')
             self.log.debug('-------------------------')
-        if 'connection_name' in params:
-            connection_name = params['connection_name'] or self.DEFAULT_CONNECTION_NAME
-            del params['connection_name']
-        else:
-            connection_name = self.DEFAULT_CONNECTION_NAME
-        connection = self.connection(connection_name=connection_name)
-        return connection.execute(statement, *list_params, **params)
+        return self.database.execute(
+            statement,
+            *list_params,
+            connection_name=connection_name,
+            transaction=False,
+            auto_close=False,
+            **params
+        )
 
     def get_one(self, statement=None, connection_name: str = 'get_one'):
         """

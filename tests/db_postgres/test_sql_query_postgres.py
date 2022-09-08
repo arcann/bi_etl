@@ -1,8 +1,8 @@
-from tests.db_base_tests.test_sql_query import _TestSQLQuery
-from tests.db_postgres.postgres_docker import PostgresTestDB
+from tests.db_base_tests.base_test_sql_query import BaseTestSQLQuery
+from tests.db_postgres.postgres_docker_db import PostgresDockerDB
 
 
-class TestSQLQuerySqlitePostgres(_TestSQLQuery):
+class TestSQLQuerySqlitePostgres(BaseTestSQLQuery):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.db_container = PostgresTestDB()
+        cls.db_container = PostgresDockerDB()

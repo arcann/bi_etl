@@ -713,7 +713,8 @@ class HistoryTableSourceBased(HistoryTable):
 
         # TODO: Need to "deduplicate" source versions if two have identical values except for the effective_date_column
         deduplicated_source_table = 'public.deduplicated_source'
-        self.execute(f"DROP TABLE IF EXISTS {deduplicated_source_table}")
+        self.database.drop_table_if_exists(deduplicated_source_table, connection_name=connection_name, auto_close=False, transaction=False)
+
 
         deduplicate_source_sql = f"""
                CREATE TABLE {deduplicated_source_table} AS
@@ -776,7 +777,7 @@ class HistoryTableSourceBased(HistoryTable):
 
         # unified_dates_table = '#unified_dates_table'
         unified_dates_table = 'public.derek_unified_dates_table'
-        self.execute(f"DROP TABLE IF EXISTS {unified_dates_table}")
+        self.database.drop_table_if_exists(unified_dates_table, connection_name=connection_name, auto_close=False, transaction=False)
 
         unified_dates_sql = f"""
             CREATE TABLE {unified_dates_table} AS
@@ -794,7 +795,7 @@ class HistoryTableSourceBased(HistoryTable):
             SELECT 
             pass1.*,
             COALESCE(
-                LEAD({self._sql_add_seconds('pass1.effective_date', -1)}) OVER (
+                LEAD({self._sql_add_timedelta('pass1.effective_date', self._end_date_timedelta)}) OVER (
                     PARTITION BY {Table._sql_indent_join([nk_col for nk_col in self.natural_key], 16, suffix=',')}
                     ORDER BY effective_date
                     ),
@@ -814,7 +815,7 @@ class HistoryTableSourceBased(HistoryTable):
         # derek_updated_row_nk_table = '#updated_row_nk'
         updated_row_nk_table = 'public.derek_updated_row_nk'
 
-        self.execute(f"DROP TABLE IF EXISTS {updated_row_nk_table}")
+        self.database.drop_table_if_exists(updated_row_nk_table, connection_name=connection_name, auto_close=False, transaction=False)
 
         find_updates_sql = f"""
             CREATE TABLE {updated_row_nk_table} AS
@@ -862,7 +863,7 @@ class HistoryTableSourceBased(HistoryTable):
             )  
             WITH max_srgt AS (SELECT coalesce(max({primary_key_name}),0)  as max_srgt FROM {self.qualified_table_name})
             SELECT 
-                max_srgt.max_srgt + ROW_NUMBER() OVER () as {primary_key_name},
+                max_srgt.max_srgt + ROW_NUMBER() OVER (order by 1) as {primary_key_name},
                 '{self.delete_flag_no}' as {self.delete_flag},
                 u.source_effective_date as {self.begin_date_column},
                 u.new_end_effective_date as {self.end_date_column},

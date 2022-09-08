@@ -1,6 +1,5 @@
 import inspect
 import logging
-import os
 import random
 import typing
 import unittest
@@ -12,7 +11,6 @@ from tempfile import TemporaryDirectory
 import sqlalchemy
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
 from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.schema import Index
 from sqlalchemy.sql.sqltypes import BOOLEAN
 from sqlalchemy.sql.sqltypes import Date
 from sqlalchemy.sql.sqltypes import DateTime
@@ -24,7 +22,6 @@ from sqlalchemy.sql.sqltypes import NUMERIC
 from sqlalchemy.sql.sqltypes import Numeric
 from sqlalchemy.sql.sqltypes import REAL
 from sqlalchemy.sql.sqltypes import String
-from sqlalchemy.sql.sqltypes import TEXT
 from sqlalchemy.sql.sqltypes import Time
 
 from bi_etl.components.readonlytable import ReadOnlyTable
@@ -36,9 +33,8 @@ from tests.db_sqlite.sqlite_db import SqliteDB
 from tests.dummy_etl_component import DummyETLComponent
 
 
-class _TestBaseDatabase(unittest.TestCase):
+class BaseTestDatabase(unittest.TestCase):
     db_container = None
-    SUPPORTS_DECIMAL = False
     TABLE_PREFIX = ''
 
     class ApproxDatetime(object):
@@ -57,9 +53,12 @@ class _TestBaseDatabase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        if cls.__name__[0] == '_':
+        logging.basicConfig(level=logging.DEBUG, format='%(name)s %(levelname)s %(message)s')
+        bi_etl_log = logging.getLogger('bi_etl')
+        bi_etl_log.setLevel(logging.DEBUG)
+        if cls.__name__.startswith('Base'):
             # if unittest
-            raise unittest.SkipTest("Not a test class")
+            raise unittest.SkipTest(f"{cls} is a base and not a testable class")
             # if pytest ... but how do we detect?
             # For now we'll detect if db_container is None in setUp
             # pytest.skip("Not a test class")
@@ -67,16 +66,14 @@ class _TestBaseDatabase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.db_container.shutdown()
+        del cls.db_container
 
     @staticmethod
     def get_package_path():
-        module_path = Path(inspect.getfile(_TestBaseDatabase))
+        module_path = Path(inspect.getfile(BaseTestDatabase))
         return module_path.parents[1]
 
     def setUp(self):
-        if self.db_container is None:
-            raise unittest.SkipTest("Pytest not skipping whole class on raise unittest.SkipTest from setUpClass")
         self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.DEBUG)
         logging.getLogger().setLevel(logging.DEBUG)
@@ -112,37 +109,51 @@ class _TestBaseDatabase(unittest.TestCase):
         else:
             return self.assertAlmostEqual(float(first), float(second), places=6, msg=msg)
 
+    def _text_datatype(self):
+        return self.db_container.TEXT
+
     def _get_column_list_table_1(self) -> typing.List[Column]:
         cols = [
             Column('id', Integer, primary_key=True),
             Column('int_col_2', Integer),
-            Column('text_col', TEXT),
-            Column('text_col_2', TEXT),
+            Column('text_col', self._text_datatype()),
+            Column('text_col_2', self._text_datatype()),
             Column('real_col', REAL),
-            Column('bool_col', BOOLEAN),
             Column('date_col', Date),
             Column('datetime_col', DateTime),
-            Column('time_col', Time),
             Column('float_col', Float),
             Column('interval_col', Interval),
             Column('large_binary_col', LargeBinary),
             Column('strin_10_col', String(10)),
             Column('num_col', NUMERIC(38, 6)),
             Column('numeric13_col', Numeric(13)),
-            Column('delete_flag', TEXT),
+            Column('delete_flag', self._text_datatype()),
         ]
+        if self.db_container.SUPPORTS_TIME:
+            cols.append(Column('time_col', Time))
+
+        if self.db_container.SUPPORTS_BOOLEAN:
+            cols.append(Column('bool_col', BOOLEAN))
+
         return cols
 
     def _get_table_name(self, partial_name: str) -> str:
-        return f"{self.TABLE_PREFIX}{partial_name}_{random.randint(1, 99)}"
+        existing_tables = self.mock_database.table_inventory()
+
+        while True:
+            name = f"{self.TABLE_PREFIX}{partial_name}"
+
+            name_suffix_len = 3 + 3  # Room for _99_i1 for table inst 99 index 1
+
+            if (len(name) + name_suffix_len) > self.db_container.MAX_NAME_LEN:
+                name = name[:self.db_container.MAX_NAME_LEN - name_suffix_len]
+
+            name_with_id = f"{name}_{random.randint(1, 99)}"
+            if name_with_id not in existing_tables:
+                return name_with_id
 
     def _create_index_table_1(self, sa_table) -> typing.List[sqlalchemy.schema.Index]:
-        idx = Index(sa_table.name + '_idx',
-                    sa_table.c.id,
-                    unique=True
-                    )
-        idx.create()
-        return [idx]
+        return []
 
     def _create_table_1(self, tbl_name) -> sqlalchemy.schema.Table:
         sa_table = sqlalchemy.schema.Table(
@@ -170,14 +181,16 @@ class _TestBaseDatabase(unittest.TestCase):
             row['text_col'] = f'this is row {i}'
             row['text_col_2'] = f'{i}'
             row['real_col'] = i / 1000.0
-            row['bool_col'] = (i % 2 == 0)
+            if self.db_container.SUPPORTS_BOOLEAN:
+                row['bool_col'] = (i % 2 == 0)
             row['date_col'] = date(2015 + i, 1, 1 + i)
             row['datetime_col'] = datetime(2001, 1, 1, 12, 1 + i, 12)
-            row['time_col'] = time(22, 1 + i, 12)
+            if self.db_container.SUPPORTS_TIME:
+                row['time_col'] = time(22, 1 + i, 12)
             row['float_col'] = i / 100000000.0
             row['interval_col'] = timedelta(seconds=i)
             row['large_binary_col'] = f'this is row {i} large_binary_col'.encode('ascii')
-            if self.SUPPORTS_DECIMAL:
+            if self.db_container.SUPPORTS_DECIMAL:
                 row['num_col'] = Decimal(i) / Decimal(10**6)
                 row['numeric13_col'] = Decimal(i * 100)
             row['strin_10_col'] = f"row {i}"
@@ -222,6 +235,7 @@ class _TestBaseDatabase(unittest.TestCase):
                     elif isinstance(actual, float):
                         actual = timedelta(seconds=actual)
                     elif isinstance(expected, int):
+                        # noinspection PyTypeChecker
                         actual = timedelta(seconds=actual)
 
                     self.assertEqual(expected, actual, f"Expected {expected} got {actual}")
@@ -269,7 +283,7 @@ class _TestBaseDatabase(unittest.TestCase):
         for row in target_table:
             actual_count += 1
             if log_rows_found:
-                self.log.debug(f"{target_table} result row = {row.values_in_order()}")
+                self.log.debug(f"{target_table} result row = {row.values()}")
             key = tuple([row[col] for col in key_list])
             rows_dict[key] = row
 

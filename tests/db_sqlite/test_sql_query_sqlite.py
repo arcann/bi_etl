@@ -1,13 +1,8 @@
-from tests.db_base_tests.test_sql_query import _TestSQLQuery
-from tests.db_sqlite.sqlite_db import SqliteDB
+from tests.db_base_tests.base_test_sql_query import BaseTestSQLQuery
 
 
-class TestSQLQuerySqlite(_TestSQLQuery):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.db_container = SqliteDB()
-
+class TestSQLQuerySqlite(BaseTestSQLQuery):
     def _sql_query_date_conv(self, dt_val):
         return str(dt_val)
 
-
+del BaseTestSQLQuery

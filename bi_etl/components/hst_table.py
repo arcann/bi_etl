@@ -7,6 +7,7 @@ import traceback
 import typing
 import warnings
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Union, Callable, List
 
 from bi_etl.components.readonlytable import ReadOnlyTable
@@ -179,6 +180,14 @@ class HistoryTable(Table):
          
     """
 
+    class TimePrecision(Enum):
+        microsecond = 'µs'
+        millisecond = 'ms'
+        second = 's'
+        minute = 'm'
+        hour = 'h'
+        day = 'd'
+
     def __init__(
             self,
             task: typing.Optional[ETLTask],
@@ -203,6 +212,8 @@ class HistoryTable(Table):
         if default_effective_date is not None:
             self.default_effective_date = default_effective_date
 
+        self._end_date_timedelta = None  # Will be set in the assignment to begin_end_precision below
+        self.begin_end_precision = HistoryTable.TimePrecision.second
         self.__begin_date_column = None
         self.__end_date_column = None
         self.__default_begin_date = None
@@ -288,6 +299,31 @@ class HistoryTable(Table):
                 if not self.is_date_key_column(col):
                     natural_key.append(col)
             return natural_key
+
+    @property
+    def begin_end_precision(self) -> TimePrecision:
+        return self.__begin_end_precision
+
+    @begin_end_precision.setter
+    def begin_end_precision(self, value: TimePrecision):
+        if isinstance(value, HistoryTable.TimePrecision):
+            self.__begin_end_precision = value
+            if value == HistoryTable.TimePrecision.second:
+                self._end_date_timedelta = timedelta(seconds=-1)
+            elif value == HistoryTable.TimePrecision.millisecond:
+                self._end_date_timedelta = timedelta(milliseconds=-1)
+            elif value == HistoryTable.TimePrecision.microsecond:
+                self._end_date_timedelta = timedelta(microseconds=-1)
+            elif value == HistoryTable.TimePrecision.minute:
+                self._end_date_timedelta = timedelta(minutes=-1)
+            elif value == HistoryTable.TimePrecision.hour:
+                self._end_date_timedelta = timedelta(hours=-1)
+            elif value == HistoryTable.TimePrecision.day:
+                self._end_date_timedelta = timedelta(days=-1)
+            else:
+                raise ValueError(f"{value} is a TimePrecision instance that is not handled")
+        else:
+            raise ValueError(f"{value} is not a TimePrecision instance")
 
     @property
     def begin_date_column(self) -> str:
@@ -771,17 +807,15 @@ class HistoryTable(Table):
                 changes_list=[ColumnDifference(
                     self.end_date_column,
                     old_value=row[self.end_date_column],
-                    new_value=end_date_coerce(effective_date - timedelta(seconds=1))
+                    new_value=end_date_coerce(effective_date + self._end_date_timedelta)
                 )],
                 add_to_cache=add_to_cache,
                 allow_insert=allow_insert,
             )
             if self.trace_data:
                 self.log.debug(
-                    "retiring row with begin effective {begin} with new end date of {end}".format(
-                        begin=row[self.begin_date_column],
-                        end=row[self.end_date_column],
-                    )
+                    f"retiring row with begin effective {row[self.begin_date_column]} "
+                    f"with new end date of {row[self.end_date_column]}"
                 )
 
             # Add the new row
@@ -1014,7 +1048,7 @@ class HistoryTable(Table):
 
             # Set end date to 1 second before existing records begin date
             first_begin = e.first_existing_row[self.begin_date_column]
-            first_minus_1 = first_begin - timedelta(seconds=1)
+            first_minus_1 = first_begin + self._end_date_timedelta
             new_row.set_keeping_parent(self.end_date_column, first_minus_1)
 
             # Get type 1 key value from existing row                    
@@ -1117,7 +1151,7 @@ class HistoryTable(Table):
             row_to_be_deleted.status = RowStatus.deleted
             # Get from the cache
             row_to_be_deleted = self.get_by_key(row_to_be_deleted)
-        prior_effective_date = row_to_be_deleted[self.begin_date_column] - timedelta(seconds=1)
+        prior_effective_date = row_to_be_deleted[self.begin_date_column] + self._end_date_timedelta
         # if the row is not pending insert, issue delete to database
         if row_to_be_deleted.status != RowStatus.insert:
             # Delete the row in the database
@@ -1640,7 +1674,7 @@ class HistoryTable(Table):
                                 )
 
                             # Check that end dates are correct
-                            correct_prior_end_date = row[self.begin_date_column] - timedelta(seconds=1)
+                            correct_prior_end_date = row[self.begin_date_column] + self._end_date_timedelta
                             if prior_row[self.end_date_column] != correct_prior_end_date:
                                 clean_pass = False
                                 # If not correct update the prior row end date
@@ -1813,7 +1847,7 @@ class HistoryTable(Table):
             last_update_date_select_str = f"'{now_str}' as {self.last_update_date}"
 
         if self.auto_generate_key:
-            type2_srgt_sql = 'max_srgt.max_srgt + ROW_NUMBER() OVER ()'
+            type2_srgt_sql = 'max_srgt.max_srgt + ROW_NUMBER() OVER (order by 1)'
 
             # Type 1 srgt
 
@@ -1885,15 +1919,15 @@ class HistoryTable(Table):
                 )
             """
 
-        print()
-        print('=' * 80)
-        print('insert_new_sql')
-        print('=' * 80)
-        print(insert_new_sql)
+        self.log.debug('')
+        self.log.debug('=' * 80)
+        self.log.debug('insert_new_sql')
+        self.log.debug('=' * 80)
+        self.log.debug(insert_new_sql)
         sql_timer = Timer()
         results = self.execute(insert_new_sql, connection_name=connection_name)
-        print(f"Impacted rows = {results.rowcount} (meaningful count? {results.supports_sane_rowcount()})")
-        print(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
+        self.log.info(f"Impacted rows = {results.rowcount} (meaningful count? {results.supports_sane_rowcount()})")
+        self.log.info(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
 
     def _sql_find_updates(
             self,
@@ -1905,7 +1939,7 @@ class HistoryTable(Table):
             updated_row_nk_table: str,
             connection_name: str = 'sql_upsert',
     ):
-        self.execute(f"DROP TABLE IF EXISTS {updated_row_nk_table}")
+        self.database.drop_table_if_exists(updated_row_nk_table, connection_name=connection_name, auto_close=False, transaction=False)
 
         find_updates_sql = f"""
             CREATE TABLE {updated_row_nk_table} AS
@@ -1967,7 +2001,7 @@ class HistoryTable(Table):
                                   FROM {self.qualified_table_name}
                                   )
                 SELECT 
-                    max_srgt.max_srgt + ROW_NUMBER() OVER () as {primary_key_name},
+                    max_srgt.max_srgt + ROW_NUMBER() OVER (order by 1) as {primary_key_name},
                     '{self.delete_flag_no}' as {self.delete_flag},
                     u.source_effective_date as {self.begin_date_column},
                     u.target_end_date as {self.end_date_column},
@@ -2028,7 +2062,7 @@ class HistoryTable(Table):
 
         now_str = self._sql_date_literal(self.get_current_time())
 
-        self.execute(f"DROP TABLE IF EXISTS {deleted_row_nk_table}")
+        self.database.drop_table_if_exists(deleted_row_nk_table, connection_name=connection_name, auto_close=False, transaction=False)
 
         find_deletes_sql = f"""
             CREATE TABLE {deleted_row_nk_table} AS
@@ -2084,7 +2118,7 @@ class HistoryTable(Table):
                                   FROM {self.qualified_table_name}
                                   )
                 SELECT 
-                    max_srgt.max_srgt + ROW_NUMBER() OVER () as {primary_key_name},
+                    max_srgt.max_srgt + ROW_NUMBER() OVER (order by 1) as {primary_key_name},
                     '{self.delete_flag_yes}' as {self.delete_flag},
                     u.source_effective_date as {self.begin_date_column},
                     u.target_end_date as {self.end_date_column},
@@ -2141,6 +2175,7 @@ class HistoryTable(Table):
             check_for_deletes: bool = None,
             connection_name: str = 'sql_upsert',
             temp_table_prefix: str = '',
+            # Only set commit_each_table to True for debugging purposes
             commit_each_table: bool = False,
             stat_name: str = 'upsert_db_exclusive',
             parent_stats: typing.Optional[Statistics] = None,
@@ -2149,6 +2184,8 @@ class HistoryTable(Table):
         upsert_db_excl_stats.print_start_stop_times = False
         upsert_db_excl_stats.timer.start()
         upsert_db_excl_stats['calls'] += 1
+
+        self.transaction(connection_name)
 
         source_row_columns_set = source_table.column_names_set
         if source_excludes is not None:
@@ -2222,6 +2259,7 @@ class HistoryTable(Table):
             self.log.debug("Commit done")
 
         updated_row_nk_table = f"{temp_table_prefix}{self.table_name}_updated_row_nk"
+        updated_row_nk_table = self._safe_temp_table_name(updated_row_nk_table)
 
         self._sql_find_updates(
             source_table=source_table,
@@ -2258,7 +2296,7 @@ class HistoryTable(Table):
             extra_where="u.source_effective_date != u.target_begin_date",
             list_of_sets=[
                 (self.end_date_column,
-                 self._sql_add_seconds('u.source_effective_date', -1)
+                 self._sql_add_timedelta('u.source_effective_date', self._end_date_timedelta)
                  ),
             ],
             connection_name=connection_name,
@@ -2269,6 +2307,7 @@ class HistoryTable(Table):
 
         if check_for_deletes:
             deleted_row_nk_table = f"{temp_table_prefix}{self.table_name}_del_row_nk"
+            deleted_row_nk_table = self._safe_temp_table_name(deleted_row_nk_table)
             self._sql_find_deletes(
                 source_table=source_table,
                 key_columns_set=key_columns_set,
@@ -2289,7 +2328,7 @@ class HistoryTable(Table):
                 extra_where="d.source_effective_date != d.target_begin_date",
                 list_of_sets=[
                     (self.end_date_column,
-                     self._sql_add_seconds('d.source_effective_date', -1)
+                     self._sql_add_timedelta('d.source_effective_date', self._end_date_timedelta)
                      ),
                 ],
                 connection_name=connection_name,

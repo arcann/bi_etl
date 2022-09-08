@@ -3,15 +3,15 @@ Created on Jan 27, 2016
 """
 
 from bi_etl.components.hst_table_source_based import HistoryTableSourceBased
-from tests.db_base_tests.test_hst_table import _TestHstTable, BeginDateSource
+from tests.db_base_tests.base_test_hst_table import BaseTestHstTable, BeginDateSource
 
 
-class _TestHistoryTableSourceBased(_TestHstTable):
+class BaseTestHistoryTableSourceBased(BaseTestHstTable):
     TABLE_PREFIX = 'hstsrc_'
     TEST_COMPONENT = HistoryTableSourceBased
     TEST_DATA_PATH = 'test_hstsrc_table_data'
 
-    # inherit tests from _TestHstTable and _TestBaseDatabase
+    # inherit tests from BaseTestHstTable and BaseTestDatabase
 
     def _testInsertAndUpsert(
             self,

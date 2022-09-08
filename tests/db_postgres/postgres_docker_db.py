@@ -1,36 +1,23 @@
 import logging
 import os
-import random
-import time
-import unittest
 
-from testcontainers.postgres import PostgresContainer
 from testcontainers.core import config as tc_config
+from testcontainers.postgres import PostgresContainer
 
-from tests.db_sqlite.sqlite_db import SqliteDB
+from tests.db_postgres.base_docker import BaseDockerDB
 
-__all__ = ['PostgresTestDB']
+__all__ = ['PostgresDockerDB']
 
 
-class PostgresTestDB(SqliteDB):
+class PostgresDockerDB(BaseDockerDB):
     """
 
     Note: On Windows this currently requires docker desktop
 
     """
-    SKIP_POSTGRES = False
-
-    def __init__(self):
-        if PostgresTestDB.SKIP_POSTGRES:
-            raise unittest.SkipTest(f"Skip Postgres due to PostgresTestDB.SKIP_POSTGRES. Is Docker running?")
-        super().__init__()
-
-        # noinspection PyBroadException
-        try:
-            self.container = self.get_container()
-        except Exception as e:
-            PostgresTestDB.SKIP_POSTGRES = True
-            raise unittest.SkipTest(f"Skip Postgres due to {repr(e)}. Is Docker running?")
+    SUPPORTS_DECIMAL = True
+    SUPPORTS_TIME = True
+    MAX_NAME_LEN = 63
 
     def get_container(self) -> PostgresContainer:
         tc_config.SLEEP_TIME = 1
@@ -47,7 +34,7 @@ class PostgresTestDB(SqliteDB):
             print(f"docker container on host {container.get_docker_client().host()}")
             print(f"docker container on url {container.get_docker_client().client.api.base_url}")
 
-            port = random.randint(49152, 65534)
+            port = self.get_open_port()
             container.with_bind_ports(container.port_to_expose, port)
             # Don't show errors while waiting for the server to start
             waiting_log = logging.getLogger('testcontainers.core.waiting_utils')
@@ -64,9 +51,6 @@ class PostgresTestDB(SqliteDB):
             raise
         return container
 
-    def get_url(self):
-        return self.container.get_connection_url()
-
     def get_options(self):
         # timeout after 1 second in case we have a deadlock that gets a query stuck
         # this should cause the test case to fail
@@ -74,6 +58,3 @@ class PostgresTestDB(SqliteDB):
             'connect_args': {"options": f"-c statement_timeout={1000}"},
         }
 
-    def shutdown(self):
-        self.container.stop()
-        del self.container

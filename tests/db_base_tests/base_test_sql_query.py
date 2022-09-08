@@ -36,13 +36,13 @@ from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.sqlquery import SQLQuery
 from bi_etl.components.table import Table
 from bi_etl.utility import dict_to_str
-from tests.db_base_tests._test_base_database import _TestBaseDatabase
+from tests.db_base_tests.base_test_database import BaseTestDatabase
 
 
 # pylint: disable=missing-docstring, protected-access
 
 
-class _TestSQLQuery(_TestBaseDatabase):
+class BaseTestSQLQuery(BaseTestDatabase):
 
     def testInsertAndQuery(self):
         tbl_name = self._get_table_name('testInsertAndQuery')
@@ -85,5 +85,5 @@ class _TestSQLQuery(_TestBaseDatabase):
                 print(sql_row.values_in_order())
                 expected_row = expected_row.subset(keep_only=['id', 'text_col', 'date_col', 'float_col'])
                 expected_row['date_col'] = self._sql_query_date_conv(expected_row['date_col'])
-                print(expected_row.values_in_order())
+                print(expected_row.values())
                 self._compare_rows(expected_row, actual_row=sql_row)

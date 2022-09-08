@@ -83,16 +83,7 @@ class BulkLoader(object):
         if temp_table_name is not None:
             old_name = table_object.qualified_table_name + '_old'
 
-            # DROP TABLE IF EXISTS {old_name}
-            try:
-                with Table(
-                        table_object.task,
-                        table_name=old_name,
-                        database=table_object.database,
-                ) as old_table_object:
-                    old_table_object.table.drop()
-            except Exception:
-                pass
+            table_object.database.drop_table_if_exists(old_name)
 
             with Table(
                     table_object.task,

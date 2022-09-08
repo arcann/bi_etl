@@ -37,7 +37,7 @@ from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_status import RowStatus
-from bi_etl.conversions import nvl
+from bi_etl.conversions import nvl, int2base
 from bi_etl.conversions import replace_tilda
 from bi_etl.conversions import round_datetime_ms
 from bi_etl.conversions import str2date
@@ -234,6 +234,7 @@ class Table(ReadOnlyTable):
         self.autocommit = False
         self.__batch_size = self.DEFAULT_BATCH_SIZE
         self.__transaction_pool = dict()
+        self._connections_used = set()
         self.skip_coercion_on = {}
 
         self._logical_delete_update = None
@@ -289,10 +290,10 @@ class Table(ReadOnlyTable):
                 else:
                     self.bulk_load_from_cache()
 
-            for connection_name, transaction in self.__transaction_pool.items():
-                if transaction.is_active:
+            for connection_name in self._connections_used:
+                if self.database.has_active_transaction(connection_name):
                     self.log.info(f'Committing {self} {connection_name} not explicitly committed.')
-                    transaction.commit()
+                    self.database.commit(connection_name)
             super(Table, self).close(error=error)
             self.clear_cache()
 
@@ -3064,26 +3065,16 @@ class Table(ReadOnlyTable):
             self,
             connection_name: Optional[str] = None
     ):
-        connection_name = self._get_usable_connection_name(connection_name)
-        if connection_name in self.__transaction_pool:
-            return self.__transaction_pool[connection_name]
-        else:
-            return None
+        connection_name = self.database.resolve_connection_name(connection_name)
+        self._connections_used.add(connection_name)
+        return self.database.begin(connection_name)
 
     def begin(
             self,
             connection_name: Optional[str] = None
     ):
         if not self.in_bulk_mode:
-            connection_name = self._get_usable_connection_name(connection_name)
-            transaction = self.transaction(connection_name=connection_name)
-            if transaction is not None:
-                if not transaction.is_active:
-                    transaction = self.connection(connection_name=connection_name).begin()
-                    self.__transaction_pool[connection_name] = transaction
-            else:
-                transaction = self.connection(connection_name=connection_name).begin()
-                self.__transaction_pool[connection_name] = transaction
+            return self.transaction(connection_name)
 
     def bulk_load_from_cache(
             self,
@@ -3171,23 +3162,14 @@ class Table(ReadOnlyTable):
             # Start & stop appropriate timers for each
             stats['commit count'] += 1
             stats.timer.start()
-            connection_name = self._get_usable_connection_name(connection_name)
-            transaction = self.transaction(connection_name=connection_name)
-            if transaction is not None:
-                # Check if a transaction is still active.
-                if transaction.is_active:
-                    if print_to_log:
-                        self.log.info(f'Committing {self} {connection_name} connection')
-                    # Close all connections except this one. If in serializable mode (Redshift only has that)
-                    # then this is required to release the read locks those connections might have.
-                    self.close_connections(exceptions={connection_name})
-                    transaction.commit()
-                    if print_to_log:
-                        self.log.debug(f'Commit on {self} {connection_name} connection done')
-                else:
-                    self.log.debug(f'Connection {self} {connection_name} transaction not active (commit called)')
+            if connection_name is not None:
+                self.log.debug(f"{self} commit on specified connection {connection_name}")
+                self.database.commit(connection_name)
             else:
-                self.log.debug(f'Connection {self} {connection_name} has no transaction defined (commit called)')
+                self.log.debug(f"{self} commit on all active connections {self._connections_used}")
+                for used_connection_name in self._connections_used:
+                    self.database.commit(used_connection_name)
+                self._connections_used = set()
             if begin_new:
                 self.begin(connection_name=connection_name)
             stats.timer.stop()
@@ -3221,15 +3203,15 @@ class Table(ReadOnlyTable):
             stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
             stats['calls'] += 1
             stats.timer.start()
-            transaction = self.transaction(connection_name=connection_name)
-            if transaction is not None:
-                # Check if a transaction is still active.
-                if transaction.is_active:
-                    transaction.rollback()
-                else:
-                    self.log.debug('rollback called when not in an active transaction')
+            if connection_name is not None:
+                self.log.debug(f"{self} rollback on specified connection {connection_name}")
+                self.database.rollback(connection_name)
+                self._connections_used.remove(connection_name)
             else:
-                self.log.debug('rollback called when not in a transaction')
+                self.log.debug(f"{self} rollback on all active connections {self._connections_used}")
+                for connection_name in self._connections_used:
+                    self.database.rollback(connection_name)
+                self._connections_used = set()
             if begin_new:
                 self.begin(connection_name=connection_name)
             stats.timer.stop()
@@ -3241,6 +3223,15 @@ class Table(ReadOnlyTable):
                f" OR ({alias_1}.{column_name} IS NULL AND {alias_2}.{column_name} IS NOT NULL)" \
                f" OR ({alias_1}.{column_name} IS NOT NULL AND {alias_2}.{column_name} IS NULL)" \
                ")"
+
+    def _safe_temp_table_name(self, proposed_name):
+        max_identifier_length = self.database.bind.dialect.max_identifier_length
+        if len(proposed_name) > max_identifier_length:
+            alpha_code = int2base(abs(hash(proposed_name)), 36)
+            proposed_name = f"tmp{alpha_code}"
+            if len(proposed_name) > max_identifier_length:
+                proposed_name = proposed_name[:max_identifier_length]
+        return proposed_name
 
     @staticmethod
     def _sql_indent_join(
@@ -3269,22 +3260,41 @@ class Table(ReadOnlyTable):
     def _sql_now(self) -> str:
         return "CURRENT_TIMESTAMP"
 
-    def _sql_add_seconds(
+    def _sql_add_timedelta(
             self,
             column_name: str,
-            seconds: int,
+            delta: timedelta,
     ) -> str:
         database_type = self.database.dialect_name
         if database_type in {'oracle'}:
-            return f"{column_name} + INTERVAL '{seconds}' SECOND"
+            if delta.seconds != 0 or delta.microseconds != 0:
+                return f"{column_name} + INTERVAL '{delta.total_seconds()}' SECOND"
+            elif delta.days != 0:
+                return f"{column_name} + {delta.days}"
         elif database_type in {'postgresql'}:
-            return f"{column_name} + INTERVAL '{seconds} SECONDS'"
+            if delta.seconds != 0 or delta.microseconds != 0:
+                return f"{column_name} + INTERVAL '{delta.total_seconds()} SECONDS'"
+            elif delta.days != 0:
+                return f"{column_name} + INTERVAL '{delta.days} DAY'"
         elif database_type in {'mysql'}:
-            return f"DATE_ADD({column_name}, INTERVAL {seconds} SECOND)"
+            if delta.seconds != 0:
+                return f"DATE_ADD({column_name}, INTERVAL {delta.total_seconds()} SECOND)"
+            elif delta.microseconds != 0:
+                return f"DATE_ADD({column_name}, INTERVAL {delta.microseconds} MICROSECOND)"
+            elif delta.days != 0:
+                return f"DATE_ADD({column_name}, INTERVAL {delta.days} DAY)"
         elif database_type in {'sqlite'}:
-            return f"datetime({column_name}, '{seconds:+d} SECOND')"
+            if delta.seconds != 0 or delta.microseconds != 0:
+                return f"datetime({column_name}, '{delta.total_seconds()} SECONDS')"
+            elif delta.days != 0:
+                return f"datetime({column_name}, '{delta.days:+d} DAYS')"
         else:
-            return f"DATEADD(second, {seconds}, {column_name})"
+            if delta.seconds != 0 or delta.microseconds != 0:
+                return f"DATEADD(second, {delta.total_seconds()}, {column_name})"
+            elif delta.days != 0:
+                return f"DATEADD(day, {delta.days}, {column_name})"
+
+        raise ValueError(f"No _sql_add_timedelta defined for DB {database_type} and timedelta {delta}")
 
     def _sql_date_literal(
             self,
@@ -3292,7 +3302,7 @@ class Table(ReadOnlyTable):
     ):
         database_type = self.database.dialect_name
         if database_type in {'oracle'}:
-            return f"TIMESTAMP '{dt.isoformat()}'"
+            return f"TIMESTAMP '{dt.isoformat(sep=' ')}'"
         elif database_type in {'postgresql', 'redshift'}:
             return f"'{dt.isoformat()}'::TIMESTAMP"
         elif database_type in {'sqlite'}:
@@ -3320,7 +3330,7 @@ class Table(ReadOnlyTable):
                     )  
                     WITH max_srgt AS (SELECT coalesce(max({self._sql_primary_key_name()}),0)  as max_srgt FROM {self.qualified_table_name})
                     SELECT 
-                        max_srgt.max_srgt + ROW_NUMBER() OVER () as {self._sql_primary_key_name()},
+                        max_srgt.max_srgt + ROW_NUMBER() OVER (order by 1) as {self._sql_primary_key_name()},
                         '{self.delete_flag_no}' as {self.delete_flag},
                         '{now_str}' as {self.last_update_date},
                         {Table._sql_indent_join(matching_columns, 16, suffix=',')}
@@ -3370,12 +3380,13 @@ class Table(ReadOnlyTable):
                 MERGE INTO {self.qualified_table_name} tgt
                 USING (
                     SELECT
-                        {Table._sql_indent_join([f"{join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 16, suffix=',')}
-                        {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
+                        {Table._sql_indent_join([f"{join_entry[1][0]}.{join_entry[1][1]}" for join_entry in list_of_joins], 24, suffix=',')},
                         {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
                     FROM {source_sql}
                 ) src
-                ON {Table._sql_indent_join([f"tgt.{self.qualified_table_name}.{join_entry[0]} = src.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
+                ON (
+                    {Table._sql_indent_join([f"tgt.{join_entry[0]} = src.{join_entry[1][1]}" for join_entry in list_of_joins], 18, prefix='AND ')}
+                )
                 WHEN MATCHED THEN UPDATE
                 SET {Table._sql_indent_join([f"tgt.{set_entry[0]} = src.col_{set_num}" for set_num, set_entry in enumerate(list_of_sets)], 16, suffix=',')}
             """

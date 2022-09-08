@@ -38,13 +38,18 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             info=info,
         )
         # Save parameters not saved by the base class for use in __reduce_ex__
+
         self._save_reflect = reflect
         self._save_quote_schema = quote_schema
 
         self._table_inventory = None
         self.database_name = database_name
         self._uses_bytes_length_limits = uses_bytes_length_limits
-        self._connection = None
+
+        self._connection_pool = dict()
+        self._transactions = dict()
+        self.default_connection_name = 'default'
+
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
     def __reduce_ex__(self, protocol):
@@ -75,13 +80,61 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
     def _set_parent(self, parent):
         pass
 
-    def connect(self):
+    def resolve_connection_name(self, connection_name: str = None) -> str:
+        if connection_name is None:
+            connection_name = self.default_connection_name
+        # When using sqlite don't make new connections, reuse the existing one
         if self.dialect_name == 'sqlite':
-            if self._connection is None or self._connection.closed:
-                self._connection = self.bind.connect()
-            return self._connection
+            connection_name = 'sqlite'
+        return connection_name
+
+    def _connect(self) -> sqlalchemy.engine.base.Connection:
+        return self.bind.connect()
+
+    def connection(
+            self,
+            connection_name: str = None,
+            open_if_not_exist: bool = True,
+            open_if_closed: bool = True,
+    ) -> sqlalchemy.engine.base.Connection:
+        connection_name = self.resolve_connection_name(connection_name)
+        if connection_name in self._connection_pool:
+            con = self._connection_pool[connection_name]
+            if con.closed and open_if_closed:
+                con = self._connect()
+                self._connection_pool[connection_name] = con
         else:
-            return self.bind.connect()
+            if open_if_not_exist:
+                con = self._connect()
+                self._connection_pool[connection_name] = con
+            else:
+                raise ValueError(f"Connection {connection_name} does not exist, and open_if_not_exist = False")
+        return con
+
+    def connect(self, connection_name: str = None) -> sqlalchemy.engine.base.Connection:
+        return self.connection(connection_name, open_if_not_exist=True, open_if_closed=True)
+
+    def is_connected(self, connection_name: str = None) -> bool:
+        try:
+            con = self.connection(connection_name, open_if_not_exist=False, open_if_closed=False)
+            return con.closed
+        except ValueError:
+            return False
+
+    def close_connection(self, connection_name: str = None):
+        try:
+            con = self.connection(connection_name, open_if_not_exist=False, open_if_closed=False)
+            con.close()
+        except ValueError:
+            pass
+
+    def close_connections(self, exceptions: set = None):
+        if exceptions is None:
+            exceptions = set()
+        for connection_name, con in self._connection_pool.items():
+            if connection_name not in exceptions:
+                self.log.debug(f'Closing connection {self} {connection_name}')
+                con.close()
 
     def dispose(self):
         """
@@ -89,37 +142,101 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         remaining open, as it only affects connections that are
         idle in the pool.
         """
-        if self.dialect_name == 'sqlite':
-            if self._connection is not None:
-                if not self._connection.closed:
-                    self._connection.close()
-
+        self.close_connections()
         self.bind.pool.dispose()
 
     def session(self, autocommit: bool = False):
         return Session(bind=self.bind, autocommit=autocommit)
 
-    def begin(self):
-        return self.connect().begin()
+    def _begin(self, connection_name: str) -> sqlalchemy.engine.base.Transaction:
+        tx = self.connection(connection_name=connection_name).begin()
+        self._transactions[connection_name] = tx
+        return tx
 
-    def execute(self, sql, transaction: bool = True):
-        if transaction:
-            with self.connect() as connection:
-                with connection.begin() as transaction:
-                    result = connection.execute(sql)
-                    if result.returns_rows:
-                        result = list(result)
-                    transaction.commit()
-                    return result
+    def begin(self, connection_name: str = None) -> sqlalchemy.engine.base.Transaction:
+        connection_name = self.resolve_connection_name(connection_name)
+        if connection_name not in self._transactions:
+            tx = self._begin(connection_name)
         else:
-            with self.connect() as connection:
-                result = connection.execute(sql)
-                if result.returns_rows:
-                    return list(result)
-                else:
-                    return result
+            tx = self._transactions[connection_name]
+            if not tx.is_active:
+                tx = self._begin(connection_name)
+        return tx
+
+    def has_active_transaction(self, connection_name: str = None):
+        connection_name = self.resolve_connection_name(connection_name)
+        if connection_name not in self._transactions:
+            return False
+        else:
+            tx = self._transactions[connection_name]
+            return tx.is_active
+
+    def commit(self, connection_name: str = None):
+        """
+        Commit based on a connection name rather than via a
+        'sqlalchemy.engine.base.Transaction' object (which you could call .commit() on
+
+        Parameters
+        ----------
+        connection_name
+        """
+        connection_name = self.resolve_connection_name(connection_name)
+        if connection_name not in self._transactions:
+            self.log.debug(f"Commit: There is no transaction recorded for {self} {connection_name}")
+        else:
+            tx = self._transactions[connection_name]
+            if tx.is_active:
+                tx.commit()
+                self.log.debug(f'Commit on {self} {connection_name} connection done')
+            else:
+                self.log.debug(f'Connection {self} {connection_name} transaction not active (commit called)')
+
+    def rollback(self, connection_name: str = None):
+        connection_name = self.resolve_connection_name(connection_name)
+        if connection_name not in self._transactions:
+            raise RuntimeError(f"rollback: There is no transaction recorded for {self} {connection_name}")
+        else:
+            tx = self._transactions[connection_name]
+            if tx.is_active:
+                tx.rollback()
+                self.log.debug(f'Rollback on {self} {connection_name} connection done')
+            else:
+                raise RuntimeError(f'Connection {self} {connection_name} transaction not active (rollback called)')
+
+    def execute(
+            self,
+            sql,
+            *list_params,
+            transaction: bool = True,
+            auto_close: bool = True,
+            connection_name: str = None,
+            **params
+    ):
+        connection = None
+        transaction_ctl = None
+        try:
+            connection = self.connect(connection_name=connection_name)
+            if transaction:
+                transaction_ctl = connection.begin()
+            else:
+                transaction_ctl = None
+            result = connection.execute(sql, *list_params, **params)
+            return result
+        finally:
+            if transaction:
+                if transaction_ctl is not None:
+                    transaction_ctl.commit()
+            if auto_close:
+                if connection is not None:
+                    connection.close()
     
-    def execute_procedure(self, procedure_name, *args, return_results=False, dpapi_connection=None):
+    def execute_procedure(
+            self,
+            procedure_name,
+            *args,
+            return_results=False,
+            dpapi_connection=None
+    ):
         """
         Execute a stored procedure 
         
@@ -202,7 +319,11 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
                 dpapi_connection.close()
         return results
 
-    def execute_direct(self, sql, return_results=False):
+    def execute_direct(
+            self,
+            sql,
+            return_results=False
+    ):
         log = logging.getLogger(__name__)
         log.debug(sql)
         dpapi_connection = self.bind.raw_connection()
@@ -222,7 +343,11 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         if self._table_inventory is None:
             self._table_inventory = dict()
         if schema not in self._table_inventory or force_reload:
-            inspector = Inspector.from_engine(self.bind)
+            try:
+                from sqlalchemy import inspect
+            except ImportError:
+                inspect = Inspector.from_engine
+            inspector = inspect(self.bind)
             self._table_inventory[schema] = CaseInsentiveSet(inspector.get_table_names(schema=schema))
         return self._table_inventory[schema]
 
@@ -245,7 +370,14 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             self.log.debug(sql)
             self.execute(sql)
 
-    def drop_table_if_exists(self, table_name, schema=None):
+    def drop_table_if_exists(
+            self,
+            table_name,
+            schema=None,
+            connection_name: str = None,
+            transaction: bool = False,
+            auto_close: bool = False,
+    ):
         if schema is None:
             if '.' in table_name:
                 schema, table_name = table_name.split('.')
@@ -262,11 +394,26 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
                     IF OBJECT_ID('{self.qualified_name(schema, table_name)}', 'U') IS NOT NULL 
                     DROP TABLE {self.qualified_name(schema, table_name)}; 
                 """)
+        elif self.dialect_name == 'oracle':
+            sql = textwrap.dedent(f"""\
+            BEGIN
+               EXECUTE IMMEDIATE 'DROP TABLE {table_name}';
+            EXCEPTION
+               WHEN OTHERS THEN
+                  IF SQLCODE != -942 THEN
+                     RAISE;
+                  END IF;
+            END;
+            """)
         else:
             sql = f"drop table IF EXISTS {self.qualified_name(schema, table_name)}"
         self.log.debug(sql)
-        self.execute(sql)
-
+        self.execute(
+            sql,
+            transaction=transaction,
+            auto_close=auto_close,
+            connection_name=connection_name,
+        )
 
     @property
     def dialect(self):

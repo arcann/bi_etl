@@ -1,5 +1,7 @@
-from tests.db_base_tests.test_hst_table import _TestHstTable
+from tests.db_base_tests.base_test_hst_table import BaseTestHstTable
 
 
-class TestTableSourceBasedSqlite(_TestHstTable):
+class TestHstTableSqlite(BaseTestHstTable):
     SUPPORTS_DECIMAL = False
+
+del BaseTestHstTable

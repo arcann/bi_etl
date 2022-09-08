@@ -12,14 +12,13 @@ from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.schema import Index
 from sqlalchemy.sql.sqltypes import DateTime
 from sqlalchemy.sql.sqltypes import Integer
-from sqlalchemy.sql.sqltypes import TEXT
 
 from bi_etl.components.csvreader import CSVReader
 from bi_etl.components.hst_table import HistoryTable
 from bi_etl.components.row.row import Row
 from bi_etl.components.table import Table
 from bi_etl.conversions import str2datetime, str2date, str2time, str2int, str2decimal, str2float
-from tests.db_base_tests._test_base_database import _TestBaseDatabase
+from tests.db_base_tests.base_test_database import BaseTestDatabase
 
 
 class BeginDateSource(Enum):
@@ -28,11 +27,12 @@ class BeginDateSource(Enum):
     PARAMETER = 3
 
 
-class _TestHstTable(_TestBaseDatabase):
-    SUPPORTS_DECIMAL = False
+class BaseTestHstTable(BaseTestDatabase):
     TABLE_PREFIX = 'hst_'
     TEST_COMPONENT = HistoryTable
     TEST_DATA_PATH = 'test_hst_table_data'
+    # Only set UPSERT_COMMIT_EACH_PASS to True for debugging purposes
+    UPSERT_COMMIT_EACH_PASS = False
 
     # Override  _check_table_rows with a version that processes versioned records
     def _check_table_rows(
@@ -75,8 +75,8 @@ class _TestHstTable(_TestBaseDatabase):
                 rows_cnt_dict[key] += 1
 
                 self.assertEqual(
-                    timedelta(seconds=1),
-                    row[target_table.begin_date_column] - last_row[target_table.end_date_column],
+                    timedelta(seconds=1).total_seconds(),
+                    (row[target_table.begin_date_column] - last_row[target_table.end_date_column]).total_seconds(),
                     f"For key {key} row end dt {last_row[target_table.end_date_column]} "
                     f"is followed by begin dt {row[target_table.begin_date_column]} which is not 1 second later"
                 )
@@ -87,7 +87,7 @@ class _TestHstTable(_TestBaseDatabase):
             if log_rows_found:
                 if actual_count == 1:
                     self.log.debug(f"{target_table} result cols = | {'|'.join(row.columns_in_order)}")
-                self.log.debug(f"{target_table} result row = | {'|'.join([str(s) for s in row.values_in_order()])}")
+                self.log.debug(f"{target_table} result row = | {'|'.join([str(s) for s in row.values()])}")
 
         self.assertEqual(
             sum(rows_cnt_dict.values()),
@@ -167,26 +167,19 @@ class _TestHstTable(_TestBaseDatabase):
         return col_list
 
     def _create_index_table_1(self, sa_table) -> typing.List[sqlalchemy.schema.Index]:
-        idx_1 = Index(
-            f"{sa_table.name}_idx1",
-            sa_table.c.id,
-            sa_table.c.begin_date,
-            unique=True
-        )
-        idx_1.create()
-
-        idx_2 = Index(
-            f"{sa_table.name}_idx2",
+        idx = Index(
+            f"{sa_table.name}_i",
             sa_table.c.nk_col1,
             sa_table.c.begin_date,
             unique=True
         )
-        idx_2.create()
+        idx.create()
 
-        return [idx_1, idx_2]
+        return [idx]
 
     def _gen_src_rows_1(self, int_range: typing.Union[range, int]) -> typing.Iterator[Row]:
         for row in super()._gen_src_rows_1(int_range):
+            row['nk_col1'] = int(row['id']) * 10
             yield row
 
     def _get_column_list_table_2(
@@ -205,7 +198,7 @@ class _TestHstTable(_TestBaseDatabase):
             ])
         col_list.extend([
             Column('nk_col1', Integer),
-            Column('nk_col2', TEXT),
+            Column('nk_col2', self.db_container.TEXT),
             Column('begin_date', DateTime, primary_key=True),
             Column('end_date', DateTime),
         ])
@@ -234,35 +227,27 @@ class _TestHstTable(_TestBaseDatabase):
 
     def _create_index_table_2(self, sa_table) -> typing.List[sqlalchemy.schema.Index]:
         idx_list = list()
-        idx_1 = Index(
-            f"{sa_table.name}_idx1",
-            sa_table.c.id,
-            sa_table.c.begin_date,
-            unique=True
-        )
-        idx_1.create()
-        idx_list.append(idx_1)
 
-        idx_2 = Index(
-            f"{sa_table.name}_idx2",
+        idx = Index(
+            f"{sa_table.name}_i",
             sa_table.c.nk_col1,
             sa_table.c.nk_col2,
             sa_table.c.begin_date,
             unique=True
         )
-        idx_2.create()
-        idx_list.append(idx_2)
+        idx.create()
+        idx_list.append(idx)
 
         return idx_list
 
     def _gen_src_rows_2(self, int_range: typing.Union[range, int]) -> typing.Iterator[Row]:
         for row in super()._gen_src_rows_1(int_range):
-            row['nk_col1'] = row['id'] * 10
+            row['nk_col1'] = int(row['id']) * 10
             row['nk_col2'] = f"AB_{row['id']}"
             yield row
 
     def testInsertAndIterate(self):
-        tbl_name = self._get_table_name('testInsertAndIterate')
+        tbl_name = self._get_table_name('test1')
 
         self._create_table_1(tbl_name)
 
@@ -293,7 +278,7 @@ class _TestHstTable(_TestBaseDatabase):
         self.mock_database.drop_table_if_exists(tbl_name)
 
     def _transform_csv_row(self, csv_row: Row):
-        if self.SUPPORTS_DECIMAL:
+        if self.db_container.SUPPORTS_DECIMAL:
             csv_row.transform('numeric13_col', str2decimal, raise_on_not_exist=False)
             csv_row.transform('num_col', str2decimal, raise_on_not_exist=False)
         else:
@@ -303,7 +288,11 @@ class _TestHstTable(_TestBaseDatabase):
         csv_row.transform('int_col_2', str2int)
         csv_row.transform('datetime_col', str2datetime, '%Y-%m-%d %H:%M:%S')
         csv_row.transform('date_col', str2date, '%Y-%m-%d', raise_on_not_exist=False)
-        csv_row.transform('time_col', str2time, '%H:%M:%S', raise_on_not_exist=False)
+        if 'time_col' in csv_row:
+            if self.db_container.SUPPORTS_TIME:
+                csv_row.transform('time_col', str2time, '%H:%M:%S', raise_on_not_exist=False)
+            else:
+                del csv_row['time_col']
         large_binary_col = 'large_binary_col'
         if large_binary_col in csv_row:
             val = csv_row[large_binary_col]
@@ -326,6 +315,11 @@ class _TestHstTable(_TestBaseDatabase):
             for row in test1_insert_expected:
                 if transform:
                     self._transform_csv_row(row)
+
+                csv_row_id = row['id']
+                row['nk_col1'] = int(csv_row_id) * 10
+                row['nk_col2'] = f"AB_{csv_row_id}"
+
                 yield row
 
     def _testInsertAndUpsert(
@@ -363,13 +357,8 @@ class _TestHstTable(_TestBaseDatabase):
             if load_cache:
                 tbl.fill_cache()
 
-            with CSVReader(
-                self.task,
-                os.path.join(self.get_package_path(), self.TEST_DATA_PATH, 'test1_insert.csv'),
-            ) as insert_file:
-                for source_row in insert_file:
-                    self._transform_csv_row(source_row)
-                    tbl.insert_row(source_row)
+            for source_row in self._gen_rows_from_csv('test1_insert.csv'):
+                tbl.insert_row(source_row)
             tbl.commit()
 
             # Validate data
@@ -445,11 +434,10 @@ class _TestHstTable(_TestBaseDatabase):
     # Note: We could loop over all these test parameters.
     # However, using methods for each allows for parallel testing.
 
-    def test_insert_and_update_t2_t1_del_systime(self):
-        tbl_name_base = self._get_table_name("test_insert_and_update_t2_t1_del_systime")
+    def test_iu_t2_t1_del_systime(self):
         for load_cache in [True, False]:
-            tbl_part2 = '_Cache' if load_cache else '_NoChc'
-            tbl_name = tbl_name_base + tbl_part2
+            tbl_part2 = 'Cache' if load_cache else 'NoChc'
+            tbl_name = self._get_table_name(f"test_iu_t2_t1_del_syst{tbl_part2}")
             self._testInsertAndUpsert(
                 load_cache=load_cache,
                 use_type2=True,
@@ -459,11 +447,10 @@ class _TestHstTable(_TestBaseDatabase):
                 begin_date_source=BeginDateSource.SYSTEM_TIME,
             )
 
-    def test_insert_and_update_t2_t1_del_timeinrow(self):
-        tbl_name_base = self._get_table_name("test_insert_and_update_t2_t1_del_timeinrow")
+    def test_iu_t2_t1_del_timeinrow(self):
         for load_cache in [True, False]:
-            tbl_part2 = '_Cache' if load_cache else '_NoChc'
-            tbl_name = tbl_name_base + tbl_part2
+            tbl_part2 = 'Cache' if load_cache else 'NoChc'
+            tbl_name = self._get_table_name(f"test_iu_t2_t1_del_inrow{tbl_part2}")
             self._testInsertAndUpsert(
                 load_cache=load_cache,
                 use_type2=True,
@@ -473,11 +460,10 @@ class _TestHstTable(_TestBaseDatabase):
                 begin_date_source=BeginDateSource.IN_ROW,
             )
 
-    def test_insert_and_update_t2_t1_del_param(self):
-        tbl_name_base = self._get_table_name("test_insert_and_update_t2_t1_del_param")
+    def test_iu_t2_t1_del_param(self):
         for load_cache in [True, False]:
-            tbl_part2 = '_Cache' if load_cache else '_NoChc'
-            tbl_name = tbl_name_base + tbl_part2
+            tbl_part2 = 'Cache' if load_cache else 'NoChc'
+            tbl_name = self._get_table_name(f"test_iu_t2_t1_del_param{tbl_part2}")
             self._testInsertAndUpsert(
                 load_cache=load_cache,
                 use_type2=True,
@@ -487,11 +473,10 @@ class _TestHstTable(_TestBaseDatabase):
                 begin_date_source=BeginDateSource.PARAMETER,
             )
 
-    def test_insert_and_update_t2_not1_del(self):
-        tbl_name_base = self._get_table_name("test_insert_and_update_t2_not1_del")
+    def test_iu_t2_not1_del(self):
         for load_cache in [True, False]:
-            tbl_part2 = '_Cache' if load_cache else '_NoChc'
-            tbl_name = tbl_name_base + tbl_part2
+            tbl_part2 = 'Cache' if load_cache else 'NoChc'
+            tbl_name = self._get_table_name(f"test_iu_t2_not1_del{tbl_part2}")
             self._testInsertAndUpsert(
                 load_cache=load_cache,
                 use_type2=True,
@@ -500,11 +485,10 @@ class _TestHstTable(_TestBaseDatabase):
                 tbl_name=tbl_name,
             )
 
-    def test_insert_and_update_nosrgt_del(self):
-        tbl_name_base = self._get_table_name("test_insert_and_update_nosrgt_del")
+    def test_iu_nosrgt_del(self):
         for load_cache in [True, False]:
-            tbl_part2 = '_Cache' if load_cache else '_NoChc'
-            tbl_name = tbl_name_base + tbl_part2
+            tbl_part2 = 'Cache' if load_cache else 'NoChc'
+            tbl_name = self._get_table_name(f"test_iu_nosrgt_del_{tbl_part2}")
             self._testInsertAndUpsert(
                 load_cache=load_cache,
                 use_type2=False,
@@ -513,11 +497,10 @@ class _TestHstTable(_TestBaseDatabase):
                 tbl_name=tbl_name,
             )
 
-    def test_insert_and_update_odd_duck(self):
-        tbl_name_base = self._get_table_name("test_insert_and_update_odd_duck")
+    def test_iu_odd_duck(self):
         for load_cache in [True, False]:
-            tbl_part2 = '_Cache' if load_cache else '_NoChc'
-            tbl_name = tbl_name_base + tbl_part2
+            tbl_part2 = 'Cache' if load_cache else 'NoChc'
+            tbl_name = self._get_table_name(f"test_iu_odd_duck{tbl_part2}")
             self._testInsertAndUpsert(
                 load_cache=load_cache,
                 use_type2=False,
@@ -526,11 +509,10 @@ class _TestHstTable(_TestBaseDatabase):
                 tbl_name=tbl_name,
             )
 
-    def test_insert_and_update_t2_t1_nodel(self):
-        tbl_name_base = self._get_table_name("test_insert_and_update_t2_t1_nodel")
+    def test_iu_t2_t1_nodel(self):
         for load_cache in [True, False]:
-            tbl_part2 = '_Cache' if load_cache else '_NoChc'
-            tbl_name = tbl_name_base + tbl_part2
+            tbl_part2 = 'Cache' if load_cache else 'NoChc'
+            tbl_name = self._get_table_name(f"test_iu_t2_t1_nodel{tbl_part2}")
             self._testInsertAndUpsert(
                 load_cache=load_cache,
                 use_type2=True,
@@ -539,11 +521,10 @@ class _TestHstTable(_TestBaseDatabase):
                 tbl_name=tbl_name,
             )
 
-    def test_insert_and_update_t2_not1_nodel(self):
-        tbl_name_base = self._get_table_name("test_insert_and_update_t2_not1_nodel")
+    def test_iu_t2_not1_nodel(self):
         for load_cache in [True, False]:
-            tbl_part2 = '_Cache' if load_cache else '_NoChc'
-            tbl_name = tbl_name_base + tbl_part2
+            tbl_part2 = 'Cache' if load_cache else 'NoChc'
+            tbl_name = self._get_table_name(f"test_iu_t2_not1_nodel{tbl_part2}")
             self._testInsertAndUpsert(
                 load_cache=load_cache,
                 use_type2=True,
@@ -552,11 +533,10 @@ class _TestHstTable(_TestBaseDatabase):
                 tbl_name=tbl_name,
             )
 
-    def test_insert_and_update_nosrgt_nodel(self):
-        tbl_name_base = self._get_table_name("test_insert_and_update_nosrgt_nodel")
+    def test_iu_nosrgt_nodel(self):
         for load_cache in [True, False]:
-            tbl_part2 = '_Cache' if load_cache else '_NoChc'
-            tbl_name = tbl_name_base + tbl_part2
+            tbl_part2 = 'Cache' if load_cache else 'NoChc'
+            tbl_name = self._get_table_name(f"test_iu_nosrgt_nodel{tbl_part2}")
             self._testInsertAndUpsert(
                 load_cache=load_cache,
                 use_type2=False,
@@ -569,7 +549,7 @@ class _TestHstTable(_TestBaseDatabase):
     ###############################################################
 
     def test_upsert_override_autogen_pk(self):
-        tbl_name = self._get_table_name('test_hst_upsert_override_autogen_pk')
+        tbl_name = self._get_table_name('test_h_iu_override_gen_pk')
         self._create_table_1(tbl_name)
 
         rows_to_insert = 10
@@ -623,13 +603,8 @@ class _TestHstTable(_TestBaseDatabase):
             if use_type1:
                 tbl.type_1_surrogate = 'type_1_srgt'
 
-            with CSVReader(
-                    self.task,
-                    os.path.join(self.get_package_path(), self.TEST_DATA_PATH, 'test1_insert.csv'),
-            ) as insert_file:
-                for source_row in insert_file:
-                    self._transform_csv_row(source_row)
-                    tbl.insert_row(source_row)
+            for source_row in self._gen_rows_from_csv('test1_insert.csv'):
+                tbl.insert_row(source_row)
             tbl.commit()
 
             # Insert new data to a temp table
@@ -638,7 +613,7 @@ class _TestHstTable(_TestBaseDatabase):
             for source_row in self._gen_rows_from_csv('test1_upsert.csv', transform=False):
                 source_columns_set = source_row.column_set
                 break
-            src_table_name = f"src_{tbl_name}"
+            src_table_name = self._get_table_name(f"src_{tbl_name}")
             self.mock_database.drop_table_if_exists(src_table_name)
             src_columns = [col for col in
                            self._get_column_list_table_2(
@@ -668,7 +643,7 @@ class _TestHstTable(_TestBaseDatabase):
                     self._transform_csv_row(source_row)
                     source_row['begin_date'] = update_time
                     if src_excludes is None:
-                        src_excludes = set(src_tbl.columns) - source_row.column_set
+                        src_excludes = src_tbl.column_names_set - source_row.column_set
                     src_tbl.insert_row(source_row)
                 src_tbl.commit()
 
@@ -680,7 +655,7 @@ class _TestHstTable(_TestBaseDatabase):
                     source_effective_date_column='begin_date',
                     source_excludes=src_excludes,
                     check_for_deletes=check_for_deletes,
-                    commit_each_table=True,
+                    commit_each_table=self.UPSERT_COMMIT_EACH_PASS,
                 )
 
                 tbl.commit()
@@ -719,7 +694,7 @@ class _TestHstTable(_TestBaseDatabase):
             use_type2=True,
             use_type1=True,
             check_for_deletes=True,
-            tbl_name=self._get_table_name("test_sql_upsert_t2_t1_del"),
+            tbl_name=self._get_table_name("test_sql_ups_t2_t1_del"),
         )
 
     def test_sql_upsert_t2_not1_del(self):
@@ -727,7 +702,7 @@ class _TestHstTable(_TestBaseDatabase):
             use_type2=True,
             use_type1=False,
             check_for_deletes=True,
-            tbl_name=self._get_table_name("test_sql_upsert_t2_not1_del"),
+            tbl_name=self._get_table_name("test_sql_ups_t2_not1_del"),
         )
 
     def test_sql_upsert_nosrgt_del(self):
@@ -735,7 +710,7 @@ class _TestHstTable(_TestBaseDatabase):
             use_type2=False,
             use_type1=False,
             check_for_deletes=True,
-            tbl_name=self._get_table_name("test_sql_upsert_nosrgt_del"),
+            tbl_name=self._get_table_name("test_sql_ups_nosrgt_del"),
         )
 
     def test_sql_upsert_t2_t1_nodel(self):
@@ -743,7 +718,7 @@ class _TestHstTable(_TestBaseDatabase):
             use_type2=True,
             use_type1=True,
             check_for_deletes=False,
-            tbl_name=self._get_table_name("test_sql_upsert_t2_t1_nodel"),
+            tbl_name=self._get_table_name("test_sql_ups_t2_t1_nodel"),
         )
 
     def test_sql_upsert_t2_not1_nodel(self):
@@ -751,7 +726,7 @@ class _TestHstTable(_TestBaseDatabase):
             use_type2=True,
             use_type1=False,
             check_for_deletes=False,
-            tbl_name=self._get_table_name("test_sql_upsert_t2_not1_nodel"),
+            tbl_name=self._get_table_name("test_sql_ups_t2_not1_nodel"),
         )
 
     def test_sql_upsert_nosrgt_nodel(self):
@@ -759,7 +734,7 @@ class _TestHstTable(_TestBaseDatabase):
             use_type2=False,
             use_type1=False,
             check_for_deletes=False,
-            tbl_name=self._get_table_name("test_sql_upsert_nosrgt_nodel"),
+            tbl_name=self._get_table_name("test_sql_ups_nosrgt_nodel"),
         )
 
     # End SQL Upsert Test block

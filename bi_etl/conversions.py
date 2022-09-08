@@ -3,6 +3,7 @@ Created on Nov 17, 2014
 
 @author: Derek Wood
 """
+import string
 import typing
 from datetime import date, timedelta, timezone
 from datetime import datetime
@@ -29,6 +30,33 @@ def str2int(s: str):
         return None
     else:
         return int(s.replace(',', ''))
+
+
+def int2base(n, base):
+    valid_digits = string.digits + string.ascii_uppercase
+    if base > len(valid_digits):
+        raise ValueError(
+            f"int2base requires base <= {len(valid_digits)}. {base} will not work"
+        )
+    if n < 0:
+        sign = -1
+        n = abs(n)
+    elif n == 0:
+        return valid_digits[0]
+    else:
+        sign = 1
+
+    digits = []
+    while n:
+        digits.append(valid_digits[n % base])
+        n = n // base
+
+    if sign < 0:
+        digits.append('-')
+
+    digits.reverse()
+
+    return ''.join(digits)
 
 
 def str2float(s: str):

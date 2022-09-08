@@ -1,8 +1,7 @@
-from tests.db_base_tests.test_table import _TestTable
-from tests.db_sqlite.sqlite_db import SqliteDB
+from tests.db_base_tests.base_test_table import BaseTestTable
 
 
-class TestTableSqlite(_TestTable):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.db_container = SqliteDB()
+class TestTableSqlite(BaseTestTable):
+    pass
+
+del BaseTestTable

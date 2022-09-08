@@ -1,10 +1,10 @@
-from tests.db_postgres.postgres_docker import PostgresTestDB
-from tests.db_base_tests.test_hst_table import _TestHstTable
+from tests.db_postgres.postgres_docker_db import PostgresDockerDB
+from tests.db_base_tests.base_test_hst_table import BaseTestHstTable
 
 
-class TestTableSourceBasedPostgres(_TestHstTable):
+class TestHstTablePostgres(BaseTestHstTable):
     SUPPORTS_DECIMAL = True
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.db_container = PostgresTestDB()
+        cls.db_container = PostgresDockerDB()
