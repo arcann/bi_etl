@@ -407,17 +407,21 @@ class Scheduler(SchedulerInterface):
                 dep_task = self.get_task_by_id(dep.dependent_on_task_id)
                 dependent_reason_class = dependent_reasons.getFromString(dep.dependent_reason)
                 if dependent_reason_class is None:
-                    self.add_log_message(etl_task, 'Unable to process dependent_reason {}. Assuming it will get re-added. dep_task= {}'.format(dep, repr(dep_task)))
+                    self.add_log_message(
+                        etl_task,
+                        f"Unable to process dependent_reason {dep}. "
+                        f"Assuming it will get re-added. dep_task= {repr(dep_task)}"
+                    )
                     dep.current_blocking_flag = 'N'
                 elif dependent_reason_class.release_wait_on_status(dep_task.status):
                     self.add_log_message(etl_task, 'No longer blocked by {}'.format(repr(dep_task)))
                     dep.current_blocking_flag = 'N'
                 else:
                     if self.trace:
-                        self.log.debug("{} still blocked by {} {}".format(repr(etl_task), dep, repr(dep_task)))
+                        self.log.debug(f"{repr(etl_task)} still blocked by {dep} {repr(dep_task)}")
                     dependencies_met = False
             elif dep.current_blocking_flag != 'N':
-                self.log.warning('{} current_blocking_flag has unexpected value of {}'.format(dep, dep.current_blocking_flag))
+                self.log.warning(f'{dep} current_blocking_flag has unexpected value of {dep.current_blocking_flag}')
 
         # Check for new dependencies
 

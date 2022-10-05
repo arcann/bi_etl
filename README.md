@@ -2,9 +2,10 @@
 
 ## Docs
 
-[Please see the documentation site for detailed documentation.](https://bietl.dev/docs/index.html)
+[Please see the documentation site for detailed documentation.](https://bietl.dev/bi_etl/)
 
-Python based ETL (Extract Transform Load) framework geared towards BI databases in particular. The goal of the project is to create reusable objects with typical technical transformations used in loading dimension tables.
+Python based ETL (Extract Transform Load) framework geared towards BI databases in particular. 
+The goal of the project is to create reusable objects with typical technical transformations used in loading dimension tables.
 
 ## Guiding Design Principles
 1. Don’t Repeat Yourself (DRY).
