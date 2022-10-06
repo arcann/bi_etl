@@ -5,3 +5,4 @@ bi\_etl.components.sqlquery module
    :members:
    :undoc-members:
    :show-inheritance:
+   :noindex:

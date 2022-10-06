@@ -62,16 +62,6 @@ class Row(MutableMapping):
         * :py:meth:`bi_etl.components.row.row.Row.update_from_pydantic`
         * :py:meth:`bi_etl.components.row.row.Row.update_from_values`
 
-
-        Attributes:
-        ----------
-        iteration_header:
-            The :py:class:`bi_etl.components.row.row_iteration_header.RowIterationHeader` instance that
-            provides a shared definition of columns across many Row instances.
-
-            NOTE: Changes to the columns, such as adding a new column, will replace the iteration_header
-            of this Row.  If two or more Row's get the same change, they will all share the same new
-            RowIterationHeader instance as their iteration_header value.
         """
         # Whatever we store here we need to either store on disk for a lookup,
         # or have a way of retrieving in __setstate__
@@ -80,6 +70,15 @@ class Row(MutableMapping):
         self._data_values = list()
         if isinstance(iteration_header, int):
             self.iteration_header = self.RowIterationHeader_Class.get_by_id(iteration_header)
+            """
+            The :py:class:`bi_etl.components.row.row_iteration_header.RowIterationHeader` instance that
+            provides a shared definition of columns across many Row instances.
+
+            NOTE: Changes to the columns, such as adding a new column, will replace the iteration_header
+            of this Row.  If two or more Row's get the same change, they will all share the same new
+            RowIterationHeader instance as their iteration_header value.
+            """
+
         elif isinstance(iteration_header, tuple):
             self.iteration_header = self.RowIterationHeader_Class.get_by_process_and_id(iteration_header)
         else:

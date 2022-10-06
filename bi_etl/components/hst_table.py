@@ -1800,10 +1800,11 @@ class HistoryTable(Table):
         """
         Send all special values rows to upsert to ensure they exist and are current.
         Rows come from:
-          - :meth:`get_missing_row`
-          - :meth:`get_invalid_row`
-          - :meth:`get_not_applicable_row`
-          - :meth:`get_various_row`
+
+           - :meth:`get_missing_row`
+           - :meth:`get_invalid_row`
+           - :meth:`get_not_applicable_row`
+           - :meth:`get_various_row`
 
         Parameters
         ----------

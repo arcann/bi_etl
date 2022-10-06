@@ -505,6 +505,11 @@ class ETLTask(object):
         if self.task_id is not None:
             self.scheduler.load_parameters(self)
 
+    def load_parameters_from_dict(self, parameters: dict):
+        self._parameters_loaded = True
+        for param_name, param_value in parameters.items():
+            self.set_parameter(param_name, param_value, local_only=True)
+
     def set_parameter(
             self,
             param_name: str,

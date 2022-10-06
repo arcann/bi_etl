@@ -51,19 +51,30 @@ Guiding Design Principles
    should be supported.
 
     - **Extract Load Transform (ELT)** - Data is loaded with no transformation (or as little as possible) into the BI database
-    in a staging area. SQL jobs are then used to transform the data for both dimension and fact tables. For dimensions,
-    especially type-2 slowly changing dimensions, the technical transformations in the upsert (update or insert) logic
-    is handled in re-usable Python classes that are part of the bi_etl framework.
+      in a staging area. SQL jobs are then used to transform the data for both dimension and fact tables. For dimensions,
+      especially type-2 slowly changing dimensions, the technical transformations in the upsert (update or insert) logic
+      is handled in re-usable Python classes that are part of the bi_etl framework.
 
     - **Transform Extract Load (TEL)** - The data is transformed using the source systems SQL engine. It then follows a
-    similar pattern to the ELT model. This model is not often used since it puts a lot of computational strain on the
-    source system.  However, if the transformation yields a much smaller data volume (e.g. aggregation) then it might
-    be more efficient than extracting & loading all the details.
+      similar pattern to the ELT model. This model is not often used since it puts a lot of computational strain on the
+      source system.  However, if the transformation yields a much smaller data volume (e.g. aggregation) then it might
+      be more efficient than extracting & loading all the details.
 
     - **Extract Transform Load (ETL)** - ETL, the most traditional approach does **not** use SQL for the transformation.
-    This framework does support ETL with transformations done in the Python code. However, Python transformations are
-    often slower than SQL transformations. Python transformations are also accessible to a smaller audience than SQL
-    transformations are.
+      This framework does support ETL with transformations done in the Python code. However, Python transformations are
+      often slower than SQL transformations. Python transformations are also accessible to a smaller audience than SQL
+      transformations are.
+
+6. As much as possible, all sources & targets should behave the same.  For example, replacing a CSV source with an
+   Excel source (with the same data content) should not require changing any code other than the source declaration.
+   The bi_etl framework attempts to provide a common interface to all source and target components.
+
+   There are, of course, places where we need to provide additional functionality to specific components. For example,
+   an Excel source can have multiple worksheets, so that component provides unique functionality for switching between
+   worksheets.
+
+   There are also features of certain targets that don't make sense to support. For example, CSV targets support
+   insert_row but not upsert (update / insert). We have not seen a use-case for upserts or even updates on a CSV target.
 
 ********
 Features

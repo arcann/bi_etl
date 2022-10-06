@@ -5,3 +5,4 @@ bi\_etl.components.xlsx\_reader module
    :members:
    :undoc-members:
    :show-inheritance:
+   :noindex:
