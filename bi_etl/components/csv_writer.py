@@ -231,6 +231,7 @@ class CSVWriter(ETLComponent):
         self.strict = False
         self.large_field_support = False
         self.lineterminator = '\n'
+        self.null = None
         # End csv module params
 
         self.fix_blank_strings = True
@@ -370,10 +371,14 @@ class CSVWriter(ETLComponent):
             self.log.debug("{} Raw row being inserted:\n{}".format(self, new_row.str_formatted()))
 
         # Set blank strings to single space, so that they differ from None values
-        if self.fix_blank_strings:
-            for colName, value in new_row.items():
-                if value == '':
-                    new_row[colName] = ' '
+
+        for colName, value in new_row.items():
+            if value is None:
+                new_row[colName] = self.null
+            else:
+                if self.fix_blank_strings:
+                    if value == '':
+                        new_row[colName] = ' '
 
         stats.add_to_stat('inserts', 1)
         self.get_writer().writerow(new_row)

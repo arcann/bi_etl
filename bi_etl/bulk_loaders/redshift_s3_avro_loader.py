@@ -4,7 +4,7 @@ from __future__ import annotations
 import itertools
 import os.path
 import os.path
-import typing
+from typing import *
 from tempfile import TemporaryDirectory
 
 import fastavro
@@ -12,7 +12,7 @@ import fastavro
 from bi_etl.bulk_loaders.redshift_s3_base import RedShiftS3Base
 from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     from bi_etl.components.table import Table
     from bi_etl.scheduler.task import ETLTask
 
@@ -70,13 +70,13 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
 
     def load_from_iterator(
            self,
-           iterator: typing.Iterator,
+           iterator: Iterator,
            table_object: Table,
            table_to_load: str = None,
            perform_rename: bool = False,
            progress_frequency: int = 10,
            analyze_compression: str = None,
-           parent_task: typing.Optional[ETLTask] = None,
+           parent_task: Optional[ETLTask] = None,
     ) -> int:
         with TemporaryDirectory() as temp_dir:
             # TODO: Genereate schema from table

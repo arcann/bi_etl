@@ -3152,7 +3152,10 @@ class Table(ReadOnlyTable):
             Start a new transaction after commit
         """
         if self.in_bulk_mode:
-            self.log.debug(f"{self}.commit() does nothing in bulk mode")
+            self.log.debug(
+                f"{self}.commit() does nothing in bulk mode. "
+                f"{self}.bulk_load_from_cache() or {self}.close() will load the pending data."
+            )
             # Commit is not final enough to perform the bulk load.
         else:
             # insert_pending_batch calls other *_pending methods

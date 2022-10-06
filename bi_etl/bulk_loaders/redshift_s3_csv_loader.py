@@ -100,7 +100,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                      {options}; commit;
                 """
 
-    def load_from_iterator_paritition_fixed(
+    def load_from_iterator_partition_fixed(
            self,
            iterator: typing.Iterator,
            table_object: Table,
@@ -112,7 +112,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
     ) -> int:
 
         row_count = 0
-        with TemporaryDirectory() as temp_dir:
+        with TemporaryDirectory(dir=self.config.temp_file_path) as temp_dir:
             writer_pool_size = self.s3_files_to_generate
             local_files = []
             zip_pool = []
@@ -173,7 +173,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 self.log.info(f"{self} had nothing to do with 0 rows found")
             return row_count
 
-    def load_from_iterator_parition_max_rows(
+    def load_from_iterator_partition_max_rows(
             self,
             iterator: typing.Iterator,
             table_object: Table,
@@ -183,7 +183,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             analyze_compression: str = None,
             parent_task: typing.Optional[ETLTask] = None,
     ) -> int:
-        with TemporaryDirectory() as temp_dir:
+        with TemporaryDirectory(dir=self.config.temp_file_path) as temp_dir:
             local_files = []
             file_number = 0
             current_file = None
@@ -251,7 +251,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             parent_task: typing.Optional[ETLTask] = None,
     ) -> int:
         if self.s3_file_max_rows is not None:
-            return self.load_from_iterator_parition_max_rows(
+            return self.load_from_iterator_partition_max_rows(
                 iterator=iterator,
                 table_object=table_object,
                 table_to_load=table_to_load,
@@ -261,7 +261,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 parent_task=parent_task,
             )
         else:
-            return self.load_from_iterator_paritition_fixed(
+            return self.load_from_iterator_partition_fixed(
                 iterator=iterator,
                 table_object=table_object,
                 table_to_load=table_to_load,

@@ -112,10 +112,9 @@ class RedShiftS3Base(BulkLoader):
     def _run_copy_sql(
             self,
             copy_sql: str,
-            s3_full_folder: str,
             table_object: Table,
             file_list: Optional[list] = None,
-    ):
+    ) -> int:
         copy_sql = textwrap.dedent(copy_sql)
         sql_safe_pw = copy_sql.replace(self.s3_password, '*' * 8)
         self.log.debug(sql_safe_pw)
@@ -134,18 +133,13 @@ class RedShiftS3Base(BulkLoader):
 
                 bulk_loader_exception = BulkLoaderException(e, password=self.s3_password)
 
-                if file_list is not None:
-                    top_size = f'{len(file_list)}'
-                    where = f"WHERE filename in ({quote_delimited_list(file_list)})"
-                else:
-                    top_size = "1"
-                    where = ''
                 sql = f"""
-                    SELECT TOP {top_size} *
+                    SELECT *
                     FROM stl_load_errors
-                    {where}
+                    WHERE query = pg_last_copy_id()
                     ORDER BY starttime DESC
                     """
+
                 self.log.error(f'Checking stl_load_errors with\n{sql}')
                 try:
                     results = table_object.execute(sql)
@@ -188,6 +182,22 @@ class RedShiftS3Base(BulkLoader):
         #       However, requires extensive testing
         table_object.execute(f"COMMIT;")
 
+        sql = f"""
+        SELECT SUM(lines_scanned) as rows_loaded
+        FROM stl_load_commits
+        WHERE query = pg_last_copy_id()
+        """
+        # Default to -1 rows to indicate error
+        rows_loaded = -1
+        try:
+            results = table_object.execute(sql)
+            for row in results:
+                rows_loaded = row.rows_loaded
+        except Exception as e:
+            self.log.warning(f"Error getting row count: {e}")
+
+        return rows_loaded
+
     def get_copy_sql(
             self,
             s3_source_path: str,
@@ -209,7 +219,7 @@ class RedShiftS3Base(BulkLoader):
             options: str = '',
             analyze_compression: str = None,
             perform_rename: bool = False,
-    ):
+    ) -> int:
         tries = 0
         done = False
 
@@ -230,7 +240,6 @@ class RedShiftS3Base(BulkLoader):
             try:
                 self._run_copy_sql(
                     copy_sql=copy_sql,
-                    s3_full_folder=s3_source_path,
                     table_object=table_object,
                     file_list=file_list,
                 )

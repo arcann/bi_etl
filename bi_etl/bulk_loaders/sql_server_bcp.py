@@ -1,7 +1,7 @@
 import os
 import re
 import tempfile
-import typing
+from typing import *
 
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.components.table import Table
@@ -37,7 +37,8 @@ class SQLServerBCP(BulkLoader):
             file_compression: str = '',
             options: str = '',
             analyze_compression: str = None,
-    ):
+    ) -> int:
+        rows_inserted = 0
         format_file_path = None
         for file_name in local_files:
             # First file should be the format file
@@ -60,6 +61,7 @@ class SQLServerBCP(BulkLoader):
                     raise
         if perform_rename:
             self.rename_table(table_to_load, table_object)
+        return rows_inserted
 
     @staticmethod
     def value_for_bcp(column_value):
@@ -76,15 +78,14 @@ class SQLServerBCP(BulkLoader):
 
     def load_from_iterator(
             self,
-            iterator: typing.Iterator,
+            iterator: Iterator,
             table_object: Table,
             table_to_load: str = None,
             perform_rename: bool = False,
             progress_frequency: int = 10,
             analyze_compression: str = None,
-            parent_task: typing.Optional[ETLTask] = None,
+            parent_task: Optional[ETLTask] = None,
     ) -> int:
-        row_count = 0
         with tempfile.TemporaryDirectory() as temp_dir:
             format_file_path = os.path.join(temp_dir, f'data_{table_object.table_name}.fmt')
             data_file_path = os.path.join(temp_dir, f'data_{table_object.table_name}.data')
@@ -117,9 +118,8 @@ class SQLServerBCP(BulkLoader):
                     # row_count += 1
                     # target_file.insert_row(row)
 
-            self.load_from_files(
+            row_count = self.load_from_files(
                 [format_file_path, data_file_path],
-                file_compression='GZIP',
                 table_object=table_object,
                 table_to_load=table_to_load,
                 perform_rename=perform_rename,
