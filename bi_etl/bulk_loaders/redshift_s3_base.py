@@ -118,6 +118,7 @@ class RedShiftS3Base(BulkLoader):
         copy_sql = textwrap.dedent(copy_sql)
         sql_safe_pw = copy_sql.replace(self.s3_password, '*' * 8)
         self.log.debug(sql_safe_pw)
+        error_matches = ['The S3 bucket addressed by the query is in a different region from this cluster.', 'Access denied', 'The AWS Access Key Id you provided does not exist in our records.']
 
         keep_trying = True
         wait_seconds = 15
@@ -127,6 +128,11 @@ class RedShiftS3Base(BulkLoader):
                 table_object.execute(copy_sql)
                 keep_trying = False
             except sqlalchemy.exc.SQLAlchemyError as e:
+                if any(error in str(e) for error in error_matches):
+                    e = str(e).replace(self.s3_password, '*' * 8)
+                    self.log.error(f"Cannot recover from this error - {e}")
+                    raise
+
                 self.log.error('!' * 80)
                 self.log.error(f'!! Details for {e} below:')
                 self.log.error('!' * 80)

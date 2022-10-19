@@ -1,3 +1,6 @@
+from pathlib import Path
+from typing import Optional
+
 from config_wrangler.config_templates.aws.s3_bucket import S3_Bucket_Folder
 
 
@@ -7,6 +10,7 @@ class S3_Bulk_Loader_Config(S3_Bucket_Folder):
         validate_assignment = True
         allow_mutation = True
 
+    temp_file_path: Optional[Path] = None
     s3_files_to_generate: int = None
     s3_file_max_rows: int = 25000
     s3_clear_before: bool = True
