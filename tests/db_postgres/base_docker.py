@@ -1,6 +1,12 @@
+import logging
+import os
+import platform
 import random
 import socket
 import unittest
+
+from testcontainers.core import config as tc_config
+from testcontainers.core.generic import DbContainer
 
 from tests.db_sqlite.sqlite_db import SqliteDB
 
@@ -42,8 +48,11 @@ class BaseDockerDB(SqliteDB):
                     self.SKIP = True
                     raise unittest.SkipTest(f"Skip {self} due to {repr(e)}. Is Docker running?")
 
+    def get_container_class(self):
+        raise NotImplementedError
+
     @staticmethod
-    def get_open_port():
+    def get_open_port() -> int:
         """
         Use socket's built in ability to find an open port.
         """
@@ -57,11 +66,51 @@ class BaseDockerDB(SqliteDB):
         return port
 
     @staticmethod
-    def get_random_port():
+    def get_random_port() -> int:
         return random.randint(49152, 65534)
+    
+    def get_port(self, container) -> int:
+        if container.get_docker_client().host() == 'localhost':
+            port = self.get_open_port()
+        else:
+            port = self.get_random_port()
+        return port
 
-    def get_container(self):
-        raise NotImplementedError
+    def get_container(self) -> DbContainer:
+        tc_config.SLEEP_TIME = 1
+        tc_config.MAX_TRIES = 60
+
+        container = self.get_container_class()
+        try:
+            # The testcontainers implementation of get_container_host_ip
+            # returns an incorrect value of localnpipe, at least on Windows 10
+            # https://github.com/testcontainers/testcontainers-python/issues/108
+            if platform.system() == 'Windows' and container.get_docker_client().host() == 'localnpipe':
+                print("Windows override TC_HOST to localhost.")
+                os.environ['TC_HOST'] = 'localhost'
+            print(f"docker container on host {container.get_docker_client().host()}")
+            print(f"docker container on url {container.get_docker_client().client.api.base_url}")
+
+            port = self.get_port(container)
+            if hasattr(container, 'port_to_expose'):
+                container.with_bind_ports(container.port_to_expose, port)
+            else:
+                # Oracle only it seems
+                container.with_bind_ports(container.container_port, port)
+            # Don't show errors while waiting for the server to start
+            waiting_log = logging.getLogger('testcontainers.core.waiting_utils')
+            waiting_log.setLevel(logging.WARNING)
+            try:
+                container.start()
+            except Exception as e:
+                raise RuntimeError(
+                    "Unable to start Docker container. "
+                    f"Make sure Docker Desktop is running. Error = {e}"
+                )
+        except Exception:
+            del container
+            raise
+        return container
 
     def get_url(self):
         if self.container is not None:

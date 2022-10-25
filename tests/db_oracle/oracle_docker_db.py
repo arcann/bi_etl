@@ -9,6 +9,7 @@ from urllib.error import HTTPError
 
 from sqlalchemy import VARCHAR
 from testcontainers.core import config as tc_config
+from testcontainers.core.generic import DbContainer
 from testcontainers.oracle import OracleDbContainer
 
 from tests.db_postgres.base_docker import BaseDockerDB
@@ -98,42 +99,12 @@ class OracleDockerDB(BaseDockerDB):
             # Oracle Client library has already been initialized
             pass
 
-    def get_container(self) -> OracleDbContainer:
-        tc_config.SLEEP_TIME = 1
-        tc_config.MAX_TRIES = 60
+    def get_container_class(self, image="wnameless/oracle-xe-11g-r2:latest"):
+        return OracleDbContainer(image=image)
 
+    def get_container(self) -> DbContainer:
         self._get_driver()
-
-        image = "wnameless/oracle-xe-11g-r2:latest"
-        container = OracleDbContainer(image=image)
-        try:
-            # The testcontainers implementation of get_container_host_ip
-            # returns an incorrect value of localnpipe, at least on Windows 10
-            # https://github.com/testcontainers/testcontainers-python/issues/108
-            os.environ['TC_HOST'] = 'localhost'
-            print(f"docker container on host {container.get_docker_client().host()}")
-            print(f"docker container on url {container.get_docker_client().client.api.base_url}")
-
-            # port = random.randint(49152, 65534)
-            port = self.get_open_port()
-            container.with_bind_ports(container.container_port, port)
-            print(f"Binding container to local port {port}")
-            # Don't show errors while waiting for the server to start
-            waiting_log = logging.getLogger('testcontainers.core.waiting_utils')
-            waiting_log.setLevel(logging.WARNING)
-            try:
-                container.start()
-            except Exception as e:
-                raise RuntimeError(
-                    "Unable to start Docker container. "
-                    f"Make sure Docker Desktop is running. Error = {repr(e)}"
-                )
-        except Exception:
-            try:
-                del container
-            except Exception:
-                pass
-            raise
+        container = super().get_container()
         return container
 
     def get_options(self):
