@@ -90,6 +90,7 @@ class ETLComponent(Iterable):
         self.task = task
         self.logical_name = logical_name or f"{self.__class__.__name__}#{id(self)}"
         self._primary_key = None
+        self._primary_key_tuple = tuple()
         self.__progress_frequency = self.DEFAULT_PROGRESS_FREQUENCY
         self.progress_message = self.DEFAULT_PROGRESS_MESSAGE
         self.max_rows = None
@@ -361,6 +362,11 @@ class ETLComponent(Iterable):
                 value = [value]
             assert hasattr(value, '__iter__'), "Row primary_key must be iterable or string"
             self._primary_key = list(value)
+        self._primary_key_tuple = tuple(self.primary_key)
+
+    @property
+    def primary_key_tuple(self) -> tuple:
+        return self._primary_key_tuple
 
     @property
     def trace_data(self) -> bool:

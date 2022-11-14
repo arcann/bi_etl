@@ -1,0 +1,3 @@
+﻿test_nk,dt_src_beg,dt_src_end,col1,col2,flag_delete
+spurious delete,1900-01-01 00:00:00,2020-09-08 23:59:59,D1,4,N
+spurious delete,2020-09-09 00:00:00,9999-01-01 00:00:00,D2,4,N

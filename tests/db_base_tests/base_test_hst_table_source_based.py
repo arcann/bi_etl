@@ -9,9 +9,12 @@ from tests.db_base_tests.base_test_hst_table import BaseTestHstTable, BeginDateS
 class BaseTestHistoryTableSourceBased(BaseTestHstTable):
     TABLE_PREFIX = 'hstsrc_'
     TEST_COMPONENT = HistoryTableSourceBased
-    TEST_DATA_PATH = 'test_hstsrc_table_data'
 
     # inherit tests from BaseTestHstTable and BaseTestDatabase
+
+    def setUp(self):
+        super().setUp()
+        self.test_file_search_folders.append('test_hstsrc_table_data')
 
     def _testInsertAndUpsert(
             self,

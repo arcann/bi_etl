@@ -30,9 +30,12 @@ class BeginDateSource(Enum):
 class BaseTestHstTable(BaseTestDatabase):
     TABLE_PREFIX = 'hst_'
     TEST_COMPONENT = HistoryTable
-    TEST_DATA_PATH = 'test_hst_table_data'
     # Only set UPSERT_COMMIT_EACH_PASS to True for debugging purposes
     UPSERT_COMMIT_EACH_PASS = False
+
+    def setUp(self):
+        super().setUp()
+        self.test_file_search_folders.append('test_hst_table_data')
 
     # Override  _check_table_rows with a version that processes versioned records
     def _check_table_rows(
@@ -111,9 +114,9 @@ class BaseTestHstTable(BaseTestDatabase):
             actual_row = actual_row_list.pop(0)
             try:
                 self._compare_rows(
-                    expected_row,
-                    actual_row,
-                    special_check_values,
+                    expected_row=expected_row,
+                    actual_row=actual_row,
+                    special_check_values=special_check_values,
                     msg=f"row key={key} {actual_row[target_table.begin_date_column]} {msg}"
                 )
             except AssertionError as e:
@@ -302,14 +305,12 @@ class BaseTestHstTable(BaseTestDatabase):
     def _gen_rows_from_csv(
             self,
             csv_file: str,
-            path: str = None,
             transform: bool = True,
     ) -> typing.Iterator[Row]:
-        if path is None:
-            path = self.TEST_DATA_PATH
+        csv_path = self.get_test_file_path(csv_file)
         with CSVReader(
                 self.task,
-                os.path.join(self.get_package_path(), path, csv_file),
+                csv_path,
                 encoding='utf-8',
         ) as test1_insert_expected:
             for row in test1_insert_expected:
@@ -740,7 +741,119 @@ class BaseTestHstTable(BaseTestDatabase):
     # End SQL Upsert Test block
     ###############################################################
 
+    def _test_cleanup_versions(
+            self,
+            tbl_name: str,
+            remove_spurious_deletes: bool,
+            remove_redundant_versions: bool,
+    ):
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('test_nk', self._text_datatype(), primary_key=True),
+            Column('dt_src_beg', DateTime, primary_key=True),
+            Column('dt_src_end', DateTime),
+            Column('col1', self._text_datatype()),
+            Column('col2', Integer),
+            Column('flag_delete', self._text_datatype()),
+        )
+        sa_table.create()
 
-if __name__ == "__main__":
-    # import sys;sys.argv = ['', 'Test.testName']
-    unittest.main()
+        with self.TEST_COMPONENT(
+                self.task,
+                self.mock_database,
+                table_name=tbl_name
+        ) as tbl:
+            tbl.begin_date_column = 'dt_src_beg'
+            tbl.end_date_column = 'dt_src_end'
+            tbl.delete_flag = 'flag_delete'
+            csv_sources = [
+                'cleanup_before_base.csv',
+                'cleanup_before_spur_del.csv',
+                'cleanup_before_spur_ver.csv',
+            ]
+            for csv_file in csv_sources:
+                with CSVReader(
+                        self.task,
+                        self.get_test_file_path(csv_file),
+                        encoding='utf-8',
+                ) as csv_src:
+                    for row in csv_src:
+                        row.transform('dt_src_beg', str2datetime, '%Y-%m-%d %H:%M:%S')
+                        row.transform('dt_src_end', str2datetime, '%Y-%m-%d %H:%M:%S')
+                        row.transform('col2', str2int)
+                        # Call non-history Table insert_row because it will allow our bad history source rows
+                        Table.insert_row(tbl, row)
+            del csv_sources
+            tbl.commit()
+
+            tbl.cleanup_versions(
+                remove_spurious_deletes=remove_spurious_deletes,
+                remove_redundant_versions=remove_redundant_versions,
+            )
+
+            def gen_expected_rows() -> typing.Iterator[Row]:
+                csv_expected = [
+                    'cleanup_after_base.csv',
+                ]
+                if remove_spurious_deletes:
+                    csv_expected.append('cleanup_after_spur_del.csv')
+                else:
+                    csv_expected.append('cleanup_before_spur_del.csv')
+
+                if remove_redundant_versions:
+                    csv_expected.append('cleanup_after_spur_ver.csv')
+                else:
+                    csv_expected.append('cleanup_before_spur_ver.csv')
+
+                for csv_file in csv_expected:
+                    with CSVReader(
+                            self.task,
+                            self.get_test_file_path(csv_file),
+                            encoding='utf-8',
+                    ) as csv_src:
+                        for expected_row in csv_src:
+                            expected_row.transform('dt_src_beg', str2datetime, '%Y-%m-%d %H:%M:%S')
+                            expected_row.transform('dt_src_end', str2datetime, '%Y-%m-%d %H:%M:%S')
+                            expected_row.transform('col2', str2int)
+                            yield expected_row
+
+            # Validate data
+            self._check_table_rows(
+                expected_row_generator=gen_expected_rows(),
+                target_table=tbl,
+            )
+
+        self.mock_database.drop_table_if_exists(tbl_name)
+
+    def test_cleanup_spur_del_ver(self):
+        tbl_name = self._get_table_name('test_cleanup_del_ver')
+        self._test_cleanup_versions(
+            tbl_name,
+            remove_spurious_deletes=True,
+            remove_redundant_versions=True,
+        )
+
+    def test_cleanup_spur_nodel_ver(self):
+        tbl_name = self._get_table_name('test_cleanup_nodel_ver')
+        self._test_cleanup_versions(
+            tbl_name,
+            remove_spurious_deletes=False,
+            remove_redundant_versions=True,
+        )
+
+    def test_cleanup_spur_del_nover(self):
+        tbl_name = self._get_table_name('test_cleanup_del_nover')
+        self._test_cleanup_versions(
+            tbl_name,
+            remove_spurious_deletes=True,
+            remove_redundant_versions=False,
+        )
+
+    def test_cleanup_spur_nodel_nover(self):
+        tbl_name = self._get_table_name('test_cleanup_nodel_nover')
+        self._test_cleanup_versions(
+            tbl_name,
+            remove_spurious_deletes=False,
+            remove_redundant_versions=False,
+        )

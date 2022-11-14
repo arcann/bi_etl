@@ -1,0 +1,5 @@
+﻿test_nk,dt_src_beg,dt_src_end,col1,col2,flag_delete
+redundant version 2,1900-01-01 00:00:00,2020-09-08 23:59:59,D1,4,N
+redundant version 2,2020-09-09 00:00:00,9999-01-01 00:00:00,D2,4,N
+redundant version 3,1900-01-01 00:00:00,2010-01-02 23:59:59,E1,5,N
+redundant version 3,2010-01-02 00:00:00,9999-01-01 00:00:00,E2,5,N

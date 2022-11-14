@@ -253,7 +253,9 @@ class AutoDiskLookup(Lookup):
         if self.cache_enabled:        
             if self._cache is None:
                 self.init_cache()
-    
+
+            # Note: This will double count updated rows.
+            # We fix it below at each ram_check_row_interval, but that calc is slower.
             self.rows_cached += 1
             
             # Note: The memory check needs to be here and not in Table.fill_cache since rows can be added to cache 

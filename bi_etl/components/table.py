@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import codecs
 import contextlib
+import dataclasses
 import math
 import sys
 import textwrap
@@ -55,6 +56,13 @@ from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
 from bi_etl.utility import get_integer_places
+
+
+@dataclasses.dataclass
+class PendingUpdate:
+    update_where_keys: Tuple[str]
+    update_where_values: Iterable[Any]
+    update_row_new_values: Row
 
 
 # noinspection SqlDialectInspection
@@ -271,7 +279,7 @@ class Table(ReadOnlyTable):
 
         # A list of any pending rows to apply as updates
         self.pending_update_stats = None
-        self.pending_update_rows = dict()
+        self.pending_update_rows: Dict[tuple, PendingUpdate] = dict()
 
         self._coerce_methods_built = False
 
@@ -2240,39 +2248,39 @@ class Table(ReadOnlyTable):
 
         pending_update_statements = StatementQueue()
 
-        for row_dict in self.pending_update_rows.values():
+        for pending_update_rec in self.pending_update_rows.values():
+            row_dict = pending_update_rec.update_row_new_values
             if row_dict.status not in [RowStatus.deleted, RowStatus.insert]:
-                stats['apply updates sent to db'] += 1
-                update_stmt_key = row_dict.column_set
+                update_where_values = pending_update_rec.update_where_values
+                update_where_keys = pending_update_rec.update_where_keys
+                stats['update rows sent to db'] += 1
+                update_stmt_key = (update_where_keys, row_dict.column_set)
                 update_stmt = pending_update_statements.get_statement_by_key(update_stmt_key)
                 if update_stmt is None:
                     update_stmt = self._update_stmt()
-                    for key_column in self.primary_key:
+                    for key_column in update_where_keys:
                         key = self.get_column(key_column)
-                        bind_name = key.name
+                        bind_name = f"_{key.name}"
                         # Note SQLAlchemy takes care of converting to positional “qmark” bind parameters as needed
                         update_stmt = update_stmt.where(key == bindparam(bind_name, type_=key.type))
                     for c in row_dict.columns_in_order:
-                        # Since we know we aren't updating the key, don't send the keys in the values clause
-                        if c not in self.primary_key:
-                            col_obj = self.get_column(c)
-                            bind_name = col_obj.name
-                            update_stmt = update_stmt.values({c: bindparam(bind_name, type_=col_obj.type)})
+                        col_obj = self.get_column(c)
+                        bind_name = col_obj.name
+                        update_stmt = update_stmt.values({c: bindparam(bind_name, type_=col_obj.type)})
                     update_stmt = update_stmt.compile()
                     pending_update_statements.add_statement(update_stmt_key, update_stmt)
 
                 stmt_values = dict()
-                for key_column in self.primary_key:
+                for key_column, key_value in zip(update_where_keys, update_where_values):
                     key = self.get_column(key_column)
-                    bind_name = key.name
-                    stmt_values[bind_name] = row_dict[key_column]
+                    bind_name = f"_{key.name}"
+                    stmt_values[bind_name] = key_value
 
                 for c in row_dict.columns_in_order:
                     # Since we know we aren't updating the key, don't send the keys in the values clause
-                    if c not in self.primary_key:
-                        col_obj = self.get_column(c)
-                        bind_name = col_obj.name
-                        stmt_values[bind_name] = row_dict[c]
+                    col_obj = self.get_column(c)
+                    bind_name = col_obj.name
+                    stmt_values[bind_name] = row_dict[c]
 
                 pending_update_statements.append_values_by_key(update_stmt_key, stmt_values)
                 row_dict.status = RowStatus.existing
@@ -2300,33 +2308,40 @@ class Table(ReadOnlyTable):
             self.log.error(f"Single updates on {self} did not produce the error. Original error will be issued below.")
             self.rollback()
             raise e
-        del self.pending_update_rows
-        self.pending_update_rows = dict()
+        self.pending_update_rows.clear()
         stats.timer.stop()
 
     def _add_pending_update(
-            self,
-            row: Row,
-            parent_stats: Optional[Statistics] = None,
+        self,
+        update_where_keys: Tuple[str],
+        update_where_values: Iterable[Any],
+        update_row_new_values: Row,
+        parent_stats: Optional[Statistics] = None,
     ):
         assert self.primary_key, "add_pending_update called for table with no primary key"
-        assert row.status != RowStatus.insert, "add_pending_update called with row that's pending insert"
-        assert row.status != RowStatus.deleted, "add_pending_update called with row that's pending delete"
-        key_tuple = self.get_primary_key_value_tuple(row)
+        assert update_row_new_values.status != RowStatus.insert, "add_pending_update called with row that's pending insert"
+        assert update_row_new_values.status != RowStatus.deleted, "add_pending_update called with row that's pending delete"
+        key_tuple = tuple(update_where_values)
+        pending_update_rec = PendingUpdate(
+            update_where_keys,
+            update_where_values,
+            update_row_new_values
+        )
         if key_tuple not in self.pending_update_rows:
-            self.pending_update_rows[key_tuple] = row
+            self.pending_update_rows[key_tuple] = pending_update_rec
         else:
             # Apply updates to the existing pending update
-            existing_update = self.pending_update_rows[key_tuple]
-            for col in row:
-                existing_update[col] = row[col]
+            existing_update_rec = self.pending_update_rows[key_tuple]
+            existing_row = existing_update_rec.update_row_new_values
+            for col, value in update_row_new_values.items():
+                existing_row[col] = value
         if len(self.pending_update_rows) >= self.batch_size:
             self._update_pending_batch(parent_stats=parent_stats)
 
     def apply_updates(
             self,
             row: Row,
-            changes_list: Optional[MutableSequence] = None,
+            changes_list: Optional[MutableSequence[ColumnDifference]] = None,
             additional_update_values: MutableMapping = None,
             add_to_cache: bool = True,
             allow_insert=True,
@@ -2348,6 +2363,8 @@ class Table(ReadOnlyTable):
         ----------
         row:
             The row to update with (needs to have at least PK values)
+            The values are used for the WHERE and so should be before any updates to make.
+            The updates to make can be sent via changes_list or additional_update_values.
         changes_list:
             A list of ColumnDifference objects to apply to the row
         additional_update_values:
@@ -2375,15 +2392,25 @@ class Table(ReadOnlyTable):
         if self.last_update_date is not None:
             self.set_last_update_date(row)
 
+        # Use row to get PK where values BEFORE we apply extra updates to the row
+        # This allows the update WHERE and SET to have different values for the PK fields
+        update_where_keys = self.primary_key_tuple
+        update_where_values = [row[c] for c in update_where_keys]
+
         if changes_list is not None:
             for d_chg in changes_list:
                 if isinstance(d_chg, ColumnDifference):
                     row[d_chg.column_name] = d_chg.new_value
                 else:
+                    # Handle if we are sent a Mapping instead of a list of ColumnDifference for changes_list
+                    # d_chg would then be the Mapping key (column name)
+                    # noinspection PyTypeChecker
                     row[d_chg] = changes_list[d_chg]
+
         if additional_update_values is not None:
             for col_name, value in additional_update_values.items():
                 row[col_name] = value
+
         if add_to_cache and self.maintain_cache_during_load:
             self.cache_row(row, allow_update=True, allow_insert=allow_insert)
 
@@ -2393,19 +2420,29 @@ class Table(ReadOnlyTable):
 
                 if update_apply_entire_row or changes_list is None:
                     row.status = RowStatus.update_whole
-                    self._add_pending_update(row, parent_stats=stats)
+                    self._add_pending_update(
+                        update_where_keys=update_where_keys,
+                        update_where_values=update_where_values,
+                        update_row_new_values=row,
+                        parent_stats=stats
+                    )
                 else:
                     # Support partial updates.
                     # We could save significant network transit times in some cases if we didn't send the whole row
                     # back as an update. However, we might also not want a different update statement for each
                     # combination of updated columns. Unfortunately, having code in update_pending_batch scan the
                     # combinations for the most efficient ways to group the updates would also likely be slow.
-                    update_columns = set(self.primary_key)
-                    for d_chg in changes_list:
-                        update_columns.add(d_chg.column_name)
+                    update_columns = {d_chg.column_name for d_chg in changes_list}
+                    if additional_update_values is not None:
+                        update_columns.update(additional_update_values.keys())
                     partial_row = row.subset(keep_only=update_columns)
                     partial_row.status = RowStatus.update_partial
-                    self._add_pending_update(partial_row, parent_stats=stats)
+                    self._add_pending_update(
+                        update_where_keys=update_where_keys,
+                        update_where_values=update_where_values,
+                        update_row_new_values=partial_row,
+                        parent_stats=stats
+                    )
 
                 if stats is not None:
                     stats['update called'] += 1

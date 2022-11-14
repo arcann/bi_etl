@@ -91,8 +91,7 @@ class ETLTask(object):
         # If we got both task_id and task_rec
         if task_id and task_rec:
             # Make sure they match
-            assert task_id == task_rec.task_id, 'Conflicting task_id values given {} and {}'.format(task_id,
-                                                                                                    task_rec.task_id)
+            assert task_id == task_rec.task_id, f"Conflicting task_id values given {task_id} and {task_rec.task_id}"
             self.task_rec = task_rec
         # Otherwise if we got only task_id
         elif task_id:
@@ -117,14 +116,12 @@ class ETLTask(object):
         if self.parent_task_id is None:
             self.parent_task_id = parent_task_id
         else:
-            assert parent_task_id == self.task_rec.parent_task_id, 'Conflicting parent_task_id values given {} and {}'.format(
-                task_id, self.task_rec.parent_task_id)
+            assert parent_task_id == self.task_rec.parent_task_id, f"Conflicting parent_task_id values given {task_id} and {self.task_rec.parent_task_id}"
 
         if self.root_task_id is None:
             self.root_task_id = root_task_id
         else:
-            assert root_task_id == self.task_rec.root_task_id, 'Conflicting parent_task_id values given {} and {}'.format(
-                root_task_id, self.task_rec.root_task_id)
+            assert root_task_id == self.task_rec.root_task_id, f"Conflicting parent_task_id values given {root_task_id} and {self.task_rec.root_task_id}"
 
         self._externally_provided_scheduler = (scheduler is not None)
         self._scheduler = scheduler
@@ -206,13 +203,9 @@ class ETLTask(object):
         utility.log_logging_level(self.log)
 
     def __repr__(self):
-        msg = "{cls}(task_id={task_id}, parent_task_id={parent_task_id}, root_task_id={root_task_id})"
-        return msg.format(
-            cls=self.name,
-            task_id=self.task_id,
-            parent_task_id=self.parent_task_id,
-            root_task_id=self.root_task_id,
-        )
+        return f"{self.name}(task_id={self.task_id}, " \
+               f"parent_task_id={self.parent_task_id}, " \
+               f"root_task_id={self.root_task_id})"
 
     def __str__(self):
         return self.name
@@ -273,7 +266,7 @@ class ETLTask(object):
             self.child_to_parent.put(ChildSetDisplayName(self.task_id, new_value))
             self.task_rec.display_name = new_value
         else:
-            self.log.debug('Setting display_name in task_rec= {}'.format(new_value))
+            self.log.debug(f'Setting display_name in task_rec= {new_value}')
             self.task_rec.display_name = new_value
             self.scheduler.session.commit()
 
@@ -377,7 +370,7 @@ class ETLTask(object):
                         for dep_task_name in qualified_classes:
                             normalized_dependents_set.add(dep_task_name)
                     else:
-                        self.log.warning('dependent entry {} did not match any classes'.format(dep_name))
+                        self.log.warning(f'dependent entry {dep_name} did not match any classes')
 
         return self._normalized_dependents_set
 
@@ -421,7 +414,9 @@ class ETLTask(object):
                             mutually_exclusive_with_set.add(mutually_exclusive_with_name)
                     else:
                         self.log.warning(
-                            'mutually_exclusive value {} did not match any classes'.format(mutually_exclusive_with))
+                            f'mutually_exclusive value {mutually_exclusive_with} '
+                            'did not match any classes'
+                        )
 
         return self._mutually_exclusive_with_set
 
@@ -462,8 +457,10 @@ class ETLTask(object):
                 display_name=display_name,
             )
         else:
-            msg = 'Not running in a scheduler. Child task {} not actually scheduled.'.format(etl_task_class_type)
-            self.log.warning(msg)
+            self.log.warning(
+                'Not running in a scheduler. '
+                f'Child task {etl_task_class_type} not actually scheduled.'
+            )
         return new_task_id
 
     def add_child_task_by_partial_name_to_scheduler(self,
@@ -485,8 +482,10 @@ class ETLTask(object):
                 display_name=display_name,
             )
         else:
-            msg = 'Not running in a scheduler. Child task {} not actually scheduled.'.format(partial_module_name)
-            self.log.warning(msg)
+            self.log.warning(
+                f'Not running in a scheduler. '
+                f'Child task {partial_module_name} not actually scheduled.'
+            )
         return new_task_id
 
     def start_following_tasks(self):
@@ -535,10 +534,10 @@ class ETLTask(object):
 
         if not local_only:
             if self.task_id is not None:
-                self.log.info('add_parameter to scheduler {} = {}'.format(param_name, param_value))
+                self.log.info(f'add_parameter to scheduler {param_name} = {param_value}')
                 self.scheduler.add_task_paramter(self.task_id, param_name, param_value, commit=commit)
         else:
-            print("add_parameter local {}={}".format(param_name, param_value))
+            print(f"add_parameter local {param_name}={param_value}")
 
     # Deprecated name
     def add_parameter(
@@ -602,7 +601,7 @@ class ETLTask(object):
                 if len(arg) == 2:
                     self.set_parameter(arg[0], arg[1], local_only=local_only, commit=commit)
                 else:
-                    raise ValueError("add_parameters sequence {} had unexpected length {}".format(arg, len(arg)))
+                    raise ValueError(f"add_parameters sequence {arg} had unexpected length {len(arg)}")
 
     # Deprecated name
     def add_parameters(self, local_only=False, commit=True, *args, **kwargs):
@@ -759,7 +758,7 @@ class ETLTask(object):
                 logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
                 logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.ERROR)
         else:
-            self.log.info('Setting sqlalchemy.engine to {}'.format(mode))
+            self.log.info(f'Setting sqlalchemy.engine to {mode}')
             logging.getLogger('sqlalchemy.engine').setLevel(mode)
             logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(mode)
 
@@ -776,7 +775,7 @@ class ETLTask(object):
         self.log_handler = self.config.logging.add_log_file_handler(log_file_prefix=self.log_file_name)
 
         self.log_logging_level()
-        self.log.debug("externally_provided_scheduler = {}".format(self._externally_provided_scheduler))
+        self.log.debug(f"externally_provided_scheduler = {self._externally_provided_scheduler}")
 
     def init(self):
         """
@@ -808,7 +807,7 @@ class ETLTask(object):
         """
         Placeholder for load. This is where the main body of the ETLTask's work should be performed.
         """
-        raise AttributeError("{} load not implemented".format(self))
+        raise AttributeError(f"{self} load not implemented")
 
     def finish(self):
         """
@@ -899,7 +898,7 @@ class ETLTask(object):
                 while True:
                     try:
                         msg = q.get(block=block, timeout=10)
-                        self.log.debug("process_messages got {}".format(msg))
+                        self.log.debug(f"process_messages got {msg}")
                         if msg == 'stats':
                             self.child_to_parent.put(self.statistics)
                         elif msg == 'stop':
@@ -910,7 +909,7 @@ class ETLTask(object):
                         elif isinstance(msg, ChildStatusUpdate):
                             self.process_child_status_update(msg)
                         else:
-                            self.log.warning("Got unexpected message from parent: {}".format(repr(msg)))
+                            self.log.warning(f"Got unexpected message from parent: {repr(msg)}")
                     except IOError as e:
                         if e.errno == errno.EINTR:
                             continue
@@ -969,13 +968,13 @@ class ETLTask(object):
             self.finish()
             self.finish_timer.stop()
 
-            self.log.info("{} done.".format(self))
+            self.log.info(f"{self} done.")
             self.status = Status.succeeded
             stats = self.statistics
             if self.child_to_parent is not None:
                 self.child_to_parent.put(stats)
             stats_formatted = Statistics.format_statistics(stats)
-            self.log.info("{} statistics=\n{stats}".format(self, stats=stats_formatted))
+            self.log.info(f"{self} statistics=\n{stats_formatted}")
 
             self.start_following_tasks()
             self.close(error=False)
@@ -986,30 +985,27 @@ class ETLTask(object):
             if not handle_exceptions:
                 raise e
             self.log.exception(e)
-            self.log.error(e)
-            self.log.info(repr(e))
-            self.log.info(utility.dict_to_str(e.__dict__))
             if not self.suppress_notifications:
                 environment = self.config.bi_etl.environment_name
                 message_list = list()
                 message_list.append(repr(e))
-                message_list.append("Task ID = {}".format(self.task_id))
+                message_list.append(f"Task ID = {self.task_id}")
                 if self.config.bi_etl.scheduler is not None:
                     ui_url = self.config.bi_etl.scheduler.base_ui_url
                     if ui_url and self.task_id:
-                        message_list.append("Run details are here: {}{}".format(ui_url, self.task_id))
+                        message_list.append(f"Run details are here: {ui_url}{self.task_id}")
                 message_content = '\n'.join(message_list)
                 subject = f"{environment} {self} load failed"
 
                 self.notify(self.config.notifiers.failures, subject=subject, message=message_content,)
 
-            self.log.info("{} FAILED.".format(self))
+            self.log.info(f"{self} FAILED.")
             if self.child_to_parent is not None:
                 self.child_to_parent.put(e)
         finally:
             self.config.logging.remove_log_handler(self.log_handler)
 
-        self.log.info("Status = {}".format(repr(self.status)))
+        self.log.info(f"Status = {repr(self.status)}")
 
         # Send out status
         if self.child_to_parent is not None:
@@ -1129,10 +1125,10 @@ class ETLTask(object):
                 i = 0
                 while name in stats:
                     i += 1
-                    name = "{}_{}".format(obj, i)
+                    name = f"{obj}_{i}"
                 stats[name] = obj.statistics
             except AttributeError as e:
-                self.log.info("'{}' does not report statistics. Msg={}".format(obj, e))
+                self.log.info(f"'{obj}' does not report statistics. Msg={e}")
             except Exception as e:  # pylint: disable=broad-except
                 self.log.exception(e)
 
@@ -1230,7 +1226,7 @@ def run_task(task_name,
         else:
             print("Using passed config")
 
-        print(('Scanning for task matching {}'.format(task_name)))
+        print(f'Scanning for task matching {task_name}')
         # Import is done here to prevent circular module dependency
         from bi_etl.scheduler.scheduler_interface import SchedulerInterface
         if scheduler is None:
@@ -1248,7 +1244,7 @@ def run_task(task_name,
                               parent_to_child=parent_to_child,
                               child_to_parent=child_to_parent,
                               )
-        # print('ran_ok = {}'.format(ran_ok))
+        # print(f"ran_ok = {ran_ok}")
         etl_task.close()
         print("run_task is done")
 

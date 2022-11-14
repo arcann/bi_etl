@@ -5,8 +5,11 @@ Created on Mar 2, 2015
 """
 import logging
 from datetime import datetime, date
+from typing import Dict, Any, List, Mapping, Tuple
 
 import sqlalchemy
+
+from bi_etl.components.row.row import Row
 
 
 class StatementQueue(object):
@@ -18,11 +21,11 @@ class StatementQueue(object):
         """
         Constructor
         """
-        self.statements = dict()
-        self.statement_values = dict()
-        self.row_count = 0
-        self.execute_with_binds = execute_with_binds
-        self.row_limit = 1000
+        self.statements: Dict[Any, sqlalchemy.sql.base.Executable] = dict()
+        self.statement_values: Dict[Any, List[Mapping]] = dict()
+        self.row_count: int = 0
+        self.execute_with_binds: bool = execute_with_binds
+        self.row_limit: int = 1000
         # Batch size = 	65,536 * Network Packet Size
         # Network Packet Size is the size of the tabular data stream (TDS) packets used to communicate between
         # applications and the relational Database Engine. The default packet size is 4 KB, and is controlled by the
@@ -100,34 +103,37 @@ class StatementQueue(object):
             for stmtKey in self.statements.keys():
                 stmt = self.statements[stmtKey]
                 values = self.statement_values[stmtKey]
-                if self.execute_with_binds:
-                    result = connection.execute(stmt, values)
-                    if result.rowcount == -1:
-                        rows_affected += len(values)
-                    else:
-                        rows_affected += result.rowcount
-                else:
-                    # cursor = connection.engine.raw_connection().cursor()
-                    # for values_str in self.values_str_list(values):
-                    #     cursor.execute(stmt.format(values=values_str))
-                    #     rows_affected += cursor.rowcount
-                    for values_str in self.values_str_list(values):
-                        result = connection.execute(stmt.format(values=values_str))
+                if len(values) > 0:
+                    if self.execute_with_binds:
+                        result = connection.execute(stmt, values)
                         if result.rowcount == -1:
                             rows_affected += len(values)
                         else:
                             rows_affected += result.rowcount
-            self.statements.clear()
+                    else:
+                        # cursor = connection.engine.raw_connection().cursor()
+                        # for values_str in self.values_str_list(values):
+                        #     cursor.execute(stmt.format(values=values_str))
+                        #     rows_affected += cursor.rowcount
+                        for values_str in self.values_str_list(values):
+                            # Treat stmt as a string
+                            # noinspection PyUnresolvedReferences
+                            result = connection.execute(stmt.format(values=values_str))
+                            if result.rowcount == -1:
+                                rows_affected += len(values)
+                            else:
+                                rows_affected += result.rowcount
+                self.statement_values[stmtKey].clear()
             self.row_count = 0
         return rows_affected
     
-    def iter_single_statements(self):
+    def iter_single_statements(self) -> Tuple[sqlalchemy.sql.base.Executable, Row]:
         if self.row_count > 0:
             for stmtKey in self.statements.keys():
                 stmt = self.statements[stmtKey]
                 values = self.statement_values[stmtKey]
                 for row in values:
-                    yield (stmt, row)
+                    yield stmt, row
 
     def execute_singly(self, connection) -> int:
         rows_affected = 0

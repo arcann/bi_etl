@@ -100,7 +100,7 @@ class XLSXReader(ETLComponent):
         self.__header_row = 1    
         self.__start_row = None
         self.__active_row = None               
-        
+
         self._workbook = None
         self._active_worksheet: Optional[Worksheet] = None
         self._active_worksheet_name: Optional[str] = None

@@ -69,9 +69,18 @@ class BaseTestDatabase(unittest.TestCase):
         del cls.db_container
 
     @staticmethod
-    def get_package_path():
+    def get_package_path() -> Path:
         module_path = Path(inspect.getfile(BaseTestDatabase))
         return module_path.parents[1]
+
+    def get_test_file_path(self, file_name: str) -> Path:
+        # Search the folders from the last added to first added
+        # since the last added is the child class that might override a test file
+        for folder in reversed(self.test_file_search_folders):
+            path = self.get_package_path() / folder / file_name
+            if path.exists():
+                return path
+        raise FileNotFoundError(f"{file_name} not found in folders {self.test_file_search_folders}")
 
     def setUp(self):
         self.log = logging.getLogger(__name__)
@@ -97,6 +106,7 @@ class BaseTestDatabase(unittest.TestCase):
             database_name=__name__,
             uses_bytes_length_limits=True,
         )
+        self.test_file_search_folders = []
 
     def tearDown(self):
         self.mock_database.dispose()
