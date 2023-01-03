@@ -52,8 +52,12 @@ class RedShiftS3Base(BulkLoader):
         self.s3 = self.session.resource('s3')
         self.bucket = self.s3.Bucket(self.s3_bucket_name)
 
-        self.error_matches = ['The S3 bucket addressed by the query is in a different region from this cluster.', 'Access denied', 'The AWS Access Key Id you provided does not exist in our records.']
-
+        self.error_matches = [
+            'The S3 bucket addressed by the query is in a different region from this cluster.',
+            'Access denied',
+            'The AWS Access Key Id you provided does not exist in our records.'
+        ]
+        self.lines_scanned_modifier = 0
 
     def s3_folder_contents(
             self,
@@ -191,8 +195,9 @@ class RedShiftS3Base(BulkLoader):
         #       However, requires extensive testing
         table_object.execute(f"COMMIT;")
 
+        # TODO: The -1 only works for CSV files with a header (currently the most common use case)
         sql = f"""
-        SELECT SUM(lines_scanned) as rows_loaded
+        SELECT greatest(SUM(lines_scanned) + {self.lines_scanned_modifier},0) as rows_loaded
         FROM stl_load_commits
         WHERE query = pg_last_copy_id()
         """
@@ -245,10 +250,11 @@ class RedShiftS3Base(BulkLoader):
             analyze_compression=analyze_compression,
             options=options,
         )
+        rows_loaded = None
 
         while not done:
             try:
-                self._run_copy_sql(
+                rows_loaded = self._run_copy_sql(
                     copy_sql=copy_sql,
                     table_object=table_object,
                     file_list=file_list,
@@ -273,6 +279,7 @@ class RedShiftS3Base(BulkLoader):
                         time.sleep(5)
                     else:
                         raise
+        return rows_loaded
 
     def load_from_files(
             self,
@@ -283,11 +290,11 @@ class RedShiftS3Base(BulkLoader):
             file_compression: str = '',
             options: str = '',
             analyze_compression: str = None,
-    ):
+    ) -> int:
         s3_full_folder = self._get_table_specific_folder_name(self.s3_folder, table_object)
         file_list = self._upload_files_to_s3(local_files, s3_full_folder)
 
-        self.load_from_s3_path(
+        rows_loaded = self.load_from_s3_path(
             s3_source_path=s3_full_folder,
             file_list=file_list,
             table_object=table_object,
@@ -300,6 +307,8 @@ class RedShiftS3Base(BulkLoader):
         if self.s3_clear_when_done:
             self.clean_s3_folder(s3_full_folder)
 
+        return rows_loaded
+
     def load_from_iterator(
         self,
         iterator: Iterator,
@@ -309,7 +318,7 @@ class RedShiftS3Base(BulkLoader):
         progress_frequency: int = 10,
         analyze_compression: bool = None,
         parent_task: Optional[ETLTask] = None,
-    ):
+    ) -> int:
 
         raise NotImplementedError()
 

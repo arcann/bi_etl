@@ -30,6 +30,8 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
         self.s3_file_delimiter = s3_file_delimiter
         self.null_value = null_value
         self.has_header = has_header
+        if self.has_header:
+            self.lines_scanned_modifier = -1
 
     def __reduce_ex__(self, protocol):
         return (
@@ -187,10 +189,12 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             local_files = []
             file_number = 0
             current_file = None
+            row_number = 0
             current_row_number = 0
             try:
                 progress_timer = Timer()
-                for row_number, row in enumerate(iterator):
+                for row in iterator:
+                    row_number += 1
                     if current_file is None or current_row_number >= self.s3_file_max_rows:
                         if current_file is not None:
                             file_number += 1
@@ -228,7 +232,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 zip_file.close()
 
             if row_number > 0:
-                self.load_from_files(
+                rows_loaded = self.load_from_files(
                     local_files,
                     file_compression='GZIP',
                     table_object=table_object,
@@ -236,6 +240,8 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                     perform_rename=perform_rename,
                     analyze_compression=analyze_compression,
                 )
+                if rows_loaded != row_number:
+                    self.log.error(f"COPY from files should have loaded {row_number:,} but it reports {rows_loaded:,} rows loaded")
             else:
                 self.log.info(f"{self} had nothing to do with 0 rows found")
             return row_number
@@ -250,7 +256,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             analyze_compression: str = None,
             parent_task: typing.Optional[ETLTask] = None,
     ) -> int:
-        if self.s3_file_max_rows is not None:
+        if self.s3_file_max_rows is not None and self.s3_file_max_rows > 0:
             return self.load_from_iterator_partition_max_rows(
                 iterator=iterator,
                 table_object=table_object,
