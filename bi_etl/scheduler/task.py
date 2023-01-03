@@ -5,6 +5,7 @@ Created on Sep 15, 2014
 """
 import errno
 import importlib
+import inspect
 import logging
 import socket
 import traceback
@@ -17,6 +18,7 @@ from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatab
 from config_wrangler.config_types.dynamically_referenced import DynamicallyReferenced
 from pydicti import dicti, Dicti
 
+import bi_etl
 import bi_etl.config.notifiers_config as notifiers_config
 from bi_etl import utility
 from bi_etl.components.etlcomponent import ETLComponent
@@ -52,8 +54,8 @@ class ETLTask(object):
 
     start_following_tasks() can be overridden.
     """
-
     CLASS_VERSION = 1.0
+    _task_repo: Dict[str, 'ETLTask'] = dict()
 
     def __init__(self,
                  config: BI_ETL_Config_Base,
@@ -216,8 +218,7 @@ class ETLTask(object):
         Note: Return value needs to be compatible with find_etl_class
         """
         module = self.__class__.__module__
-
-        return module + '.' + self.__class__.__name__
+        return f"{module}.{self.__class__.__name__}"
 
     @property
     def environment_name(self):
@@ -333,7 +334,7 @@ class ETLTask(object):
         self.warning_messages.add(warning_message)
 
     # pylint: disable=no-self-use
-    def depends_on(self):
+    def depends_on(self) -> Iterable['ETLTask']:
         """
         Override to provide a static list of tasks that this task will wait on if they are running.
 
@@ -349,8 +350,50 @@ class ETLTask(object):
         """
         return list()
 
+    def internal_tasks(self) -> Iterable['ETLTask']:
+        """
+        Override to provide a static list of tasks that this task will run internally.
+        Can be used by the scheduler to build a complete dependency tree.
+        """
+        return list()
+
+    def dependency_full_set(self, parents: tuple = None) -> FrozenSet['ETLTask']:
+        dependency_set = self.depends_on()
+        if dependency_set is None:
+            dependency_set = set()
+        else:
+            # Ensure dependency_set is in fact a set.
+            # Even if it is a set, copy the set so that we don't modify the one sent by depends_on.
+            # It might not always be a unique list object that is safe to modify
+            dependency_set = set(dependency_set)
+
+        # Find external dependencies of internal / sub-tasks
+        internal_tasks = self.internal_tasks()
+
+        self_tuple = (self,)
+        if parents is None:
+            parents = self_tuple
+        else:
+            parents = parents + self_tuple
+
+        for sub_task in internal_tasks:
+            if sub_task is None:
+                continue
+            if not isinstance(sub_task, ETLTask):
+                raise ValueError(f"{self}.internal_tasks returned {sub_task} which is not an ETLTask")
+            if sub_task not in parents:
+                sub_deps = sub_task.dependency_full_set(parents=parents)
+                if sub_deps is not None:
+                    # Filter for dependencies outside this task
+                    for sub_dep in sub_deps:
+                        if sub_dep in parents or sub_dep == self:
+                            raise ValueError(f"sub_task {sub_task} has dep {sub_dep} overlap with {self} or {parents}")
+                        if sub_dep not in internal_tasks:
+                            dependency_set.add(sub_dep)
+        return frozenset(dependency_set)
+
     @property
-    def normalized_dependents_set(self):
+    def normalized_dependents_set(self) -> Set['ETLTask']:
         """
         Build a set of modules this task depends on.
         See depends_on.
@@ -359,20 +402,94 @@ class ETLTask(object):
         if self._normalized_dependents_set is None:
             normalized_dependents_set = set()
             self._normalized_dependents_set = normalized_dependents_set
-            depends_on = self.depends_on()
+            depends_on = self.dependency_full_set()
             if depends_on is not None:
-                if isinstance(depends_on, str):
-                    depends_on = [depends_on]
-
-                for dep_name in depends_on:
-                    qualified_classes = self.scheduler.find_etl_classes(dep_name)
-                    if len(qualified_classes) > 0:
-                        for dep_task_name in qualified_classes:
-                            normalized_dependents_set.add(dep_task_name)
-                    else:
-                        self.log.warning(f'dependent entry {dep_name} did not match any classes')
+                for dep_value in depends_on:
+                    if not isinstance(dep_value, ETLTask):
+                        if isinstance(dep_value, str):
+                            dep_value = self.PythonDep(dep_value)
+                        else:
+                            raise ValueError(f"Dependency {dep_value} is not an ETLTask (preferred) or str value")
+                    normalized_dependents_set.add(dep_value)
 
         return self._normalized_dependents_set
+
+    @property
+    def target_database(self) -> DatabaseMetadata:
+        raise NotImplementedError()
+
+    # noinspection PyPep8Naming
+    def PythonDep(self, etl_class_str: str) -> 'ETLTask':
+        module, class_name = etl_class_str.rsplit('.', 1)
+        mod_object = importlib.import_module(module)
+        try:
+            class_object = getattr(mod_object, class_name)
+        except AttributeError:
+            try:
+                # First try the whole etl_class_str as a module name
+                class_object = importlib.import_module(etl_class_str)
+            except ModuleNotFoundError:
+                # Next, try case-insensitive search
+                found_matches = list()
+                class_name_lower = class_name.lower()
+                for found_class_name, found_class in inspect.getmembers(mod_object, inspect.isclass):
+                    if found_class_name.lower() == class_name_lower:
+                        found_matches.append(found_class)
+                if len(found_matches) == 0:
+                    raise ValueError(f"Module {mod_object} does not contain {class_name}")
+                elif len(found_matches) > 1:
+                    raise ValueError(
+                        f"Module {mod_object} does contains more than one case-insenstive match for {class_name} "
+                        f"they are {found_matches}"
+                    )
+                class_object = found_matches[0]
+
+        if inspect.isclass(class_object):
+            if not issubclass(class_object, ETLTask):
+                raise ValueError(f"{etl_class_str} resolves to a class of {class_object} which is not a subclass of ETLTask")
+        else:
+            # class_object is most likely a module.  We'll search it for our class.
+            matches = list()
+            for class_in_module_name, class_in_module in inspect.getmembers(class_object, inspect.isclass):
+                # Check that the class is defined in our module (directly or from a sub-module)
+                # and is not imported from elsewhere
+                if class_in_module.__module__.startswith(class_object.__name__):
+                    if issubclass(class_in_module, ETLTask) and class_in_module != ETLTask:
+                        matches.append(class_in_module)
+            if len(matches) > 1:
+                raise ValueError(
+                    f"PythonDep was given a module name '{etl_class_str}' and multiple ETLTask classes found inside it. "
+                    f"Matches = {[match.name for match in matches]}"
+                )
+            elif len(matches) == 0:
+                raise ValueError(
+                    f"PythonDep was given a module name '{etl_class_str}' and no ETLTask classes found inside it. "
+                )
+            else:
+                class_object = matches[0]
+
+        etl_task = class_object(
+            config=self.config,
+        )
+        return etl_task.get_task_singleton()
+
+    def SQLDep(
+            self,
+            sql_path: str,
+            script_path: str = None,
+            database: DatabaseMetadata = None
+    ) -> 'bi_etl.utility.run_sql_script.RunSQLScript':
+        if database is None:
+            try:
+                database = self.target_database
+            except NotImplementedError:
+                pass
+        inst = self.get_sql_script_runner(
+            database_entry=database,
+            script_path=script_path,
+            script_name=sql_path,
+        )
+        return inst.get_task_singleton()
 
     def _mutually_exclusive_execution(self):
         """
@@ -695,7 +812,7 @@ class ETLTask(object):
             script_name: Union[str, Path],
             script_path: Union[str, Path],
             database_entry: Union[str, DatabaseMetadata, None] = None,
-    ):
+    ) -> 'bi_etl.utility.run_sql_script.RunSQLScript':
         if database_entry is None:
             database_entry = self.get_database_name()
         # Late import to avoid circular dependency
@@ -1165,6 +1282,15 @@ class ETLTask(object):
 
     def __exit__(self, exit_type, exit_value, exit_traceback):
         self.close()
+
+    def get_task_singleton(self):
+        inst_name = self.name
+        if inst_name in ETLTask._task_repo:
+            inst = ETLTask._task_repo[inst_name]
+        else:
+            ETLTask._task_repo[inst_name] = self
+            inst = self
+        return inst
 
 
 ##################

@@ -7,7 +7,7 @@ import hashlib
 import os
 import re
 from pathlib import Path
-from typing import Union, Dict
+from typing import Union, Dict, Iterable
 
 import sqlparse
 from pydicti import Dicti
@@ -42,12 +42,17 @@ class RunSQLScript(ETLTask):
         self.script_name = Path(script_name)
         if script_path is None:
             self.script_path = None
+            self.provided_script_path = '.'
         else:
+            self.provided_script_path = script_path
             self.script_path = Path(script_path)
 
         paths_tried = list()
         paths_tried.append(self.script_full_name)
-        if not self.script_full_name.exists():
+        if self.script_full_name.exists():
+            self.script_base_path = Path.cwd()
+        else:
+            # TODO: Use self.config.bi_etl.task_finder_sql_base if not None
             for path_to_try in Path.cwd().parents:
                 if script_path:
                     self.script_path = path_to_try / script_path
@@ -55,10 +60,15 @@ class RunSQLScript(ETLTask):
                     self.script_path = path_to_try
                 paths_tried.append(self.script_full_name)
                 if self.script_full_name.exists():
+                    self.script_base_path = path_to_try
                     break
 
         if not self.script_full_name.exists():
-            raise ValueError(f"RunSQLScript could not find the script {self.script_name} tried {paths_tried}")
+            indent = '  '
+            paths_tried_str = f"\n{indent}".join([str(s) for s in paths_tried])
+            raise ValueError(
+                f"RunSQLScript could not find the script {self.script_name} tried:\n{indent}{paths_tried_str}"
+            )
 
     def __getstate__(self):
         odict = super().__getstate__()
@@ -82,12 +92,41 @@ class RunSQLScript(ETLTask):
         )
         self._parameter_dict = Dicti(odict['_parameter_dict'])
 
-    def depends_on(self):
-        return []
+    def depends_on(self) -> Iterable['ETLTask']:
+        dependency_set = set(super().depends_on())
+        # Remove this script from the default dependencies
+        if self in dependency_set:
+            dependency_set.remove(self)
+        try:
+            with open(self.script_full_name, 'rt', errors='replace') as file_data:
+                for line in file_data:
+                    if line.startswith('--'):
+                        setting_value = line[2:]
+                        if '=' in setting_value:
+                            setting, value = setting_value.split('=', 1)
+                            setting = setting.strip().lower()
+                            value = value.strip()
+                            try:
+                                if setting == 'depends_on_sql':
+                                    dependency_set.add(self.SQLDep(value))
+                                elif setting == 'depends_on_py':
+                                    dependency_set.add(self.PythonDep(value))
+                            except Exception as e:
+                                self.log.exception(e)
+                                raise ValueError(f"{self} depends_on {setting} = {value} yielded error {e}")
+                        elif 'depends_on_none' in setting_value:
+                            dependency_set.clear()
+            return dependency_set
+        except OSError as e:
+            raise ValueError(f"{self} reading script_path {self.script_path} got {repr(e)}")
+        except UnicodeDecodeError as e:
+            raise ValueError(f"{self} reading script_path {self.script_path} got UnicodeDecodeError {e}")
 
     @property
     def name(self):
-        name = str(self.script_name).replace('/', '.').replace('\\', '.')
+        name = str(
+            self.script_full_name.relative_to(self.script_base_path)
+        ).replace('/', '.').replace('\\', '.')
         return f"run_sql_script.{name}"
 
     @property
