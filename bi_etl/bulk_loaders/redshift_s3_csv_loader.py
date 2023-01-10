@@ -28,9 +28,12 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             config=config,
         )
         self.s3_file_delimiter = s3_file_delimiter
+        if self.s3_file_max_rows is None and self.s3_files_to_generate is None:
+            self.s3_file_max_rows = 25000
         self.null_value = null_value
         self.has_header = has_header
         if self.has_header:
+            # Note: This is per file so the row count will be = rows_scanned - (lines_scanned_modifier * len(file_list))
             self.lines_scanned_modifier = -1
 
     def __reduce_ex__(self, protocol):

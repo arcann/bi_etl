@@ -3145,6 +3145,7 @@ class Table(ReadOnlyTable):
                         self.log.info(f"Bulk load from insert_row for {self}")
                         # Finish the iterator on the queue
                         self._bulk_iter_queue.put(self._bulk_iter_sentinel)
+                        sleep(1)
                         self._bulk_iter_max_q_length = max(self._bulk_iter_max_q_length, len(self._bulk_iter_queue))
                         stats['max_insert_queue'] = self._bulk_iter_max_q_length
                         stats['ending_insert_queue'] = len(self._bulk_iter_queue)

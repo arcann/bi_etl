@@ -88,10 +88,13 @@ class RedShiftS3Base(BulkLoader):
                                       f'Existing contents = {folder_contents}')
 
         s3_files = list()
+        total_size = 0
         # Upload the files
         for file_number, local_path in enumerate(local_files):
+            file_size = os.path.getsize(local_path)
+            total_size += file_size
             s3_path = f'{s3_full_folder}/{os.path.basename(local_path)}'
-            self.log.info(f"Uploading from '{local_path}' to {self.s3_bucket_name}' key '{s3_path}' ")
+            self.log.info(f"Uploading from '{local_path}' to {self.s3_bucket_name}' key '{s3_path}' size = {file_size:,} bytes")
             s3_files.append(f's3://{self.s3_bucket_name}/{s3_path}')
             self.bucket.upload_file(
                 str(local_path),
@@ -114,6 +117,8 @@ class RedShiftS3Base(BulkLoader):
                         self.log.info(f'{key} is probably not finished syncing among AWS S3 nodes, we will retry again after 5 second. {time.time()}')
                         time.sleep(5)
                         response = self.bucket.Object(s3_path).get()
+
+        self.log.info(f"Uploaded {total_size:,} bytes in total to {s3_full_folder}")
         return s3_files
 
     def _run_copy_sql(
@@ -197,7 +202,7 @@ class RedShiftS3Base(BulkLoader):
 
         # TODO: The -1 only works for CSV files with a header (currently the most common use case)
         sql = f"""
-        SELECT greatest(SUM(lines_scanned) + {self.lines_scanned_modifier},0) as rows_loaded
+        SELECT greatest(SUM(lines_scanned) + {self.lines_scanned_modifier * len(file_list)},0) as rows_loaded
         FROM stl_load_commits
         WHERE query = pg_last_copy_id()
         """

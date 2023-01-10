@@ -8,7 +8,8 @@ from decimal import Decimal
 from tempfile import TemporaryDirectory
 from typing import *
 
-import fastavro
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from bi_etl.bulk_loaders.redshift_s3_base import RedShiftS3Base
 from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
     from bi_etl.scheduler.task import ETLTask
 
 
-class RedShiftS3AvroBulk(RedShiftS3Base):
+class RedShiftS3ParquetBulk(RedShiftS3Base):
     def __init__(
         self,
         config: S3_Bulk_Loader_Config,
@@ -26,17 +27,11 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
         super().__init__(
             config=config,
         )
+
         if self.s3_file_max_rows is None and self.s3_files_to_generate is None:
-            self.s3_file_max_rows = 50000
+            self.s3_file_max_rows = 2_000_000
 
-        # Redshift appears to count the schema as a line read
-        self.lines_scanned_modifier = -1
-
-        try:
-            import snappy
-            self.codec = 'snappy'
-        except ImportError:
-            self.codec = 'deflate'
+        self.lines_scanned_modifier = 0
 
     @property
     def needs_all_columns(self):
@@ -57,7 +52,7 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
         return f"""\
                 COPY {table_to_load} FROM 's3://{self.s3_bucket_name}/{s3_source_path}'                      
                      credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'
-                     AVRO 'auto'
+                     FORMAT PARQUET
                      {file_compression}  
                      {options}
                """
@@ -66,17 +61,19 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
             self,
             temp_dir,
             file_number: int,
-            parsed_schema,
+            schema: pa.Schema,
             data_chunk: list,
             local_files_list: list,
     ):
-
         self.log.debug(f"Starting bulk load chunk {file_number}")
-        filepath = os.path.join(temp_dir, f'data_{file_number}.avro')
+        # TODO: Redshift will recognize and uncompress these file types
+        #   .gz
+        #   .snappy
+        #   .bz2
+        filepath = os.path.join(temp_dir, f'data_{file_number}.parquet.snappy')
         local_files_list.append(filepath)
-        with open(filepath, 'wb') as avro_file:
-            # avro_iterators = self.distribute(iterator, writer_pool_size)
-            fastavro.writer(avro_file, parsed_schema, data_chunk, codec=self.codec)
+        table = pa.Table.from_pylist(data_chunk, schema=schema)
+        pq.write_table(table, filepath, compression='SNAPPY')
         self.log.debug(f"Closed bulk load chunk {file_number}: {filepath}")
 
     def load_from_iterator(
@@ -96,40 +93,39 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
             # Generate schema from table
             fields = list()
             type_map = {
-                str: ['string'],
-                bytes: ['bytes'],
-                date: ['string'],
-                datetime: ['string'],
-                time: ['string'],
-                timedelta: ['string'],
-                bool: ['boolean'],
-                int: ['long'],
-                float: ['double'],
-                Decimal: ['int', 'double'],
+                str: pa.string(),
+                bytes: pa.large_binary(),
+                date: pa.date32(),
+                datetime: pa.date64(),
+                time: pa.time64('us'),
+                timedelta: pa.month_day_nano_interval(),
+                bool: pa.bool_(),
+                int: pa.int64(),
+                float: pa.float64(),
             }
             for column in table_object.columns:
                 if column.type.python_type in type_map:
                     col_type = type_map[column.type.python_type]
                 else:
-                    col_type = ['string']
+                    if column.type.python_type == Decimal:
+                        col_type = pa.decimal128(
+                            column.type.precision,
+                            column.type.scale,
+                        )
+                    else:
+                        col_type = pa.string()
 
-                fields.append({
-                    'name': column.name,
-                    'type': ["null"] + col_type,
-                    'default': None,
-                })
+                fields.append(
+                    pa.field(
+                        column.name,
+                        col_type,
+                        True,  # Nullable
+                    )
+                )
 
-            schema = {
-                "name": table_to_load,
-                "type": "record",
-                'fields': fields,
-            }
+            schema = pa.schema(fields)
 
             self.log.debug(f"schema = {schema}")
-
-            parsed_schema = fastavro.parse_schema(schema)
-
-            self.log.debug(f"parsed_schema = {parsed_schema}")
 
             file_number = 0
             data_length = 0
@@ -149,10 +145,11 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
                     self._write_to_file(
                         temp_dir=temp_dir,
                         file_number=file_number,
-                        parsed_schema=parsed_schema,
+                        schema=schema,
                         data_chunk=data_chunk,
                         local_files_list=local_files_list,
                     )
+                    # TODO: We could start uploading the files to S3 with a gevent "thread" here
                     data_chunk = list()
 
             # Write final chunk
@@ -162,7 +159,7 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
                 self._write_to_file(
                     temp_dir=temp_dir,
                     file_number=file_number,
-                    parsed_schema=parsed_schema,
+                    schema=schema,
                     data_chunk=data_chunk,
                     local_files_list=local_files_list,
                 )
