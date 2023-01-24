@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-import typing
+from typing import *
 from datetime import datetime
 
 import sqlalchemy
@@ -10,7 +10,7 @@ import sqlalchemy
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_status import RowStatus
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     from bi_etl.components.table import Table
     from bi_etl.scheduler.task import ETLTask
 
@@ -42,18 +42,18 @@ class BulkLoader(object):
             file_compression: str = '',
             options: str = '',
             analyze_compression: str = None,
-    ):
+    ) -> int:
         raise NotImplementedError()
 
     def load_from_iterator(
             self,
-            iterator: typing.Iterator,
+            iterator: Iterator,
             table_object: Table,
             table_to_load: str = None,
             perform_rename: bool = False,
             progress_frequency: int = 10,
             analyze_compression: str = None,
-            parent_task: typing.Optional[ETLTask] = None,
+            parent_task: Optional[ETLTask] = None,
     ) -> int:
         raise NotImplementedError()
 
@@ -98,7 +98,7 @@ class BulkLoader(object):
     def apply_updates(
             self,
             table_object: Table,
-            update_rows: typing.Sequence[Row]):
+            update_rows: Sequence[Row]):
         """
         NOT TESTED !
         """

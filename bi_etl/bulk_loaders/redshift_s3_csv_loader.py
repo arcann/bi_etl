@@ -28,8 +28,13 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             config=config,
         )
         self.s3_file_delimiter = s3_file_delimiter
+        if self.s3_file_max_rows is None and self.s3_files_to_generate is None:
+            self.s3_file_max_rows = 25000
         self.null_value = null_value
         self.has_header = has_header
+        if self.has_header:
+            # Note: This is per file so the row count will be = rows_scanned - (lines_scanned_modifier * len(file_list))
+            self.lines_scanned_modifier = -1
 
     def __reduce_ex__(self, protocol):
         return (
@@ -100,7 +105,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                      {options}; commit;
                 """
 
-    def load_from_iterator_paritition_fixed(
+    def load_from_iterator_partition_fixed(
            self,
            iterator: typing.Iterator,
            table_object: Table,
@@ -112,7 +117,10 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
     ) -> int:
 
         row_count = 0
-        with TemporaryDirectory() as temp_dir:
+        with TemporaryDirectory(
+                dir=self.config.temp_file_path,
+                ignore_cleanup_errors=True,
+        ) as temp_dir:
             writer_pool_size = self.s3_files_to_generate
             local_files = []
             zip_pool = []
@@ -173,7 +181,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 self.log.info(f"{self} had nothing to do with 0 rows found")
             return row_count
 
-    def load_from_iterator_parition_max_rows(
+    def load_from_iterator_partition_max_rows(
             self,
             iterator: typing.Iterator,
             table_object: Table,
@@ -183,14 +191,16 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             analyze_compression: str = None,
             parent_task: typing.Optional[ETLTask] = None,
     ) -> int:
-        with TemporaryDirectory() as temp_dir:
+        with TemporaryDirectory(dir=self.config.temp_file_path, ignore_cleanup_errors=True) as temp_dir:
             local_files = []
             file_number = 0
             current_file = None
+            row_number = 0
             current_row_number = 0
             try:
                 progress_timer = Timer()
-                for row_number, row in enumerate(iterator):
+                for row in iterator:
+                    row_number += 1
                     if current_file is None or current_row_number >= self.s3_file_max_rows:
                         if current_file is not None:
                             file_number += 1
@@ -228,7 +238,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 zip_file.close()
 
             if row_number > 0:
-                self.load_from_files(
+                rows_loaded = self.load_from_files(
                     local_files,
                     file_compression='GZIP',
                     table_object=table_object,
@@ -236,6 +246,8 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                     perform_rename=perform_rename,
                     analyze_compression=analyze_compression,
                 )
+                if rows_loaded != row_number:
+                    self.log.error(f"COPY from files should have loaded {row_number:,} but it reports {rows_loaded:,} rows loaded")
             else:
                 self.log.info(f"{self} had nothing to do with 0 rows found")
             return row_number
@@ -250,8 +262,8 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             analyze_compression: str = None,
             parent_task: typing.Optional[ETLTask] = None,
     ) -> int:
-        if self.s3_file_max_rows is not None:
-            return self.load_from_iterator_parition_max_rows(
+        if self.s3_file_max_rows is not None and self.s3_file_max_rows > 0:
+            return self.load_from_iterator_partition_max_rows(
                 iterator=iterator,
                 table_object=table_object,
                 table_to_load=table_to_load,
@@ -261,7 +273,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 parent_task=parent_task,
             )
         else:
-            return self.load_from_iterator_paritition_fixed(
+            return self.load_from_iterator_partition_fixed(
                 iterator=iterator,
                 table_object=table_object,
                 table_to_load=table_to_load,
