@@ -1091,6 +1091,18 @@ docs = ["Sphinx", "repoze.sphinx.autointerface"]
 test = ["manuel", "zope.testrunner"]
 
 [[package]]
+name = "pip"
+version = "22.3.1"
+description = "The PyPA recommended tool for installing Python packages."
+category = "dev"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pip-22.3.1-py3-none-any.whl", hash = "sha256:908c78e6bc29b676ede1c4d57981d490cb892eb45cd8c214ab6298125119e077"},
+    {file = "pip-22.3.1.tar.gz", hash = "sha256:65fd48317359f3af8e593943e6ae1506b66325085ea64b706a998c6e83eeaf38"},
+]
+
+[[package]]
 name = "plaster"
 version = "1.1.2"
 description = "A loader interface around multiple config file formats."
@@ -2383,4 +2395,4 @@ test = ["psycopg2"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7,<4.0"
-content-hash = "4aeea15aed2ff7de13e518ba0e1a1c060a8ad73243a7ba6a4a80c6f56bc6e1ea"
+content-hash = "f1dd04e4073a3ce783eef9e97090f102d5397875729e923a1a3ed2ab36408f80"

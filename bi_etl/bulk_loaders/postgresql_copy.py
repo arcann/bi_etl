@@ -71,7 +71,7 @@ class PostgreSQLCopy(BulkLoader):
             analyze_compression: str = None,
             parent_task: Optional[ETLTask] = None,
     ) -> int:
-        with tempfile.TemporaryDirectory(dir=self.config.temp_file_path) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=self.config.temp_file_path, ignore_cleanup_errors=True) as temp_dir:
             data_file_path = os.path.join(temp_dir, f'data_{table_object.table_name}.data')
 
             # Save to a file first, so we can call load_from_files

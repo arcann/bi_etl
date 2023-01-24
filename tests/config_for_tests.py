@@ -1,11 +1,13 @@
 from tempfile import TemporaryDirectory
-from typing import Union
+from typing import Union, List
 
+from config_wrangler.config_templates.config_hierarchy import ConfigHierarchy
 from config_wrangler.config_templates.logging_config import LoggingConfig
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
 
-from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Base_From_Ini_Env
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Section, Notifiers
+from bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 
 
 class ConfigForTests(BI_ETL_Config_Base):
@@ -43,3 +45,19 @@ def build_config(
             )
         )
     return config
+
+
+class TestSetup(ConfigHierarchy):
+    libraries_to_install: List[str] = None
+
+
+class EnvironmentSpecificConfigForTests(BI_ETL_Config_Base_From_Ini_Env):
+    redshift_database: SQLAlchemyDatabase = None
+
+    s3_bulk: S3_Bulk_Loader_Config = None
+
+    test_setup: TestSetup = None
+
+    def __init__(self):
+        super().__init__(file_name='test_config.ini')
+

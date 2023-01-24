@@ -23,17 +23,18 @@ from sqlalchemy.sql.sqltypes import Enum
 from sqlalchemy.sql.sqltypes import Float
 from sqlalchemy.sql.sqltypes import Integer
 from sqlalchemy.sql.sqltypes import Interval
-from sqlalchemy.sql.sqltypes import LargeBinary
 from sqlalchemy.sql.sqltypes import NUMERIC
 from sqlalchemy.sql.sqltypes import Numeric
 from sqlalchemy.sql.sqltypes import REAL
 from sqlalchemy.sql.sqltypes import String
+from sqlalchemy.sql.sqltypes import TEXT
 from sqlalchemy.sql.sqltypes import Time
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.table import Table
 from bi_etl.utility import dict_to_str
+from bulk_loaders.bulk_loader import BulkLoader
 from tests.db_base_tests.base_test_database import BaseTestDatabase
 
 
@@ -54,7 +55,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -66,7 +66,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
             Column('del_flg', self._text_datatype()),
         )
         sa_table.create()
@@ -79,7 +78,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype(), primary_key=True),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -95,7 +93,6 @@ class BaseTestTable(BaseTestDatabase):
             self.assertIn('col2', tbl.column_names)
             self.assertIn('col3', tbl.column_names)
             self.assertIn('col4', tbl.column_names)
-            self.assertIn('col5', tbl.column_names)
 
     def testInitExcludeCol(self):
         tbl_name = self._get_table_name('testInitExcludeCol')
@@ -107,7 +104,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -120,7 +116,6 @@ class BaseTestTable(BaseTestDatabase):
             self.assertIn('col2', tbl.column_names)
             self.assertIn('col3', tbl.column_names)
             self.assertNotIn('col4', tbl.column_names)
-            self.assertIn('col5', tbl.column_names)
 
     def testInitExcludeCol2(self):
         tbl_name = self._get_table_name('testInitExcludeCol2')
@@ -132,7 +127,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -147,7 +141,6 @@ class BaseTestTable(BaseTestDatabase):
             self.assertIn('col2', tbl.column_names)
             self.assertNotIn('col3', tbl.column_names)
             self.assertNotIn('col4', tbl.column_names)
-            self.assertIn('col5', tbl.column_names)
 
     def testDoesNotExist(self):
         self.assertRaises(exc.NoSuchTableError, Table, task=self.task, database=self.mock_database,
@@ -168,7 +161,6 @@ class BaseTestTable(BaseTestDatabase):
             row['col2'] = f'this is row {i}'
             row['col3'] = i / 1000.0
             row['col4'] = i / 100000000.0
-            row['col5'] = f'this is row {i} blob'.encode('ascii')
 
             tbl.insert(row)
         if commit:
@@ -198,7 +190,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -222,7 +213,6 @@ class BaseTestTable(BaseTestDatabase):
                 self.assertEqual(row['col2'], f'this is row {i}')
                 self.assertEquivalentNumber(row['col3'], i / 1000.0)
                 self.assertEquivalentNumber(row['col4'], i / 100000000.0)
-                self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
 
     def testInsertAndIterateWithKey(self):
         tbl_name = self._get_table_name('testInsertAndIterateWithKey')
@@ -233,7 +223,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -263,7 +252,6 @@ class BaseTestTable(BaseTestDatabase):
                 self.assertEqual(row['col2'], f'this is row {i}')
                 self.assertEquivalentNumber(row['col3'], i / 1000.0)
                 self.assertEquivalentNumber(row['col4'], i / 100000000.0)
-                self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
             except KeyError:
                 raise KeyError(f'Row key {i} did not exist')
 
@@ -276,7 +264,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -294,7 +281,6 @@ class BaseTestTable(BaseTestDatabase):
                     row['col2'] = f'this is row {i}'
                     row['col3'] = i / 1000.0
                     row['col4'] = i / 100000000.0
-                    row['col5'] = f'this is row {i} blob'.encode('ascii')
 
                     tbl.insert(row)
                 tbl.commit()
@@ -315,7 +301,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -338,7 +323,6 @@ class BaseTestTable(BaseTestDatabase):
                 # col1 should be autogenerated
                 assign_col1=False,
             )
-            iteration_header = RowIterationHeader()
 
             # Validate data
             rows_dict = dict()
@@ -356,7 +340,6 @@ class BaseTestTable(BaseTestDatabase):
                     self.assertEqual(row['col2'], f'this is row {i}', 'col2 check')
                     self.assertEquivalentNumber(row['col3'], i / 1000.0, 'col3 check')
                     self.assertEquivalentNumber(row['col4'], i / 100000000.0, 'col4 check')
-                    self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'), 'col5 check')
                 except KeyError:
                     raise KeyError(f'Row key {i} did not exist')
 
@@ -369,7 +352,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -405,7 +387,6 @@ class BaseTestTable(BaseTestDatabase):
                     self.assertEqual(row['col2'], f'this is row {i}')
                     self.assertEquivalentNumber(row['col3'], i / 1000.0)
                     self.assertEquivalentNumber(row['col4'], i / 100000000.0)
-                    self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
                 except KeyError:
                     raise KeyError(f'Row key {i} did not exist')
 
@@ -419,7 +400,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -435,7 +415,6 @@ class BaseTestTable(BaseTestDatabase):
             row['col2'] = f'this is row {i}'
             row['col3'] = i / 1000.0
             row['col4'] = i / 100000000.0
-            row['col5'] = f'this is row {i} blob'.encode('ascii')
 
             tbl.insert(row)
         tbl.commit()
@@ -464,7 +443,6 @@ class BaseTestTable(BaseTestDatabase):
             self.assertEqual(row['col2'], f'new col2 {i}')
             self.assertEquivalentNumber(row['col3'], i / 1000.0)
             self.assertEquivalentNumber(row['col4'], i / 100000000.0)
-            self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
 
     def testUpdate_partial_by_key(self):
         tbl_name = self._get_table_name('testUpdate_partial_by_key')
@@ -475,7 +453,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -491,7 +468,6 @@ class BaseTestTable(BaseTestDatabase):
                 'col2',
                 'col3',
                 'col4',
-                'col5',
             ],
         )
         for i in range(rows_to_insert):
@@ -501,7 +477,6 @@ class BaseTestTable(BaseTestDatabase):
             row['col2'] = f'this is row {i} before update'
             row['col3'] = i / 1000.0
             row['col4'] = i / 100000000.0
-            row['col5'] = f'this is row {i} blob'.encode('ascii')
 
             tbl.insert(row)
         tbl.commit()
@@ -530,7 +505,6 @@ class BaseTestTable(BaseTestDatabase):
             self.assertEqual(row['col2'], f'new col2 {i}')
             self.assertEquivalentNumber(row['col3'], i / 1000.0)
             self.assertEquivalentNumber(row['col4'], i / 100000000.0)
-            self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
 
     def testUpdate_whole_by_key(self):
         tbl_name = self._get_table_name('testUpdate_whole_by_key')
@@ -553,7 +527,6 @@ class BaseTestTable(BaseTestDatabase):
             row['col2'] = f'new col2 {i}'
             row['col3'] = i / 1000.0
             row['col4'] = i / 100000000.0
-            row['col5'] = f'this is row {i} blob'.encode('ascii')
             tbl.update(updates_to_make=row)
             # self.task.debug_sql(False)
         tbl.commit()
@@ -572,7 +545,6 @@ class BaseTestTable(BaseTestDatabase):
             self.assertEqual(row['col2'], f'new col2 {i}')
             self.assertEquivalentNumber(row['col3'], i / 1000.0)
             self.assertEquivalentNumber(row['col4'], i / 100000000.0)
-            self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
 
     def test_update_where_pk(self):
         tbl_name = self._get_table_name('test_update_where_pk')
@@ -594,7 +566,6 @@ class BaseTestTable(BaseTestDatabase):
             row['col2'] = f'new col2 {i}'
             row['col3'] = i / 1000.0
             row['col4'] = i / 100000000.0
-            row['col5'] = f'this is row {i} blob'.encode('ascii')
             tbl.update_where_pk(updates_to_make=row)
             # self.task.debug_sql(False)
         tbl.commit()
@@ -613,7 +584,6 @@ class BaseTestTable(BaseTestDatabase):
             self.assertEqual(row['col2'], f'new col2 {i}')
             self.assertEquivalentNumber(row['col3'], i / 1000.0)
             self.assertEquivalentNumber(row['col4'], i / 100000000.0)
-            self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
 
     def test_upsert_int_pk(self):
         tbl_name = self._get_table_name('test_upsert_int_pk')
@@ -643,7 +613,6 @@ class BaseTestTable(BaseTestDatabase):
                 row['col2'] = f'new col2 {i}'
                 row['col3'] = i / 1000.0
                 # leave out col 4
-                row['col5'] = f'this is row {i} blob'.encode('ascii')
                 tbl.upsert(row)
                 # self.task.debug_sql(False)
         tbl.commit()
@@ -660,7 +629,7 @@ class BaseTestTable(BaseTestDatabase):
             if row['col1'] <= 9:  # Sequence only holds up from 0 to 9.
                 self.assertEqual(last_int_value + 1, row['col1'], 'Order by did not work')
                 last_int_value = row['col1']
-            self.log.debug(row.values_in_order())
+            self.log.debug(row.values())
             rows_dict[row['col1']] = row
 
         self.assertEqual(len(rows_dict), rows_to_insert + 1)
@@ -677,7 +646,6 @@ class BaseTestTable(BaseTestDatabase):
             self.assertEquivalentNumber(row['col3'], i / 1000.0)
             if i != 12:
                 self.assertEquivalentNumber(row['col4'], i / 100000000.0)
-            self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
         tbl.close()
 
         self.mock_database.drop_table_if_exists(tbl_name)
@@ -697,7 +665,6 @@ class BaseTestTable(BaseTestDatabase):
             row['col2'] = f'this is row {i}'
             row['col3'] = i * 1 / 1000.0
             row['col4'] = i / 100000000.0
-            row['col5'] = f'this is row {i} blob'.encode('ascii')
 
             tbl.insert(row)
         tbl.commit()
@@ -718,7 +685,6 @@ class BaseTestTable(BaseTestDatabase):
             else:
                 row['col3'] = i * 1 / 1000.0
             # leave out col 4
-            row['col5'] = f'this is row {i} blob'.encode('ascii')
             tbl.upsert(row)
 
             # Add col4 to the saved list for validation
@@ -731,7 +697,7 @@ class BaseTestTable(BaseTestDatabase):
         # Validate data
         rows_dict = dict()
         for row in tbl:
-            print(row, row['col1'], row.values_in_order())
+            print(row, row['col1'], row.values())
             rows_dict[row['col1']] = row
 
         self.assertEqual(len(rows_dict), rows_to_insert)
@@ -744,7 +710,6 @@ class BaseTestTable(BaseTestDatabase):
             else:
                 self.assertEquivalentNumber(row['col3'], expected_row['col3'], 'col3 check odd')
             self.assertEquivalentNumber(row['col4'], expected_row['col4'], 'col4 check')
-            self.assertEqual(row['col5'], expected_row['col5'], 'col5 check')
 
         tbl.close()
         self.mock_database.drop_table_if_exists(tbl_name)
@@ -788,8 +753,6 @@ class BaseTestTable(BaseTestDatabase):
                     self.assertEqual(row['col2'], f'this is row {i}')
                     self.assertEquivalentNumber(row['col3'], i * 1 / 1000.0)
                     self.assertEquivalentNumber(row['col4'], i / 100000000.0)
-                    self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
-
 
         self.mock_database.drop_table_if_exists(tbl_name)
 
@@ -831,7 +794,6 @@ class BaseTestTable(BaseTestDatabase):
                 self.assertEqual(row['col2'], f'this is row {i}')
                 self.assertEquivalentNumber(row['col3'], i * 1 / 1000.0)
                 self.assertEquivalentNumber(row['col4'], i / 100000000.0)
-                self.assertEqual(row['col5'], f'this is row {i} blob'.encode('ascii'))
 
         tbl.close()
         self.mock_database.drop_table_if_exists(tbl_name)
@@ -846,7 +808,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2a', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
         )
         sa_table.create()
 
@@ -875,7 +836,6 @@ class BaseTestTable(BaseTestDatabase):
                     tgt_tbl.log = log
                     tgt_tbl.sanity_check_source_mapping(
                         src_tbl,
-                        source_excludes=frozenset(['col5']),
                     )
                     self.assertFalse(
                         log.error.called,
@@ -889,7 +849,6 @@ class BaseTestTable(BaseTestDatabase):
 
                     tgt_tbl.sanity_check_source_mapping(
                         src_tbl,
-                        source_excludes=frozenset(['col5']),
                         target_excludes=frozenset(['col4']),
                     )
                     self.assertFalse(log.error.called)
@@ -901,12 +860,10 @@ class BaseTestTable(BaseTestDatabase):
                     )
                     self.assertFalse(log.error.called)
                     calls_str = '\n'.join([str(call) for call in log.mock_calls])
-                    self.assertIn('col5', calls_str)
                     log.reset_mock()
 
                     tgt_tbl.sanity_check_source_mapping(
                         src_tbl,
-                        source_excludes=frozenset(['col5']),
                         target_excludes=frozenset(['col4']),
                     )
                     self.assertFalse(log.error.called)
@@ -921,10 +878,8 @@ class BaseTestTable(BaseTestDatabase):
                     src_row['col1'] = 0
                     src_row['col2a'] = 0
                     src_row['col3'] = 0
-                    src_row['col5'] = 0
                     tgt_tbl.sanity_check_source_mapping(
                         src_tbl,
-                        source_excludes=frozenset(['col5']),
                     )
                     # calls_str = '\n'.join([str(call) for call in log.mock_calls])
                     self.assertFalse(
@@ -940,7 +895,6 @@ class BaseTestTable(BaseTestDatabase):
                     # Test using row and not source component
                     tgt_tbl.sanity_check_source_mapping(
                         src_tbl,
-                        source_excludes=frozenset(['col5']),
                         target_excludes=frozenset(['col4']),
                     )
                     # calls_str = '\n'.join([str(call) for call in log.mock_calls])
@@ -963,7 +917,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2a', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
             Column('ext1', Integer),
         )
         sa_table.create()
@@ -976,7 +929,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col2b', self._text_datatype()),
             Column('col3', REAL),
             Column('col4', NUMERIC),
-            Column('col5', LargeBinary),
             Column('ext2', Integer),
         )
         sa_tgt_table.create()
@@ -1000,7 +952,6 @@ class BaseTestTable(BaseTestDatabase):
                     src_row['col2a'] = 'example text'
                     src_row['col3'] = 123.12
                     src_row['col4'] = 1234.12
-                    src_row['col5'] = 'this is row blob'.encode('ascii')
 
                     src_row.rename_columns({'col2a': 'col2b'})
                     tgt_row = tgt_tbl.build_row(
@@ -1020,7 +971,6 @@ class BaseTestTable(BaseTestDatabase):
                     self.assertEqual(tgt_row['col2b'], 'example text')
                     self.assertEquivalentNumber(tgt_row['col3'], 123.12)
                     self.assertEquivalentNumber(tgt_row['col4'], 1234.12)
-                    self.assertEqual(tgt_row['col5'], 'this is row blob'.encode('ascii'))
                     self.assertNotIn('ext1', tgt_row)
                     self.assertNotIn('ext2', tgt_row)
                     log.reset_mock()
@@ -1031,7 +981,6 @@ class BaseTestTable(BaseTestDatabase):
                     src_row['col2a'] = 123
                     src_row['col3'] = '123.12'
                     src_row['col4'] = '1,234.12'
-                    src_row['col5'] = 123
 
                     src_row.rename_columns({'col2a': 'col2b'})
                     tgt_row = tgt_tbl.build_row(src_row,
@@ -1050,7 +999,6 @@ class BaseTestTable(BaseTestDatabase):
                     self.assertEqual(tgt_row['col2b'], '123')
                     self.assertAlmostEqual(tgt_row['col3'], 123.12, places=2)
                     self.assertEqual(tgt_row['col4'], Decimal('1234.12'))
-                    self.assertEqual(tgt_row['col5'], b'123')
                     self.assertNotIn('ext1', tgt_row)
                     self.assertNotIn('ext2', tgt_row)
 
@@ -1061,8 +1009,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('float_col', Float),
             Column('date_col', Date),
             Column('datetime_col', DateTime),
-            Column('interval_col', Interval),
-            Column('large_binary_col', LargeBinary),
             Column('numeric13_col', Numeric(13)),
             Column('numeric25_col', Numeric(25)),
             Column('numeric25_15_col', Numeric(25, 15)),
@@ -1072,8 +1018,14 @@ class BaseTestTable(BaseTestDatabase):
         if self.db_container.SUPPORTS_TIME:
             cols.append(Column('time_col', Time))
 
+        if self.db_container.SUPPORTS_INTERVAL:
+            cols.append(Column('interval_col', Interval))
+
         if self.db_container.SUPPORTS_BOOLEAN:
             cols.append(Column('bool_col', BOOLEAN))
+
+        if self.db_container.SUPPORTS_BINARY:
+            cols.append(Column('large_binary_col', self._binary_datatype()))
 
         sa_table = sqlalchemy.schema.Table(
             tbl_name,
@@ -1109,8 +1061,10 @@ class BaseTestTable(BaseTestDatabase):
                         src_row['time_col'] = '22:13:55'
                     src_row['enum_col'] = 'a'
                     src_row['float_col'] = '123.45'
-                    src_row['interval_col'] = timedelta(seconds=50)
-                    src_row['large_binary_col'] = "It's a Python world.".encode('ascii')
+                    if self.db_container.SUPPORTS_INTERVAL:
+                        src_row['interval_col'] = timedelta(seconds=50)
+                    if self.db_container.SUPPORTS_BINARY:
+                        src_row['large_binary_col'] = "It's a Python world.".encode('ascii')
                     src_row['numeric13_col'] = '1234567890123'
                     src_row['numeric25_col'] = Decimal('1234567890123456789012345')
                     src_row['numeric25_15_col'] = Decimal('1234567890.123456789012345')
@@ -1133,8 +1087,10 @@ class BaseTestTable(BaseTestDatabase):
                         self.assertEqual(tgt_row['time_col'], time(22, 13, 55))
                     self.assertEqual(tgt_row['enum_col'], 'a')
                     self.assertAlmostEqual(tgt_row['float_col'], 123.45, places=2)
-                    self.assertEqual(tgt_row['interval_col'], timedelta(seconds=50))
-                    self.assertEqual(tgt_row['large_binary_col'], "It's a Python world.".encode('ascii'))
+                    if self.db_container.SUPPORTS_INTERVAL:
+                        self.assertEqual(tgt_row['interval_col'], timedelta(seconds=50))
+                    if self.db_container.SUPPORTS_BINARY:
+                        self.assertEqual(tgt_row['large_binary_col'], "It's a Python world.".encode('ascii'))
                     self.assertEqual(tgt_row['numeric13_col'], 1234567890123)
                     self.assertEqual(tgt_row['numeric25_col'], 1234567890123456789012345)
                     # noinspection PyTypeChecker
@@ -1197,7 +1153,7 @@ class BaseTestTable(BaseTestDatabase):
                     # Test number too long from int
                     src_row['numeric13_col'] = 12345678901234
                     try:
-                        tgt_row = tgt_tbl.build_row(src_row)
+                        _ = tgt_tbl.build_row(src_row)
                         self.fail('Test number too long from int did not raise ValueError')
                     except ValueError:
                         pass
@@ -1206,7 +1162,7 @@ class BaseTestTable(BaseTestDatabase):
                     # Test number too long from str
                     src_row['numeric13_col'] = '12345678901234'
                     try:
-                        tgt_row = tgt_tbl.build_row(src_row)
+                        _ = tgt_tbl.build_row(src_row)
                         self.fail('Test number too long from str did not raise ValueError')
                     except ValueError:
                         pass
@@ -1310,7 +1266,6 @@ class BaseTestTable(BaseTestDatabase):
             Column('col_txt', self._text_datatype()),
             Column('col_real', REAL),
             Column('col_num', NUMERIC),
-            Column('col_blob', LargeBinary),
         )
         sa_table.create()
 
@@ -1336,7 +1291,6 @@ class BaseTestTable(BaseTestDatabase):
             row['col_str_10'] = '1234567890'
             row['col_real'] = '42345678901'
             row['col_num'] = '52345678901'
-            row['col_blob'] = '62345678901'
             row['col_dt'] = '01/23/2018 12:56:33'
             row['col_d'] = '05/15/2017'
             result_row = tbl.build_row(row)
@@ -1346,7 +1300,6 @@ class BaseTestTable(BaseTestDatabase):
             self.assertIsInstance(result_row['col_str_10'], str)
             self.assertIsInstance(result_row['col_real'], float)
             self.assertIsInstance(result_row['col_num'], Decimal)
-            self.assertIsInstance(result_row['col_blob'], bytes)
             self.assertIsInstance(result_row['col_dt'], datetime)
             self.assertEqual(result_row['col_dt'], datetime(2018, 1, 23, 12, 56, 33))
             self.assertIsInstance(result_row['col_d'], date)
@@ -1358,7 +1311,6 @@ class BaseTestTable(BaseTestDatabase):
             row['col_str_10'] = '1234567890'
             row['col_real'] = '42345678901'
             row['col_num'] = '52345678901'
-            row['col_blob'] = '62345678901'
             row['col_dt'] = datetime(2017, 11, 23, 5, 11, 23)
             row['col_d'] = date(2017, 11, 25)
 
@@ -1370,7 +1322,6 @@ class BaseTestTable(BaseTestDatabase):
             self.assertIsInstance(result_row['col_str_10'], str)
             self.assertIsInstance(result_row['col_real'], float)
             self.assertIsInstance(result_row['col_num'], Decimal)
-            self.assertIsInstance(result_row['col_blob'], bytes)
             self.assertIsInstance(result_row['col_dt'], datetime)
             self.assertIsInstance(result_row['col_d'], date)
 
@@ -1391,12 +1342,11 @@ class BaseTestTable(BaseTestDatabase):
 
             iteration_header = RowIterationHeader()
             for i in range(rows_to_insert):
-                row = tbl.Row()
+                row = tbl.Row(iteration_header=iteration_header)
                 row['col1'] = i
                 row['col2'] = 'this is row {}'.format(i)
                 row['col3'] = i / 1000.0
                 row['col4'] = i / 100000000.0
-                row['col5'] = 'this is row {} blob'.format(i).encode('ascii')
 
                 tbl.upsert(row)
             tbl.commit()
@@ -1404,3 +1354,69 @@ class BaseTestTable(BaseTestDatabase):
         self.mock_database.drop_table_if_exists(tbl_name)
 
     # TODO: Test update_not_in_set, delete_not_in_set 
+
+    @staticmethod
+    def _generate_bulk_test_row(
+            i: int,
+            tbl: Table,
+            iteration_header: RowIterationHeader
+    ) -> Row:
+        row = tbl.Row(iteration_header=iteration_header)
+        row['col1'] = i
+        row['col2'] = f'this is row {i}'
+        row['col3'] = i / 1000.0
+        row['col4'] = i / 100000000.0
+        return row
+
+    def _testBulkInsertAndIterateNoKey(
+            self,
+            tbl_name: str,
+            bulk_loader: BulkLoader,
+    ):
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', self._text_datatype()),
+            Column('col3', REAL),
+            Column('col4', NUMERIC),
+            Column('col5', TEXT),
+        )
+        sa_table.create()
+
+        rows_to_insert = 10
+        with Table(self.task,
+                   self.mock_database,
+                   table_name=tbl_name) as tbl:
+            tbl.set_bulk_loader(bulk_loader)
+            iteration_header = RowIterationHeader()
+            for i in range(rows_to_insert):
+                row = self._generate_bulk_test_row(
+                    i,
+                    tbl,
+                    iteration_header
+                )
+
+                tbl.insert_row(row)
+
+            tbl.bulk_load_from_cache()
+
+            # Validate data
+            rows_dict = dict()
+            for row in tbl:
+                # self.log.debug(row.values())
+                rows_dict[row['col1']] = row
+
+            self.assertEqual(len(rows_dict), rows_to_insert)
+
+            for i in range(rows_to_insert):
+                expected_row = self._generate_bulk_test_row(
+                    i,
+                    tbl,
+                    iteration_header
+                )
+                row = rows_dict[i]
+                self._compare_rows(
+                    expected_row=expected_row,
+                    actual_row=row,
+                )

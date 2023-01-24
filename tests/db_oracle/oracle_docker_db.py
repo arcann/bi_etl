@@ -65,7 +65,11 @@ class OracleDockerDB(BaseDockerDB):
 
             temp_dir = Path(gettempdir())
             client_root = temp_dir / 'instantclient'
-            if not client_root.exists():
+
+            # oci.dll seems to be the primary driver, so we use that file as the one to check
+            # that we don't just have an empty instantclient folder.
+            oci_dll = client_root / 'oci.dll'
+            if not oci_dll.is_file():
                 print(f"Downloading Oracle instant client for {sys2} version {version} to {client_root}")
                 zip_file = NamedTemporaryFile(delete=False).name
                 try:

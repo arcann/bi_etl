@@ -17,7 +17,6 @@ from sqlalchemy.sql.sqltypes import DateTime
 from sqlalchemy.sql.sqltypes import Float
 from sqlalchemy.sql.sqltypes import Integer
 from sqlalchemy.sql.sqltypes import Interval
-from sqlalchemy.sql.sqltypes import LargeBinary
 from sqlalchemy.sql.sqltypes import NUMERIC
 from sqlalchemy.sql.sqltypes import Numeric
 from sqlalchemy.sql.sqltypes import REAL
@@ -29,7 +28,6 @@ from bi_etl.components.row.row import Row
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
 from tests.config_for_tests import build_config
-from tests.db_sqlite.sqlite_db import SqliteDB
 from tests.dummy_etl_component import DummyETLComponent
 
 
@@ -62,10 +60,11 @@ class BaseTestDatabase(unittest.TestCase):
             # if pytest ... but how do we detect?
             # For now we'll detect if db_container is None in setUp
             # pytest.skip("Not a test class")
-        cls.db_container = SqliteDB()
 
     @classmethod
     def tearDownClass(cls) -> None:
+        if cls.db_container is not None:
+            cls.db_container.shutdown()
         del cls.db_container
 
     @staticmethod
@@ -122,6 +121,9 @@ class BaseTestDatabase(unittest.TestCase):
     def _text_datatype(self):
         return self.db_container.TEXT
 
+    def _binary_datatype(self):
+        return self.db_container.BINARY
+
     def _get_column_list_table_1(self) -> typing.List[Column]:
         cols = [
             Column('id', Integer, primary_key=True),
@@ -132,8 +134,6 @@ class BaseTestDatabase(unittest.TestCase):
             Column('date_col', Date),
             Column('datetime_col', DateTime),
             Column('float_col', Float),
-            Column('interval_col', Interval),
-            Column('large_binary_col', LargeBinary),
             Column('strin_10_col', String(10)),
             Column('num_col', NUMERIC(38, 6)),
             Column('numeric13_col', Numeric(13)),
@@ -142,13 +142,21 @@ class BaseTestDatabase(unittest.TestCase):
         if self.db_container.SUPPORTS_TIME:
             cols.append(Column('time_col', Time))
 
+        if self.db_container.SUPPORTS_INTERVAL:
+            cols.append(Column('interval_col', Interval))
+
         if self.db_container.SUPPORTS_BOOLEAN:
             cols.append(Column('bool_col', BOOLEAN))
+
+        if self.db_container.SUPPORTS_BINARY:
+            cols.append(Column('large_binary_col', self._binary_datatype()))
 
         return cols
 
     def _get_table_name(self, partial_name: str) -> str:
         existing_tables = self.mock_database.table_inventory()
+
+        partial_name = partial_name.replace('-', '_')
 
         while True:
             name = f"{self.TABLE_PREFIX}{partial_name}"
@@ -198,7 +206,8 @@ class BaseTestDatabase(unittest.TestCase):
             if self.db_container.SUPPORTS_TIME:
                 row['time_col'] = time(22, 1 + i, 12)
             row['float_col'] = i / 100000000.0
-            row['interval_col'] = timedelta(seconds=i)
+            if self.db_container.SUPPORTS_INTERVAL:
+                row['interval_col'] = timedelta(seconds=i)
             row['large_binary_col'] = f'this is row {i} large_binary_col'.encode('ascii')
             if self.db_container.SUPPORTS_DECIMAL:
                 row['num_col'] = Decimal(i) / Decimal(10**6)

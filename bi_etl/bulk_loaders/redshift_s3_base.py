@@ -14,7 +14,6 @@ from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.bulk_loaders.bulk_loader_exception import BulkLoaderException
 from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 from bi_etl.conversions import strip
-from bi_etl.utility import quote_delimited_list
 
 if TYPE_CHECKING:
     from bi_etl.scheduler.task import ETLTask
@@ -52,7 +51,7 @@ class RedShiftS3Base(BulkLoader):
         self.s3 = self.session.resource('s3')
         self.bucket = self.s3.Bucket(self.s3_bucket_name)
 
-        self.error_matches = [
+        self.non_recoverable_error_matches = [
             'The S3 bucket addressed by the query is in a different region from this cluster.',
             'Access denied',
             'The AWS Access Key Id you provided does not exist in our records.'
@@ -121,11 +120,55 @@ class RedShiftS3Base(BulkLoader):
         self.log.info(f"Uploaded {total_size:,} bytes in total to {s3_full_folder}")
         return s3_files
 
+    def _get_error_details(
+            self,
+            table_object: Table,
+            exception: sqlalchemy.exc.SQLAlchemyError
+    ) -> BulkLoaderException:
+        bulk_loader_exception = BulkLoaderException(exception, password=self.s3_password)
+
+        sql = f"""
+                    SELECT *
+                    FROM stl_load_errors
+                    WHERE query = pg_last_copy_id()
+                    ORDER BY starttime DESC
+                    """
+
+        self.log.error(f'Checking stl_load_errors with\n{sql}')
+        try:
+            results = table_object.execute(sql)
+        except Exception as e2:
+            bulk_loader_exception.add_error(f'Error {e2} when getting stl_load_errors contents')
+            results = []
+        rows_found = 0
+        for row in results:
+            rows_found += 1
+            filename = strip(row.filename)
+            column_name = strip(row.colname)
+            c_type = strip(row.type)
+            col_length = strip(row.col_length)
+            err_reason = str(row.err_reason).strip()
+            self.log.error(f'!!!! stl_load_errors row: {rows_found} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            self.log.error(f'{filename} had an error')
+            self.log.error(f'stl_load_errors.err_reason={err_reason}')
+            self.log.error(f'stl_load_errors.err_code={row.err_code}')
+            self.log.error(f'stl_load_errors.error with column = {column_name} {c_type} {col_length}')
+            self.log.error(f'stl_load_errors.raw_field_value = "{str(row.raw_field_value).strip()}"')
+            self.log.error(f'stl_load_errors.line number = {row.line_number}')
+            self.log.error(f'stl_load_errors.character pos = {row.position}')
+            self.log.error(f'stl_load_errors.raw_line={row.raw_line}')
+            self.log.error('-' * 80)
+            bulk_loader_exception.add_error(f'{column_name} {err_reason}')
+        if rows_found == 0:
+            bulk_loader_exception.add_error('No records found in stl_load_errors matching file list')
+        self.log.error(f'{rows_found} rows found in stl_load_errors for file list')
+
+        return bulk_loader_exception
+
     def _run_copy_sql(
             self,
             copy_sql: str,
             table_object: Table,
-            file_list: Optional[list] = None,
     ) -> int:
         copy_sql = textwrap.dedent(copy_sql)
         sql_safe_pw = copy_sql.replace(self.s3_password, '*' * 8)
@@ -135,74 +178,43 @@ class RedShiftS3Base(BulkLoader):
         wait_seconds = 15
         t_end = time.time() + wait_seconds
 
-        try:
-            table_object.execute(copy_sql)
-            keep_trying = False
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            if any(error in str(e) for error in self.error_matches):
-                e = str(e).replace(self.s3_password, '*' * 8)
-                self.log.error(f"Cannot recover from this error - {e}")
-                raise
-
-            self.log.error('!' * 80)
-            self.log.error(f'!! Details for {e} below:')
-            self.log.error('!' * 80)
-
-            bulk_loader_exception = BulkLoaderException(e, password=self.s3_password)
-
-            sql = f"""
-                SELECT *
-                FROM stl_load_errors
-                WHERE query = pg_last_copy_id()
-                ORDER BY starttime DESC
-                """
-
-            self.log.error(f'Checking stl_load_errors with\n{sql}')
+        while keep_trying:
             try:
-                results = table_object.execute(sql)
-            except Exception as e2:
-                bulk_loader_exception.add_error(f'Error {e2} when getting stl_load_errors contents')
-                results = []
-            rows_found = 0
-            for row in results:
-                rows_found += 1
-                filename = strip(row.filename)
-                column_name = strip(row.colname)
-                c_type = strip(row.type)
-                col_length = strip(row.col_length)
-                err_reason = str(row.err_reason).strip()
-                self.log.error(f'!!!! stl_load_errors row: {rows_found} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-                self.log.error(f'{filename} had an error')
-                self.log.error(f'stl_load_errors.err_reason={err_reason}')
-                self.log.error(f'stl_load_errors.err_code={row.err_code}')
-                self.log.error(f'stl_load_errors.error with column = {column_name} {c_type} {col_length}')
-                self.log.error(f'stl_load_errors.raw_field_value = "{str(row.raw_field_value).strip()}"')
-                self.log.error(f'stl_load_errors.line number = {row.line_number}')
-                self.log.error(f'stl_load_errors.character pos = {row.position}')
-                self.log.error(f'stl_load_errors.raw_line={row.raw_line}')
-                self.log.error('-' * 80)
-                bulk_loader_exception.add_error(f'{column_name} {err_reason}')
-            if rows_found == 0:
-                bulk_loader_exception.add_error('No records found in stl_load_errors matching file list')
-            self.log.error(f'{rows_found} rows found in stl_load_errors for file list')
+                table_object.execute(copy_sql)
+                # Load worked we can stop looping
+                keep_trying = False
+            except sqlalchemy.exc.SQLAlchemyError as e:
+                safe_e = str(e).replace(self.s3_password, '*' * 8)
 
-            if 'S3ServiceException' in str(e):
-                if time.time() > t_end:
-                    self.log.info(f'{wait_seconds} seconds wait is over. File cannot be loaded. {t_end}')
-                    keep_trying = False
-                e = str(e).replace(self.s3_password, '*' * 8)
-                self.log.info(f'Will retry in 5 seconds file copy after S3ServiceException failure - {e}')
-                time.sleep(5)
-            else:
-                raise bulk_loader_exception
+                # Check if the error is non-recoverable
+                if any(error in str(e) for error in self.non_recoverable_error_matches):
+                    self.log.error(f"Cannot recover from this error - {safe_e}")
+                    raise
+
+                self.log.error('!' * 80)
+                self.log.error(f'!! Details for {safe_e} below:')
+                self.log.error('!' * 80)
+
+                bulk_loader_exception = self._get_error_details(
+                    table_object=table_object,
+                    exception=e,
+                )
+
+                if 'S3ServiceException' in str(e):
+                    if time.time() > t_end:
+                        self.log.info(f'{wait_seconds} seconds wait is over. File cannot be loaded. {t_end}')
+                        keep_trying = False
+                    self.log.info(f'Will retry in 5 seconds file copy after S3ServiceException failure - {safe_e}')
+                    time.sleep(5)
+                else:
+                    raise bulk_loader_exception
 
         # TODO: Consider removing this commit the called should do that.
         #       However, requires extensive testing
         table_object.execute(f"COMMIT;")
 
-        # TODO: The -1 only works for CSV files with a header (currently the most common use case)
         sql = f"""
-        SELECT greatest(SUM(lines_scanned) + {self.lines_scanned_modifier * len(file_list)},0) as rows_loaded
+        SELECT SUM(lines_scanned) as lines_scanned, count(DISTINCT filename) as file_cnt
         FROM stl_load_commits
         WHERE query = pg_last_copy_id()
         """
@@ -211,7 +223,12 @@ class RedShiftS3Base(BulkLoader):
         try:
             results = table_object.execute(sql)
             for row in results:
-                rows_loaded = row.rows_loaded
+                lines_scanned = row.lines_scanned
+                file_cnt = row.file_cnt
+                if self.lines_scanned_modifier == 0:
+                    rows_loaded = lines_scanned
+                else:
+                    rows_loaded = lines_scanned + (self.lines_scanned_modifier * file_cnt)
         except Exception as e:
             e = str(e).replace(self.s3_password, '*' * 8)
             self.log.warning(f"Error getting row count: {e}")
@@ -240,9 +257,6 @@ class RedShiftS3Base(BulkLoader):
             analyze_compression: str = None,
             perform_rename: bool = False,
     ) -> int:
-        tries = 0
-        done = False
-
         if not s3_source_path_is_absolute:
             s3_source_path = f'{self.s3_folder}/{s3_source_path}'
 
@@ -255,35 +269,12 @@ class RedShiftS3Base(BulkLoader):
             analyze_compression=analyze_compression,
             options=options,
         )
-        rows_loaded = None
-
-        while not done:
-            try:
-                rows_loaded = self._run_copy_sql(
-                    copy_sql=copy_sql,
-                    table_object=table_object,
-                    file_list=file_list,
-                )
-                if perform_rename:
-                    self.rename_table(table_to_load, table_object)
-                done = True
-            except sqlalchemy.exc.SQLAlchemyError as e:
-                tries += 1
-                e = str(e).replace(self.s3_password, '*' * 8)
-                if any(error in str(e) for error in self.error_matches):
-                    e = str(e).replace(self.s3_password, '*' * 8)
-                    self.log.error(f"Cannot recover from this error - {e}")
-                    raise
-                else:
-                    if 'S3ServiceException' in str(e):
-                        if tries >= 3:
-                            self.log.info(f'Still failed after {tries} tries. File cannot be loaded.')
-                            done = True
-                            raise
-                        self.log.info(f'Re-upload files to S3 to resolve {e} in 5 seconds')
-                        time.sleep(5)
-                    else:
-                        raise
+        rows_loaded = self._run_copy_sql(
+            copy_sql=copy_sql,
+            table_object=table_object,
+        )
+        if perform_rename:
+            self.rename_table(table_to_load, table_object)
         return rows_loaded
 
     def load_from_files(

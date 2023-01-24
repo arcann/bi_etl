@@ -3,39 +3,9 @@ Created on Jan 22, 2016
 
 @author: Derek Wood
 """
-import enum
-import logging
-from datetime import date
-from datetime import datetime
-from datetime import time
-from datetime import timedelta
-from decimal import Decimal
-from unittest import mock
 
-import sqlalchemy
-from sqlalchemy import exc
-from sqlalchemy.exc import DatabaseError
-from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import BOOLEAN
-from sqlalchemy.sql.sqltypes import Date
-from sqlalchemy.sql.sqltypes import DateTime
-from sqlalchemy.sql.sqltypes import Enum
-from sqlalchemy.sql.sqltypes import Float
-from sqlalchemy.sql.sqltypes import Integer
-from sqlalchemy.sql.sqltypes import Interval
-from sqlalchemy.sql.sqltypes import LargeBinary
-from sqlalchemy.sql.sqltypes import NUMERIC
-from sqlalchemy.sql.sqltypes import Numeric
-from sqlalchemy.sql.sqltypes import REAL
-from sqlalchemy.sql.sqltypes import String
-from sqlalchemy.sql.sqltypes import TEXT
-from sqlalchemy.sql.sqltypes import Time
-
-from bi_etl.components.row.row import Row
-from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.sqlquery import SQLQuery
 from bi_etl.components.table import Table
-from bi_etl.utility import dict_to_str
 from tests.db_base_tests.base_test_database import BaseTestDatabase
 
 

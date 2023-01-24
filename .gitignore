@@ -94,3 +94,4 @@ ENV/
 **/.pytest_cache/
 unit_tests_sqlite.db
 /tests/test_db
+/tests/test_config.ini

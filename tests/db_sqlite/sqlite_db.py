@@ -1,13 +1,15 @@
 import os
 
 import sqlalchemy
-from sqlalchemy import TEXT
+from sqlalchemy import TEXT, LargeBinary
 
 
 class SqliteDB(object):
     SUPPORTS_DECIMAL = False
     SUPPORTS_TIME = True
+    SUPPORTS_INTERVAL = True
     SUPPORTS_BOOLEAN = True
+    SUPPORTS_BINARY = True
     MAX_NAME_LEN = 128
 
     _instance = None
@@ -17,13 +19,13 @@ class SqliteDB(object):
             print(f"Creating the {cls} instance")
             self = super().__new__(cls)
             cls._instance = self
-            self._new_init()
+            self._new_init(*args, **kwargs)
 
         else:
             print("Existing singleton used")
         return cls._instance
 
-    def _new_init(self):
+    def _new_init(self, *args, **kwargs):
         self.instance_count = 0
         self.temp_file = f"unit_tests_sqlite.db"
         self.container = None
@@ -39,6 +41,10 @@ class SqliteDB(object):
     @property
     def TEXT(self):
         return TEXT
+
+    @property
+    def BINARY(self):
+        return LargeBinary
 
     def get_url(self):
         # return f'sqlite://'
