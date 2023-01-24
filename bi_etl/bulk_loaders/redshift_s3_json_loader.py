@@ -70,7 +70,7 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
             parent_task: Optional[ETLTask] = None,
     ) -> int:
         row_count = 0
-        with TemporaryDirectory() as temp_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             local_files = []
             zip_pool = []
             text_wrapper_pool = []

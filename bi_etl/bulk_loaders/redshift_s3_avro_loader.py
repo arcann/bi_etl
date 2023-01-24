@@ -92,7 +92,7 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
 
         table_to_load = table_to_load or table_object.qualified_table_name
 
-        with TemporaryDirectory() as temp_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             # Generate schema from table
             fields = list()
             type_map = {

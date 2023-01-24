@@ -86,7 +86,7 @@ class SQLServerBCP(BulkLoader):
             analyze_compression: str = None,
             parent_task: Optional[ETLTask] = None,
     ) -> int:
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             format_file_path = os.path.join(temp_dir, f'data_{table_object.table_name}.fmt')
             data_file_path = os.path.join(temp_dir, f'data_{table_object.table_name}.data')
 

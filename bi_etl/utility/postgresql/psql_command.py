@@ -79,7 +79,7 @@ def psql(config, dbname, username, password, sql_file_path):
 
 
 def psql_extract(self, dbname, username, password, table_name, output_file_path, delimiter='\\013', null='', encoding='UTF-8'):
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
         sql_file_path = os.path.join(temp_dir, 'extract.sql')
         self.generate_extract_sql(table_name, sql_file_path, output_file_path, delimiter, null, encoding)
         self.psql(dbname, username, password, sql_file_path)

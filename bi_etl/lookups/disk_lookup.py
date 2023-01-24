@@ -78,7 +78,11 @@ class DiskLookup(Lookup):
             self.cache_enabled = True
         if self.cache_enabled:
             file_prefix = ''.join([c for c in self.lookup_name if c in string.ascii_letters])
-            self._cache_dir_mgr = tempfile.TemporaryDirectory(dir=self.path, prefix=file_prefix)
+            self._cache_dir_mgr = tempfile.TemporaryDirectory(
+                dir=self.path,
+                prefix=file_prefix,
+                ignore_cleanup_errors=True,
+            )
             self._cache_file_path = self._cache_dir_mgr.name
             self.log.info("Creating cache in {}".format(self._cache_file_path))
             if sys.platform.startswith('win'):

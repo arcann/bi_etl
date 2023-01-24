@@ -123,7 +123,7 @@ def run_bcp(
         ):
     if temp_dir is None:
         cleanup_temp = True
-        temp_dir_obj = tempfile.TemporaryDirectory()
+        temp_dir_obj = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         temp_dir = temp_dir_obj.name
     else:
         temp_dir_obj = None

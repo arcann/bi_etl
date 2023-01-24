@@ -117,7 +117,10 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
     ) -> int:
 
         row_count = 0
-        with TemporaryDirectory(dir=self.config.temp_file_path) as temp_dir:
+        with TemporaryDirectory(
+                dir=self.config.temp_file_path,
+                ignore_cleanup_errors=True,
+        ) as temp_dir:
             writer_pool_size = self.s3_files_to_generate
             local_files = []
             zip_pool = []
@@ -188,7 +191,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             analyze_compression: str = None,
             parent_task: typing.Optional[ETLTask] = None,
     ) -> int:
-        with TemporaryDirectory(dir=self.config.temp_file_path) as temp_dir:
+        with TemporaryDirectory(dir=self.config.temp_file_path, ignore_cleanup_errors=True) as temp_dir:
             local_files = []
             file_number = 0
             current_file = None
