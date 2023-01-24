@@ -1,18 +1,18 @@
 """
 Created on Sept 12 2016
 
-@author: Derek
+@author: Derek Wood
 """
 import hashlib
-import os
 import re
+from os.path import commonpath
 from pathlib import Path
-from typing import Union, Dict
+from typing import Union, Dict, Iterable
 
 import sqlparse
 from pydicti import Dicti
 
-from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Base_From_Ini_Env
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.timer import Timer
@@ -42,12 +42,25 @@ class RunSQLScript(ETLTask):
         self.script_name = Path(script_name)
         if script_path is None:
             self.script_path = None
+            self.provided_script_path = '.'
         else:
+            self.provided_script_path = script_path
             self.script_path = Path(script_path)
 
         paths_tried = list()
         paths_tried.append(self.script_full_name)
-        if not self.script_full_name.exists():
+        if self.script_full_name.exists():
+            try:
+                self.script_base_path = Path(
+                    commonpath([
+                        Path.cwd(),
+                        self.script_full_name,
+                    ])
+                )
+            except ValueError:
+                self.script_base_path = Path('')
+        else:
+            # TODO: Use self.config.bi_etl.task_finder_sql_base if not None
             for path_to_try in Path.cwd().parents:
                 if script_path:
                     self.script_path = path_to_try / script_path
@@ -55,10 +68,15 @@ class RunSQLScript(ETLTask):
                     self.script_path = path_to_try
                 paths_tried.append(self.script_full_name)
                 if self.script_full_name.exists():
+                    self.script_base_path = path_to_try
                     break
 
         if not self.script_full_name.exists():
-            raise ValueError(f"RunSQLScript could not find the script {self.script_name} tried {paths_tried}")
+            indent = '  '
+            paths_tried_str = f"\n{indent}".join([str(s) for s in paths_tried])
+            raise ValueError(
+                f"RunSQLScript could not find the script {self.script_name} tried:\n{indent}{paths_tried_str}"
+            )
 
     def __getstate__(self):
         odict = super().__getstate__()
@@ -82,12 +100,22 @@ class RunSQLScript(ETLTask):
         )
         self._parameter_dict = Dicti(odict['_parameter_dict'])
 
+    @property
+    def target_database(self) -> DatabaseMetadata:
+        raise NotImplemented
+
     def depends_on(self):
         return []
 
     @property
-    def name(self):
-        name = str(self.script_name).replace('/', '.').replace('\\', '.')
+    def name(self) -> str:
+        try:
+            name = str(
+                self.script_full_name.relative_to(self.script_base_path)
+            )
+        except ValueError:  # No common relative
+            name = str(self.script_full_name)
+        name = name.replace('/', '.').replace('\\', '.')
         return f"run_sql_script.{name}"
 
     @property
@@ -203,47 +231,3 @@ class RunSQLScript(ETLTask):
             conn.commit()
         finally:
             conn.close()
-
-
-def main():
-    os.environ['notifiers_failures'] = ''
-    os.environ['notifiers_failed_notifications'] = ''
-    config = BI_ETL_Config_Base_From_Ini_Env()
-    package_path = Path(__file__).parents[1]
-    save_cwd = Path.cwd()
-    try:
-        for cwd in [
-            package_path,
-            package_path / 'tests',
-            package_path / 'tests' / 'etl_jobs',
-        ]:
-            os.chdir(cwd)
-            script = RunSQLScript(
-                config=config,
-                database_entry='target_database',
-                script_path='tests',
-                script_name="sql/test1.sql"
-            )
-            # script.load()
-            print(f"{script} in {script.script_full_name} has hash {script.get_sha1_hash()}")
-
-            script = RunSQLScript(
-                config=config,
-                database_entry='target_database',
-                script_name="tests/sql/test1.sql",
-            )
-            print(f"{script} in {script.script_full_name} has hash {script.get_sha1_hash()}")
-
-            script = RunSQLScript(
-                config=config,
-                database_entry='target_database',
-                script_name="test1.sql",
-                script_path='tests/sql',
-            )
-            print(f"{script} in {script.script_full_name} has hash {script.get_sha1_hash()}")
-    finally:
-        os.chdir(save_cwd)
-
-
-if __name__ == '__main__':
-    main()
