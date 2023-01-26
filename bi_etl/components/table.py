@@ -289,11 +289,17 @@ class Table(ReadOnlyTable):
                     self.log.info(f"{self}.close() NOT causing bulk load due to error.")
                 else:
                     self.bulk_load_from_cache()
+            else:
+                self._insert_pending_batch()
 
+            # Call self.commit() if any connection has has_active_transaction
+            # but leave it up to commit() to determine the order
+            any_active_transactions = False
             for connection_name in self._connections_used:
                 if self.database.has_active_transaction(connection_name):
-                    self.log.info(f'Committing {self} {connection_name} not explicitly committed.')
-                    self.database.commit(connection_name)
+                    any_active_transactions = True
+            if any_active_transactions:
+                self.commit()
             super(Table, self).close(error=error)
             self.clear_cache()
 
@@ -3166,9 +3172,30 @@ class Table(ReadOnlyTable):
                 self.log.debug(f"{self} commit on specified connection {connection_name}")
                 self.database.commit(connection_name)
             else:
-                self.log.debug(f"{self} commit on all active connections {self._connections_used}")
+                # We need to close these in the correct order to prevent deadlocks
+                commit_order = [
+                    # Read only
+                    'select',
+                    'max',
+                    'get_one',
+                    # Write
+                    'default',  # Used for inserts
+                    'sql_upsert',
+                    'singly',  # Really should not be open, it gets rolled back
+                    # Any others that exist will be commited last
+                ]
+
+                self.log.info(
+                    f"{self} commit on all active connections "
+                    "(if this deadlocks, provide explicit connection names "
+                    "to commit in the correct order)."
+                )
+                for possible_connection_name in commit_order:
+                    if possible_connection_name in self._connections_used:
+                        self.database.commit(possible_connection_name)
                 for used_connection_name in self._connections_used:
-                    self.database.commit(used_connection_name)
+                    if used_connection_name not in commit_order:
+                        self.database.commit(used_connection_name)
                 self._connections_used = set()
             if begin_new:
                 self.begin(connection_name=connection_name)
