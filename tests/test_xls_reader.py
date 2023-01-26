@@ -6,23 +6,25 @@ Created on Nov 30, 2015
 """
 import inspect
 import os
+import shutil
 import unittest
+from tempfile import TemporaryDirectory
 
 from bi_etl.components.xlsx_reader import XLSXReader
 from bi_etl.scheduler.task import ETLTask
 from tests.config_for_tests import build_config
 
 
-class Test(unittest.TestCase):
+class TestXLSReader(unittest.TestCase):
     @staticmethod
     def get_package_path():
-        module_path = inspect.getfile(Test)
+        module_path = inspect.getfile(TestXLSReader)
         (tests_path, _) = os.path.split(module_path)
         return tests_path
 
     @staticmethod
     def get_test_files_path():
-        return os.path.join(Test.get_package_path(), 'test_files_xlsx')
+        return os.path.join(TestXLSReader.get_package_path(), 'test_files_xlsx')
 
     def assertRegexMsg(self, actual, expected_re):
         expected_str = expected_re.replace('\n', '\\n\n')
@@ -67,7 +69,7 @@ class Test(unittest.TestCase):
                 pass
 
     def test_simple(self):
-        src_file = os.path.join(Test.get_test_files_path(), 'simple.xlsx')
+        src_file = os.path.join(TestXLSReader.get_test_files_path(), 'simple.xlsx')
         logical_name = os.path.basename(src_file)
         # print(srcFile)
         quoted_src_file = repr(src_file)
@@ -189,7 +191,7 @@ class Test(unittest.TestCase):
             _ = row
 
     def test_multiple_sheets(self):
-        src_file = os.path.join(Test.get_test_files_path(), 'multiple_sheets.xlsx')
+        src_file = os.path.join(TestXLSReader.get_test_files_path(), 'multiple_sheets.xlsx')
         logical_name = os.path.basename(src_file)
         # print(srcFile)
         quoted_src_file = repr(src_file)
@@ -267,6 +269,23 @@ class Test(unittest.TestCase):
             with self.assertRaises(StopIteration):
                 row = next(src_iter)
             _ = row
+
+    def test_open_twice(self):
+        src_file = os.path.join(self.test_files_path, 'simple.xlsx')
+        with XLSXReader(self.task, src_file) as src:
+            self.assertEqual(['str', 'int', 'float', 'date', 'unicode'], src.column_names)
+
+        with XLSXReader(self.task, src_file) as src:
+            self.assertEqual(['str', 'int', 'float', 'date', 'unicode'], src.column_names)
+
+    def test_close(self):
+        src_file = os.path.join(self.test_files_path, 'simple.xlsx')
+        with TemporaryDirectory() as tmp:
+            file_to_open = os.path.join(tmp, 'simple.xlsx')
+            shutil.copy(src_file, file_to_open)
+            with XLSXReader(self.task, file_to_open) as src:
+                self.assertEqual(['str', 'int', 'float', 'date', 'unicode'], src.column_names)
+            os.remove(file_to_open)
 
 
 if __name__ == "__main__":

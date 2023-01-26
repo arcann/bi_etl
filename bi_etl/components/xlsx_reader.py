@@ -1,6 +1,7 @@
 """
 Created on Apr 2, 2015
 """
+import io
 import os
 from typing import *
 from datetime import datetime, time
@@ -143,7 +144,12 @@ class XLSXReader(ETLComponent):
     @property
     def workbook(self):
         if self._workbook is None:
-            self._workbook = load_workbook(filename=self.file_name, read_only=True)
+            # Work around for openpyxl close not working correctly
+            with open(self.file_name, "rb") as f:
+                in_mem_file = io.BytesIO(f.read())
+            self._workbook = load_workbook(filename=in_mem_file, read_only=True)
+            # Original open code if the openpyxl libary can properly close the file
+            # self._workbook = load_workbook(filename=self.file_name, read_only=True)
         return self._workbook
     
     def set_active_worksheet_by_name(self, sheet_name: str):
