@@ -186,10 +186,11 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         else:
             tx = self._transactions[connection_name]
             if tx.is_active:
+                self.log.info(f'Commit on {self} {connection_name} connection started')
                 tx.commit()
                 self.log.debug(f'Commit on {self} {connection_name} connection done')
             else:
-                self.log.debug(f'Connection {self} {connection_name} transaction not active (commit called)')
+                self.log.info(f'Connection {self} {connection_name} transaction not active (commit called)')
 
     def rollback(self, connection_name: str = None):
         connection_name = self.resolve_connection_name(connection_name)
@@ -199,7 +200,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             tx = self._transactions[connection_name]
             if tx.is_active:
                 tx.rollback()
-                self.log.debug(f'Rollback on {self} {connection_name} connection done')
+                self.log.info(f'Rollback on {self} {connection_name} connection done')
             else:
                 raise RuntimeError(f'Connection {self} {connection_name} transaction not active (rollback called)')
 
@@ -229,7 +230,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             if auto_close:
                 if connection is not None:
                     connection.close()
-    
+
     def execute_procedure(
             self,
             procedure_name,

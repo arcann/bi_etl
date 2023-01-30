@@ -234,7 +234,6 @@ class Table(ReadOnlyTable):
         self.autocommit = False
         self.__batch_size = self.DEFAULT_BATCH_SIZE
         self.__transaction_pool = dict()
-        self._connections_used = set()
         self.skip_coercion_on = {}
 
         self._logical_delete_update = None

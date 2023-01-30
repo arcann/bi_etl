@@ -6,7 +6,6 @@ from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatab
 
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Section, Notifiers
-from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 
 
 class ConfigForTests(BI_ETL_Config_Base):

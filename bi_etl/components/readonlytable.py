@@ -199,6 +199,8 @@ class ReadOnlyTable(ETLComponent):
 
         self.custom_special_values = dict()
 
+        self._connections_used = set()
+
         # Should be the last call of every init            
         self.set_kwattrs(**kwargs)
 
@@ -403,6 +405,8 @@ class ReadOnlyTable(ETLComponent):
             open_if_not_exist: bool = True,
             open_if_closed: bool = True,
     ) -> sqlalchemy.engine.base.Connection:
+        connection_name = self.database.resolve_connection_name(connection_name)
+        self._connections_used.add(connection_name)
         return self.database.connection(
             connection_name=connection_name,
             open_if_not_exist=open_if_not_exist,
@@ -410,6 +414,8 @@ class ReadOnlyTable(ETLComponent):
         )
 
     def close_connection(self, connection_name: str = None):
+        connection_name = self.database.resolve_connection_name(connection_name)
+        self._connections_used.remove(connection_name)
         self.database.close_connection()
 
     def close_connections(self, exceptions: typing.Optional[set] = None):
@@ -471,6 +477,8 @@ class ReadOnlyTable(ETLComponent):
             self.log.debug(f'list_params={list_params}')
             self.log.debug(f'params={params}')
             self.log.debug('-------------------------')
+        connection_name = self.database.resolve_connection_name(connection_name)
+        self._connections_used.add(connection_name)
         return self.database.execute(
             statement,
             *list_params,
@@ -550,7 +558,7 @@ class ReadOnlyTable(ETLComponent):
                     column_obj_list.append(self.get_column(c))
                 else:
                     column_obj_list.append(c)
-            return sqlalchemy.select(column_obj_list)
+            return sqlalchemy.select(column_obj_list).execution_options(autocommit=True)
 
     def _generate_key_values_dict(self, key_names=None, key_values=None, lookup_name=None, other_values_dict=None):
 
