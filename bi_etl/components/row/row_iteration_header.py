@@ -145,7 +145,7 @@ class RowIterationHeader(object):
             elif isinstance(input_name, Column):
                 name_str = input_name.name
             else:
-                raise ValueError("Row column name must be str, unicode, or Column. Got {}".format(type(input_name)))
+                raise ValueError(f"Row column name must be str, unicode, or Column. Got {type(input_name)}")
             with RowIterationHeader.lock:
                 self._name_map_db[input_name] = name_str
             return name_str
@@ -208,12 +208,8 @@ class RowIterationHeader(object):
 
     @functools.lru_cache()
     def __repr__(self):
-        return '{cls}(id={id},logical_name={logical_name},primary_key={pk}'.format(
-            cls=self.__class__.__name__,
-            id=self.iteration_id,
-            logical_name=self.logical_name,
-            pk=self.primary_key,
-        )
+        return f'{self.__class__.__name__}' \
+               f'(id={self.iteration_id},logical_name={self.logical_name},primary_key={self.primary_key}'
 
     @functools.lru_cache()
     def __str__(self):
@@ -416,7 +412,7 @@ class RowIterationHeader(object):
             # This way we can have two renames that both map to the same target as long as
             # 1) Only one of the source column names exists
             # 2) ignore_missing is True
-            assert new_name not in self._columns_positions, "Target column name {} already exists".format(new_name)
+            assert new_name not in self._columns_positions, f"Target column name {new_name} already exists"
             # Modification of columns required
             if not no_new_header:
                 action_tuple = ('r', old_name, new_name)
@@ -438,7 +434,10 @@ class RowIterationHeader(object):
             if ignore_missing:
                 return self
             else:
-                raise ValueError(f'{old_name} is not a column. Valid columns are {self._columns_positions.keys()}')
+                raise ValueError(
+                    f'Rename error: {old_name} is not a column in this Row. '
+                    f'Valid columns in {self.logical_name} from {self.parent} are {self._columns_positions.keys()}'
+                )
         return new_header
 
     def rename_columns(

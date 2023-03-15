@@ -199,8 +199,6 @@ class ReadOnlyTable(ETLComponent):
 
         self.custom_special_values = dict()
 
-        self._connections_used = set()
-
         self.auto_commit = True
         self._connections_used = set()
 
@@ -322,7 +320,7 @@ class ReadOnlyTable(ETLComponent):
 
     @property
     def maintain_cache_during_load(self) -> bool:
-        return True
+        return self._maintain_cache_during_load
 
     @maintain_cache_during_load.setter
     def maintain_cache_during_load(self, value: bool):

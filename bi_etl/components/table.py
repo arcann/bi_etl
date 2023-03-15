@@ -420,14 +420,6 @@ class Table(ReadOnlyTable):
         if value == Table.DeleteMethod.bulk_load:
             raise ValueError('Do not manually set bulk mode property. Use set_bulk_loader instead.')
 
-    @property
-    def maintain_cache_during_load(self) -> bool:
-        return self._maintain_cache_during_load
-
-    @maintain_cache_during_load.setter
-    def maintain_cache_during_load(self, value: bool):
-        self._maintain_cache_during_load = value
-
     def autogenerate_sequence(
             self,
             row: Row,
@@ -1591,6 +1583,7 @@ class Table(ReadOnlyTable):
             self,
             source_row: Row,
             additional_insert_values: Optional[dict] = None,
+            maintain_cache: Optional[bool] = None,
             source_excludes: Optional[frozenset] = None,
             target_excludes: Optional[frozenset] = None,
             stat_name: str = 'insert',
@@ -1644,7 +1637,10 @@ class Table(ReadOnlyTable):
             if not self.upsert_called:
                 if self._bulk_iter_sentinel is None:
                     self.log.info(f"Setting up {self} worker to collect insert_row rows")
-                    self.maintain_cache_during_load = False
+                    # It does make sense to default to not caching inserted rows
+                    # UNLESS this table is also used as a lookup. Lookups should have been defined.
+                    if len(self.lookups) == 0:
+                        self.maintain_cache_during_load = False
                     self._bulk_iter_sentinel = StopIteration
                     self._bulk_iter_queue = Queue()
                     # row_iter = iter(self._bulk_iter_queue.get, self._bulk_iter_sentinel)
@@ -1681,7 +1677,10 @@ class Table(ReadOnlyTable):
                 stats['rows inserted'] += result.rowcount
                 result.close()
 
-        if self.maintain_cache_during_load:
+        if maintain_cache is None:
+            maintain_cache = self.maintain_cache_during_load
+
+        if maintain_cache:
             self.cache_row(new_row, allow_update=False)
         stats.timer.stop()
         return new_row
