@@ -8,6 +8,7 @@ from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatab
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Base_From_Ini_Env
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Section, Notifiers
 from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
+from config.notifiers_config import SlackNotifier
 
 
 class ConfigForTests(BI_ETL_Config_Base):
@@ -57,6 +58,10 @@ class EnvironmentSpecificConfigForTests(BI_ETL_Config_Base_From_Ini_Env):
     s3_bulk: S3_Bulk_Loader_Config = None
 
     test_setup: TestSetup = None
+
+    Slack_Test_direct: SlackNotifier = None
+    Slack_Test_Keyring: SlackNotifier = None
+    Slack_Test_Keepass: SlackNotifier = None
 
     def __init__(self):
         super().__init__(file_name='test_config.ini')

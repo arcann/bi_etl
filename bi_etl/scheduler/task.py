@@ -1225,6 +1225,46 @@ class ETLTask(object):
             except Exception as e:
                 self.log.exception(e)
 
+    def notify_status(
+            self,
+            channel_list: List[DynamicallyReferenced],
+            status_message: str,
+            skip_channels: set = None,
+    ):
+        """
+        Send a temporary status messages that gets overwritten with the next status message that is sent.
+
+        Parameters
+        ----------
+        channel_list
+        status_message
+        skip_channels
+
+        Returns
+        -------
+
+        """
+        if not self.suppress_notifications:
+            # Note: all exceptions are caught since we don't want notifications to kill the load
+            try:
+                filtered_channels = list()
+
+                for channel in channel_list:
+                    if skip_channels is None or channel.ref not in skip_channels:
+                        filtered_channels.append(channel)
+
+                notifiers_list = self.get_notifiers(filtered_channels)
+                for notifier in notifiers_list:
+                    try:
+                        notifier.post_status(
+                            status_message=status_message,
+                        )
+                    except Exception as e:
+                        warnings.warn(repr(e))
+
+            except Exception as e:
+                self.log.exception(e)
+
     @property
     def statistics(self):
         """
