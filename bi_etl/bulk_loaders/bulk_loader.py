@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import *
 from datetime import datetime
 
@@ -30,8 +31,13 @@ class BulkLoader(object):
             base_folder: str,
             table_object: Table,
     ):
+
         table_name_for_folder = table_object.qualified_table_name.replace('.', '_')
-        return f'{base_folder}/{table_name_for_folder}'
+        # Add a random UID that is filename safe to the path.
+        # That will prevent two envts that accidentally share a bucket & folder
+        # from clobbering each other's files
+        uid = uuid.uuid4()
+        return f'{base_folder}/{table_name_for_folder}_{uid.hex}'
 
     def load_from_files(
             self,
