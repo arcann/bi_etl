@@ -67,5 +67,5 @@ if __name__ == '__main__':
     config = BI_ETL_Config_Base_From_Ini_Env()
     config.logging.setup_logging()
     df = DefragIndexes(config=config)
-    df.add_parameter("database", args.database)
+    df.set_parameters(database=args.database)
     df.run()

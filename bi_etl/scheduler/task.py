@@ -13,6 +13,7 @@ import warnings
 from pathlib import Path
 from queue import Empty
 from typing import *
+from inspect import signature
 
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase, SQLAlchemyMetadata
 from config_wrangler.config_types.dynamically_referenced import DynamicallyReferenced
@@ -64,6 +65,7 @@ class ETLTask(object):
                  root_task_id=None,
                  scheduler=None,
                  task_rec=None,
+                 **kwargs
                  ):
         """
         Constructor. This code will run on the scheduler thread and the execution thread.
@@ -131,6 +133,7 @@ class ETLTask(object):
             self.status = Status.new
         self._parameters_loaded = False
         self._parameter_dict = dicti()
+        self.set_parameters(**kwargs)
         self.parent_to_child = None
         self.child_to_parent = None
         self.object_registry = list()
@@ -647,28 +650,8 @@ class ETLTask(object):
         """
         if not self._parameters_loaded:
             self.load_parameters()
+        self.log.info(f'add_parameter to task {param_name} = {param_value}')
         self._parameter_dict[param_name] = param_value
-
-        if not local_only:
-            if self.task_id is not None:
-                self.log.info(f'add_parameter to scheduler {param_name} = {param_value}')
-                self.scheduler.add_task_paramter(self.task_id, param_name, param_value, commit=commit)
-        else:
-            print(f"add_parameter local {param_name}={param_value}")
-
-    # Deprecated name
-    def add_parameter(
-            self,
-            param_name: str,
-            param_value: object,
-            local_only: bool = False,
-            commit: bool = True,
-    ):
-        warnings.warn("add_parameter is deprecated, please use set_parameter instead")
-        self.set_parameter(param_name=param_name,
-                           param_value=param_value,
-                           local_only=local_only,
-                           commit=commit)
 
     def set_parameters(
             self,
@@ -680,10 +663,10 @@ class ETLTask(object):
         """
         Add multiple parameters to this task.
         Parameters can be passed in as any combination of:
-        * dict instance. Example ``add_parameters( {'param1':'example', 'param2':100} )``
-        * list of lists. Example: ``add_parameters( [ ['param1','example'], ['param2',100] ] )``
-        * list of tuples. Example: ``add_parameters( [ ('param1','example'), ('param2',100) ] )``
-        * keyword arguments. Example: ``add_parameters(foo=1, bar='apple')``
+        * dict instance. Example ``set_parameters( {'param1':'example', 'param2':100} )``
+        * list of lists. Example: ``set_parameters( [ ['param1','example'], ['param2',100] ] )``
+        * list of tuples. Example: ``set_parameters( [ ('param1','example'), ('param2',100) ] )``
+        * keyword arguments. Example: ``set_parameters(foo=1, bar='apple')``
         
         Parameters
         ----------
@@ -696,17 +679,17 @@ class ETLTask(object):
         kwargs: dict
             keyword arguments send to parameters. See above.
         """
-        # Support add_parameters(param1='example', param2=100)
+        # Support set_parameters(param1='example', param2=100)
         self._parameter_dict.update(kwargs)
         for param_name, param_value in kwargs.items():
             self.set_parameter(param_name, param_value, local_only=local_only, commit=commit)
 
         # Also accept a list of dicts, tuples, or lists
-        # eg. add_parameters( [ ('param1','example'), ('param2',100) ] )
-        #  or add_parameters( [ ['param1','example'], ['param2',100] ] )
-        #  or add_parameters( [ ('param1','example'), ['param2',100] ] )
+        # eg. set_parameters( [ ('param1','example'), ('param2',100) ] )
+        #  or set_parameters( [ ['param1','example'], ['param2',100] ] )
+        #  or set_parameters( [ ('param1','example'), ['param2',100] ] )
         #  or parms = {'param1':'example', 'param2':100}
-        #     add_parameters(parms)
+        #     set_parameters(parms)
         #
         # which is equivalent to
         #     add_parameters(**parms)
@@ -718,15 +701,7 @@ class ETLTask(object):
                 if len(arg) == 2:
                     self.set_parameter(arg[0], arg[1], local_only=local_only, commit=commit)
                 else:
-                    raise ValueError(f"add_parameters sequence {arg} had unexpected length {len(arg)}")
-
-    # Deprecated name
-    def add_parameters(self, local_only=False, commit=True, *args, **kwargs):
-        warnings.warn("add_parameters is deprecated, please use set_parameters instead")
-        self.set_parameters(local_only=local_only,
-                            commit=commit,
-                            *args,
-                            **kwargs)
+                    raise ValueError(f"set_parameters sequence {arg} had unexpected length {len(arg)}")
 
     def parameters(self):
         """
@@ -1075,7 +1050,23 @@ class ETLTask(object):
             self.process_messages()
 
             self.load_timer.start()
-            self.load()
+
+            # Check for paramters to pass to the load function
+            load_sig = signature(self.load)
+            load_params = load_sig.parameters
+            load_kwargs = dict()
+            valid_parameter_names = set(self.parameter_names())
+            for param in sig.parameters.values():
+                if param.kind in {param.POSITIONAL_ONLY, param.VAR_POSITIONAL}:
+                    raise ValueError(f"bi_etl.ETLTask only supports keyword parameters.")
+                else:
+                    if param.name in valid_parameter_names:
+                        load_kwargs[param.name] = self.get_parameter(param.name)
+                    else:
+                        if param.default == param.empty:
+                            raise ValueError(f"{self} needs parameter {param.name}. Load takes {load_sig}")
+
+            self.load(**load_args)
             self.load_timer.stop()
 
             self.process_messages()
@@ -1356,7 +1347,7 @@ def run_task(task_name,
     task_name: str
         The task name to run. Must match the name or at least *ending* of the name of a module under **etl_jobs**.
     parameters: list or dict
-        Parameters for the task. Passed to method :meth:`bi_etl.scheduler.task.ETLTask.add_parameters`.
+        Parameters for the task. Passed to method :meth:`bi_etl.scheduler.task.ETLTask.set_parameters`.
     config: Union[str, bi_etl.config.bi_etl_config_base.BI_ETL_Config_Base]
         The configuration to use (defaults to reading it from :doc:`config_ini`).
         If passed it should be an string reference to an ini file

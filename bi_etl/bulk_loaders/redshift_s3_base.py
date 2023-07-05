@@ -4,11 +4,13 @@ from __future__ import annotations
 import os.path
 import textwrap
 import time
+import uuid
 from pathlib import Path
 from typing import *
 
 import boto3
 import sqlalchemy
+from sqlalchemy import text
 
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.bulk_loaders.bulk_loader_exception import BulkLoaderException
@@ -122,21 +124,43 @@ class RedShiftS3Base(BulkLoader):
 
     def _get_error_details(
             self,
-            table_object: Table,
-            exception: sqlalchemy.exc.SQLAlchemyError
+            connection: sqlalchemy.engine.base.Connection,
+            exception: sqlalchemy.exc.SQLAlchemyError,
+            s3_source_path: str,
     ) -> BulkLoaderException:
         bulk_loader_exception = BulkLoaderException(exception, password=self.s3_password)
 
-        sql = f"""
+        # early exit for cases where we failed while making a connection
+        if connection is None:
+            return bulk_loader_exception
+
+        self.log.debug(f'Getting pg_last_copy_id')
+
+        pg_last_copy_id_res = connection.execute("select pg_last_copy_id() as id")
+        pg_last_copy_id_row = next(pg_last_copy_id_res)
+        pg_last_copy_id = pg_last_copy_id_row.id
+
+        self.log.error(f'pg_last_copy_id = {pg_last_copy_id}')
+
+        if pg_last_copy_id != -1:
+            sql = """
                     SELECT *
                     FROM stl_load_errors
                     WHERE query = pg_last_copy_id()
                     ORDER BY starttime DESC
-                    """
+                  """
+        else:
+            self.log.error(f"Unable to use pg_last_copy_id().  Seems to only work on successful COPY.")
+            sql = f"""
+                    SELECT TOP 1 *
+                    FROM stl_load_errors
+                    WHERE filename like '%{s3_source_path}%'
+                    ORDER BY starttime DESC
+                   """
 
         self.log.error(f'Checking stl_load_errors with\n{sql}')
         try:
-            results = table_object.execute(sql)
+            results = connection.execute(text(sql))
         except Exception as e2:
             bulk_loader_exception.add_error(f'Error {e2} when getting stl_load_errors contents')
             results = []
@@ -169,6 +193,7 @@ class RedShiftS3Base(BulkLoader):
             self,
             copy_sql: str,
             table_object: Table,
+            s3_source_path: str,
     ) -> int:
         copy_sql = textwrap.dedent(copy_sql)
         sql_safe_pw = copy_sql.replace(self.s3_password, '*' * 8)
@@ -177,61 +202,70 @@ class RedShiftS3Base(BulkLoader):
         keep_trying = True
         wait_seconds = 15
         t_end = time.time() + wait_seconds
+        connection = None
+        rows_loaded = None
 
         while keep_trying:
+
             try:
-                table_object.execute(copy_sql)
+                connection = table_object.connection()
+                connection.execute(copy_sql)
                 # Load worked we can stop looping
                 keep_trying = False
+                connection.execute(f"COMMIT;")
             except sqlalchemy.exc.SQLAlchemyError as e:
                 safe_e = str(e).replace(self.s3_password, '*' * 8)
 
                 # Check if the error is non-recoverable
-                if any(error in str(e) for error in self.non_recoverable_error_matches):
-                    self.log.error(f"Cannot recover from this error - {safe_e}")
-                    raise
 
                 self.log.error('!' * 80)
                 self.log.error(f'!! Details for {safe_e} below:')
                 self.log.error('!' * 80)
 
                 bulk_loader_exception = self._get_error_details(
-                    table_object=table_object,
+                    connection=connection,
                     exception=e,
+                    s3_source_path=s3_source_path,
                 )
 
                 if 'S3ServiceException' in str(e):
-                    if time.time() > t_end:
-                        self.log.info(f'{wait_seconds} seconds wait is over. File cannot be loaded. {t_end}')
+                    if any(error in str(e) for error in self.non_recoverable_error_matches):
+                        self.log.error(f"Cannot recover from this error - {safe_e}")
                         keep_trying = False
-                    self.log.info(f'Will retry in 5 seconds file copy after S3ServiceException failure - {safe_e}')
-                    time.sleep(5)
-                else:
-                    raise bulk_loader_exception
+                    elif time.time() > t_end:
+                        self.log.info(f'{wait_seconds} seconds recovery wait time exceeded. File cannot be loaded. {t_end}')
+                        keep_trying = False
 
-        # TODO: Consider removing this commit the called should do that.
-        #       However, requires extensive testing
-        table_object.execute(f"COMMIT;")
-
-        sql = f"""
-        SELECT SUM(lines_scanned) as lines_scanned, count(DISTINCT filename) as file_cnt
-        FROM stl_load_commits
-        WHERE query = pg_last_copy_id()
-        """
-        # Default to -1 rows to indicate error
-        rows_loaded = -1
-        try:
-            results = table_object.execute(sql)
-            for row in results:
-                lines_scanned = row.lines_scanned
-                file_cnt = row.file_cnt
-                if self.lines_scanned_modifier == 0:
-                    rows_loaded = lines_scanned
+                    if keep_trying:
+                        self.log.info(f'Will retry in 5 seconds file copy after S3ServiceException failure - {safe_e}')
+                        time.sleep(5)
+                    else:
+                        raise bulk_loader_exception from None
                 else:
-                    rows_loaded = lines_scanned + (self.lines_scanned_modifier * file_cnt)
-        except Exception as e:
-            e = str(e).replace(self.s3_password, '*' * 8)
-            self.log.warning(f"Error getting row count: {e}")
+                    raise bulk_loader_exception from None
+
+        if connection is not None:
+            sql = f"""
+            SELECT SUM(lines_scanned) as lines_scanned, count(DISTINCT filename) as file_cnt
+            FROM stl_load_commits
+            WHERE query = pg_last_copy_id()
+            """
+            # Default to -1 rows to indicate error
+            rows_loaded = -1
+            try:
+                results = connection.execute(sql)
+                for row in results:
+                    lines_scanned = row.lines_scanned
+                    file_cnt = row.file_cnt
+                    if self.lines_scanned_modifier == 0:
+                        rows_loaded = lines_scanned
+                    else:
+                        rows_loaded = lines_scanned + (self.lines_scanned_modifier * file_cnt)
+            except Exception as e:
+                e = str(e).replace(self.s3_password, '*' * 8)
+                self.log.warning(f"Error getting row count: {e}")
+
+            connection.close()
 
         return rows_loaded
 
@@ -272,6 +306,7 @@ class RedShiftS3Base(BulkLoader):
         rows_loaded = self._run_copy_sql(
             copy_sql=copy_sql,
             table_object=table_object,
+            s3_source_path=s3_source_path,
         )
         if perform_rename:
             self.rename_table(table_to_load, table_object)

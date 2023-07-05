@@ -3,7 +3,12 @@ import subprocess
 import sys
 import unittest
 
+import sqlalchemy
+from sqlalchemy import Column
+from sqlalchemy.sql.sqltypes import Integer
+
 from bulk_loaders.redshift_s3_csv_loader import RedShiftS3CSVBulk
+from components.table import Table
 from config_for_tests import EnvironmentSpecificConfigForTests
 from db_redshift.redshift_db import RedshiftDB
 from tests.db_base_tests.base_test_table import BaseTestTable
@@ -40,6 +45,7 @@ class TestTableRedshift(BaseTestTable):
 
     def setUp(self):
         super().setUp()
+        self.test_file_search_folders.append('test_files')
 
     def testInsertDuplicate(self):
         raise unittest.SkipTest(f"Skip testInsertDuplicate due to no Redshift support")
@@ -64,3 +70,106 @@ class TestTableRedshift(BaseTestTable):
                         null_value=null_value,
                     )
                     self._testBulkInsertAndIterateNoKey(tbl_name, bulk_loader)
+
+    def testRedShiftS3CSVBulk_Error_Handling_datatype(self):
+        tbl_name = self._get_table_name('testRedShiftS3CSVBulkErrorHandlingDT')
+
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', self._text_datatype()),
+        )
+        sa_table.create()
+
+        test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
+        bulk_loader = RedShiftS3CSVBulk(self.env_config.s3_bulk, s3_file_delimiter=',')
+        with Table(self.task,
+                   self.mock_database,
+                   table_name=tbl_name) as tbl:
+
+            with self.assertRaisesRegex(Exception, r"(?i)(integer|digit)"):
+                bulk_loader.load_from_files(
+                    local_files=[test_file_path],
+                    table_object=tbl,
+                )
+
+    def testRedShiftS3CSVBulk_Error_Handling_delimiter(self):
+        tbl_name = self._get_table_name('testRedShiftS3CSVBulkErrorHandlingDelimiter')
+
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', self._text_datatype()),
+        )
+        sa_table.create()
+
+        test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
+        bulk_loader = RedShiftS3CSVBulk(self.env_config.s3_bulk, s3_file_delimiter='|')
+        with Table(self.task,
+                   self.mock_database,
+                   table_name=tbl_name) as tbl:
+
+            with self.assertRaisesRegex(Exception, r"(?i)(delimiter)") as e:
+                bulk_loader.load_from_files(
+                    local_files=[test_file_path],
+                    table_object=tbl,
+                )
+            self.assertNotIn(bulk_loader.s3_password, str(e.exception))
+
+    def testRedShiftS3CSVBulk_Error_Handling_Connection(self):
+        tbl_name = self._get_table_name('testRedShiftS3CSVBulkErrorHandlingConn')
+
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', self._text_datatype()),
+        )
+        sa_table.create()
+
+        test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
+
+        bulk_loader = RedShiftS3CSVBulk(self.env_config.s3_bulk)
+        # Note: by breaking s3_user_id the upload will work (uses bulk_loader.bucket),
+        #       but the COPY will fail.
+        bulk_loader.s3_user_id = 'BAD'
+        with Table(self.task,
+                   self.mock_database,
+                   table_name=tbl_name) as tbl:
+
+            with self.assertRaisesRegex(Exception, r"(?i)(InvalidAccessKeyId)") as e:
+                bulk_loader.load_from_files(
+                    local_files=[test_file_path],
+                    table_object=tbl,
+                )
+            self.assertNotIn(bulk_loader.s3_password, str(e.exception))
+
+    def testRedShiftS3CSVBulk_Error_Handling_Connection2(self):
+        tbl_name = self._get_table_name('testRedShiftS3CSVBulkErrorHandlingConn2')
+
+        sa_table = sqlalchemy.schema.Table(
+            tbl_name,
+            self.mock_database,
+            Column('col1', Integer, primary_key=True),
+            Column('col2', self._text_datatype()),
+        )
+        sa_table.create()
+
+        test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
+
+        bulk_loader = RedShiftS3CSVBulk(self.env_config.s3_bulk)
+        # Note: by breaking s3_password the upload will work (uses bulk_loader.bucket),
+        #       but the COPY will fail.
+        bulk_loader.s3_password = 'BAD'
+        with Table(self.task,
+                   self.mock_database,
+                   table_name=tbl_name) as tbl:
+
+            with self.assertRaisesRegex(Exception, r"(?i)(SignatureDoesNotMatch)") as e:
+                bulk_loader.load_from_files(
+                    local_files=[test_file_path],
+                    table_object=tbl,
+                )
+            self.assertNotIn(bulk_loader.s3_password, str(e.exception))
