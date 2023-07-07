@@ -11,4 +11,10 @@ class ETL_Task_D1(ETL_Test_Task_Base):
     def depends_on(self):
         return []
 
-    ## load inherited from ETL_Test_Task_Base  
+    # noinspection PyMethodOverriding
+    def load(self):
+        # load inherited from ETL_Test_Task_Base
+        super().load()
+        param_test1: int = self.get_parameter('param_test1')
+        self.log.info(f'param_test1 = {param_test1}')
+        self.got_param_test1 = param_test1

@@ -657,7 +657,6 @@ class ETLTask(object):
             self,
             local_only=False,
             commit=True,
-            *args,
             **kwargs
     ):
         """
@@ -674,34 +673,13 @@ class ETLTask(object):
             Optional. Default= False. Add parameters to local task only. Do not record in the scheduler.
         commit: boolean 
             Optional. Default= True. Commit changes to the task database.
-        args: list
-            list of lists. or list of tuples. See above.
-        kwargs: dict
+        kwargs:
             keyword arguments send to parameters. See above.
         """
         # Support set_parameters(param1='example', param2=100)
         self._parameter_dict.update(kwargs)
         for param_name, param_value in kwargs.items():
             self.set_parameter(param_name, param_value, local_only=local_only, commit=commit)
-
-        # Also accept a list of dicts, tuples, or lists
-        # eg. set_parameters( [ ('param1','example'), ('param2',100) ] )
-        #  or set_parameters( [ ['param1','example'], ['param2',100] ] )
-        #  or set_parameters( [ ('param1','example'), ['param2',100] ] )
-        #  or parms = {'param1':'example', 'param2':100}
-        #     set_parameters(parms)
-        #
-        # which is equivalent to
-        #     add_parameters(**parms)
-        for arg in args:
-            if isinstance(arg, Mapping):
-                for param_name, param_value in arg.items():
-                    self.set_parameter(param_name, param_value, local_only=local_only, commit=commit)
-            elif hasattr(arg, '__getitem__'):
-                if len(arg) == 2:
-                    self.set_parameter(arg[0], arg[1], local_only=local_only, commit=commit)
-                else:
-                    raise ValueError(f"set_parameters sequence {arg} had unexpected length {len(arg)}")
 
     def parameters(self):
         """
@@ -1051,12 +1029,12 @@ class ETLTask(object):
 
             self.load_timer.start()
 
-            # Check for paramters to pass to the load function
+            # Check for parameters to pass to the load function
             load_sig = signature(self.load)
             load_params = load_sig.parameters
             load_kwargs = dict()
             valid_parameter_names = set(self.parameter_names())
-            for param in sig.parameters.values():
+            for param in load_params.values():
                 if param.kind in {param.POSITIONAL_ONLY, param.VAR_POSITIONAL}:
                     raise ValueError(f"bi_etl.ETLTask only supports keyword parameters.")
                 else:
@@ -1066,7 +1044,7 @@ class ETLTask(object):
                         if param.default == param.empty:
                             raise ValueError(f"{self} needs parameter {param.name}. Load takes {load_sig}")
 
-            self.load(**load_args)
+            self.load(**load_kwargs)
             self.load_timer.stop()
 
             self.process_messages()

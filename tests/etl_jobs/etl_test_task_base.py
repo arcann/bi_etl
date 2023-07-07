@@ -27,14 +27,15 @@ class ETL_Test_Task_Base(ETLTask):
             job_run_seconds = self.get_parameter('job_run_seconds')
             extra_random_seconds = self.get_parameter('extra_random_seconds', default=0)
             job_run_seconds += random.randint(0, extra_random_seconds)
-            test_name = self.get_parameter('test_name')
-            display_name = '{}:{}'.format(test_name,self.name)
-            self.log.info('Setting display_name = {}'.format(display_name))
-            self.display_name= display_name
-            self.log.info('display_name = {}'.format(self.display_name))
+            test_name = self.get_parameter('test_name', default=...)
+            if test_name is not ...:
+                display_name = f'{test_name}:{self.name}'
+                self.log.info(f'Setting display_name = {display_name}')
+                self.display_name = display_name
+                self.log.info(f'display_name = {self.display_name}')
         except ParameterError:
             job_run_seconds = random.randint(1, 5)
-        self.log.info("Runtime will be {} seconds".format(job_run_seconds))
+        self.log.info(f"Runtime will be {job_run_seconds} seconds")
         time.sleep(job_run_seconds)
         self.set_parameter('actual_finish', datetime.now(), commit=True)
-        self.log.info('actual_finish = {}'.format(self.get_parameter('actual_finish')))
+        self.log.info(f'actual_finish = {self.get_parameter("actual_finish")}')

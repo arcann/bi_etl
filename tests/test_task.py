@@ -24,6 +24,35 @@ class TestTask(unittest.TestCase):
     def tearDown(self):
         pass
 
+    def test_param_passing_1a(self):
+        d1 = ETL_Task_D1(config=self.config)
+        d1.set_parameter('param_test1', 112233)
+        d1.set_parameter('job_run_seconds', 0)
+        d1.run()
+        try:
+            self.assertEqual(d1.got_param_test1, 112233)
+        except AttributeError:
+            raise RuntimeError("ETL_Task_D1 run did not set got_param_test1")
+
+    def test_param_passing_1b(self):
+        d1 = ETL_Task_D1(config=self.config)
+        d1.set_parameters(param_test1=111222)
+        d1.set_parameter('job_run_seconds', 0)
+        d1.run()
+        try:
+            self.assertEqual(d1.got_param_test1, 111222)
+        except AttributeError:
+            raise RuntimeError("ETL_Task_D1 run did not set got_param_test1")
+
+    def test_param_passing_2(self):
+        d2 = ETL_Task_D2(config=self.config, param_test1=123)
+        d2.set_parameter('job_run_seconds', 0)
+        d2.run()
+        try:
+            self.assertEqual(d2.got_param_test1, 123)
+        except AttributeError:
+            raise RuntimeError("ETL_Task_D2 run did not set got_param_test1")
+
     @unittest.skip
     def test_normalized_dependents_set(self):
         d1 = ETL_Task_D1(config=self.config)
@@ -31,7 +60,7 @@ class TestTask(unittest.TestCase):
         self.log.info('d1_deps = {}'.format(d1_deps))        
         self.assertEqual(d1_deps, set(), 'd1 dependencies not as expected')
         
-        d2 = ETL_Task_D2(config=self.config)
+        d2 = ETL_Task_D2(config=self.config, param_test1=123)
         d2_deps = d2.normalized_dependents_set
         self.log.info('d2_deps = {}'.format(d2_deps))        
         self.assertEqual(d2_deps, {d1.name}, 'd2 dependencies not as expected')

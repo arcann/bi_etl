@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bi_etl"
-version = "1.4.3"
+version = "1.4.4"
 description = "Python ETL Framework"
 keywords=["etl"]
 classifiers = [
