@@ -7,10 +7,10 @@ import sqlalchemy
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from bulk_loaders.redshift_s3_csv_loader import RedShiftS3CSVBulk
-from components.table import Table
-from config_for_tests import EnvironmentSpecificConfigForTests
-from db_redshift.redshift_db import RedshiftDB
+from bi_etl.bulk_loaders.redshift_s3_csv_loader import RedShiftS3CSVBulk
+from bi_etl.components.table import Table
+from tests.config_for_tests import EnvironmentSpecificConfigForTests
+from tests.db_redshift.redshift_db import RedshiftDB
 from tests.db_base_tests.base_test_table import BaseTestTable
 
 

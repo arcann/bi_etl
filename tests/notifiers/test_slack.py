@@ -2,14 +2,14 @@ import time
 import unittest
 from tempfile import TemporaryDirectory
 from unittest import TestSuite
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 from config_wrangler.config_templates.logging_config import LoggingConfig
 
+from bi_etl.config.bi_etl_config_base import Notifiers, BI_ETL_Config_Section, BI_ETL_Config_Base
 from bi_etl.config.notifiers_config import SlackNotifier
 from bi_etl.notifiers import Slack
-from config.bi_etl_config_base import Notifiers, BI_ETL_Config_Section, BI_ETL_Config_Base
-from config_for_tests import EnvironmentSpecificConfigForTests
+from tests.config_for_tests import EnvironmentSpecificConfigForTests
 
 
 def load_tests(loader, standard_tests, pattern):
