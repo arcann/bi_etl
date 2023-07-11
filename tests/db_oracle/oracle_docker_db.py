@@ -1,4 +1,3 @@
-import logging
 import os
 import platform
 import zipfile
@@ -8,7 +7,6 @@ from urllib import request
 from urllib.error import HTTPError
 
 from sqlalchemy import VARCHAR
-from testcontainers.core import config as tc_config
 from testcontainers.core.generic import DbContainer
 from testcontainers.oracle import OracleDbContainer
 

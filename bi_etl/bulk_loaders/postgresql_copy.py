@@ -61,9 +61,9 @@ class PostgreSQLCopy(BulkLoader):
             self.rename_table(table_to_load, table_object)
         return rows_inserted
 
-    def load_from_iterator(
+    def load_from_iterable(
             self,
-            iterator: Iterator,
+            iterable: Iterable,
             table_object: Table,
             table_to_load: str = None,
             perform_rename: bool = False,
@@ -87,7 +87,7 @@ class PostgreSQLCopy(BulkLoader):
                     quoting=QUOTE_MINIMAL,
                     null=self.config.null,
                 ) as writer:
-                    for row in iterator:
+                    for row in iterable:
                         writer.insert_row(row)
 
             row_count = self.load_from_files(

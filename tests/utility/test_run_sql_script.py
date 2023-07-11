@@ -2,7 +2,7 @@ import os
 import unittest
 from pathlib import Path
 
-from config_for_tests import build_config
+from tests.config_for_tests import build_config
 from bi_etl.utility.run_sql_script import RunSQLScript
 
 

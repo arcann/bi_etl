@@ -116,8 +116,8 @@ class Row(MutableMapping):
             ),
             # Optionally, the object’s state, which will be passed to the object’s __setstate__() method
             # as previously described.
-            # If the object has no such method then, the value must be a dictionary
-            # and it will be added to the object’s __dict__ attribute.
+            # If the object has no such method then, the value must be a dictionary, and it will be
+            # added to the object’s __dict__ attribute.
             None,
 
             # Optionally, an iterator (and not a sequence) yielding successive items.
@@ -672,7 +672,6 @@ class Row(MutableMapping):
         #       since MutableMapping returns ValuesView.
         #       In either case, the call will be slower, but safer since the caller
         #       would not be able to break the row by changing the list of values.
-        #       See also values_in_order.  We also need to deprecate one of the methods.
         return self._data_values
 
     def _values_equal_coerce(self, val1, val2, col_name):
@@ -801,5 +800,3 @@ class Row(MutableMapping):
             raise ValueError(f"{transform_function} on {column_name} with value {value} yielded exception {e}")
 
         return self
-
-Row.values_in_order = Row.values

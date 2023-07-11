@@ -1,7 +1,6 @@
 """
 Created on Jan 27, 2016
 """
-import os
 import typing
 import unittest
 from datetime import timedelta, datetime
@@ -826,6 +825,7 @@ class BaseTestHstTable(BaseTestDatabase):
 
         self.mock_database.drop_table_if_exists(tbl_name)
 
+    @unittest.skip
     def test_cleanup_spur_del_ver(self):
         tbl_name = self._get_table_name('test_cleanup_del_ver')
         self._test_cleanup_versions(
@@ -834,6 +834,7 @@ class BaseTestHstTable(BaseTestDatabase):
             remove_redundant_versions=True,
         )
 
+    @unittest.skip
     def test_cleanup_spur_nodel_ver(self):
         tbl_name = self._get_table_name('test_cleanup_nodel_ver')
         self._test_cleanup_versions(

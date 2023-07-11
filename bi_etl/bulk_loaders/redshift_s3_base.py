@@ -4,7 +4,6 @@ from __future__ import annotations
 import os.path
 import textwrap
 import time
-import uuid
 from pathlib import Path
 from typing import *
 
@@ -18,7 +17,6 @@ from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 from bi_etl.conversions import strip
 
 if TYPE_CHECKING:
-    from bi_etl.scheduler.task import ETLTask
     from bi_etl.components.table import Table
 
 
@@ -340,19 +338,6 @@ class RedShiftS3Base(BulkLoader):
 
         return rows_loaded
 
-    def load_from_iterator(
-        self,
-        iterator: Iterator,
-        table_object: Table,
-        table_to_load: str = None,
-        perform_rename: bool = False,
-        progress_frequency: int = 10,
-        analyze_compression: bool = None,
-        parent_task: Optional[ETLTask] = None,
-    ) -> int:
-
-        raise NotImplementedError()
-
     def load_table_from_cache(
             self,
             table_object: Table,
@@ -361,8 +346,8 @@ class RedShiftS3Base(BulkLoader):
             progress_frequency: int = 10,
             analyze_compression: str = None,
     ) -> int:
-        row_count = self.load_from_iterator(
-            iterator=table_object.cache_iterator(),
+        row_count = self.load_from_iterable(
+            iterable=table_object.cache_iterable(),
             table_object=table_object,
             analyze_compression=analyze_compression,
         )

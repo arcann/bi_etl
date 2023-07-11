@@ -1,4 +1,4 @@
-from db_sqlite.sqlite_db import SqliteDB
+from tests.db_sqlite.sqlite_db import SqliteDB
 from tests.db_base_tests.base_test_sql_query import BaseTestSQLQuery
 
 

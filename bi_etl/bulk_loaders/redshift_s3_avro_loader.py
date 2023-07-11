@@ -79,15 +79,15 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
             fastavro.writer(avro_file, parsed_schema, data_chunk, codec=self.codec)
         self.log.debug(f"Closed bulk load chunk {file_number}: {filepath}")
 
-    def load_from_iterator(
-           self,
-           iterator: Iterator,
-           table_object: Table,
-           table_to_load: str = None,
-           perform_rename: bool = False,
-           progress_frequency: int = 10,
-           analyze_compression: str = None,
-           parent_task: Optional[ETLTask] = None,
+    def load_from_iterable(
+        self,
+        iterable: Iterable,
+        table_object: Table,
+        table_to_load: str = None,
+        perform_rename: bool = False,
+        progress_frequency: int = 10,
+        analyze_compression: str = None,
+        parent_task: Optional[ETLTask] = None,
     ) -> int:
 
         table_to_load = table_to_load or table_object.qualified_table_name
@@ -140,7 +140,7 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
             # for data_chunk in more_itertools.chunked(iterator, self.s3_file_max_rows):
 
             data_chunk = list()
-            for row in iterator:
+            for row in iterable:
                 data_chunk.append(row)
 
                 if len(data_chunk) >= self.s3_file_max_rows:

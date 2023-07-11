@@ -61,6 +61,26 @@ class BulkLoader(object):
             analyze_compression: str = None,
             parent_task: Optional[ETLTask] = None,
     ) -> int:
+        return self.load_from_iterable(
+            iterable=iterator,
+            table_object=table_object,
+            table_to_load=table_to_load,
+            perform_rename=perform_rename,
+            progress_frequency=progress_frequency,
+            analyze_compression=analyze_compression,
+            parent_task=parent_task,
+        )
+
+    def load_from_iterable(
+            self,
+            iterable: Iterable,
+            table_object: Table,
+            table_to_load: str = None,
+            perform_rename: bool = False,
+            progress_frequency: int = 10,
+            analyze_compression: str = None,
+            parent_task: Optional[ETLTask] = None,
+    ) -> int:
         raise NotImplementedError()
 
     def load_table_from_cache(
@@ -71,8 +91,8 @@ class BulkLoader(object):
             progress_frequency: int = 10,
             analyze_compression: str = None,
     ) -> int:
-        row_count = self.load_from_iterator(
-            iterator=table_object.cache_iterator(),
+        row_count = self.load_from_iterable(
+            iterable=table_object.cache_iterable(),
             table_object=table_object,
             perform_rename=False,  # False since we do it here
             analyze_compression=analyze_compression,
@@ -129,7 +149,7 @@ class BulkLoader(object):
                                 table_object.database,
                                 *row_columns
                             )
-                            sa_table.create()
+                            sa_table.create(table_object.connection())
                             created = True
                         except (sqlalchemy.exc.OperationalError, sqlalchemy.exc.InvalidRequestError):
                             tmp_id += 1
@@ -144,8 +164,8 @@ class BulkLoader(object):
                 pending_rows.append(row)
 
         for update_table_object, pending_rows in bcp_update_table_dict.values():
-            self.load_from_iterator(
-                iterator=pending_rows,
+            self.load_from_iterable(
+                iterable=pending_rows,
                 table_object=update_table_object,
             )
 

@@ -11,7 +11,7 @@ import logging
 import math
 import sys
 import traceback
-import typing
+from typing import *
 import warnings
 from datetime import datetime
 
@@ -31,13 +31,13 @@ from bi_etl.exceptions import NoResultFound
 from bi_etl.memory_size import get_size_gc
 from bi_etl.statistics import Statistics
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     from bi_etl.components.etlcomponent import ETLComponent
 
 __all__ = ['Lookup']
 
 
-class Lookup(object):
+class Lookup(Iterable):
     COLLECTION_INDEX = datetime(year=1900, month=1, day=1, hour=0, minute=0, second=0)
 
     # OOBTree.BTree is now used instead of SortedDict
@@ -45,7 +45,7 @@ class Lookup(object):
     # http://pythonhosted.org/BTrees/index.html
     VERSION_COLLECTION_TYPE = OOBTree
 
-    ROW_TYPES = typing.Union[Row, typing.Sequence]
+    ROW_TYPES = Union[Row, Sequence]
     DB_LOOKUP_WARNING = 1000
 
     def __init__(self,
@@ -175,20 +175,20 @@ class Lookup(object):
         else:
             return val
 
-    def _hashable_key_stripped_non_str(self, row) -> typing.Sequence:
+    def _hashable_key_stripped_non_str(self, row) -> Sequence:
         return self._hashable_key_type(
             tuple(
                 [Lookup.rstrip_key_value(val) for val in row]
             )
         )
 
-    def _hashable_key_stripped(self, row) -> typing.Sequence:
+    def _hashable_key_stripped(self, row) -> Sequence:
         if isinstance(row, str):
             return row
         else:
             return self._hashable_key_stripped_non_str(row)
 
-    def get_hashable_combined_key(self, row: ROW_TYPES) -> typing.Sequence:
+    def get_hashable_combined_key(self, row: ROW_TYPES) -> Sequence:
         if isinstance(row, self._hashable_key_type):
             if not isinstance(row, str):
                 return self._hashable_key_stripped_non_str(row)
@@ -374,7 +374,7 @@ class Lookup(object):
     def uncache_set(self, row: ROW_TYPES):
         self.uncache_row(row)
 
-    def __iter__(self) -> typing.Iterable[Row]:
+    def __iter__(self) -> Iterator[Row]:
         """
         Iterates over rows in the lookup cache.  Returns clones of rows in case they are modified.
 
@@ -386,7 +386,7 @@ class Lookup(object):
                 # compatible with the parent table
                 yield row.clone()
 
-    def _iter_raw(self) -> typing.Iterable[Row]:
+    def _iter_raw(self) -> Iterable[Row]:
         """
         Iterates over rows in the lookup cache. Returns actual cached rows. Be careful! Direct modifications to
         the cached rows could break the later use of the cache.
@@ -400,8 +400,8 @@ class Lookup(object):
 
     def find_where(
             self,
-            key_names: typing.Sequence,
-            key_values_dict: typing.Mapping,
+            key_names: Sequence,
+            key_values_dict: Mapping,
             limit: int = None
             ):
         """
@@ -422,8 +422,8 @@ class Lookup(object):
             
     def uncache_where(
             self,
-            key_names: typing.Sequence,
-            key_values_dict: typing.Mapping):
+            key_names: Sequence,
+            key_values_dict: Mapping):
         """
         Scan all cached rows (expensive) to find rows to remove.
         """
@@ -434,7 +434,7 @@ class Lookup(object):
     def get_versions_collection(
             self,
             row: ROW_TYPES
-            ) -> typing.MutableMapping[datetime, Row]:
+            ) -> MutableMapping[datetime, Row]:
         """
         This method exists for compatibility with range caches
 
@@ -466,7 +466,7 @@ class Lookup(object):
         versions_collection = self.get_versions_collection(row)
         return versions_collection[Lookup.COLLECTION_INDEX]
 
-    def find_matches_in_cache(self, row: ROW_TYPES, **kwargs) -> typing.Sequence[Row]:
+    def find_matches_in_cache(self, row: ROW_TYPES, **kwargs) -> Sequence[Row]:
         return list(self.find_in_cache(row, **kwargs))
 
     def has_row(self, row: ROW_TYPES) -> bool:
@@ -711,14 +711,14 @@ class Lookup(object):
                 stats.timer.stop()
         return row
 
-    def _update_with_value_cache(self, row):
+    def _update_with_value_cache(self, row: Row):
         """
         Update a row with str and datetime de-duplication references
 
         :param row:
         :return:
         """
-        for column_number, column_value in enumerate(row.values_in_order()):
+        for column_number, column_value in enumerate(row.values()):
             if isinstance(column_value, str):
                 if column_value in self._value_cache_str:
                     # Replace with value cache reference

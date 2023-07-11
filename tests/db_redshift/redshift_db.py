@@ -1,6 +1,6 @@
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
 
-from db_sqlite.sqlite_db import SqliteDB
+from tests.db_sqlite.sqlite_db import SqliteDB
 
 
 class RedshiftDB(SqliteDB):

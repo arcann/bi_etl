@@ -3,7 +3,6 @@ Created on Mar 26, 2015
 
 @author: Derek Wood
 """
-from collections import OrderedDict
 
 from sqlalchemy.sql.schema import Column, Table
 from sqlalchemy.sql.sqltypes import Integer, String, Numeric
@@ -11,7 +10,6 @@ from sqlalchemy.sql.sqltypes import Integer, String, Numeric
 from bi_etl.components.row.row_case_insensitive import RowCaseInsensitive
 from bi_etl.components.row.row_iteration_header_case_insensitive import RowIterationHeaderCaseInsensitive
 from bi_etl.conversions import nullif
-from bi_etl.timer import Timer
 from tests.mock_metadata import MockDatabaseMeta
 from tests.test_row import TestRow
 
@@ -29,7 +27,7 @@ class TestRowCaseInsensitive(TestRow):
             new_row = RowCaseInsensitive(
                 iteration_header=new_header,
             )
-            new_row.update_from_values(row.values_in_order())
+            new_row.update_from_values(row.values())
             return new_row
         else:
             return row

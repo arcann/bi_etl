@@ -59,9 +59,9 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
             # raise ValueError(f'No json_serializer support for {repr(value)}')
             str(value)
 
-    def load_from_iterator(
+    def load_from_iterable(
             self,
-            iterator: Iterator,
+            iterable: Iterable,
             table_object: Table,
             table_to_load: str = None,
             perform_rename: bool = False,
@@ -81,12 +81,13 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
                 filepath = os.path.join(temp_dir, f'data_{file_number}.json.gz')
                 local_files.append(filepath)
                 zip_file = gzip.open(filepath, 'wb')
+                # noinspection PyTypeChecker
                 text_wrapper = io.TextIOWrapper(zip_file, encoding='utf-8')
                 text_wrapper_pool.append(text_wrapper)
                 zip_pool.append(zip_file)
 
             progress_timer = Timer()
-            for row_number, row in enumerate(iterator):
+            for row_number, row in enumerate(iterable):
                 row_count += 1
                 text_wrapper = text_wrapper_pool[row_number % writer_pool_size]
                 text_wrapper.write(json.dumps(row.as_dict, default=self.json_serializer))

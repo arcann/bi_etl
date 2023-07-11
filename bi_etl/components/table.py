@@ -1477,7 +1477,7 @@ class Table(ReadOnlyTable):
                         stmt = f"INSERT INTO {self.qualified_table_name} ({', '.join(new_row.columns_in_order)}) VALUES {{values}}"
                         pending_insert_statements.add_statement(stmt_key, stmt)
                     prepare_stats['rows prepared'] += 1
-                    stmt_values = new_row.values_in_order()
+                    stmt_values = new_row.values()
                     pending_insert_statements.append_values_by_key(stmt_key, stmt_values)
 
                     # Change the row status to existing, now any updates should be via update statements instead of in-memory updates
@@ -1646,7 +1646,7 @@ class Table(ReadOnlyTable):
                     # row_iter = iter(self._bulk_iter_queue.get, self._bulk_iter_sentinel)
                     row_iter = self._bulk_iter_queue
                     self._bulk_iter_worker = spawn(
-                        self.bulk_loader.load_from_iterator,
+                        self.bulk_loader.load_from_iterable,
                         row_iter,
                         table_object=self,
                         progress_frequency=None,

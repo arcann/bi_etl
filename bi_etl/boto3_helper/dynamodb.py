@@ -23,7 +23,7 @@ class DynamoDB(Boto3_Base):
         return dynamodb.Table(dynamo_table_name)
 
     @staticmethod
-    def query_dynamo_table(dynamo_table, scan_args_list: Iterator[dict]) -> Iterator[dict]:
+    def query_dynamo_table(dynamo_table, scan_args_list: Iterable[dict]) -> Iterable[dict]:
         data = []
         for scan_args in scan_args_list:
             tbl_data = dynamo_table.query(**scan_args)
@@ -39,8 +39,8 @@ class DynamoDB(Boto3_Base):
             self,
             dynamo_table_name,
             region_name,
-            scan_args_list: Iterator[dict]
-    ) -> Iterator[dict]:
+            scan_args_list: Iterable[dict]
+    ) -> Iterable[dict]:
         dynamo_table = self.get_dynamo_table(dynamo_table_name, region_name=region_name)
         return self.query_dynamo_table(dynamo_table, scan_args_list)
 

@@ -18,11 +18,14 @@ class Slack(NotifierBase):
             self._client_version = 3
             from slack_sdk.errors import SlackApiError
         except ImportError:
-            # noinspection PyUnresolvedReferences
-            from slack import WebClient
-            self.log.debug("Using WebClient v2+ import")
-            self._client_version = 2
-            from slack.errors import SlackApiError
+            try:
+                # noinspection PyUnresolvedReferences
+                from slack import WebClient
+                self.log.debug("Using WebClient v2+ import")
+                self._client_version = 2
+                from slack.errors import SlackApiError
+            except ImportError:
+                raise ImportError("Slack notifier requires either slack-sdk or slackclient to be installed")
         self.SlackApiError = SlackApiError
 
         # We need to support putting the token in keepass/keyring

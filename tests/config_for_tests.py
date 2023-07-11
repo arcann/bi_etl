@@ -1,3 +1,4 @@
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Union, List
 
@@ -64,5 +65,5 @@ class EnvironmentSpecificConfigForTests(BI_ETL_Config_Base_From_Ini_Env):
     Slack_Test_Keepass: SlackNotifier = None
 
     def __init__(self):
-        super().__init__(file_name='test_config.ini')
+        super().__init__(file_name=str(Path('tests') / 'test_config.ini'))
 

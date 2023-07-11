@@ -3,7 +3,6 @@ Created on Jan 5, 2016
 
 @author: Derek Wood
 """
-import unittest
 
 from bi_etl.lookups.lookup import Lookup
 from tests._test_base_lookup import _TestBaseLookup

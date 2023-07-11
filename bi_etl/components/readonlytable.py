@@ -622,7 +622,7 @@ class ReadOnlyTable(ETLComponent):
                 key_values_dict[key_name] = key_value
         return key_values_dict, lookup_name
 
-    def cache_iterator(self):
+    def cache_iterable(self):
         pk_lookup = None
         try:
             pk_lookup = self.get_pk_lookup()
@@ -636,10 +636,10 @@ class ReadOnlyTable(ETLComponent):
             pass
 
         if pk_lookup is None:
-            raise LookupError("Unable to find filled lookup for cache_iterator")
+            raise LookupError("Unable to find filled lookup for cache_iterable")
         else:
             # Note in this case the outer call where / iter_result will process the criteria
-            self.log.debug(f"Using lookup {pk_lookup} as source for cache_iterator")
+            self.log.debug(f"Using lookup {pk_lookup} as source for cache_iterable")
             return pk_lookup
 
     # We add the following args at this level

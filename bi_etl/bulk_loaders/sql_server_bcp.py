@@ -69,16 +69,16 @@ class SQLServerBCP(BulkLoader):
             return ''
         else:
             column_value = str(column_value)
-            # Line delimiter default is \r\n so we'll replace that with just \n
+            # Line delimiter default is \r\n, so we'll replace that with just \n
             column_value = column_value.replace('\r\n', '\n')
             if column_value == '':
                 # ASCII null should be for an empty string
                 column_value = '\000'
             return column_value
 
-    def load_from_iterator(
+    def load_from_iterable(
             self,
-            iterator: Iterator,
+            iterable: Iterable,
             table_object: Table,
             table_to_load: str = None,
             perform_rename: bool = False,
@@ -98,7 +98,7 @@ class SQLServerBCP(BulkLoader):
             )
 
             with open(data_file_path, 'w+', encoding="utf-8") as file:
-                for row in iterator:
+                for row in iterable:
                     line = self.delimiter.join([self.value_for_bcp(row[col_name]) for col_name in table_object.columns])
                     file.write(line + '\n')
 

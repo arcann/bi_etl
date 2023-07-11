@@ -50,7 +50,7 @@ def get_size_gc(obj,
             d['ref_chain'] = copy(ref_chain)
         processed_classes[type_name] = d
     if isinstance(obj, Row):
-        for child in obj.values_in_order():
+        for child in obj.values():
             size += get_size_gc(child,
                                 depth_limit=depth_limit,
                                 depth=depth + 1,

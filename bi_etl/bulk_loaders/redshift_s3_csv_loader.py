@@ -4,7 +4,7 @@ from __future__ import annotations
 import gzip
 import io
 import os.path
-import typing
+from typing import *
 from tempfile import TemporaryDirectory
 
 from bi_etl.bulk_loaders.redshift_s3_base import RedShiftS3Base
@@ -12,7 +12,7 @@ from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 from bi_etl.components.csv_writer import CSVWriter, QUOTE_MINIMAL
 from bi_etl.timer import Timer
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     from bi_etl.components.table import Table
     from bi_etl.scheduler.task import ETLTask
 
@@ -105,15 +105,15 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                      {options}; commit;
                 """
 
-    def load_from_iterator_partition_fixed(
+    def load_from_iterable_partition_fixed(
            self,
-           iterator: typing.Iterator,
+           iterable: Iterable,
            table_object: Table,
            table_to_load: str = None,
            perform_rename: bool = False,
            progress_frequency: int = 10,
            analyze_compression: str = None,
-           parent_task: typing.Optional[ETLTask] = None,
+           parent_task: Optional[ETLTask] = None,
     ) -> int:
 
         row_count = 0
@@ -131,6 +131,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                     filepath = os.path.join(temp_dir, f'data_{file_number}.csv.gz')
                     local_files.append(filepath)
                     zip_file = gzip.open(filepath, 'wb')
+                    # noinspection PyTypeChecker
                     text_wrapper = io.TextIOWrapper(zip_file, encoding='utf-8')
                     writer = CSVWriter(
                             parent_task,
@@ -147,7 +148,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                     writer_pool.append(writer)
 
                 progress_timer = Timer()
-                for row_number, row in enumerate(iterator):
+                for row_number, row in enumerate(iterable):
                     row_count += 1
                     writer = writer_pool[row_number % writer_pool_size]
                     writer.insert_row(row)
@@ -181,15 +182,15 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 self.log.info(f"{self} had nothing to do with 0 rows found")
             return row_count
 
-    def load_from_iterator_partition_max_rows(
+    def load_from_iterable_partition_max_rows(
             self,
-            iterator: typing.Iterator,
+            iterable: Iterable,
             table_object: Table,
             table_to_load: str = None,
             perform_rename: bool = False,
             progress_frequency: int = 10,
             analyze_compression: str = None,
-            parent_task: typing.Optional[ETLTask] = None,
+            parent_task: Optional[ETLTask] = None,
     ) -> int:
         with TemporaryDirectory(dir=self.config.temp_file_path, ignore_cleanup_errors=True) as temp_dir:
             local_files = []
@@ -199,7 +200,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             current_row_number = 0
             try:
                 progress_timer = Timer()
-                for row in iterator:
+                for row in iterable:
                     row_number += 1
                     if current_file is None or current_row_number >= self.s3_file_max_rows:
                         if current_file is not None:
@@ -212,6 +213,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                         filepath = os.path.join(temp_dir, f'data_{file_number}.csv.gz')
                         local_files.append(filepath)
                         zip_file = gzip.open(filepath, 'wb')
+                        # noinspection PyTypeChecker
                         text_wrapper = io.TextIOWrapper(zip_file, encoding='utf-8')
                         current_file = CSVWriter(
                             parent_task,
@@ -252,19 +254,19 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 self.log.info(f"{self} had nothing to do with 0 rows found")
             return row_number
 
-    def load_from_iterator(
+    def load_from_iterable(
             self,
-            iterator: typing.Iterator,
+            iterable: Iterable,
             table_object: Table,
             table_to_load: str = None,
             perform_rename: bool = False,
             progress_frequency: int = 10,
             analyze_compression: str = None,
-            parent_task: typing.Optional[ETLTask] = None,
+            parent_task: Optional[ETLTask] = None,
     ) -> int:
         if self.s3_file_max_rows is not None and self.s3_file_max_rows > 0:
-            return self.load_from_iterator_partition_max_rows(
-                iterator=iterator,
+            return self.load_from_iterable_partition_max_rows(
+                iterable=iterable,
                 table_object=table_object,
                 table_to_load=table_to_load,
                 perform_rename=perform_rename,
@@ -273,8 +275,8 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 parent_task=parent_task,
             )
         else:
-            return self.load_from_iterator_partition_fixed(
-                iterator=iterator,
+            return self.load_from_iterable_partition_fixed(
+                iterable=iterable,
                 table_object=table_object,
                 table_to_load=table_to_load,
                 perform_rename=perform_rename,

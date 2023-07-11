@@ -7,6 +7,7 @@ Created on Sep 17, 2014
 import timeit
 from collections import OrderedDict
 from datetime import datetime
+from typing import List, Tuple
 
 
 class Timer(object):
@@ -19,9 +20,9 @@ class Timer(object):
         self.start_time_precise = None
         self.stop_time = None
         self.running = False
-        self.format_strings = [
+        self.format_strings: List[Tuple[int, str]] = [
             # (Max_Seconds, Format_String)
-            (  60, "{total_seconds:.3f} seconds"),
+            (60,   "{total_seconds:.3f} seconds"),
             (None, "{total_seconds:.1f} seconds ({hours:d}h:{minutes:02d}m:{seconds:02.1f}s)"),
             ]
         if start_running:

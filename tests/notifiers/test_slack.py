@@ -70,18 +70,22 @@ class TestSlackMock(unittest.TestCase):
                     notifier = self.get_slack_notifier()
                     notifier.send('Subject', 'test_send')
 
-    @patch('slack_sdk.WebClient')
-    def test_send_v2(self, mock_slack_sdk):
-        no_module = MagicMock()
-        no_module.function.return_value = ImportError
-        with patch.dict('sys.modules', slack=no_module):
-            notifier = self.get_slack_notifier()
-            notifier.send('Subject', 'test_send')
-            mock_slack_sdk.return_value.chat_postMessage.assert_called_once_with(
-                channel='Mock',
-                text=f"Subject: test_send",
-                link_names=False
-            )
+    def test_send_v2(self):
+        try:
+            from slack_sdk import WebClient
+            with patch('slack_sdk.WebClient') as mock_slack_sdk:
+                no_module = MagicMock()
+                no_module.function.return_value = ImportError
+                with patch.dict('sys.modules', slack=no_module):
+                    notifier = self.get_slack_notifier()
+                    notifier.send('Subject', 'test_send')
+                    mock_slack_sdk.return_value.chat_postMessage.assert_called_once_with(
+                        channel='Mock',
+                        text=f"Subject: test_send",
+                        link_names=False
+                    )
+        except ImportError:
+            raise self.skipTest("slack_sdk not installed")
 
 
 class BaseTestLiveSlack(unittest.TestCase):
