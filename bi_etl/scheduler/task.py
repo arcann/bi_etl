@@ -1157,7 +1157,10 @@ class ETLTask(object):
             attachment=None,
             skip_channels: set = None,
     ):
-        if not self.suppress_notifications:
+        if self.suppress_notifications:
+            self.log.info(f"Notification to {channel_list} suppressed for:")
+            self.log.info(f"{subject}: {message}")
+        else:
             # Note: all exceptions are caught since we don't want notifications to kill the load
             try:
                 filtered_channels = list()
