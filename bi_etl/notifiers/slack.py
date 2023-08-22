@@ -41,7 +41,7 @@ class Slack(NotifierBase):
                 keepass_group=self.config_section.keepass_group,
                 keepass_title=self.config_section.keepass_title,
             )
-            config_section.set_as_child('slack_token_credentials', slack_token_credentials)
+            config_section.add_child('slack_token_credentials', slack_token_credentials)
             slack_token = slack_token_credentials.get_password()
         else:
             slack_token = self.config_section.token

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bi_etl"
-version = "1.5.0a"
+version = "1.5.0"
 description = "Python ETL Framework"
 keywords=["etl"]
 classifiers = [
@@ -17,7 +17,7 @@ repository = "https://github.com/arcann/bi_etl"
 
 [tool.poetry.dependencies]
 python = "^3.9,<4.0"
-config-wrangler = ">=0.5.5"
+config-wrangler = ">=1.0.0"
 SQLAlchemy = ">=1.4.35,<2.0"
 semidbm = ">=0.5.1"
 psutil = ">=5.7.2"
@@ -35,7 +35,7 @@ pyarrow = {version = ">=10.0.1", optional = true}
 # Note: boto3 version is kept fairly current not due to
 # actual code needs but to limit version checking since
 # scanning hundreds of boto3 versions takes a long time.
-boto3 = {version = ">=1.26", optional = true}
+boto3 = {version = ">=1.27", optional = true}
 psycopg2 = {version = ">=2.8.6", optional = true}
 jira = {version = ">=3.1.1", optional = true}
 slack-sdk = {version = ">=3.19.5", optional = true}
@@ -62,23 +62,24 @@ tox = "^4.6.4"
 boto3 = ">=1.26"
 fastavro = ">=1.5.3"
 psycopg2 = ">=2.9.3"
-sphinx-sizzle-theme = ">=0.1.1"
 sphinx-autobuild = "^2021.3.14"
 oracledb = ">=1.2.0"
 pip = ">=22.1.2"
 slack-sdk = ">=3.19.5"
 numpy = "^1.25.1"
 pyarrow = "^12.0.1"
+pykeepass = "^4.0.5"
 
 [tool.poetry.group.docs]
 optional = true
 
 [tool.poetry.group.docs.dependencies]
-Sphinx = ">=4.5,<5.0"
+Sphinx = "^7.2.2"
 sphinx-paramlinks = ">=0.5.4"
-sphinx-pydantic = ">=0.1.1"
-autodoc-pydantic = ">=1.7.2"
+# sphinx-pydantic = ">=0.1.1" -- Has not been updated for pydantic 2
 # sphinx-autodoc-annotation = "^1.0-1"
+autodoc-pydantic = "^2.0.1"
+sphinx-rtd-theme = "^1.3.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

@@ -43,7 +43,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.todo',
     'sphinx.ext.viewcode',
-    'sphinx-pydantic',
+    # 'sphinx-pydantic',
     # 'sphinxcontrib.restbuilder',
     'sphinx.ext.intersphinx',
     'sphinxcontrib.autodoc_pydantic',
@@ -150,8 +150,7 @@ todo_include_todos = True
 # html_theme = 'alabaster'
 # html_theme = 'pyramid'
 
-html_theme = 'sizzle'
-# Sizzle docs: https://docs.red-dove.com/sphinx_sizzle_theme/index.html
+html_theme = "sphinx_rtd_theme"
 
 # import sphinx_theme
 # html_theme = 'stanford_theme'

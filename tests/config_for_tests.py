@@ -5,6 +5,7 @@ from typing import Union, List
 from config_wrangler.config_templates.config_hierarchy import ConfigHierarchy
 from config_wrangler.config_templates.logging_config import LoggingConfig
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
+from config_wrangler.config_wrangler_config import ConfigWranglerConfig
 
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Base_From_Ini_Env
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Section, Notifiers
@@ -54,6 +55,12 @@ class TestSetup(ConfigHierarchy):
 
 
 class EnvironmentSpecificConfigForTests(BI_ETL_Config_Base_From_Ini_Env):
+    model_config = ConfigWranglerConfig(
+        validate_default=True,
+        validate_assignment=True,
+        validate_credentials=False,
+    )
+
     redshift_database: SQLAlchemyDatabase = None
 
     s3_bulk: S3_Bulk_Loader_Config = None

@@ -476,6 +476,7 @@ class ETLTask(object):
         )
         return etl_task.get_task_singleton()
 
+    # noinspection PyPep8Naming
     def SQLDep(
             self,
             sql_path: str,
@@ -562,7 +563,7 @@ class ETLTask(object):
             etl_task_class_type,
             parameters=None,
             display_name=None,
-        ):
+    ):
         """
         Start a new task on the :class`bi_etl.scheduler.scheduler.Scheduler`
         that will be a child of this task.
@@ -1109,7 +1110,10 @@ class ETLTask(object):
         for config_ref in channel_list:
             config_section = config_ref.get_referenced()
             if not isinstance(config_section, notifiers_config.NotifierConfigBase):
-                raise ValueError(f"Notifier is not an instance of NotifierConfigBase: type= {type(config_section)} value= {config_section}")
+                raise ValueError(
+                    f"Notifier reference {config_ref} is not to an instance of NotifierConfigBase: "
+                    f"found type= {type(config_section)} value= {config_section}"
+                )
             try:
                 if config_section == 'LogNotifier':
                     notifier_class_str = config_section

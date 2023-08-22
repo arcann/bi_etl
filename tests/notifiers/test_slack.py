@@ -12,6 +12,7 @@ from bi_etl.notifiers import Slack
 from tests.config_for_tests import EnvironmentSpecificConfigForTests
 
 
+# https://docs.python.org/3/library/unittest.html#load-tests-protocol
 def load_tests(loader, standard_tests, pattern):
     suite = TestSuite()
     for test_class in (
@@ -96,13 +97,22 @@ class BaseTestLiveSlack(unittest.TestCase):
 
     def _setUp(self, slack_config_name: str):
         # Note use tox.ini to test using different slack libraries
-        self.env_config = EnvironmentSpecificConfigForTests()
-        # Inherited classes should set slack_config
-        self.slack_config = getattr(self.env_config, slack_config_name)
-        if self.slack_config is None:
-            raise unittest.SkipTest(f"Skip {self} due to no {slack_config_name} section")
-        else:
-            self.notifier = Slack(self.slack_config)
+        self.slack_config = None
+        self.env_config = None
+        try:
+            self.env_config = EnvironmentSpecificConfigForTests()
+            # Inherited classes should set slack_config
+            self.slack_config = getattr(self.env_config, slack_config_name)
+            if self.slack_config is None:
+                raise unittest.SkipTest(f"Skip {self} due to no {slack_config_name} section")
+            else:
+                self.notifier = Slack(self.slack_config)
+        except ValueError as e:
+            raise unittest.SkipTest(f"Skip {self} due to config error {e}")
+        except FileNotFoundError as e:
+            raise unittest.SkipTest(f"Skip {self} due to not finding config {e}")
+        except ImportError as e:
+            raise unittest.SkipTest(f"Skip {self} due to not finding required module {e}")
 
     def test_send(self):
         self.notifier.send('Subject', 'test_send')
@@ -130,4 +140,3 @@ class TestSlackKeyring(BaseTestLiveSlack):
 class TestSlackKeePass(BaseTestLiveSlack):
     def setUp(self, slack_config=None):
         self._setUp('Slack_Test_Keepass')
-
