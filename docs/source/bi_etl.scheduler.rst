@@ -5,7 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    bi_etl.scheduler.scheduler_etl_jobs
 
@@ -13,7 +13,7 @@ Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    bi_etl.scheduler.dependent_reasons
    bi_etl.scheduler.exceptions

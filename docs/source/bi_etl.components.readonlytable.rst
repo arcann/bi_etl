@@ -5,4 +5,3 @@ bi\_etl.components.readonlytable module
    :members:
    :undoc-members:
    :show-inheritance:
-   :noindex:

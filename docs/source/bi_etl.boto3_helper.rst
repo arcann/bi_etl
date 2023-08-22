@@ -1,11 +1,9 @@
 bi\_etl.boto3\_helper package
 =============================
 
-Submodules
-----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    bi_etl.boto3_helper.dynamodb
    bi_etl.boto3_helper.lambdas
@@ -13,10 +11,3 @@ Submodules
    bi_etl.boto3_helper.session
    bi_etl.boto3_helper.ssm
 
-Module contents
----------------
-
-.. automodule:: bi_etl.boto3_helper
-   :members:
-   :undoc-members:
-   :show-inheritance:

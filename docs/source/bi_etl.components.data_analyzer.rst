@@ -5,4 +5,3 @@ bi\_etl.components.data\_analyzer module
    :members:
    :undoc-members:
    :show-inheritance:
-   :noindex:

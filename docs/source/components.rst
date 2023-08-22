@@ -10,7 +10,7 @@ Within a task you will use source / target components to extract and load the da
 CSVReader
 ---------
 
-Documentation: :class:`~bi_etl.components.csvreader.CSVReader`
+Documentation Link: :class:`~bi_etl.components.csvreader.CSVReader`
 
 Can read *any* delimited file (see ''delimiter'' parameter)
 It is based on the Python csv module.
@@ -23,7 +23,7 @@ Usable as Target: No
 CSVWriter
 ------------------------------------------------
 
-Documentation: :class:`~bi_etl.components.csv_writer.CSVWriter`
+Documentation Link: :class:`~bi_etl.components.csv_writer.CSVWriter`
 
 Can write *any* delimited file (see ''delimiter'' parameter)
 It is based on the Python csv module.
@@ -36,7 +36,7 @@ Usable as Target: Yes
 XLSXReader
 --------------------------------------------------
 
-Documentation: :class:`~bi_etl.components.xlsx_reader.XLSXReader`
+Documentation Link: :class:`~bi_etl.components.xlsx_reader.XLSXReader`
 
 Reads from Excel files; although only those in xlsx format.
 
@@ -46,7 +46,7 @@ Usable as Target: No
 XLSXWriter
 --------------------------------------------------
 
-Documentation: :class:`~bi_etl.components.xlsx_writer.XLSXWriter`
+Documentation Link: :class:`~bi_etl.components.xlsx_writer.XLSXWriter`
 
 Writes to Excel xlsx files (can also read/update files).
 
@@ -57,7 +57,7 @@ Usable as Target: Yes
 SQLQuery
 --------------------------------------------------
 
-Documentation: :class:`~bi_etl.components.sqlquery.SQLQuery`
+Documentation Link: :class:`~bi_etl.components.sqlquery.SQLQuery`
 
 Reads from the result of a SQL query.
 
@@ -78,7 +78,7 @@ Usable as Target: No
 Table
 -------------------------------------------------------
 
-Documentation: :class:`~bi_etl.components.table.Table`
+Documentation Link: :class:`~bi_etl.components.table.Table`
 
 Inherits from ReadOnlyTable. Added features:
     * lookups, optional data cache
@@ -94,7 +94,7 @@ Usable as Target: Yes
 HistoryTable
 -------------------------------------------------------
 
-Documentation: :class:`~bi_etl.components.hst_table.HistoryTable`
+Documentation Link: :class:`~bi_etl.components.hst_table.HistoryTable`
 
 Inherits from **Table**. Adds the ability to correctly load versioned
 tables. Supports both type 2 dimensions and date versioned
@@ -110,7 +110,7 @@ Usable as Target: Yes
 HistoryTableSourceBased
 --------------------------------------------------------------------------
 
-Documentation: :class:`~bi_etl.components.hst_table_source_based.HistoryTableSourceBased`
+Documentation Link: :class:`~bi_etl.components.hst_table_source_based.HistoryTableSourceBased`
 
 Inherits from **HistoryTable**. Changes the versioning
 processing so that the source can restate the version
@@ -124,10 +124,22 @@ Usable as Source: Yes
 Usable as Target: Yes
 
 
+PyArrowDatasetReader
+--------------------------------------------------------------------------
+
+Documentation Link: :class:`~bi_etl.components.pyarrow_dataset_reader.PyArrowDatasetReader`
+
+PyArrowDatasetReader will read rows using pyarrow.dataset functionality but presented
+using the common bi_etl interface including Row objects.
+
+Usable as Source: Yes
+
+Usable as Target: No
+
 W3CReader
 --------------------------------------------------------------------------
 
-Documentation: :class:`~bi_etl.components.w3c_reader.W3CReader`
+Documentation Link: :class:`~bi_etl.components.w3c_reader.W3CReader`
 
 Reads W3C based log files (web server logs).
 
@@ -139,7 +151,7 @@ Usable as Target: No
 DataAnalyzer
 --------------------------------------------------------------------------
 
-Documentation: :class:`~bi_etl.components.data_analyzer.DataAnalyzer`
+Documentation Link: :class:`~bi_etl.components.data_analyzer.DataAnalyzer`
 
 Produces a summary of the columns in the data rows passed to the
 :meth:`~bi_etl.components.data_analyzer.DataAnalyzer.analyze_row`

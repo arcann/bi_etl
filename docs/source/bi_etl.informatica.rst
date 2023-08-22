@@ -5,7 +5,7 @@ Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    bi_etl.informatica.exceptions
    bi_etl.informatica.pm_config

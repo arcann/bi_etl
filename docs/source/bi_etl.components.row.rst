@@ -1,11 +1,8 @@
 bi\_etl.components.row package
 ==============================
 
-Submodules
-----------
-
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    bi_etl.components.row.cached_frozenset
    bi_etl.components.row.column_difference
@@ -15,8 +12,6 @@ Submodules
    bi_etl.components.row.row_iteration_header_case_insensitive
    bi_etl.components.row.row_status
 
-Module contents
----------------
 
 .. automodule:: bi_etl.components.row
    :members:

@@ -5,7 +5,7 @@ Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    bi_etl.components.get_next_key.base_table_memory
    bi_etl.components.get_next_key.local_table_memory

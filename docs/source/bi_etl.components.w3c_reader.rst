@@ -5,4 +5,3 @@ bi\_etl.components.w3c\_reader module
    :members:
    :undoc-members:
    :show-inheritance:
-   :noindex:

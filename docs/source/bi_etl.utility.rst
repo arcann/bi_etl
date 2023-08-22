@@ -5,7 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    bi_etl.utility.postgresql
    bi_etl.utility.sql_server
@@ -14,7 +14,7 @@ Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    bi_etl.utility.ask
    bi_etl.utility.bcp_helpers

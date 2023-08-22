@@ -5,4 +5,3 @@ bi\_etl.components.hst\_table\_source\_based module
    :members:
    :undoc-members:
    :show-inheritance:
-   :noindex:

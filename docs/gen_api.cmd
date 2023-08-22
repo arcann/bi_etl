@@ -1,1 +1,1 @@
-sphinx-apidoc -f -o source -e ..\bi_etl
+sphinx-apidoc -f -d 1 --no-headings -o source -e ..\bi_etl

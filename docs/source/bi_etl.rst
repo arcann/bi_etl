@@ -5,7 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    bi_etl.boto3_helper
    bi_etl.bulk_loaders
@@ -16,7 +16,6 @@ Subpackages
    bi_etl.informatica
    bi_etl.lookups
    bi_etl.notifiers
-   bi_etl.parameters
    bi_etl.scheduler
    bi_etl.utility
 
@@ -24,7 +23,7 @@ Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    bi_etl.conversions
    bi_etl.memory_size
@@ -33,10 +32,3 @@ Submodules
    bi_etl.timer
    bi_etl.version
 
-Module contents
----------------
-
-.. automodule:: bi_etl
-   :members:
-   :undoc-members:
-   :show-inheritance:
