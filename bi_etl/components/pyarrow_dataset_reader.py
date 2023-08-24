@@ -38,7 +38,7 @@ class PyArrowDatasetReader(ETLComponent):
         Optionally provide the Schema for the Dataset, in which case it will not be inferred from the source.
 
     format:
-        Currently “parquet”, “ipc”/”arrow”/”feather”, “csv”, and “orc” are supported.
+        Currently "parquet", "ipc" / "arrow" / "feather", "csv", and "orc" are supported.
         For Feather, only version 2 files are supported.
         
     logical_name:
@@ -50,7 +50,7 @@ class PyArrowDatasetReader(ETLComponent):
         The names to use for columns
 
     log_first_row : boolean
-        Should we log progress on the first row read. *Only applies if Table is used as a source.*
+        Should we log progress on the first row read. *Only applies if used as a source.*
         (inherited from ETLComponent)
         
     max_rows : int, optional

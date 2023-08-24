@@ -137,7 +137,7 @@ class Table(ReadOnlyTable):
         Default = None
             
     log_first_row : boolean
-        Should we log progress on the first row read. *Only applies if Table is used as a source.*
+        Should we log progress on the first row read. *Only applies if used as a source.*
         (inherited from ETLComponent)
 
     max_rows : int, optional

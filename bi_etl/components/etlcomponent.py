@@ -46,7 +46,7 @@ class ETLComponent(Iterable):
     Attributes
     ----------
     log_first_row : boolean
-        Should we log progress on the first row read. *Only applies if Table is used as a source.*
+        Should we log progress on the first row read. *Only applies if used as a source.*
         
     max_rows : int, optional
         The maximum number of rows to read. *Only applies if Table is used as a source.*
@@ -366,6 +366,9 @@ class ETLComponent(Iterable):
 
     @property
     def primary_key_tuple(self) -> tuple:
+        """
+        The name of the primary key column(s) in a tuple. Used when a hashable PK definition is needed.
+        """
         return self._primary_key_tuple
 
     @property
