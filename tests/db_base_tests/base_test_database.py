@@ -64,7 +64,10 @@ class BaseTestDatabase(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.db_container is not None:
-            cls.db_container.shutdown()
+            try:
+                cls.db_container.shutdown()
+            except Exception:
+                pass
         del cls.db_container
 
     @staticmethod

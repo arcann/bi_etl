@@ -114,7 +114,10 @@ class BaseDockerDB(SqliteDB):
 
     def get_url(self):
         if self.container is not None:
-            return self.container.get_connection_url()
+            try:
+                return self.container.get_connection_url()
+            except Exception as e:
+                raise unittest.SkipTest(f"Skip {self} test due to container error {e}")
         else:
             raise unittest.SkipTest(f"Skip {self} test due to container error")
 

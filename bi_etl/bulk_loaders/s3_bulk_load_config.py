@@ -6,10 +6,6 @@ from config_wrangler.config_templates.aws.s3_bucket import S3_Bucket_Folder
 
 # noinspection PyPep8Naming
 class S3_Bulk_Loader_Config(S3_Bucket_Folder):
-    class Config:
-        validate_default = True
-        validate_assignment = True
-
     temp_file_path: Optional[Path] = None
     s3_files_to_generate: Optional[int] = None
     s3_file_max_rows: Optional[int] = None

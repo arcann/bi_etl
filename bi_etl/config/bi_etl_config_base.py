@@ -20,11 +20,11 @@ class Notifiers(ConfigHierarchy):
 class BI_ETL_Config_Section(ConfigHierarchy):
     environment_name: str = '*qualified_host_name*'
     lookup_disk_swap_at_percent_ram_used: float = 70
-    lookup_disk_swap_at_process_ram_usage_mb: float = None
-    task_finder_base_module: str = None
-    task_finder_sql_base: str = None
+    lookup_disk_swap_at_process_ram_usage_mb: float = 2.5 * 1024**3
+    task_finder_base_module: Optional[str] = None
+    task_finder_sql_base: Optional[str] = None
 
-    scheduler: SchedulerConfig = None
+    scheduler: Optional[SchedulerConfig] = None
 
     # noinspection PyNestedDecorators
     @field_validator('lookup_disk_swap_at_percent_ram_used', 'lookup_disk_swap_at_process_ram_usage_mb')
@@ -40,10 +40,6 @@ class BI_ETL_Config_Section(ConfigHierarchy):
 # Base class that all bi_etl tasks should inherit from for their config
 # noinspection PyPep8Naming
 class BI_ETL_Config_Base(ConfigRoot):
-    class Config:
-        validate_default = True
-        validate_assignment = True
-
     bi_etl: BI_ETL_Config_Section
 
     logging: LoggingConfig

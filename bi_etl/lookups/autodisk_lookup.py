@@ -84,10 +84,10 @@ class AutoDiskLookup(Lookup):
         if self.max_process_ram_usage_mb is None:
             if self.config is not None:
                 self.max_process_ram_usage_mb = self.config.bi_etl.lookup_disk_swap_at_process_ram_usage_mb
-        # Finally default value
-        if self.max_process_ram_usage_mb is None:
-            self.max_process_ram_usage_mb = 2.5 * 1024**3
-            
+            else:
+                # Perhaps instead of re-specifying a no-config default here we should build an BI_ETL_Config_Section
+                self.max_process_ram_usage_mb = 2.5 * 1024**3
+
         self._set_path(path)
         
         self.ram_check_row_interval = 5000
