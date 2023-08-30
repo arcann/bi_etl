@@ -23,8 +23,8 @@ class IntegrationTestScheduler(unittest.TestCase):
     def setUp(self):
         self.log = logging.getLogger( "TestScheduler" )
         try:
-            ## Note: This test uses the "live" INI file for the current user to get the config for the SchedulerInterface
-            self.scheduler = SchedulerInterface(log= self.log)
+            # Note: This test uses the "live" INI file for the current user to get the config for the SchedulerInterface
+            self.scheduler = SchedulerInterface(log=self.log)
             if self.scheduler.get_heartbeat_age_timedelta() > timedelta(minutes=2):
                 msg = 'Scheduler not running to support TestScheduler'
                 print(msg)
@@ -37,13 +37,13 @@ class IntegrationTestScheduler(unittest.TestCase):
         pass
     
     def _wait_for_finish(self, task_id):
-        self.assertEqual(self.scheduler.wait_for_task(task_id), Status.succeeded, 'task {} failed'.format(task_id))
+        self.assertEqual(self.scheduler.wait_for_task(task_id), Status.succeeded, f'task {task_id} failed')
     
     def _check_for_overlap(self, task_1_rec, task_2_rec):
-        ## Note: tasks don't record being finished until after it's children finish        
+        # Note: tasks don't record being finished until after it's children finish
         
         if task_1_rec.started_date > task_2_rec.started_date:
-            ## Swap so that task 1 is first
+            # Swap so that task 1 is first
             task_1_rec, task_2_rec = task_2_rec, task_1_rec
         
         task_1_parms = self.scheduler.get_task_parameter_dict(task_1_rec)

@@ -7,6 +7,7 @@ from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import TestSuite
 
 import sqlalchemy
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
@@ -29,6 +30,11 @@ from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
 from tests.config_for_tests import build_config
 from tests.dummy_etl_component import DummyETLComponent
+
+
+def load_tests(loader, standard_tests, pattern):
+    suite = TestSuite()
+    return suite
 
 
 class BaseTestDatabase(unittest.TestCase):
@@ -55,11 +61,10 @@ class BaseTestDatabase(unittest.TestCase):
         bi_etl_log = logging.getLogger('bi_etl')
         bi_etl_log.setLevel(logging.DEBUG)
         if cls.__name__.startswith('Base'):
-            # if unittest
-            raise unittest.SkipTest(f"{cls} is a base and not a testable class")
-            # if pytest ... but how do we detect?
-            # For now we'll detect if db_container is None in setUp
-            # pytest.skip("Not a test class")
+            raise ValueError(
+                f"{cls} is a base and not a testable class. "
+                f"Use load_tests or `del BaseTestTable` to avoid loading this as a test."
+            )
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -100,19 +105,23 @@ class BaseTestDatabase(unittest.TestCase):
         self.task = ETLTask(config=self.config)
         self.dummy_etl_component = DummyETLComponent(task=self.task)
         engine = self.db_container.create_engine()
+        self.engine = engine
         self.log.info(f"Using DB connection {engine}")
 
-        self.mock_database = DatabaseMetadata(
-            bind=engine,
-            quote_schema=False,
-            database_name=__name__,
-            uses_bytes_length_limits=True,
-        )
+        self.mock_database = self._get_mock_db()
         self.test_file_search_folders = []
 
     def tearDown(self):
         self.mock_database.dispose()
         self.tmp.cleanup()
+
+    def _get_mock_db(self):
+        return DatabaseMetadata(
+            bind=self.engine,
+            quote_schema=False,
+            database_name=__name__,
+            uses_bytes_length_limits=True,
+        )
 
     def assertEquivalentNumber(self, first, second, msg=None):
         if first is None or second is None:
@@ -182,7 +191,7 @@ class BaseTestDatabase(unittest.TestCase):
             self.mock_database,
             *self._get_column_list_table_1()
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         self._create_index_table_1(sa_table)
 

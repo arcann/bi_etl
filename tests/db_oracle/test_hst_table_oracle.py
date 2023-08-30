@@ -8,3 +8,6 @@ class TestHstTableOracle(BaseTestHstTable):
     @classmethod
     def setUpClass(cls) -> None:
         cls.db_container = OracleDockerDB()
+
+
+del BaseTestHstTable

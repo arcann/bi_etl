@@ -180,7 +180,7 @@ class AutoDiskLookup(Lookup):
             rows_before = len(self)
             self.init_disk_cache()
             timer = Timer()
-            self.log.info('Flushing {rows:,} rows to disk.'.format(rows=len(self._cache)))
+            self.log.info(f'Flushing {len(self._cache):,} rows to disk.')
             gc.collect()
             before_move_mb = self.our_process.memory_info().rss/(1024**2)
             for row in self._cache:
@@ -190,10 +190,11 @@ class AutoDiskLookup(Lookup):
             self._cache = None
             self._init_mem_cache()
             if len(self) != rows_before:
-                msg = "Row count changed during flush to disk." \
-                      " Rows before flush = {}, rows after flush = {}".format(rows_before, len(self))
-                raise AssertionError(msg)
-            self.log.info('Flushing rows took {} seconds'.format(timer.seconds_elapsed_formatted))
+                raise AssertionError(
+                    f"Row count changed during flush to disk. "
+                    f"Rows before flush = {rows_before}, rows after flush = {len(self)}"
+                )
+            self.log.info(f'Flushing rows took {timer.seconds_elapsed_formatted} seconds')
             gc.collect()
             after_move_mb = self.our_process.memory_info().rss/(1024**2)
             self.log.info(
@@ -213,14 +214,11 @@ class AutoDiskLookup(Lookup):
         process_mb = self.our_process.memory_info().rss / (1024 ** 2)
         if self.max_process_ram_usage_mb is not None:
             if process_mb > self.max_process_ram_usage_mb:
-                self.log.warning("{name} process memory limit reached"
-                                 " {usg:,} > {usg_limit:,} KB with {rows:,} rows of data"
-                                 .format(name=self.lookup_name,
-                                         rows=self.rows_cached,
-                                         usg=process_mb,
-                                         usg_limit=self.max_process_ram_usage_mb,
-                                         )
-                                 )
+                self.log.warning(
+                    f"{self.lookup_name} process memory limit reached."
+                    f" {process_mb:,} > {self.max_process_ram_usage_mb:,} KB "
+                    f"with {self.rows_cached:,} rows of data"
+                    )
                 return True
         return False
 
@@ -328,7 +326,7 @@ class AutoDiskLookup(Lookup):
         A MutableMapping of rows
         """
         if not self.cache_enabled:
-            raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
+            raise ValueError(f"Lookup {self.lookup_name} cache not enabled")
         if self._cache is None:
             self.init_cache()
 

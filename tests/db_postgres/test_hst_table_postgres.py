@@ -8,3 +8,6 @@ class TestHstTablePostgres(BaseTestHstTable):
     @classmethod
     def setUpClass(cls) -> None:
         cls.db_container = PostgresDockerDB()
+
+
+del BaseTestHstTable

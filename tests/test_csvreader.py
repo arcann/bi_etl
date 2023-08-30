@@ -54,10 +54,11 @@ class Test(unittest.TestCase):
         with open(src_file, mode='rt', encoding='utf-8') as srcFileData:
             with CSVReader(self.task, srcFileData) as src:
                 self.assertEqual(src.column_names, ['str', 'int', 'float', 'date', 'unicode'])
-                expected_repr = "CSVReader(task={task},logical_name={logical_name},filedata=<_io.TextIOWrapper " \
-                                "name={file} mode='rt' encoding='utf-8'>," \
-                                "primary_key=[],column_names=['str', 'int', 'float', 'date', 'unicode'])"
-                expected_repr = expected_repr.format(task=self.task, logical_name=logical_name, file=quoted_src_file)
+                expected_repr = (
+                    f"CSVReader(task={self.task},logical_name={logical_name},"
+                    f"filedata=<_io.TextIOWrapper name={quoted_src_file} mode='rt' encoding='utf-8'>,"
+                    f"primary_key=[],column_names=['str', 'int', 'float', 'date', 'unicode'])"
+                )
                 self.assertEqual(repr(src), expected_repr)
                 src_iter = src.where(criteria_dict={'str': 'Bob'})
                 row = next(src_iter)
@@ -84,10 +85,11 @@ class Test(unittest.TestCase):
         with CSVReader(self.task, src_file, encoding='utf-8') as src:
             src.delimiter = '|'
             self.assertEqual(src.column_names, ['str', 'int', 'float', 'date', 'unicode'])
-            expected_repr = "CSVReader(task={task},logical_name={logical_name},filedata=<_io.TextIOWrapper " \
-                            "name={file} mode='rt' encoding='utf-8'>," \
-                            "primary_key=[],column_names=['str', 'int', 'float', 'date', 'unicode'])"
-            expected_repr = expected_repr.format(task=self.task, logical_name=logical_name, file=quoted_src_file)
+            expected_repr = (
+                f"CSVReader(task={self.task},logical_name={logical_name},"
+                f"filedata=<_io.TextIOWrapper name={quoted_src_file} mode='rt' encoding='utf-8'>,"
+                f"primary_key=[],column_names=['str', 'int', 'float', 'date', 'unicode'])"
+            )
             self.assertEqual(repr(src), expected_repr)
             src_iter = iter(src)
             row = next(src_iter)
@@ -145,10 +147,11 @@ class Test(unittest.TestCase):
             src.delimiter = '\t'
             src.column_names = ['str', 'int', 'float', 'date', 'unicode']
             self.assertEqual(src.column_names, ['str', 'int', 'float', 'date', 'unicode'])
-            expected_repr = "CSVReader(task={task},logical_name={logical_name},filedata=<_io.TextIOWrapper " \
-                            "name={file} mode='rt' encoding='utf-8'>," \
-                            "primary_key=[],column_names=['str', 'int', 'float', 'date', 'unicode'])"
-            expected_repr = expected_repr.format(task=self.task, logical_name=logical_name, file=quoted_src_file)
+            expected_repr = (
+                f"CSVReader(task={self.task},logical_name={logical_name},"
+                f"filedata=<_io.TextIOWrapper name={quoted_src_file} mode='rt' encoding='utf-8'>,"
+                f"primary_key=[],column_names=['str', 'int', 'float', 'date', 'unicode'])"
+            )
             self.assertEqual(repr(src), expected_repr)
             src_iter = iter(src)
             row = next(src_iter)

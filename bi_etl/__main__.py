@@ -24,18 +24,18 @@ if __name__ == '__main__':
     succeeded = False
     
     if args.task:
-        print("task to run {} (Note: --task is deprecated)".format(args.task))
+        print(f"task to run {args.task} (Note: --task is deprecated)")
         succeeded =run_task(args.task)
     elif args.tasks_to_run:
         if args.via_scheduler:
             print("Running via scheduler")
             sched = SchedulerInterface()
-        print("tasks to run {}".format(args.tasks_to_run))
+        print(f"tasks to run {args.tasks_to_run}")
         parameters = dict()
         if args.param is not None:
-            print(("args.param = {}".format(args.param)))
+            print((f"args.param = {args.param}"))
             for parm in args.param:
-                print(("parm = {}".format(parm)))
+                print((f"parm = {parm}"))
                 (parm_name, parm_value) = parm.split("=")
                 parameters[parm_name] = parm_value
         for task in args.tasks_to_run:

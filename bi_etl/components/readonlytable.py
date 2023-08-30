@@ -57,8 +57,6 @@ class ReadOnlyTable(ETLComponent):
         If false, it will convert the table name to lower case which indicates to SQLAlchemy that it should be
         not case-sensitive in the Oracle dialect.
 
-        if None, this defaults based on the case sensitivity of the SQLAlchemy dialect being used.
-
         NOTE from SQLAlchemy:
             In Oracle, the data dictionary represents all case-insensitive identifier names using UPPERCASE text.
             SQLAlchemy on the other hand considers an all-lower case identifier name to be case insensitive.
@@ -68,7 +66,7 @@ class ReadOnlyTable(ETLComponent):
             and SQLAlchemy will quote the name - this will cause mismatches against data dictionary data
             received from Oracle, so unless identifier names have been truly created as case sensitive
             (i.e. using quoted names), all lowercase names should be used on the SQLAlchemy side.
-            https://docs.sqlalchemy.org/en/14/dialects/oracle.html?highlight=oracle#module-sqlalchemy.dialects.oracle.cx_oracle
+            https://docs.sqlalchemy.org/en/20/dialects/oracle.html#identifier-casing
 
 
     include_only_columns : list, optional
@@ -135,7 +133,7 @@ class ReadOnlyTable(ETLComponent):
                  task: typing.Optional[ETLTask],
                  database: DatabaseMetadata,
                  table_name: str,
-                 table_name_case_sensitive: bool = None,
+                 table_name_case_sensitive: bool = True,
                  schema: str = None,
                  exclude_columns: set = None,
                  include_only_columns: set = None,
@@ -160,8 +158,6 @@ class ReadOnlyTable(ETLComponent):
 
         self.database = database
         self._table = None
-        if table_name_case_sensitive is None:
-            table_name_case_sensitive = self.database.dialect.case_sensitive
         self._table_name_case_sensitive = table_name_case_sensitive
         self._columns = None
         self._column_names = None
@@ -171,17 +167,24 @@ class ReadOnlyTable(ETLComponent):
         self.schema = schema
         if table_name is not None:
             # Note from sqlalchemy:
-            # Names which contain no upper case characters will be treated as case insensitive names, and will not 
+            # Names which contain no upper case characters will be treated as case-insensitive names, and will not
             # be quoted unless they are a reserved word. 
             # Names with any number of upper case characters will be quoted and sent exactly. Note that this behavior
-            # applies even for databases which standardize upper case names as case insensitive such as Oracle.
+            # applies even for databases which standardize upper case names as case-insensitive such as Oracle.
             if '.' in table_name:
                 self.schema, table_name = table_name.split('.', 1)
 
             if not table_name_case_sensitive:
                 table_name = table_name.lower()
+
             try:
-                self.table = sqlalchemy.schema.Table(table_name, database, schema=self.schema, autoload=True, quote=False)
+                self.table = sqlalchemy.schema.Table(
+                    table_name,
+                    database,
+                    schema=self.schema,
+                    extend_existing=True,
+                    autoload_with=database.bind,
+                )
             except Exception as e:
                 try:
                     self.log.debug(f"Exception {repr(e)} occurred while obtaining definition of {table_name} from the database schema {self.schema}")
@@ -199,7 +202,6 @@ class ReadOnlyTable(ETLComponent):
 
         self.custom_special_values = dict()
 
-        self.auto_commit = True
         self._connections_used = set()
 
         # Should be the last call of every init
@@ -241,17 +243,10 @@ class ReadOnlyTable(ETLComponent):
         )
 
     def __repr__(self):
-        template = "{cls}(task={task}," \
-            "logical_name={logical_name}," \
-            "primary_key={primary_key}," \
-            "delete_flag={delete_flag})"
-        return template.format(
-            cls=self.__class__.__name__,
-            task=self.task,
-            logical_name=self.logical_name,
-            primary_key=self.primary_key,
-            delete_flag=self.delete_flag,
-        )
+        return (f"{self.__class__.__name__}("
+                f"task={self.task},logical_name={self.logical_name},primary_key={self.primary_key},"
+                f"delete_flag={self.delete_flag})"
+                )
 
     @property
     def delete_flag(self):
@@ -379,7 +374,7 @@ class ReadOnlyTable(ETLComponent):
             try:
                 exclude_column_obj = self.get_column(ex_name)
                 if exclude_column_obj in self._columns:
-                    self.log.debug('Excluding column {}'.format(exclude_column_obj))
+                    self.log.debug(f'Excluding column {exclude_column_obj}')
                     self._columns.remove(exclude_column_obj)
             except KeyError:
                 # Already not there
@@ -405,22 +400,19 @@ class ReadOnlyTable(ETLComponent):
             connection_name: typing.Optional[str] = None,
             open_if_not_exist: bool = True,
             open_if_closed: bool = True,
-            auto_commit: bool = None,
     ) -> sqlalchemy.engine.base.Connection:
         connection_name = self.database.resolve_connection_name(connection_name)
         self._connections_used.add(connection_name)
-        if auto_commit is None:
-            auto_commit = self.auto_commit
         return self.database.connection(
             connection_name=connection_name,
             open_if_not_exist=open_if_not_exist,
             open_if_closed=open_if_closed,
-            auto_commit=auto_commit,
         )
 
     def close_connection(self, connection_name: str = None):
         connection_name = self.database.resolve_connection_name(connection_name)
-        self._connections_used.remove(connection_name)
+        if connection_name in self._connections_used:
+            self._connections_used.remove(connection_name)
         self.database.close_connection()
 
     def close_connections(self, exceptions: typing.Optional[set] = None):
@@ -453,7 +445,6 @@ class ReadOnlyTable(ETLComponent):
             statement,
             *list_params,
             connection_name: str = None,
-            auto_commit: bool = None,
             **params
     ) -> sqlalchemy.engine.ResultProxy:
         """
@@ -461,7 +452,7 @@ class ReadOnlyTable(ETLComponent):
         Parameters
         ----------
         statement:
-            The SQL statement to execute
+            The SQL statement to execute. Note: caller must handle the transaction begin/end.
 
         connection_name:
             Name of the pooled connection to use
@@ -485,19 +476,16 @@ class ReadOnlyTable(ETLComponent):
             self.log.debug('-------------------------')
         connection_name = self.database.resolve_connection_name(connection_name)
         self._connections_used.add(connection_name)
-        if auto_commit is None:
-            auto_commit = self.auto_commit
         return self.database.execute(
             statement,
             *list_params,
             connection_name=connection_name,
-            auto_commit=auto_commit,
             transaction=False,
             auto_close=False,
             **params
         )
 
-    def get_one(self, statement=None, connection_name: str = 'get_one'):
+    def get_one(self, statement=None):
         """
         Executes and gets one row from the statement.
 
@@ -525,18 +513,14 @@ class ReadOnlyTable(ETLComponent):
         """
         if statement is None:
             statement = self.select()
-        results = self.execute(
-            statement,
-            connection_name=connection_name,
-            # Auto commit so that this SELECT does not hold a lock
-            auto_commit=True,
-        )
-        row1 = results.fetchone()
+        with self.database.bind.connect() as conn:
+            results = conn.execute(
+                statement,
+            )
+            row1 = results.fetchone()
+            row2 = results.fetchone()
         if row1 is None:
             raise NoResultFound()
-        row2 = results.fetchone()
-        if connection_name == 'get_one':
-            self.close_connection(connection_name)
         if row2 is not None:
             raise MultipleResultsFound([row1, row2])
         return self.Row(row1)
@@ -558,12 +542,12 @@ class ReadOnlyTable(ETLComponent):
             raise ValueError("select can't accept both column_list and exclude_cols")
         if column_list is None:
             if exclude_cols is None:
-                return sqlalchemy.select(self.columns)
+                return sqlalchemy.select(*self.columns)
             else:
                 # Make sure all entries are column objects
                 exclude_col_objs = frozenset([self.get_column(c) for c in exclude_cols])
                 filtered_column_list = [c for c in self.columns if c not in exclude_col_objs]
-                return sqlalchemy.select(filtered_column_list)
+                return sqlalchemy.select(*filtered_column_list)
         else:
             column_obj_list = list()
             # noinspection PyTypeChecker
@@ -572,7 +556,7 @@ class ReadOnlyTable(ETLComponent):
                     column_obj_list.append(self.get_column(c))
                 else:
                     column_obj_list.append(c)
-            return sqlalchemy.select(column_obj_list).execution_options(autocommit=True)
+            return sqlalchemy.select(*column_obj_list)
 
     def _generate_key_values_dict(self, key_names=None, key_values=None, lookup_name=None, other_values_dict=None):
 
@@ -604,7 +588,7 @@ class ReadOnlyTable(ETLComponent):
                 elif other_values_dict is not None and key_name in other_values_dict:
                     key_values_dict[key_name] = other_values_dict[key_name]
                 else:
-                    raise ValueError('No key value provided for {}'.format(key_name))
+                    raise ValueError(f'No key value provided for {key_name}')
         elif key_values is None:
             if other_values_dict is None:
                 raise ValueError('No key values provided')
@@ -613,7 +597,7 @@ class ReadOnlyTable(ETLComponent):
                     if key_name in other_values_dict:
                         key_values_dict[key_name] = other_values_dict[key_name]
                     else:
-                        raise ValueError('No key value provided for {}'.format(key_name))
+                        raise ValueError(f'No key value provided for {key_name}')
         else:
             # Otherwise we'll assume key_values is a list or iterable like one
             key_values_dict = dict()
@@ -661,20 +645,20 @@ class ReadOnlyTable(ETLComponent):
         
         Parameters
         ----------
-        criteria_list : string or list of strings
+        criteria_list:
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             http://docs.sqlalchemy.org/en/rel_1_0/core/selectable.html?highlight=where#sqlalchemy.sql.expression.Select.where
-        criteria_dict : dict
+        criteria_dict :
             Dict keys should be columns, values are set using = or in
-        order_by: string or list of strings
+        order_by:
             Each value should represent a column to order by.
         exclude_cols:
             List of columns to exclude from the results. (Only if getting from the database)
-        use_cache_as_source: bool
+        use_cache_as_source:
             Should we read rows from the cache instead of the table
-        stats_id: string
+        stats_id:
             Name of this step for the ETLTask statistics.
-        parent_stats: bi_etl.statistics.Statistics
+        parent_stats:
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.
         connection_name:
@@ -700,7 +684,7 @@ class ReadOnlyTable(ETLComponent):
             if not (self.cache_filled and self.cache_clean):
                 use_cache_as_source = False
                 if use_cache_as_source_requested:
-                    self.log.warning("Cache not filled requires using database as source for {}".format(stats))
+                    self.log.warning(f"Cache not filled requires using database as source for {stats}")
             elif order_by is not None:
                 use_cache_as_source = False
                 if use_cache_as_source_requested:
@@ -715,8 +699,10 @@ class ReadOnlyTable(ETLComponent):
                     if not pk_lookup.cache_enabled:
                         use_cache_as_source = False
                         if use_cache_as_source_requested:
-                            self.log.debug("PK cache not filled. "
-                                           "Looking for another lookup to use for {}".format(stats))
+                            self.log.debug(
+                                "PK cache not filled. "
+                                "Looking for another lookup to use for {stats}"
+                            )
                         for lookup_name in self.__lookups:
                             lookup = self.get_lookup(lookup_name)
                             if lookup.cache_enabled:
@@ -725,21 +711,26 @@ class ReadOnlyTable(ETLComponent):
                                 break
                         if not use_cache_as_source:
                             if use_cache_as_source_requested:
-                                self.log.debug("Unable to find filled lookup. "
-                                               "Requires using database as source for {}".format(stats))
+                                self.log.debug(
+                                    "Unable to find filled lookup. "
+                                    f"Requires using database as source for {stats}"
+                                )
                 except KeyError:
                     use_cache_as_source = False
                     if use_cache_as_source_requested:
-                        self.log.debug("KeyError finding lookup. "
-                                       "Requires using database as source for {}".format(stats))
+                        self.log.debug(
+                            "KeyError finding lookup. "
+                            f"Requires using database as source for {stats}"
+                        )
 
         if use_cache_as_source:
-            # Note in this case the outer call where / iter_result will process the criteria
-            self.log.debug("Using lookup {} as source for {}".format(pk_lookup, stats))
+            self.log.debug(f"Using lookup {pk_lookup} as source for {stats}")
             self._iterator_applied_filters = False
-            return pk_lookup
+            # NOTE: iter_result takes care of the criteria filtering
+            for row in pk_lookup:
+                yield row
         else:
-            self.log.debug("Using database as source for {}".format(stats))
+            self.log.debug(f"Using database as source for {stats}")
             self._iterator_applied_filters = True
             stmt = self.select(column_list=column_list,
                                exclude_cols=exclude_cols,
@@ -768,14 +759,13 @@ class ReadOnlyTable(ETLComponent):
                     stmt = stmt.order_by(order_by)
             self.log.debug(f'Table Read SQL=\n{stmt}\n---End Fill cache SQL')
             stats.timer.start()
-            select_result = self.execute(
-                stmt,
-                connection_name=connection_name,
-                # Auto commit so that this SELECT does not hold a lock
-                auto_commit=True,
-            )
+            with self.database.bind.connect() as conn:
+                select_result = conn.execute(
+                    stmt,
+                )
+                for row in select_result:
+                    yield row
             stats.timer.stop()
-            return select_result
 
     def where(self,
               criteria_list: list = None,
@@ -884,13 +874,17 @@ class ReadOnlyTable(ETLComponent):
                 if isinstance(index_entry, list):
                     # More than one column with that name. 
                     # Case sensitivity required
-                    raise KeyError('{} does not have a column named {} '
-                                   'however multiple other case versions exist'.format(self.table_name, column))
+                    raise KeyError(
+                        f'{self.table_name} does not have a column named {column} '
+                        'however multiple other case versions exist'
+                        )
                 else:
                     return index_entry
             else:
                 raise KeyError(
-                    '{} does not have a column named {} (or lowercase {}) it does have {}'.format(self.table_name, column, column.lower(), self._column_name_index.keys()))
+                    f'{self.table_name} does not have a column named {column} '
+                    f'(or lowercase {column.lower()}) it does have {self._column_name_index.keys()}'
+                )
 
     def get_column_name(self, column):
         """
@@ -931,7 +925,7 @@ class ReadOnlyTable(ETLComponent):
                     stmt = stmt.where(c)
             else:
                 stmt = stmt.where(where)
-        max_row = self.get_one(stmt, connection_name=connection_name)
+        max_row = self.get_one(stmt)
         if connection_name == 'max':
             self.close_connection(connection_name)
         max_value = max_row['max_1']

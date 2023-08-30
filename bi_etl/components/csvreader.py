@@ -191,7 +191,7 @@ class CSVReader(ETLComponent):
                              )
             self.__close_file = True            
         else:
-            self.log.info("Treating input as file object {}".format(filedata))
+            self.log.info(f"Treating input as file object {filedata}")
             self.file = filedata
         
         if logical_name is None:
@@ -232,15 +232,11 @@ class CSVReader(ETLComponent):
         self.set_kwattrs(**kwargs)
 
     def __repr__(self):
-        return "{cls}(task={task},logical_name={logical_name},filedata={file},primary_key={primary_key}," \
-               "column_names={column_names})".format(
-                    cls=self.__class__.__name__,
-                    task=self.task,
-                    logical_name=self.logical_name,
-                    file=self.file,
-                    primary_key=self.primary_key,
-                    column_names=self.column_names,
-                    )
+        return (
+                f"{self.__class__.__name__}("
+                f"task={self.task},logical_name={self.logical_name},filedata={self.file},"
+                f"primary_key={self.primary_key},column_names={self.column_names})"
+        )
 
     @property
     def reader(self) -> csv.reader:
@@ -315,9 +311,9 @@ class CSVReader(ETLComponent):
                     except AttributeError:
                         pass                    
                 else:
-                    raise ValueError("Un-seekable file, already read past the seek target row {:,}".format(target_row))
+                    raise ValueError(f"Un-seekable file, already read past the seek target row {target_row:,}")
             elif target_row > current_row:                
-                self.log.info("Seeking row {:,}".format(target_row))
+                self.log.info(f"Seeking row {target_row:,}")
                 stats = self.get_stats_entry('seek')
                 stats.timer.start()
                 progress_timer = Timer()                                
@@ -329,9 +325,9 @@ class CSVReader(ETLComponent):
                     stats['lines read'] = self.line_num
                     if self.progress_frequency is not None: 
                         if progress_timer.seconds_elapsed >= self.progress_frequency:
-                            self.log.info("Seek reached row {:,}".format(stats['rows read']))
+                            self.log.info(f"Seek reached row {stats['rows read']:,}")
                             progress_timer.reset()
-                self.log.info("Done seeking row {:,}".format(self.start_row))
+                self.log.info(f"Done seeking row {self.start_row:,}")
         return saved_position, saved_line_num
         
     def __read_header_row(self):
@@ -387,7 +383,7 @@ class CSVReader(ETLComponent):
                         d[self.restkey] = row[len_column_names:]
                         if self.extra_part_msg_cnt < self.extra_part_msg_limit:
                             self.extra_part_msg_cnt += 1
-                            self.log.debug("Extra part of row {:,} read={}".format(self.rows_read, row[len_column_names:]))
+                            self.log.debug(f"Extra part of row {self.rows_read:,} read={row[len_column_names:]}")
                             if self.extra_part_msg_cnt == self.extra_part_msg_limit:
                                 self.log.debug("No more Extra part of row read messages will be logged")
                     elif len_column_names > len_row:

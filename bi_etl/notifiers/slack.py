@@ -130,7 +130,7 @@ class Slack(NotifierBase):
             self._post_message(text=message_to_send, link_names=link_names)
 
         else:
-            self.log.info("Slack message not sent: {}".format(message))
+            self.log.info(f"Slack message not sent: {message}")
 
     def post_status(self, status_message):
         """

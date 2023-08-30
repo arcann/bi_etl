@@ -5,6 +5,7 @@ import typing
 import unittest
 from datetime import timedelta, datetime
 from enum import Enum
+from unittest import TestSuite
 
 import sqlalchemy
 from sqlalchemy.sql.schema import Column
@@ -18,6 +19,11 @@ from bi_etl.components.row.row import Row
 from bi_etl.components.table import Table
 from bi_etl.conversions import str2datetime, str2date, str2time, str2int, str2decimal, str2float
 from tests.db_base_tests.base_test_database import BaseTestDatabase
+
+
+def load_tests(loader, standard_tests, pattern):
+    suite = TestSuite()
+    return suite
 
 
 class BeginDateSource(Enum):
@@ -175,7 +181,7 @@ class BaseTestHstTable(BaseTestDatabase):
             sa_table.c.begin_date,
             unique=True
         )
-        idx.create()
+        idx.create(bind=self.mock_database.bind)
 
         return [idx]
 
@@ -221,7 +227,7 @@ class BaseTestHstTable(BaseTestDatabase):
                 use_type2,
             )
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         self._create_index_table_2(sa_table)
 
@@ -237,7 +243,7 @@ class BaseTestHstTable(BaseTestDatabase):
             sa_table.c.begin_date,
             unique=True
         )
-        idx.create()
+        idx.create(bind=self.mock_database.bind)
         idx_list.append(idx)
 
         return idx_list
@@ -320,6 +326,9 @@ class BaseTestHstTable(BaseTestDatabase):
                 row['nk_col1'] = int(csv_row_id) * 10
                 row['nk_col2'] = f"AB_{csv_row_id}"
 
+                if not self.db_container.SUPPORTS_INTERVAL:
+                    row.remove_columns(['interval_col'], ignore_missing=True)
+
                 yield row
 
     def _testInsertAndUpsert(
@@ -362,6 +371,8 @@ class BaseTestHstTable(BaseTestDatabase):
             tbl.commit()
 
             # Validate data
+            print()
+            print("Validate inserts:")
             self._check_table_rows(
                 expected_row_generator=self._gen_rows_from_csv('test1_insert_expected.csv'),
                 target_table=tbl,
@@ -385,6 +396,7 @@ class BaseTestHstTable(BaseTestDatabase):
                 # Mock get_current_time so that it returns a time we can predict
                 tbl.get_current_time = lambda: update_time
 
+            print("Perform upserts")
             for source_row in self._gen_rows_from_csv('test1_upsert.csv', transform=False):
                 self._transform_csv_row(source_row)
                 if begin_date_source == BeginDateSource.IN_ROW:
@@ -396,6 +408,7 @@ class BaseTestHstTable(BaseTestDatabase):
                     tbl.upsert(source_row, effective_date=update_time)
 
             if check_for_deletes:
+                print("Perform deletes")
                 # Note: For deletes IN_ROW is not really a valid source for the effective date
                 #       We'll pass the parameter instead
                 if begin_date_source in {BeginDateSource.SYSTEM_TIME}:
@@ -410,6 +423,8 @@ class BaseTestHstTable(BaseTestDatabase):
                 upsert_expected_file = 'test1_upsert_expected_with_deletes.csv'
             else:
                 upsert_expected_file = 'test1_upsert_expected_no_deletes.csv'
+            print()
+            print(f"Validate final results with {upsert_expected_file}")
             self._check_table_rows(
                 expected_row_generator=self._gen_rows_from_csv(upsert_expected_file),
                 target_table=tbl,
@@ -628,7 +643,7 @@ class BaseTestHstTable(BaseTestDatabase):
                 self.mock_database,
                 *src_columns
             )
-            sa_table.create()
+            sa_table.create(bind=self.mock_database.bind)
 
             with Table(
                 self.task,
@@ -649,6 +664,8 @@ class BaseTestHstTable(BaseTestDatabase):
 
                 # Mock get_current_time so that it returns a time we can predict
                 tbl.get_current_time = lambda: update_time
+
+                tbl.begin()
 
                 tbl.sql_upsert(
                     source_table=src_tbl,
@@ -756,7 +773,7 @@ class BaseTestHstTable(BaseTestDatabase):
             Column('col2', Integer),
             Column('flag_delete', self._text_datatype()),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         with self.TEST_COMPONENT(
                 self.task,
@@ -858,3 +875,6 @@ class BaseTestHstTable(BaseTestDatabase):
             remove_spurious_deletes=False,
             remove_redundant_versions=False,
         )
+
+
+del BaseTestDatabase

@@ -217,7 +217,7 @@ class XLSXReader(ETLComponent):
             row = self.read_header_row()                
             self._column_names = row
             if self.trace_data:
-                self.log.debug("Column names read: {}".format(self._column_names))
+                self.log.debug(f"Column names read: {self._column_names}")
         except StopIteration:
             pass
     

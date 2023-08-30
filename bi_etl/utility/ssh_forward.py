@@ -23,7 +23,7 @@ def ssh_run_command(
         ssh_path = 'ssh'
     cmd = [
         ssh_path,
-        '{user}@{host}'.format(user=user, host=host),
+        f'{user}@{host}',
         command,
     ]
     log.debug("Starting ssh")
@@ -33,7 +33,7 @@ def ssh_run_command(
         stderr = subprocess.PIPE
         log.debug(f"Running {' '.join(cmd)}")
         p = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, universal_newlines=True)
-        log.info("Started ssh as ppid {}".format(p.pid))
+        log.info(f"Started ssh as ppid {p.pid}")
         outs, errs = p.communicate()
         rc = p.poll()
         if rc is not None:
@@ -42,7 +42,7 @@ def ssh_run_command(
                     log.info(outs)
                 if errs:
                     log.error(errs)
-                log.error("ssh return code = {}".format(rc))
+                log.error(f"ssh return code = {rc}")
         return outs
 
     except subprocess.CalledProcessError as e:
@@ -83,12 +83,8 @@ def ssh_forward(
         local_port = random.randrange(10000, 60000)
     cmd = [
         ssh_path,
-        '{user}@{host}'.format(user=user, host=host),
-        '-L', '127.0.0.1:{local_port}:{server}:{server_port}'.format(
-            local_port=local_port,
-            server=server,
-            server_port=server_port,
-        ),
+        f'{user}@{host}',
+        '-L', f'127.0.0.1:{local_port}:{server}:{server_port}',
         '-o', 'ExitOnForwardFailure=yes',
         '-o', 'StrictHostKeyChecking=no',
         # Sleep 10 will give 10 seconds to connect before it shuts down.
@@ -107,7 +103,7 @@ def ssh_forward(
             stdout = subprocess.DEVNULL
             stderr = subprocess.DEVNULL
         p = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, universal_newlines=True)
-        log.info("Started ssh as ppid {}".format(p.pid))
+        log.info(f"Started ssh as ppid {p.pid}")
         if wait:
             outs, errs = p.communicate()
         else:
@@ -121,9 +117,9 @@ def ssh_forward(
                     log.info(outs)
                 if errs:
                     log.error(errs)
-                log.error("ssh return code = {}".format(rc))
+                log.error(f"ssh return code = {rc}")
         else:
-            log.info("ssh tunnel running OK with local_port = {}".format(local_port))
+            log.info(f"ssh tunnel running OK with local_port = {local_port}")
 
         return local_port
 

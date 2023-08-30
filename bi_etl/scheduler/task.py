@@ -10,6 +10,7 @@ import logging
 import socket
 import traceback
 import warnings
+from contextlib import ExitStack
 from pathlib import Path
 from queue import Empty
 from typing import *
@@ -137,6 +138,7 @@ class ETLTask(object):
         self.parent_to_child = None
         self.child_to_parent = None
         self.object_registry = list()
+        self._exit_stack = ExitStack()
         self.thread_running = None
         self.summary_message_from_client = False
         self.last_log_msg_time = None
@@ -179,11 +181,9 @@ class ETLTask(object):
         odict['config'] = self.config
         # We don't pass scheduler or config from the Scheduler to the running instance
         # odict['scheduler'] = self._scheduler
-        # print("__getstate__ {}".format(utility.dict_to_str(odict)))
         return odict
 
     def __setstate__(self, odict):
-        # print("__setstate__ {}".format(utility.dict_to_str(odict)))
         if 'version' not in odict:
             odict['version'] = 0.0
         if odict['version'] != self.CLASS_VERSION:
@@ -1279,6 +1279,7 @@ class ETLTask(object):
         """
         try:
             self.log.debug("close")
+            self._exit_stack.close()
             for obj in self.object_registry:
                 if hasattr(obj, 'close'):
                     obj.close(error=error)
@@ -1298,6 +1299,17 @@ class ETLTask(object):
 
     def __exit__(self, exit_type, exit_value, exit_traceback):
         self.close()
+
+    # noinspection PyPep8Naming
+    @staticmethod
+    def ExitStack():
+        """
+        Convenience method to build an ExitStack
+        """
+        return ExitStack()
+
+    def auto_close(self, ctx_mgr: Any) -> Any:
+        return self._exit_stack.enter_context(ctx_mgr)
 
     def get_task_singleton(self):
         inst_name = self.name

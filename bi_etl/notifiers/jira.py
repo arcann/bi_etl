@@ -182,11 +182,11 @@ class Jira(NotifierBase):
             if self.component:
                 issue_dict['components'] = [{'name': self.component}, ]
 
-            self.log.debug('issue_dict={}'.format(issue_dict))
+            self.log.debug(f'issue_dict={issue_dict}')
 
             new_issue = self.jira_conn.create_issue(fields=issue_dict)
             case_number = new_issue.key
-            self.log.info("Created new case {}".format(case_number))
+            self.log.info(f"Created new case {case_number}")
 
             if attachment is not None:
                 attachment_object = self.add_attachment(new_issue, attachment)

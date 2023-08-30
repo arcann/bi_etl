@@ -7,3 +7,5 @@ class TestHistoryTableSourceBasedPostgres(BaseTestHistoryTableSourceBased):
     def setUpClass(cls) -> None:
         cls.db_container = PostgresDockerDB()
 
+
+del BaseTestHistoryTableSourceBased

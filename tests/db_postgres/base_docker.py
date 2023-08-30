@@ -76,6 +76,9 @@ class BaseDockerDB(SqliteDB):
             port = self.get_random_port()
         return port
 
+    def _pre_container_start(self, container):
+        pass
+
     def get_container(self) -> DbContainer:
         tc_config.SLEEP_TIME = 1
         tc_config.MAX_TRIES = 60
@@ -101,6 +104,7 @@ class BaseDockerDB(SqliteDB):
             waiting_log = logging.getLogger('testcontainers.core.waiting_utils')
             waiting_log.setLevel(logging.WARNING)
             try:
+                self._pre_container_start(container)
                 container.start()
             except Exception as e:
                 raise RuntimeError(

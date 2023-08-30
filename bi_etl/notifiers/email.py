@@ -23,7 +23,7 @@ class Email(NotifierBase):
         elif isinstance(distro_list, str):
             for to_address in re.split(r'[,;\n]', distro_list):
                 to_address = to_address.strip()
-                self.log.info('Adding {} to send list'.format(to_address))
+                self.log.info(f'Adding {to_address} to send list')
                 to_addresses.append(to_address)
         else:
             raise ValueError(f"distro_list not list or string but {type(distro_list)} with value {distro_list}")
@@ -67,7 +67,7 @@ class Email(NotifierBase):
                 server.login(gateway_userid, gateway_password)
 
             results_of_send = server.send_message(message)
-            self.log.debug("results_of_send = {}".format(results_of_send))
+            self.log.debug(f"results_of_send = {results_of_send}")
 
             for recipient in results_of_send:
                 self.log.warn(f"Problem sending to: {recipient}")

@@ -52,7 +52,6 @@ class TestXLSReader(unittest.TestCase):
         with XLSXReader(self.task, src_file) as src:
             self.assertEqual(src.column_names, ['str', 'int', 'float', 'date', 'unicode'])
             expected_repr = "XLSXReader(simple.xlsx)"
-            expected_repr = expected_repr.format(task=self.task, logical_name=logical_name, file=quoted_src_file)
             self.assertEqual(repr(src), expected_repr)
             src_iter = src.where(criteria_dict={'str': 'Bob'})
             row = next(src_iter)
@@ -79,7 +78,6 @@ class TestXLSReader(unittest.TestCase):
         with XLSXReader(self.task, src_file, encoding='utf-8') as src:
             self.assertEqual(src.column_names, ['str', 'int', 'float', 'date', 'unicode'])
             expected_repr = "XLSXReader(simple.xlsx)"
-            expected_repr = expected_repr.format(task=self.task, logical_name=logical_name, file=quoted_src_file)
             self.assertEqual(repr(src), expected_repr)
             src_iter = iter(src)
             row = next(src_iter)

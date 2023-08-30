@@ -33,9 +33,10 @@ class TestDiskRangeLookup(_TestBaseRangeLookup):
     def _post_test_cleanup(self, lookup):
         lookup.clear_cache()
         for file_name in os.listdir(self.temp_dir_mgr.name):
-            self.assertIsNone(file_name, 'lookup did not cleanup file {} (unit test tearDown will clean it up)'.format(file_name))
+            self.assertIsNone(file_name,
+                              f'lookup did not cleanup file {file_name} (unit test tearDown will clean it up)'
+                              )
 
     
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test']
     unittest.main()

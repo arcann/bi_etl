@@ -7,3 +7,5 @@ class TestHistoryTableSourceBasedOracle(BaseTestHistoryTableSourceBased):
     def setUpClass(cls) -> None:
         cls.db_container = OracleDockerDB()
 
+
+del BaseTestHistoryTableSourceBased

@@ -194,4 +194,4 @@ class BulkLoader(object):
                     """
                 table_object.execute(sql)
             else:
-                raise NotImplementedError("UPDATE FROM/MERGE not yet implemented for {}".format(database_type))
+                raise NotImplementedError(f"UPDATE FROM/MERGE not yet implemented for {database_type}")

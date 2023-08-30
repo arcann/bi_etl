@@ -27,7 +27,7 @@ class TestAutodiskLookup(_TestBaseLookup):
     def _makerow(self, row_key):
         source1 = {
             self.key1[0]:  row_key,
-            'strval':      'All good caches work perfectly {}'.format(row_key),
+            'strval': f'All good caches work perfectly {row_key}',
             'floatval':    1000000.15111 + row_key,
             'intval':      12345678900000 + row_key,
             'datetimeval': datetime(2005, 8, row_key % 25 + 1, row_key % 24, 23, 44)

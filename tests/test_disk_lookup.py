@@ -29,7 +29,10 @@ class TestDiskLookup(_TestBaseLookup):
     def _post_test_cleanup(self, lookup):
         lookup.clear_cache()
         for file_name in os.listdir(self.temp_dir_mgr.name):
-            self.assertIsNone(file_name, 'lookup did not cleanup file {} (unit test tearDown will clean it up)'.format(file_name))
+            self.assertIsNone(
+                file_name,
+                f'lookup did not cleanup file {file_name} (unit test tearDown will clean it up)'
+            )
 
     @staticmethod
     def _get_hashable(val_list):
@@ -50,5 +53,4 @@ class TestDiskLookup(_TestBaseLookup):
         
         
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test']
     unittest.main()

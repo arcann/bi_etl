@@ -38,6 +38,6 @@ class MockDatabaseMetadata(object):
         # TODO: Capture statistics (basic Timer)
         # TODO: support other database
         log = logging.getLogger(__name__)
-        sql_command = 'BEGIN {}; END;'.format(procedure_name)         
-        log.debug("SQL = {}".format(sql_command))
+        sql_command = f'BEGIN {procedure_name}; END;'
+        log.debug(f"SQL = {sql_command}")
         self.execute(sql_command)

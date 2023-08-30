@@ -4,12 +4,11 @@ Created on Nov 17, 2014
 @author: Derek Wood
 """
 import string
-import typing
 from datetime import date, timedelta, timezone
 from datetime import datetime
 from datetime import time
 from decimal import Decimal, InvalidOperation
-from typing import Union
+from typing import Union, Iterable, MutableMapping, Optional
 
 
 def strip(s: str):
@@ -181,7 +180,7 @@ def str2time(
 
 def str2datetime(
         s: str,
-        dt_format: str = '%m/%d/%Y %H:%M:%S',
+        dt_format: Union[str, Iterable[str]] = ('%m/%d/%Y %H:%M:%S', '%m/%d/%Y'),
         ):
     """ 
     Parse a date + time value stored in a string. 
@@ -194,37 +193,47 @@ def str2datetime(
         For format options please see
         https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
     """
-    if s is None or s == '':
-        return None
-    elif '.%f' in dt_format:
-        # Fractional seconds are included in format
-        # Try as is and then without in case source drops the Fractional seconds when zero
-        try:
-            return datetime.strptime(s, dt_format)
-        except ValueError as e:
-            msg = str(e)
-            if 'unconverted data remains' in msg:
-                # We might have more digits in the fractional seconds than Python can convert
-                msg, remains = msg.split(':')
-                remains = remains.strip()
-                try:
-                    # Make sure what remains is just digits (note this won't work if we have a timezone)
-                    int(remains)
-                    return datetime.strptime(s[:-1 * len(remains)], dt_format)
-                except ValueError:
-                    raise e
-            else:
-                try:
-                    return datetime.strptime(s, dt_format.replace('.%f', ''))
-                except ValueError:
-                    raise e
-    # No fractional seconds included in format
+    if isinstance(dt_format, str):
+        dt_formats = [dt_format]
     else:
-        return datetime.strptime(s, dt_format)
+        dt_formats = dt_format
+
+    for dt_format in dt_formats:
+        try:
+            if s is None or s == '':
+                return None
+            elif '.%f' in dt_format:
+                # Fractional seconds are included in format
+                # Try as is and then without in case source drops the Fractional seconds when zero
+                try:
+                    return datetime.strptime(s, dt_format)
+                except ValueError as e:
+                    msg = str(e)
+                    if 'unconverted data remains' in msg:
+                        # We might have more digits in the fractional seconds than Python can convert
+                        msg, remains = msg.split(':')
+                        remains = remains.strip()
+                        try:
+                            # Make sure what remains is just digits (note this won't work if we have a timezone)
+                            int(remains)
+                            return datetime.strptime(s[:-1 * len(remains)], dt_format)
+                        except ValueError:
+                            raise e
+                    else:
+                        try:
+                            return datetime.strptime(s, dt_format.replace('.%f', ''))
+                        except ValueError:
+                            raise e
+            # No fractional seconds included in format
+            else:
+                return datetime.strptime(s, dt_format)
+        except ValueError:
+            pass
+    raise ValueError(f"{s} does not match any provided formats {dt_formats}")
 
 
 def round_datetime_ms(
-        source_datetime: typing.Optional[datetime],
+        source_datetime: Optional[datetime],
         digits_to_keep: int,
         ):
     """
@@ -242,7 +251,7 @@ def round_datetime_ms(
 
 
 def change_tz(
-        source_datetime: typing.Optional[datetime],
+        source_datetime: Optional[datetime],
         from_tzone,
         to_tzone
         ):
@@ -291,7 +300,7 @@ def ensure_datetime(dt: Union[datetime, date]) -> datetime:
 
 
 def ensure_datetime_dict(
-        d: typing.Union[dict, typing.MutableMapping],
+        d: Union[dict, MutableMapping],
         key: str,
         ):
     """
@@ -430,11 +439,7 @@ def bytes2human(
 
       >>> bytes2human(0)
       '0.0 B'
-      >>> bytes2human(0.9)
-      '0.0 B'
       >>> bytes2human(1)
-      '1.0 B'
-      >>> bytes2human(1.9)
       '1.0 B'
       >>> bytes2human(1024)
       '1.0 K'

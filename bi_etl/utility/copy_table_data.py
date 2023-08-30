@@ -22,13 +22,11 @@ class CopyTableData(ETLTask):
                 self,
                 database,
                 source_table_name,
-                table_name_case_sensitive=None,
                 ) as source_data:
             with ReadOnlyTable(
                     self,
                     database,
                     target_table_name,
-                    table_name_case_sensitive=None,
                     ) as target_tbl:
                 target_column_set = set(target_tbl.column_names)
                 common_columns = list()
@@ -43,12 +41,10 @@ class CopyTableData(ETLTask):
                     cols += column
                     sep = ","
 
-                sql = "INSERT INTO {target_table_name} ({cols})"\
-                      "SELECT {cols} FROM {source_table_name}"\
-                      .format(
-                         source_table_name=source_table_name,
-                         target_table_name=target_table_name,
-                         cols=cols)
+                sql = (
+                    f"INSERT INTO {target_table_name} ({cols}) "
+                    f"SELECT {cols} FROM {source_table_name}"
+                )
 
                 self.log.debug(sql)
 

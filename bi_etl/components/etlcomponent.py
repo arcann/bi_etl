@@ -241,9 +241,10 @@ class ETLComponent(Iterable):
     def clear_statistics(self):
         pass
 
+    @property
     def check_row_limit(self):
         if self.max_rows is not None and self.rows_read >= self.max_rows:
-            self.log.info('Max rows limit {rows:,} reached'.format(rows=self.max_rows))
+            self.log.info(f'Max rows limit {self.max_rows:,} reached')
             return True
         else:
             return False
@@ -263,7 +264,7 @@ class ETLComponent(Iterable):
                 )
         except (IndexError, ValueError, KeyError) as e:
             self.log.error(repr(e))
-            self.log.info("Bad format. Changing to default progress_message. Was {}".format(self.progress_message))
+            self.log.info(f"Bad format. Changing to default progress_message. Was {self.progress_message}")
             self.progress_message = "{logical_name} row # {row_number:,}"
 
     def _obtain_column_names(self):
@@ -315,11 +316,7 @@ class ETLComponent(Iterable):
             for instance_number, instance_index in enumerate(instance_list):
                 new_name = name + '_' + str(instance_number + 1)
                 self.log.warning(
-                    'Column name {} in position {} was duplicated and was renamed to {}'.format(
-                        self._column_names[instance_index],
-                        instance_index,
-                        new_name,
-                    )
+                    f'Column name {self._column_names[instance_index]} in position {instance_index} was duplicated and was renamed to {new_name}'
                 )
                 self._column_names[instance_index] = new_name
 
@@ -460,13 +457,15 @@ class ETLComponent(Iterable):
             result_iter = self._fetch_many_iter(result_list)
         else:
             result_iter = result_list
-        this_iteration_header = self.generate_iteration_header(
-            columns_in_order=columns_in_order,
-            logical_name=logical_name,
-        )
+        this_iteration_header = None
 
         # noinspection PyTypeChecker
         for row in result_iter:
+            if this_iteration_header is None:
+                this_iteration_header = self.generate_iteration_header(
+                    columns_in_order=columns_in_order,
+                    logical_name=logical_name,
+                )
             self.process_messages()
             if not self._iterator_applied_filters:
                 if criteria_dict is not None:
@@ -500,14 +499,12 @@ class ETLComponent(Iterable):
                     # Log every row
                     self.log_progress(row, stats)
             if self.trace_data:
+                row_str = dict_to_str(row).encode(
+                    'utf-8',
+                    errors='replace'
+                )
                 self.log.debug(
-                    "READ {name}:\n{row}".format(
-                        name=self,
-                        row=dict_to_str(row).encode(
-                            'utf-8',
-                            errors='replace'
-                        )
-                    )
+                    f"READ {self}:\n{row_str}"
                 )
             if self.time_all_reads:
                 stats.timer.stop()
@@ -515,7 +512,7 @@ class ETLComponent(Iterable):
             yield row
             if self.time_all_reads:
                 stats.timer.start()
-            if self.check_row_limit():
+            if self.check_row_limit:
                 break
         if hasattr(result_list, 'close'):
             result_list.close()
@@ -572,8 +569,8 @@ class ETLComponent(Iterable):
         rows
 
         """
-        assert order_by is None, '{} does not support order_by'.format(self)
-        assert criteria_list is None, '{} does not support criteria_list'.format(self)
+        assert order_by is None, f'{self} does not support order_by'
+        assert criteria_list is None, f'{self} does not support criteria_list'
         return self.iter_result(
             self._raw_rows(),
             criteria_dict=criteria_dict,
@@ -770,11 +767,7 @@ class ETLComponent(Iterable):
 
         if lookup_name in self.__lookups:
             self.log.warning(
-                "{} define_lookup is overriding the {} lookup with {}".format(
-                    self,
-                    lookup_name,
-                    lookup_keys
-                )
+                f"{self} define_lookup is overriding the {lookup_name} lookup with {lookup_keys}"
             )
         if lookup_class is None:
             lookup_class = self.default_lookup_class
@@ -1083,7 +1076,7 @@ class ETLComponent(Iterable):
                 code = compile(code, filename=build_row_method_name, mode='exec')
                 exec(code)
             except SyntaxError as e:
-                self.log.exception("{e} from code\n{code}".format(e=e, code=code))
+                self.log.exception(f"{e} from code\n{code}")
                 raise RuntimeError('Error with generated code')
             # Add the new function as a method in this class
             exec(f"self.{build_row_method_name} = {build_row_method_name}.__get__(self)")
@@ -1202,8 +1195,8 @@ class ETLComponent(Iterable):
                 if hasattr(self, 'ensure_nk_lookup'):
                     self.ensure_nk_lookup()
 
-        assert isinstance(progress_frequency, int), "fill_cache progress_frequency expected to be int not {}".format(
-            type(progress_frequency)
+        assert isinstance(progress_frequency, int), (
+            f"fill_cache progress_frequency expected to be int not {type(progress_frequency)}"
         )
         self.log.info(f'{self}.fill_cache started')
         stats = self.get_unique_stats_entry('fill_cache', parent_stats=parent_stats)
@@ -1271,12 +1264,8 @@ class ETLComponent(Iterable):
                 this_ram_size = lookup.get_memory_size()
                 this_disk_size = lookup.get_disk_size()
                 self.log.info(
-                    'Lookup {} Rows {:,} Size RAM= {:,} bytes DISK={:,} bytes'.format(
-                        lookup,
-                        len(lookup),
-                        this_ram_size,
-                        this_disk_size
-                    )
+                    f'Lookup {lookup} Rows {len(lookup):,} Size RAM= {this_ram_size:,} '
+                    f'bytes DISK={this_disk_size:,} bytes'
                 )
                 if lookup.use_value_cache:
                     lookup.report_on_value_cache_effectiveness()
@@ -1285,7 +1274,7 @@ class ETLComponent(Iterable):
                 ram_size += this_ram_size
                 disk_size += this_disk_size
             self.log.info('Note: RAM sizes do not add up as memory lookups share row objects')
-            self.log.info('Total Lookups Size DISK={:,} bytes'.format(disk_size))
+            self.log.info(f'Total Lookups Size DISK={disk_size:,} bytes')
 
             for lookup_name, lookup in self.__lookups.items():
                 stats[f'rows in {lookup_name}'] = len(lookup)

@@ -28,7 +28,7 @@ def multi_choice_question(question, choices, default=None):
             if possible_matches == 1:
                 return best_candidate
             else:
-                print(("Please respond with one of {}.  Got {}".format(choices, choice)))
+                print(f"Please respond with one of {choices}.  Got {choice}")
 
 
 def yes_no(

@@ -31,13 +31,14 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
                  uses_bytes_length_limits=None,
                  ):
         super().__init__(
-            bind=bind,
             schema=schema,
             quote_schema=quote_schema,
             naming_convention=naming_convention,
             info=info,
         )
         # Save parameters not saved by the base class for use in __reduce_ex__
+
+        self.bind = bind
 
         self._save_reflect = reflect
         self._save_quote_schema = quote_schema
@@ -49,7 +50,6 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         self._connection_pool = dict()
         self._transactions = dict()
         self.default_connection_name = 'default'
-        self._autocommit_engine = self.bind.execution_options(isolation_level="AUTOCOMMIT")
 
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
@@ -78,7 +78,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             # If not None, this callable will have priority over obj’s __setstate__().
         )
 
-    def _set_parent(self, parent):
+    def _set_parent(self, parent, **kwargs):
         pass
 
     def resolve_connection_name(self, connection_name: str = None) -> str:
@@ -89,31 +89,26 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             connection_name = 'sqlite'
         return connection_name
 
-    def _connect(self, auto_commit: bool = False) -> sqlalchemy.engine.base.Connection:
-        if auto_commit:
-            self.log.debug(f"Connecting autocommit connection {self._autocommit_engine}")
-            return self._autocommit_engine.connect()
-        else:
-            self.log.debug(f"Connecting connection {self.bind}")
-            return self.bind.connect()
+    def _connect(self) -> sqlalchemy.engine.base.Connection:
+        self.log.debug(f"Connecting connection {self.bind}")
+        return self.bind.connect()
 
     def connection(
             self,
             connection_name: str = None,
             open_if_not_exist: bool = True,
             open_if_closed: bool = True,
-            auto_commit: bool = False,
     ) -> sqlalchemy.engine.base.Connection:
         connection_name = self.resolve_connection_name(connection_name)
-        connection_key = (auto_commit, connection_name,)
+        connection_key = (connection_name,)
         if connection_key in self._connection_pool:
             con = self._connection_pool[connection_key]
             if con.closed and open_if_closed:
-                con = self._connect(auto_commit=auto_commit)
+                con = self._connect()
                 self._connection_pool[connection_key] = con
         else:
             if open_if_not_exist:
-                con = self._connect(auto_commit=auto_commit)
+                con = self._connect()
                 self._connection_pool[connection_key] = con
             else:
                 raise ValueError(f"Connection {connection_name} does not exist, and open_if_not_exist = False")
@@ -122,13 +117,11 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
     def connect(
             self,
             connection_name: str = None,
-            auto_commit: bool = False,
     ) -> sqlalchemy.engine.base.Connection:
         return self.connection(
             connection_name,
             open_if_not_exist=True,
             open_if_closed=True,
-            auto_commit=auto_commit,
         )
 
     def is_connected(self, connection_name: str = None) -> bool:
@@ -149,7 +142,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         if exceptions is None:
             exceptions = set()
         for connection_key, con in self._connection_pool.items():
-            auto_commit, connection_name = connection_key
+            connection_name = connection_key[0]
             if connection_name not in exceptions:
                 self.log.debug(f'Closing connection {self} {connection_name}')
                 con.close()
@@ -163,8 +156,8 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         self.close_connections()
         self.bind.pool.dispose()
 
-    def session(self, auto_commit: bool = False):
-        return Session(bind=self.bind, autocommit=auto_commit)
+    def session(self):
+        return Session(bind=self.bind)
 
     def _begin(self, connection_name: str) -> sqlalchemy.engine.base.Transaction:
         tx = self.connection(connection_name=connection_name).begin()
@@ -228,27 +221,23 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             *list_params,
             transaction: bool = True,
             auto_close: bool = True,
-            auto_commit: bool = False,
             connection_name: str = None,
             **params
     ):
         connection = None
-        transaction_ctl = None
         try:
             connection = self.connect(
                 connection_name=connection_name,
-                auto_commit=auto_commit,
             )
+            if isinstance(sql, str):
+                sql = sqlalchemy.text(sql)
             if transaction:
-                transaction_ctl = connection.begin()
+                with connection.begin():
+                    result = connection.execute(sql, *list_params, **params)
             else:
-                transaction_ctl = None
-            result = connection.execute(sql, *list_params, **params)
+                result = connection.execute(sql, *list_params, **params)
             return result
         finally:
-            if transaction:
-                if transaction_ctl is not None:
-                    transaction_ctl.commit()
             if auto_close:
                 if connection is not None:
                     connection.close()
@@ -285,7 +274,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             Proxy for database error
         """
         log = logging.getLogger(__name__)
-        log.debug("Calling procedure {} {}".format(procedure_name, args))
+        log.debug(f"Calling procedure {procedure_name} {args}")
 
         if dpapi_connection is None:
             dpapi_connection = self.bind.raw_connection()
@@ -431,12 +420,13 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         else:
             sql = f"drop table IF EXISTS {self.qualified_name(schema, table_name)}"
         self.log.debug(sql)
-        self.execute(
-            sql,
-            transaction=transaction,
-            auto_close=auto_close,
-            connection_name=connection_name,
-        )
+        with self.begin():
+            self.execute(
+                sql,
+                transaction=transaction,
+                auto_close=auto_close,
+                connection_name=connection_name,
+            )
 
     @property
     def dialect(self):

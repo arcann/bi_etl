@@ -56,17 +56,17 @@ class DataAnalyzer(ETLComponent):
             self.format = fmt
 
         def __repr__(self):
-            return "{}({},{},fmt={})".format(self.name, self.length, self.precision, self.format)
+            return f"{self.name}({self.length},{self.precision},fmt={self.format})"
 
         def __str__(self):
             if self.length is None and self.format is None:
                 return self.name
             if self.format is not None:
-                return "{}({})".format(self.name, self.format)
+                return f"{self.name}({self.format})"
             elif self.precision is None:
-                return "{}({})".format(self.name, self.length)
+                return f"{self.name}({self.length})"
             else:
-                return "{}({},{})".format(self.name, self.length, self.precision)
+                return f"{self.name}({self.length},{self.precision})"
 
     def __init__(self,
                  task: typing.Optional[ETLTask] = None,
@@ -418,11 +418,11 @@ class DataAnalyzer(ETLComponent):
                             print(f"\t{v_str[:60]}\tFreq = {freq:,} (Value truncated actual width = {len(v_str)} chars)", file=out)
                     except Exception as e:
                         print(e, file=out)
-                        print("Freq = {:,}".format(freq), file=out)
+                        print(f"Freq = {freq:,}", file=out)
                 if len(vv) > valid_value_limit:
                     print("\t--More values not printed--", file=out)
             else:
-                print("{} (col {}) had no data values".format(col, col_cnt), file=out)
+                print(f"{col} (col {col_cnt}) had no data values", file=out)
 
             print('', file=out)
             if col in self.column_data_types_counts:

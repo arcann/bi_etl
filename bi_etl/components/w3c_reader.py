@@ -67,7 +67,7 @@ class W3CReader(ETLComponent):
 
         # We have to check / open the file here to get the name for the logical name
         if isinstance(filedata, str):
-            self.log.info("Opening file {}".format(filedata))
+            self.log.info(f"Opening file {filedata}")
             self.file = open(filedata,
                              mode='rt',
                              newline='',
@@ -76,7 +76,7 @@ class W3CReader(ETLComponent):
                              )
             self.__close_file = True
         else:
-            self.log.info("Treating input as file object {}".format(filedata))
+            self.log.info(f"Treating input as file object {filedata}")
             self.file = filedata
 
         if logical_name is None:
@@ -153,7 +153,7 @@ class W3CReader(ETLComponent):
             elif not line.startswith('#'):
                 raise ValueError("Data lines started before column names")
         if self.trace_data:
-            self.log.debug("Column names read: {}".format(self.column_names))
+            self.log.debug(f"Column names read: {self.column_names}")
 
     def where(
             self,

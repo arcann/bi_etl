@@ -84,7 +84,7 @@ class DiskLookup(Lookup):
                 ignore_cleanup_errors=True,
             )
             self._cache_file_path = self._cache_dir_mgr.name
-            self.log.info("Creating cache in {}".format(self._cache_file_path))
+            self.log.info(f"Creating cache in {self._cache_file_path}")
             if sys.platform.startswith('win'):
                 self.dbm = semidbm.open(self._cache_file_path, 'n')
             else:
@@ -119,9 +119,8 @@ class DiskLookup(Lookup):
                 if row_num >= row_cnt:
                     break      
             self._row_size = math.ceil(total_row_sizes / row_cnt)
-            msg = '{lookup_name} row key size (in memory) now estimated at {size:,} bytes per row'
-            msg = msg.format(lookup_name=self.lookup_name,
-                             size=self._row_size)
+            msg = (f'{self.lookup_name} row key size (in memory) '
+                   f'now estimated at {self._row_size:,} bytes per row')
             self.log.debug(msg)
             self._done_get_estimate_row_size = True   
         

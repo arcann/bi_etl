@@ -281,10 +281,9 @@ def log_logging_level(log):
     if original_level > logging.INFO:
         # If we aren't at INFO level or more detailed, then temporarily set it to INFO and restore it later
         log.setLevel(logging.INFO)
-    log.info('Logging level is {name} ({num})'.format(
-        num=log.getEffectiveLevel(),
-        name=logging.getLevelName(original_level))
-    )
+    log.info(
+        f'Logging level is {logging.getLevelName(original_level)} ({log.getEffectiveLevel()})'
+        )
     if original_level > logging.INFO:
         # Restore logging level
         log.setLevel(original_level)

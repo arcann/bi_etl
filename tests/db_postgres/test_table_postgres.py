@@ -31,3 +31,6 @@ class TestTablePostgres(BaseTestTable):
                     )
                     bulk_loader = PostgreSQLCopy(config=bulk_config)
                     self._testBulkInsertAndIterateNoKey(tbl_name, bulk_loader)
+
+
+del BaseTestTable

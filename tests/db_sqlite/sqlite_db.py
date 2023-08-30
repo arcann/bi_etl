@@ -7,7 +7,7 @@ from sqlalchemy import TEXT, LargeBinary
 class SqliteDB(object):
     SUPPORTS_DECIMAL = False
     SUPPORTS_TIME = True
-    SUPPORTS_INTERVAL = True
+    SUPPORTS_INTERVAL = False
     SUPPORTS_BOOLEAN = True
     SUPPORTS_BINARY = True
     MAX_NAME_LEN = 128

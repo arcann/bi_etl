@@ -67,7 +67,7 @@ class Lookup(Iterable):
         self._cache = None
         self.parent_component = parent_component
         self.stats = parent_component.get_unique_stats_entry(
-            stats_id='{cls} {name}'.format(cls=self.__class__.__name__, name=self.lookup_name)
+            stats_id=f'{self.__class__.__name__} {self.lookup_name}'
         )
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self._remote_lookup_stmt = None
@@ -128,10 +128,9 @@ class Lookup(Iterable):
             return self._row_size * len(self)
         else:
             if len(self) > 0:
-                msg = '{lookup_name} Row size was 0 on call to get_memory_size with non zero row count ({cnt:,})'
-                msg = msg.format(
-                    lookup_name=self.lookup_name,
-                    cnt=len(self)
+                msg = (
+                    f'{self.lookup_name} Row size was 0 on call to '
+                    f'get_memory_size with non zero row count ({len(self):,})'
                 )
                 self.log.warning(msg)
             return 0
@@ -226,7 +225,7 @@ class Lookup(Iterable):
     def _get_first_row_size(self, row) -> int:
         # get_size_gc is slow but shouldn't be too bad twice (once here and once below in _get_estimate_row_size)
         self._row_size = get_size_gc(row)
-        # self.log.debug('First row memory size {:,} bytes (includes overhead)'.format(self._row_size ))
+        # self.log.debug(f'First row memory size {self._row_size:,} bytes (includes overhead)')
         return self._row_size
         
     def check_estimate_row_size(self, force_now=False):
@@ -275,7 +274,7 @@ class Lookup(Iterable):
         
         """        
         if self.cache_enabled:
-            assert isinstance(row, Row), "cache_row requires Row and not {}".format(type(row))
+            assert isinstance(row, Row), f"cache_row requires Row and not {type(row)}"
 
             if self.use_value_cache:
                 self._update_with_value_cache(row)
@@ -341,10 +340,10 @@ class Lookup(Iterable):
                 self.init_cache()
             if not allow_update:
                 if lk_tuple in self._cache:
-                    raise ValueError('Key value {} already in cache and allow_update was False.'
-                                     ' Possible error with the keys defined for this lookup {} {}.'
-                                     .format(lk_tuple, self.lookup_name, self.lookup_keys)
-                                     )
+                    raise ValueError(
+                        f'Key value {lk_tuple} already in cache and allow_update was False. '
+                        f'Possible error with the keys defined for this lookup {self.lookup_name} {self.lookup_keys}.'
+                        )
             self._cache[lk_tuple] = version_collection
 
             # Capture memory usage snapshots
@@ -448,7 +447,7 @@ class Lookup(Iterable):
         A MutableMapping of rows
         """
         if not self.cache_enabled:
-            raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
+            raise ValueError(f"Lookup {self.lookup_name} cache not enabled")
         if self._cache is None:
             self.init_cache()
 
@@ -462,7 +461,7 @@ class Lookup(Iterable):
         """
         Find a matching row in the lookup based on the lookup index (keys)
         """
-        assert len(kwargs) == 0, "lookup.find_in_cache got unexpected args {}".format(kwargs)
+        assert len(kwargs) == 0, f"lookup.find_in_cache got unexpected args {kwargs}"
         versions_collection = self.get_versions_collection(row)
         return versions_collection[Lookup.COLLECTION_INDEX]
 
@@ -495,7 +494,7 @@ class Lookup(Iterable):
         for key_col in self.lookup_keys:
             # This statement only works if parent_component is based on bi_etl.components.readonlytable
             # noinspection PyUnresolvedReferences
-            stmt = stmt.where(self.parent_component.get_column(key_col) == bindparam('k{}'.format(col_num)))
+            stmt = stmt.where(self.parent_component.get_column(key_col) == bindparam(f'k{col_num}'))
             col_num += 1
         return stmt
 
@@ -509,7 +508,7 @@ class Lookup(Iterable):
         values_list = self.get_list_of_lookup_column_values(row)
 
         for key_val in values_list:
-            values_dict['k{}'.format(col_num)] = key_val
+            values_dict[f'k{col_num}'] = key_val
             col_num += 1
         return values_dict
 
@@ -554,12 +553,9 @@ class Lookup(Iterable):
             # noinspection PyUnresolvedReferences
             return self.parent_component.Row(data=rows[0])
         else:
-            msg = "{lookup_name} find_in_remote_table {row} matched multiple records {rows}"
-            msg = msg.format(lookup_name=self.lookup_name,
-                             row=row,
-                             rows=rows
-                             )
-            raise RuntimeError(msg)
+            raise RuntimeError(
+                f"{self.lookup_name} find_in_remote_table {row} matched multiple records {rows}"
+            )
 
     def find_versions_list_in_remote_table(self, row: ROW_TYPES) -> list:
         return [self.find_in_remote_table(row)]
@@ -608,11 +604,9 @@ class Lookup(Iterable):
                 if stats is not None:
                     stats['Cache not setup'] += 1
                 # Lookup not cached. Allow database lookup to proceed, but give warning since we thought it was cached
-                warnings.warn("WARNING: {lkp} caching is enabled, but find_in_cache returned error {e}".format(
-                    lkp=self,
-                    e=traceback.format_exc()
-                )
-                )
+                warnings.warn(
+                    f"WARNING: {self} caching is enabled, but find_in_cache returned error {traceback.format_exc()}"
+                    )
             except AfterExisting as e:
                 stats['After all in cache'] += 1
                 if stats is not None:
@@ -674,11 +668,9 @@ class Lookup(Iterable):
                 if stats is not None:
                     stats['Cache not setup'] += 1
                 # Lookup not cached. Allow database lookup to proceed, but give warning since we thought it was cached
-                warnings.warn("WARNING: {lkp} caching is enabled, but find_in_cache returned error {e}".format(
-                    lkp=self,
-                    e=traceback.format_exc()
-                )
-                )
+                warnings.warn(
+                    f"WARNING: {self} caching is enabled, but find_in_cache returned error {traceback.format_exc()}"
+                    )
             except AfterExisting as e:
                 stats['After all in cache'] += 1
                 if stats is not None:

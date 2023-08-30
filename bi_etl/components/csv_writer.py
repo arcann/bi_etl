@@ -276,15 +276,13 @@ class CSVWriter(ETLComponent):
         )
 
     def __repr__(self):
-        return "{cls}(task={task},logical_name={logical_name},filedata={file},primary_key={primary_key}," \
-               "column_names={column_names})".format(
-                    cls=self.__class__.__name__,
-                    task=self.task,
-                    logical_name=self.logical_name,
-                    file=self.file,
-                    primary_key=self.primary_key,
-                    column_names=self.column_names,
-                    )
+        return (
+            f"{self.__class__.__name__}(task={self.task},"
+            f"logical_name={self.logical_name}, "
+            f"filedata={self.file}, "
+            f"primary_key={self.primary_key}, "
+            f"column_names={self.column_names})"
+        )
 
     def get_writer(self) -> csv.writer:
         """
@@ -368,7 +366,7 @@ class CSVWriter(ETLComponent):
                 new_row[colName] = value
 
         if self.trace_data:
-            self.log.debug("{} Raw row being inserted:\n{}".format(self, new_row.str_formatted()))
+            self.log.debug(f"{self} Raw row being inserted:\n{new_row.str_formatted()}")
 
         # Set blank strings to single space, so that they differ from None values
 

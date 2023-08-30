@@ -130,7 +130,7 @@ class _TestBaseLookup(unittest.TestCase):
         for row in lookup:
             found_dict[row[self.key1_1]] = 1
         for cnt in range(1, 100):
-            self.assertIn(cnt, found_dict, 'Iter did not return key {}'.format(cnt))
+            self.assertIn(cnt, found_dict, f'Iter did not return key {cnt}')
             self._post_test_cleanup(lookup)
 
     # ------- Tests for key of len 3
@@ -198,5 +198,5 @@ class _TestBaseLookup(unittest.TestCase):
         for row in lookup:
             found_dict[row[self.key3_1]] = 3
         for cnt in range(1, 300):
-            self.assertIn(cnt, found_dict, 'Iter did not return key {}'.format(cnt))
+            self.assertIn(cnt, found_dict, f'Iter did not return key {cnt}')
         self._post_test_cleanup(lookup)

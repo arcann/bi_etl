@@ -5,6 +5,7 @@ import unittest
 
 import sqlalchemy
 from sqlalchemy import Column
+from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.sql.sqltypes import Integer
 
 from bi_etl.bulk_loaders.redshift_s3_csv_loader import RedShiftS3CSVBulk
@@ -28,8 +29,9 @@ class TestTableRedshift(BaseTestTable):
                         package_name = lib_name.replace('-', '_')
                         try:
                             importlib.import_module(package_name)
+                            print(f"libraries_to_install {lib_name} package = {package_name} import OK")
                         except ImportError as e:
-                            print(f"{lib_name} import {package_name} got {e} so installing it")
+                            print(f"libraries_to_install {lib_name} import {package_name} got {e} so installing it")
                             subprocess.check_call([sys.executable, '-m', 'pip', 'install', lib_name])
 
             if cls.env_config.redshift_database is None:
@@ -46,6 +48,11 @@ class TestTableRedshift(BaseTestTable):
     def setUp(self):
         super().setUp()
         self.test_file_search_folders.append('test_files')
+
+    def _get_table_name(self, partial_name: str) -> str:
+        # Redshift table names are case-insensitive.
+        # sqlalchemy way to handle that is to provide names in lower case
+        return super()._get_table_name(partial_name=partial_name).lower()
 
     def testInsertDuplicate(self):
         raise unittest.SkipTest(f"Skip testInsertDuplicate due to no Redshift support")
@@ -80,7 +87,7 @@ class TestTableRedshift(BaseTestTable):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
         bulk_loader = RedShiftS3CSVBulk(self.env_config.s3_bulk, s3_file_delimiter=',')
@@ -103,7 +110,7 @@ class TestTableRedshift(BaseTestTable):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
         bulk_loader = RedShiftS3CSVBulk(self.env_config.s3_bulk, s3_file_delimiter='|')
@@ -121,13 +128,15 @@ class TestTableRedshift(BaseTestTable):
     def testRedShiftS3CSVBulk_Error_Handling_Connection(self):
         tbl_name = self._get_table_name('testRedShiftS3CSVBulkErrorHandlingConn')
 
+        temp_db_meta = self._get_mock_db()
+
         sa_table = sqlalchemy.schema.Table(
             tbl_name,
-            self.mock_database,
+            temp_db_meta,
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
         )
-        sa_table.create()
+        sa_table.create(bind=temp_db_meta.bind)
 
         test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
 
@@ -136,7 +145,7 @@ class TestTableRedshift(BaseTestTable):
         #       but the COPY will fail.
         bulk_loader.s3_user_id = 'BAD'
         with Table(self.task,
-                   self.mock_database,
+                   self._get_mock_db(),
                    table_name=tbl_name) as tbl:
 
             with self.assertRaisesRegex(Exception, r"(?i)(InvalidAccessKeyId)") as e:
@@ -155,7 +164,7 @@ class TestTableRedshift(BaseTestTable):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
 
@@ -173,3 +182,5 @@ class TestTableRedshift(BaseTestTable):
                     table_object=tbl,
                 )
             self.assertNotIn(bulk_loader.s3_password, str(e.exception))
+
+del BaseTestTable

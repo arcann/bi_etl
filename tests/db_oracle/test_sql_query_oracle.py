@@ -4,7 +4,7 @@ from tests.db_base_tests.base_test_sql_query import BaseTestSQLQuery
 from tests.db_oracle.oracle_docker_db import OracleDockerDB
 
 
-class TestSQLQuerySqliteOracle(BaseTestSQLQuery):
+class TestSQLQueryOracle(BaseTestSQLQuery):
     @classmethod
     def setUpClass(cls) -> None:
         cls.db_container = OracleDockerDB()
@@ -18,3 +18,6 @@ class TestSQLQuerySqliteOracle(BaseTestSQLQuery):
             )
         else:
             return dt_val
+
+
+del BaseTestSQLQuery

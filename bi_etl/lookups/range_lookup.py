@@ -78,7 +78,7 @@ class RangeLookup(Lookup):
 
         """
         if self.cache_enabled:
-            assert isinstance(row, Row), "cache_row requires Row and not {}".format(type(row))
+            assert isinstance(row, Row), f"cache_row requires Row and not {type(row)}"
 
             if self.use_value_cache:
                 self._update_with_value_cache(row)
@@ -96,12 +96,11 @@ class RangeLookup(Lookup):
             if effective_date in versions_collection:
                 if not allow_update:
                     self.log.error('Key already in lookup!')
-                    self.log.error('Existing row = {}'.format(repr(versions_collection[effective_date])))
-                    self.log.error('New duplicate row = {}'.format(repr(row)))
-                    raise ValueError('Key {} + date {} already in cache and allow_update was False'.format(
-                        lk_tuple,
-                        effective_date
-                    ))
+                    self.log.error(f'Existing row = {repr(versions_collection[effective_date])}')
+                    self.log.error(f'New duplicate row = {repr(row)}')
+                    raise ValueError(
+                        f'Key {lk_tuple} + date {effective_date} already in cache and allow_update was False'
+                        )
             else:
                 self._len += 1
             
@@ -117,7 +116,9 @@ class RangeLookup(Lookup):
             
     def uncache_row(self, row: Lookup.ROW_TYPES):
         if isinstance(row, tuple) or isinstance(row, list):
-            raise ValueError("{}.uncache_row requires a Row not a tuple since it needs the date".format(self.__class__.__name__))
+            raise ValueError(
+                f"{self.__class__.__name__}.uncache_row requires a Row not a tuple since it needs the date"
+                )
         else:
             lk_tuple = self.get_hashable_combined_key(row)
         if self._cache is not None:
@@ -169,7 +170,7 @@ class RangeLookup(Lookup):
             lk_tuple = self.get_hashable_combined_key(row)
 
         if not self.cache_enabled:
-            raise ValueError("Lookup {} cache not enabled".format(self.lookup_name))
+            raise ValueError(f"Lookup {self.lookup_name} cache not enabled")
         if self._cache is None:
             self.init_cache()
 
@@ -194,12 +195,13 @@ class RangeLookup(Lookup):
         try:
             return self._get_version(versions_collection, effective_date)
         except TypeError as e:
-            msg = str(e)
-            msg += "\nversions_collection = {}".format(versions_collection)
             # noinspection PyTypeChecker
-            msg += "\nversions_collection key[0]= {}".format(next(versions_collection.keys()))
-            msg += "\neffective_date = {}".format(effective_date)
-            raise TypeError(msg)
+            raise TypeError(
+                f"{e}\n"
+                f"versions_collection = {versions_collection}\n"
+                f"versions_collection key[0]= {next(versions_collection.keys())}\n"
+                f"effective_date = {effective_date}"
+            )
                 
     def _add_remote_stmt_where_clause(self, stmt: Selectable) -> Selectable:
         stmt = super(RangeLookup, self)._add_remote_stmt_where_clause(stmt)
@@ -217,7 +219,7 @@ class RangeLookup(Lookup):
         values_dict = super(RangeLookup, self)._get_remote_stmt_where_values(row)
         if effective_date is None:
             if isinstance(row, tuple) or isinstance(row, list):
-                effective_date_value_name = 'k{}'.format(len(row))
+                effective_date_value_name = f'k{len(row)}'
                 effective_date = ensure_datetime(values_dict[effective_date_value_name])
                 del values_dict[effective_date_value_name]
             else:
@@ -278,9 +280,11 @@ class RangeLookup(Lookup):
         elif len(rows) == 1:
             return self.parent_component.Row(rows[0])
         else:
-            msg = 'dict_to_str statement {}\n'.format(self._remote_lookup_stmt)
-            msg += 'using keys {}\n'.format(dict_to_str(values_dict))
-            msg += 'matched multiple records: \n'
+            msg = (
+                f'dict_to_str statement {self._remote_lookup_stmt}\n'
+                f'using keys {dict_to_str(values_dict)}\n'
+                'matched multiple records: \n'
+            )
             row_cnt = 0
             for r in rows:
                 row_cnt += 1

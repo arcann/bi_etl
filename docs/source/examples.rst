@@ -146,7 +146,7 @@ In this example we add in features to
                target_table.fill_cache()
 
                ## Log entry
-               self.log.info("Processing rows from {}".format(source_data))
+               self.log.info(f"Processing rows from {source_data}")
 
                ## Start looping through source data
                for row in source_data:
@@ -158,7 +158,7 @@ In this example we add in features to
                                       )
                target_table.commit()
 
-               self.log.info("Processing deletes from {}".format(target_table))
+               self.log.info(f"Processing deletes from {target_table}")
                target_table.logically_delete_not_processed()
                target_table.commit()
 

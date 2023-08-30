@@ -81,7 +81,7 @@ class NonUniqueLookup(Lookup):
 
         """
         if self.cache_enabled:
-            assert isinstance(row, Row), "cache_row requires Row and not {}".format(type(row))
+            assert isinstance(row, Row), f"cache_row requires Row and not {type(row)}"
 
             if self.use_value_cache:
                 self._update_with_value_cache(row)
@@ -129,7 +129,9 @@ class NonUniqueLookup(Lookup):
 
     def uncache_row(self, row: Lookup.ROW_TYPES):
         if isinstance(row, tuple) or isinstance(row, list):
-            raise ValueError("{}.uncache_row requires a Row not a tuple since it needs the date".format(self.__class__.__name__))
+            raise ValueError(
+                f"{self.__class__.__name__}.uncache_row requires a Row not a tuple since it needs the date"
+                )
         else:
             lk_tuple = self.get_hashable_combined_key(row)
         if self._cache is not None:
@@ -208,12 +210,12 @@ class NonUniqueLookup(Lookup):
             try:
                 return [matching_rows[primary_key]]
             except KeyError as e:
-                msg = str(e)
-                msg += "\nmatching_rows = {}".format(matching_rows)
-                # noinspection PyTypeChecker
-                msg += "\nmatching_rows key[0]= {}".format(next(matching_rows.keys()))
-                msg += "\nprimary_key = {}".format(primary_key)
-                raise TypeError(msg)
+                raise TypeError(
+                    f"{e}\n"
+                    f"matching_rows = {matching_rows}\n"
+                    f"matching_rows key[0]= {next(matching_rows.keys())}\n"
+                    f"primary_key = {primary_key}"
+                )
 
     def find_in_remote_table(self, row: Lookup.ROW_TYPES, **kwargs) -> Row:
         """

@@ -13,6 +13,9 @@ class PostgresDockerDB(BaseDockerDB):
     """
     SUPPORTS_DECIMAL = True
     SUPPORTS_TIME = True
+    # Note: sqlalchemy 2.0 only supports datetime.timedelta objects for PostgreSQL
+    # https://docs.sqlalchemy.org/en/20/core/type_basics.html#sqlalchemy.types.Interval
+    SUPPORTS_INTERVAL = True
     MAX_NAME_LEN = 63
 
     def get_container_class(self, image="postgres:latest"):

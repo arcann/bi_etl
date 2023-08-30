@@ -176,7 +176,7 @@ class RunSQLScript(ETLTask):
         self.log.info("database={}".format(database))
         conn = database.bind.engine.raw_connection()
         try:
-            conn.auto_commit = True
+            conn.autocommit = True
             with conn.cursor() as cursor:
                 self.log.info(f"Running {self.script_full_name}")
                 with self.script_full_name.open("rt", encoding="utf-8-sig") as sql_file:

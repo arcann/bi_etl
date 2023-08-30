@@ -45,7 +45,7 @@ def create_bcp_format_file(table: Table, bcp_format_path, encoding=None, delimit
                 if isinstance(c_type, BIT):
                     p_type = bool
                 else:
-                    raise ValueError("Unexpected data type {} for column".format(c_type, column))
+                    raise ValueError(f"Unexpected data type {c_type} for column")
 
             # Types
             # https://docs.microsoft.com/en-us/sql/relational-databases/import-export/xml-format-files-sql-server?view=sql-server-2017
@@ -80,22 +80,15 @@ def create_bcp_format_file(table: Table, bcp_format_path, encoding=None, delimit
                 field_type = 'NCharTerm'
             else:
                 field_type = 'CharTerm'
-            field_spec = '<FIELD ID="{col_num}" xsi:type="{type}" COLLATION="" TERMINATOR="{term}"'.format(
-                col_num=col_num + 1,
-                type=field_type,
-                term=delimiter,
-            )
+            field_spec = f'<FIELD ID="{col_num + 1}" xsi:type="{field_type}" COLLATION="" TERMINATOR="{delimiter}"'
             if size is not None:
-                field_spec += ' MAX_LENGTH="{size}"'.format(size=size)
+                field_spec += f' MAX_LENGTH="{size}"'
             if scale is not None:
-                field_spec += ' SCALE="{scale}"'.format(scale=scale)
+                field_spec += f' SCALE="{scale}"'
             field_spec += "/>"
             field_list.append(field_spec)
             column_list.append(
-                '<COLUMN SOURCE="{col_num}" NAME="{name}" />'.format(
-                    col_num=col_num + 1,
-                    name=column.name,
-                )
+                f'<COLUMN SOURCE="{col_num + 1}" NAME="{column.name}" />'
             )
         bcp_fmt.write(textwrap.dedent("""\
                         <?xml version="1.0"?>
@@ -205,7 +198,7 @@ def run_bcp(
         p.stdout.close()
         rc = p.returncode
         if rc != 0:
-            log.error('bcp returned code {}'.format(rc))
+            log.error(f'bcp returned code {rc}')
         with open(bcp_errors, 'r', encoding='utf-8', errors='skip') as bcp_error_file:
             error_messages = bcp_error_file.read()
         if len(error_messages) > 0:
@@ -224,7 +217,7 @@ def run_bcp(
                 line = line.strip()
                 if line.endswith(b' rows copied.'):
                     rows = int(line[:-13])
-                    log.debug("Rows message found rows = {}".format(rows))
+                    log.debug(f"Rows message found rows = {rows}")
                     break
             return rows
         else:
@@ -253,14 +246,10 @@ def run_bcp(
 def format_value_for_bcp(value):
     if isinstance(value, datetime):
         # noinspection PyTypeChecker,PyTypeChecker
-        return ('{year:4d}-{month:02d}-{day:02d} {hour:02d}:{min:02d}:{sec:06.3f}'
-                .format(year=value.year,
-                        month=value.month,
-                        day=value.day,
-                        hour=value.hour,
-                        min=value.minute,
-                        sec=value.second + value.microsecond / 1000000)
-                )
+        return (
+            f'{value.year:4d}-{value.month:02d}-{value.day:02d} '
+            f'{value.hour:02d}:{value.minute:02d}:{value.second + value.microsecond / 1000000:06.3f}'
+            )
     elif value is None:
         return ''
     else:

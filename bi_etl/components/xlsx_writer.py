@@ -122,8 +122,9 @@ class XLSXWriter(XLSXReader):
         # Should be the last call of every init
         self.set_kwattrs(**kwargs)
 
+    @property
     def __repr__(self):
-        return "XLSXWriter({})".format(self.logical_name)
+        return f"XLSXWriter({self.logical_name})"
 
     @property
     def rows_inserted(self):

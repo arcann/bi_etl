@@ -71,17 +71,12 @@ class Status(IntEnum):
                          Status.kill_signal_sent
                          ]
                 )
+
     @staticmethod
     def print_status_list():
         for s in sorted(Status):
-            fmt = "{s.name:25} {s.value:3} category={status_category:8s} waiting={is_waiting:2} alive={alive:2} active={active:2} Finished={finished:2} Terminated={terminated:2} Termination_pending={termination_pending:2}"
-            print(fmt.format(s=s, 
-                             status_category=s.status_category(),
-                             is_waiting=s.is_waiting(),
-                             alive=s.is_alive(), 
-                             active=s.is_active(),
-                             finished=s.is_finished(), 
-                             terminated=s.is_terminated(), 
-                             termination_pending= s.is_termination_pending(),
-                            )
-                 )
+            print(
+                f"{s.name:25} {s.value:3} category={s.status_category():8s} waiting={s.is_waiting():2} "
+                f"alive={s.is_alive():2} active={s.is_active():2} Finished={s.is_finished():2} "
+                f"Terminated={s.is_terminated():2} Termination_pending={s.is_termination_pending():2}"
+                )

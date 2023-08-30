@@ -1,9 +1,15 @@
 """
 Created on Jan 27, 2016
 """
+from unittest import TestSuite
 
 from bi_etl.components.hst_table_source_based import HistoryTableSourceBased
 from tests.db_base_tests.base_test_hst_table import BaseTestHstTable, BeginDateSource
+
+
+def load_tests(loader, standard_tests, pattern):
+    suite = TestSuite()
+    return suite
 
 
 class BaseTestHistoryTableSourceBased(BaseTestHstTable):

@@ -8,23 +8,27 @@ Created on Apr 23, 2015
 class TaskStopRequested(Exception):
     pass
 
+
 class ParameterError(Exception):
     pass
 
+
 class WorkflowFinished(Exception):
     pass
+
 
 class CircularDependency(Exception):
     def __init__(self, circular_list):
         self.circular_list = circular_list
     
     def __repr__(self):
-        return "CircularDependency(circular_list=\n{}".format(self.circular_list)
-    
+        return f"CircularDependency(circular_list=\n{self.circular_list}"
+
+
 class DependencyDeeperThanLimit(Exception):
     def __init__(self, limit, maxed_list):
         self.limit = limit
         self.maxed_list = maxed_list
     
     def __repr__(self):
-        return "DependencyDeeperThanLimit(limit={}, maxed_list={}".format(self.limit, self.maxed_list)
+        return f"DependencyDeeperThanLimit(limit={self.limit}, maxed_list={self.maxed_list}"

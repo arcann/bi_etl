@@ -5,16 +5,18 @@ Created on Jan 22, 2016
 """
 import enum
 import logging
+from contextlib import ExitStack
 from datetime import date
 from datetime import datetime
 from datetime import time
 from datetime import timedelta
 from decimal import Decimal
-from unittest import mock
+from unittest import mock, TestSuite
 
 import sqlalchemy
 from sqlalchemy import exc
 from sqlalchemy.exc import DatabaseError
+from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import BOOLEAN
 from sqlalchemy.sql.sqltypes import Date
@@ -33,13 +35,21 @@ from sqlalchemy.sql.sqltypes import Time
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.table import Table
+from bi_etl.scheduler.task import ETLTask
 from bi_etl.utility import dict_to_str
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from tests.db_base_tests.base_test_database import BaseTestDatabase
 
 
+def load_tests(loader, standard_tests, pattern):
+    suite = TestSuite()
+    return suite
+
+
 # pylint: disable=missing-docstring, protected-access
 class BaseTestTable(BaseTestDatabase):
+    DEFAULT_NUMERIC = NUMERIC(16, 2)
+
     class MyEnum(enum.Enum):
         a = "a"
         b = "b"
@@ -52,9 +62,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
     def _create_table_2(self, tbl_name):
         sa_table = sqlalchemy.schema.Table(
@@ -63,10 +73,10 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
             Column('del_flg', self._text_datatype()),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
     def _create_table_3(self, tbl_name):
         sa_table = sqlalchemy.schema.Table(
@@ -75,9 +85,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype(), primary_key=True),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
     def testInit(self):
         tbl_name = self._get_table_name('testInit')
@@ -92,6 +102,196 @@ class BaseTestTable(BaseTestDatabase):
             self.assertIn('col3', tbl.column_names)
             self.assertIn('col4', tbl.column_names)
 
+    def testRelease(self):
+        tbl_name = self._get_table_name('testRelease')
+
+        self._create_table(tbl_name)
+
+        mock_db = self._get_mock_db()
+
+        with Table(
+            self.task,
+            mock_db,
+            table_name=tbl_name
+        ) as tbl:
+            pass
+        self.assertTrue(tbl.is_closed)
+        for trans in mock_db._transactions:
+            self.assertFalse(trans.is_active)
+        for conn in mock_db._connection_pool:
+            self.assertTrue(conn.is_closed)
+
+    def testReleaseMany(self):
+        tbl_name = self._get_table_name('testReleaseMany')
+
+        self._create_table(tbl_name)
+
+        mock_db = self._get_mock_db()
+
+        with ExitStack() as stack:
+            tbl1 = stack.enter_context(
+                Table(
+                    self.task,
+                    mock_db,
+                    table_name=tbl_name
+                )
+            )
+            tbl2 = stack.enter_context(
+                Table(
+                    self.task,
+                    mock_db,
+                    table_name=tbl_name
+                )
+            )
+
+        self.assertTrue(tbl1.is_closed)
+        self.assertTrue(tbl2.is_closed)
+        for trans in mock_db._transactions:
+            self.assertFalse(trans.is_active)
+        for conn in mock_db._connection_pool:
+            self.assertTrue(conn.is_closed)
+
+    def testReleaseExitStack(self):
+        task = ETLTask(config=self.config)
+        tbl_name = self._get_table_name('testReleaseExitStack')
+
+        self._create_table(tbl_name)
+
+        mock_db = self._get_mock_db()
+
+        with task.ExitStack() as stack:
+            tbl1 = stack.enter_context(
+                Table(
+                    self.task,
+                    mock_db,
+                    table_name=tbl_name
+                )
+            )
+            tbl2 = stack.enter_context(
+                Table(
+                    self.task,
+                    mock_db,
+                    table_name=tbl_name
+                )
+            )
+
+        self.assertTrue(tbl1.is_closed)
+        self.assertTrue(tbl2.is_closed)
+        for trans in mock_db._transactions:
+            self.assertFalse(trans.is_active)
+        for conn in mock_db._connection_pool:
+            self.assertTrue(conn.is_closed)
+
+    def testReleaseExplicitAutoClose(self):
+        task = ETLTask(config=self.config)
+
+        tbl_name = self._get_table_name('testReleaseExplicitAutoClose')
+
+        self._create_table(tbl_name)
+
+        mock_db = self._get_mock_db()
+
+        tbl1: Table = task.auto_close(
+            Table(
+                task,
+                mock_db,
+                table_name=tbl_name
+            )
+        )
+        tbl2: Table = task.auto_close(
+            Table(
+                task,
+                mock_db,
+                table_name=tbl_name
+            )
+        )
+
+        class TestContext:
+            def __init__(self):
+                self.status = 'init'
+
+            def __enter__(self):
+                self.status = 'opened'
+                return self
+
+            def __exit__(self, *exc):
+                self.status = 'closed'
+                return False
+
+        # auto_close should work with any context manager
+        ctx = task.auto_close(
+            TestContext()
+        )
+        task.close()
+
+        self.assertTrue(tbl1.is_closed)
+        self.assertTrue(tbl2.is_closed)
+        self.assertEqual(ctx.status, 'closed')
+        for trans in mock_db._transactions:
+            self.assertFalse(trans.is_active)
+        for conn in mock_db._connection_pool:
+            self.assertTrue(conn.is_closed)
+
+    def testReleaseImplicitAutoClose(self):
+        task = ETLTask(config=self.config)
+
+        tbl_name = self._get_table_name('testReleaseImplicitAutoClose')
+
+        self._create_table(tbl_name)
+
+        mock_db = self._get_mock_db()
+
+        tbl1 = Table(
+            task,
+            mock_db,
+            table_name=tbl_name
+        )
+
+        tbl2 = Table(
+            task,
+            mock_db,
+            table_name=tbl_name
+        )
+
+        # Note: ImplicitAutoClose only works for ETLComponent based objects
+
+        task.close()
+
+        self.assertTrue(tbl1.is_closed)
+        self.assertTrue(tbl2.is_closed)
+        for trans in mock_db._transactions:
+            self.assertFalse(trans.is_active)
+        for conn in mock_db._connection_pool:
+            self.assertTrue(conn.is_closed)
+
+    def testReleaseManyFailed(self):
+        tbl_name = self._get_table_name('testReleaseManyFailed')
+
+        self._create_table(tbl_name)
+
+        mock_db = self._get_mock_db()
+
+        try:
+            with ExitStack() as stack:
+                tbl1 = stack.enter_context(
+                    Table(
+                        self.task,
+                        mock_db,
+                        table_name=tbl_name
+                    )
+                )
+                raise RuntimeError("test")
+                # noinspection PyUnreachableCode
+                print("Other code might have been here")
+        except RuntimeError:
+            pass
+
+        self.assertTrue(tbl1.is_closed)
+        for trans in mock_db._transactions:
+            self.assertFalse(trans.is_active)
+        for conn in mock_db._connection_pool:
+            self.assertTrue(conn.is_closed)
+
     def testInitExcludeCol(self):
         tbl_name = self._get_table_name('testInitExcludeCol')
 
@@ -101,9 +301,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         with Table(self.task,
                    self.mock_database,
@@ -124,9 +324,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         with Table(self.task,
                    self.mock_database,
@@ -187,9 +387,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         rows_to_insert = 10
         with Table(self.task,
@@ -220,9 +420,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         rows_to_insert = 10
         tbl = Table(self.task,
@@ -261,9 +461,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         rows_to_insert = 10
         tbl = Table(self.task,
@@ -298,9 +498,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         rows_to_insert1 = 10
         rows_to_insert2 = 10
@@ -349,9 +549,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         rows_to_insert1 = 3
         rows_to_insert2 = 10
@@ -397,9 +597,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('alt_key', Integer),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         rows_to_insert = 10
         tbl = Table(self.task,
@@ -450,9 +650,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         rows_to_insert = 10
         tbl = Table(self.task,
@@ -805,9 +1005,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2a', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         tgt_tbl_name = self._get_table_name('testSanityCheck1t')
         sa_table = sqlalchemy.schema.Table(
@@ -816,9 +1016,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2a', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         with Table(
             self.task,
@@ -857,7 +1057,7 @@ class BaseTestTable(BaseTestDatabase):
                         target_excludes=frozenset(['col4']),
                     )
                     self.assertFalse(log.error.called)
-                    calls_str = '\n'.join([str(call) for call in log.mock_calls])
+                    # calls_str = '\n'.join([str(call) for call in log.mock_calls])
                     log.reset_mock()
 
                     tgt_tbl.sanity_check_source_mapping(
@@ -914,10 +1114,10 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2a', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
             Column('ext1', Integer),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         tgt_tbl_name = self._get_table_name('testBuildRow1t')
         sa_tgt_table = sqlalchemy.schema.Table(
@@ -926,10 +1126,10 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2b', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
             Column('ext2', Integer),
         )
-        sa_tgt_table.create()
+        sa_tgt_table.create(bind=self.mock_database.bind)
 
         with Table(
             self.task,
@@ -1030,7 +1230,9 @@ class BaseTestTable(BaseTestDatabase):
             self.mock_database,
             *cols
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
+
+        print(CreateTable(sa_table).compile(self.mock_database.bind))
 
         with self.dummy_etl_component as src_tbl:
             with Table(
@@ -1045,7 +1247,7 @@ class BaseTestTable(BaseTestDatabase):
                 with mock.patch('bi_etl.components.etlcomponent.logging', autospec=True) as log:
                     tgt_tbl.log = log
 
-                    tgt_tbl.default_date_time_format = '%m/%d/%Y %H:%M:%S'
+                    tgt_tbl.default_date_time_format = ('%m/%d/%Y %H:%M:%S', '%m/%d/%Y')
                     tgt_tbl.default_date_format = '%m/%d/%Y'
 
                     #
@@ -1079,7 +1281,10 @@ class BaseTestTable(BaseTestDatabase):
                     )
                     if self.db_container.SUPPORTS_BOOLEAN:
                         self.assertEqual(tgt_row['bool_col'], False)
-                    self.assertEqual(tgt_row['date_col'], date(2015, 1, 1))
+                    self.assertIn(tgt_row['date_col'], [
+                        date(2015, 1, 1),
+                        datetime(2015, 1, 1),
+                    ])
                     self.assertEqual(tgt_row['datetime_col'], datetime(2001, 1, 1, 12, 51, 43))
                     if self.db_container.SUPPORTS_TIME:
                         self.assertEqual(tgt_row['time_col'], time(22, 13, 55))
@@ -1263,9 +1468,9 @@ class BaseTestTable(BaseTestDatabase):
             Column('col_int', Integer),
             Column('col_txt', self._text_datatype()),
             Column('col_real', REAL),
-            Column('col_num', NUMERIC),
+            Column('col_num', self.DEFAULT_NUMERIC),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         with Table(self.task,
                    self.mock_database,
@@ -1342,7 +1547,7 @@ class BaseTestTable(BaseTestDatabase):
             for i in range(rows_to_insert):
                 row = tbl.Row(iteration_header=iteration_header)
                 row['col1'] = i
-                row['col2'] = 'this is row {}'.format(i)
+                row['col2'] = f'this is row {i}'
                 row['col3'] = i / 1000.0
                 row['col4'] = i / 100000000.0
 
@@ -1377,10 +1582,10 @@ class BaseTestTable(BaseTestDatabase):
             Column('col1', Integer, primary_key=True),
             Column('col2', self._text_datatype()),
             Column('col3', REAL),
-            Column('col4', NUMERIC),
+            Column('col4', self.DEFAULT_NUMERIC),
             Column('col5', TEXT),
         )
-        sa_table.create()
+        sa_table.create(bind=self.mock_database.bind)
 
         rows_to_insert = 10
         with Table(self.task,

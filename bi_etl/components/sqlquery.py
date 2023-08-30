@@ -50,7 +50,7 @@ class SQLQuery(ETLComponent):
         self.set_kwattrs(**kwargs) 
 
     def __repr__(self):
-        return "SQLQuery({})".format(self.logical_name or id(self))
+        return f"SQLQuery({self.logical_name or id(self)})"
     
     def __str__(self):
         return repr(self)
@@ -63,7 +63,6 @@ class SQLQuery(ETLComponent):
             select_result = self._raw_rows_bind_parameters()
         else:
             select_result = self._raw_rows_format_parameters()
-        self.column_names = list(select_result.keys())
         return select_result
     
     def _obtain_column_names(self):
@@ -80,10 +79,14 @@ class SQLQuery(ETLComponent):
         stats.timer.start()
         try:
             sql = sqlalchemy.text(self.sql)
-            select_result = self.engine.execute(sql, **parameters)
+
+            with self.engine.connect() as conn:
+                select_result = conn.execute(sql, **parameters)
+                self.column_names = list(select_result.keys())
+                for row in select_result:
+                    yield row
         except TypeError as e:
             raise TypeError(f'Error {e} with SQL {self.sql} and params {parameters} on {self.engine}')
-        return select_result
 
     def _raw_rows_format_parameters(self, *args, **kwargs):
         """
@@ -93,5 +96,8 @@ class SQLQuery(ETLComponent):
         stats = self.get_stats_entry(stats_id=self.default_stats_id)
         stats.timer.start()
         select = self.sql.format(*args, **kwargs)
-        select_result = self.engine.execute(select)
-        return select_result
+        with self.engine.connect() as conn:
+            select_result = conn.execute(select)
+            self.column_names = list(select_result.keys())
+            for row in select_result:
+                yield row

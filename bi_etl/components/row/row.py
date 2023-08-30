@@ -304,13 +304,10 @@ class Row(MutableMapping):
             return None
         column_name = self.iteration_header.get_column_name(column_specifier)
         if raise_on_not_exist and not self.iteration_header.has_column(column_name):
-            raise KeyError("{cls} {name} has no item {column_name} it does have {cols}"
-                           .format(cls=self.__class__.__name__,
-                                   name=self.name,
-                                   column_name=column_name,
-                                   cols=self.columns_in_order
-                                   )
-                           )
+            raise KeyError(
+                f"{self.__class__.__name__} {self.name} has no item {column_name} "
+                f"it does have {self.columns_in_order}"
+                )
         return column_name
 
     @property
@@ -338,16 +335,10 @@ class Row(MutableMapping):
     def __str__(self):
         if self.primary_key is not None:
             key_values = [(col, self.get(col, '<N/A>')) for col in self.primary_key]
-            return "{name} key_values={keys} status={s}".format(name=self.name,
-                                                                keys=key_values,
-                                                                s=self.status
-                                                                )
+            return f"{self.name} key_values={key_values} status={self.status}"
         else:
             cv = [self[k] for k in self.columns_in_order[:5]]
-            return "{name} cols[:5]={cv} status={s}".format(name=self.name,
-                                                            cv=cv,
-                                                            s=self.status
-                                                            )
+            return f"{self.name} cols[:5]={cv} status={self.status}"
 
     def __contains__(self, column_specifier):
         column_name = self.iteration_header.get_column_name(column_specifier)
@@ -432,7 +423,7 @@ class Row(MutableMapping):
         Note: The first column position is 1 (not 0 like a python list).
         """
         assert 0 < position <= self.iteration_header.column_count, IndexError(
-            "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count)
+            f"Position {position} is invalid. Expected 1 to {self.iteration_header.column_count}"
         )
 
         # -1 because positions are 1 based not 0 based
@@ -445,7 +436,7 @@ class Row(MutableMapping):
         Note: The first column position is 1 (not 0 like a python list).
         """
         assert 0 < position <= self.iteration_header.column_count, IndexError(
-            "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count)
+            f"Position {position} is invalid. Expected 1 to {self.iteration_header.column_count}"
         )
         if position <= len(self._data_values):
             # -1 because positions are 1 based not 0 based
@@ -467,7 +458,7 @@ class Row(MutableMapping):
             self._data_values[zposition] = value
         else:
             raise IndexError(
-                "zPosition {} is invalid. Expected 0 to {}".format(zposition, self.iteration_header.column_count - 1)
+                f"zPosition {zposition} is invalid. Expected 0 to {self.iteration_header.column_count - 1}"
             )
 
     def set_by_position(self, position, value):
@@ -479,7 +470,7 @@ class Row(MutableMapping):
             self.set_by_zposition(position-1, value)
         except IndexError:
             raise IndexError(
-                "Position {} is invalid. Expected 1 to {}".format(position, self.iteration_header.column_count)
+                f"Position {position} is invalid. Expected 1 to {self.iteration_header.column_count}"
             )
 
     def rename_column(self, old_name, new_name, ignore_missing=False):
@@ -687,12 +678,7 @@ class Row(MutableMapping):
         elif type(val1) in self.NUMERIC_TYPES and type(val2) in self.NUMERIC_TYPES:
             return Decimal(val1) == Decimal(val2)
         else:
-            msg = '{row} data type mismatch on compare of {col_name} {type1} vs {type2}'.format(
-                row=self.name,
-                col_name=col_name,
-                type1=type(val1),
-                type2=type(val2),
-            )
+            msg = f'{self.name} data type mismatch on compare of {col_name} {type(val1)} vs {type(val2)}'
             warnings.warn(msg)
             return str(val1) == str(val2)
 

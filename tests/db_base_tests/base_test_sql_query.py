@@ -3,10 +3,16 @@ Created on Jan 22, 2016
 
 @author: Derek Wood
 """
+from unittest import TestSuite
 
 from bi_etl.components.sqlquery import SQLQuery
 from bi_etl.components.table import Table
 from tests.db_base_tests.base_test_database import BaseTestDatabase
+
+
+def load_tests(loader, standard_tests, pattern):
+    suite = TestSuite()
+    return suite
 
 
 # pylint: disable=missing-docstring, protected-access

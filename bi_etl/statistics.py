@@ -60,7 +60,7 @@ class Statistics(object):
         base_stats_id = stats_id
         while stats_id in self:
             id_nbr += 1
-            stats_id = '{} {}'.format(base_stats_id, id_nbr)
+            stats_id = f'{base_stats_id} {id_nbr}'
         return stats_id
 
     @property
@@ -146,15 +146,9 @@ class Statistics(object):
                     self[stats_key].merge(value)
                 else:
                     raise ValueError(
-                        "Can't merge {path}:{key} type {type} "
-                        "with {opath}:{okey} type {otype}".format(
-                            path=self.path,
-                            key=stats_key,
-                            type=type(self[stats_key]),
-                            opath=other.path,
-                            okey=stats_key,
-                            otype=type(value),
-                        )
+                        f"Can't merge {self.path}:{stats_key} "
+                        f"type {type(self[stats_key])} "
+                        f"with {other.path}:{stats_key} type {type(value)}"
                     )
 
     def __contains__(self, key):

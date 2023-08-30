@@ -115,7 +115,7 @@ def main():
         "ratio".rjust(15))))
     absmin_ = min(x[1] for x in list(timings.values()))
     for name, (av, min_) in sorted(list(timings.items()), key=lambda x: x[1][1]):
-        print(("{} {:15.4f} {:15.4f} {:15.4f}".format(name.ljust(width), av, min_, min_ / absmin_)))
+        print(f"{name.ljust(width)} {av:15.4f} {min_:15.4f} {min_ / absmin_:15.4f}")
 
 
 if __name__ == '__main__':
