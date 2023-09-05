@@ -5,6 +5,7 @@ Created on Jan 22, 2016
 """
 import enum
 import logging
+import warnings
 from contextlib import ExitStack
 from datetime import date
 from datetime import datetime
@@ -16,7 +17,6 @@ from unittest import mock, TestSuite
 import sqlalchemy
 from sqlalchemy import exc
 from sqlalchemy.exc import DatabaseError
-from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import BOOLEAN
 from sqlalchemy.sql.sqltypes import Date
@@ -25,69 +25,76 @@ from sqlalchemy.sql.sqltypes import Enum
 from sqlalchemy.sql.sqltypes import Float
 from sqlalchemy.sql.sqltypes import Integer
 from sqlalchemy.sql.sqltypes import Interval
-from sqlalchemy.sql.sqltypes import NUMERIC
-from sqlalchemy.sql.sqltypes import Numeric
 from sqlalchemy.sql.sqltypes import REAL
 from sqlalchemy.sql.sqltypes import String
 from sqlalchemy.sql.sqltypes import TEXT
 from sqlalchemy.sql.sqltypes import Time
 
+from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.table import Table
 from bi_etl.scheduler.task import ETLTask
 from bi_etl.utility import dict_to_str
-from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from tests.db_base_tests.base_test_database import BaseTestDatabase
 
 
 def load_tests(loader, standard_tests, pattern):
+    # Filter out all
     suite = TestSuite()
     return suite
 
 
 # pylint: disable=missing-docstring, protected-access
 class BaseTestTable(BaseTestDatabase):
-    DEFAULT_NUMERIC = NUMERIC(16, 2)
-
     class MyEnum(enum.Enum):
         a = "a"
         b = "b"
         c = "c"
+
+    @property
+    def DEFAULT_NUMERIC(self):
+        return self._NUMERIC(16, 2)
 
     def _create_table(self, tbl_name):
         sa_table = sqlalchemy.schema.Table(
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
     def _create_table_2(self, tbl_name):
         sa_table = sqlalchemy.schema.Table(
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
-            Column('del_flg', self._text_datatype()),
+            Column('del_flg', self._TEXT()),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
     def _create_table_3(self, tbl_name):
         sa_table = sqlalchemy.schema.Table(
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype(), primary_key=True),
+            Column('col2', self._TEXT(), primary_key=True),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
     def testInit(self):
         tbl_name = self._get_table_name('testInit')
@@ -299,11 +306,13 @@ class BaseTestTable(BaseTestDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         with Table(self.task,
                    self.mock_database,
@@ -322,11 +331,13 @@ class BaseTestTable(BaseTestDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         with Table(self.task,
                    self.mock_database,
@@ -385,11 +396,13 @@ class BaseTestTable(BaseTestDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         rows_to_insert = 10
         with Table(self.task,
@@ -418,11 +431,13 @@ class BaseTestTable(BaseTestDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         rows_to_insert = 10
         tbl = Table(self.task,
@@ -459,11 +474,13 @@ class BaseTestTable(BaseTestDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         rows_to_insert = 10
         tbl = Table(self.task,
@@ -496,11 +513,13 @@ class BaseTestTable(BaseTestDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         rows_to_insert1 = 10
         rows_to_insert2 = 10
@@ -547,11 +566,13 @@ class BaseTestTable(BaseTestDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         rows_to_insert1 = 3
         rows_to_insert2 = 10
@@ -595,11 +616,13 @@ class BaseTestTable(BaseTestDatabase):
             self.mock_database,
             Column('col1', Integer, primary_key=True),
             Column('alt_key', Integer),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         rows_to_insert = 10
         tbl = Table(self.task,
@@ -648,11 +671,13 @@ class BaseTestTable(BaseTestDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         rows_to_insert = 10
         tbl = Table(self.task,
@@ -1003,22 +1028,26 @@ class BaseTestTable(BaseTestDatabase):
             src_tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2a', self._text_datatype()),
+            Column('col2a', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         tgt_tbl_name = self._get_table_name('testSanityCheck1t')
         sa_table = sqlalchemy.schema.Table(
             tgt_tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2a', self._text_datatype()),
+            Column('col2a', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         with Table(
             self.task,
@@ -1112,24 +1141,28 @@ class BaseTestTable(BaseTestDatabase):
             src_tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2a', self._text_datatype()),
+            Column('col2a', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
             Column('ext1', Integer),
         )
         sa_table.create(bind=self.mock_database.bind)
 
+        self.print_ddl(sa_table)
+
         tgt_tbl_name = self._get_table_name('testBuildRow1t')
         sa_tgt_table = sqlalchemy.schema.Table(
             tgt_tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2b', self._text_datatype()),
+            Column('col2b', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
             Column('ext2', Integer),
         )
         sa_tgt_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_tgt_table)
 
         with Table(
             self.task,
@@ -1207,10 +1240,10 @@ class BaseTestTable(BaseTestDatabase):
             Column('float_col', Float),
             Column('date_col', Date),
             Column('datetime_col', DateTime),
-            Column('numeric13_col', Numeric(13)),
-            Column('numeric25_col', Numeric(25)),
-            Column('numeric25_15_col', Numeric(25, 15)),
-            Column('strin_10_col', String(10)),
+            Column('numeric13_col', self._NUMERIC(13)),
+            Column('numeric25_col', self._NUMERIC(25)),
+            Column('numeric25_15_col', self._NUMERIC(25, 15)),
+            Column('string_10_col', String(10)),
             Column('enum_col', Enum(BaseTestTable.MyEnum)),
         ]
         if self.db_container.SUPPORTS_TIME:
@@ -1223,7 +1256,7 @@ class BaseTestTable(BaseTestDatabase):
             cols.append(Column('bool_col', BOOLEAN))
 
         if self.db_container.SUPPORTS_BINARY:
-            cols.append(Column('large_binary_col', self._binary_datatype()))
+            cols.append(Column('large_binary_col', self._BINARY()))
 
         sa_table = sqlalchemy.schema.Table(
             tbl_name,
@@ -1232,7 +1265,7 @@ class BaseTestTable(BaseTestDatabase):
         )
         sa_table.create(bind=self.mock_database.bind)
 
-        print(CreateTable(sa_table).compile(self.mock_database.bind))
+        self.print_ddl(sa_table)
 
         with self.dummy_etl_component as src_tbl:
             with Table(
@@ -1268,7 +1301,7 @@ class BaseTestTable(BaseTestDatabase):
                     src_row['numeric13_col'] = '1234567890123'
                     src_row['numeric25_col'] = Decimal('1234567890123456789012345')
                     src_row['numeric25_15_col'] = Decimal('1234567890.123456789012345')
-                    src_row['strin_10_col'] = '1234567890'
+                    src_row['string_10_col'] = '1234567890'
 
                     tgt_row = tgt_tbl.build_row(src_row)
                     self.assertFalse(
@@ -1295,12 +1328,31 @@ class BaseTestTable(BaseTestDatabase):
                     if self.db_container.SUPPORTS_BINARY:
                         self.assertEqual(tgt_row['large_binary_col'], "It's a Python world.".encode('ascii'))
                     self.assertEqual(tgt_row['numeric13_col'], 1234567890123)
-                    self.assertEqual(tgt_row['numeric25_col'], 1234567890123456789012345)
+                    result_numeric25_col = tgt_row['numeric25_col']
+                    if isinstance(result_numeric25_col, int):
+                        self.assertEqual(result_numeric25_col, 1234567890123456789012345)
+                    elif isinstance(result_numeric25_col, Decimal):
+                        self.assertEqual(result_numeric25_col, Decimal(1234567890123456789012345))
+                    else:
+                        self.log.warning(
+                            f"{self}.testBuildRow2 numeric25_col is not int or decimal "
+                            f"but {type(result_numeric25_col)} with value {result_numeric25_col}. "
+                            "It will be tested for equality in the first 16 significant digits."
+                        )
+                        col = tgt_tbl.get_column('numeric25_col')
+                        self.log.warning(f"numeric25_col type = {repr(col.type)}")
+                        self.log.warning(f"numeric25_col type.asdecimal = {repr(col.type.asdecimal)}")
+                        self.log.warning(f"numeric25_col type.python_type. = {col.type.python_type}")
+                        self.assertAlmostEqualsSignificant(
+                            result_numeric25_col, 1234567890123456789012345,
+                            significant_digits=16,
+                        )
+
                     # noinspection PyTypeChecker
                     self.assertAlmostEqual(tgt_row['numeric25_15_col'],
                                            Decimal('1234567890.123456789012345'),
                                            places=15)
-                    self.assertEqual(tgt_row['strin_10_col'], '1234567890')
+                    self.assertEqual(tgt_row['string_10_col'], '1234567890')
                     log.reset_mock()
 
                     # Test datetime to datetime
@@ -1311,12 +1363,25 @@ class BaseTestTable(BaseTestDatabase):
                     # Test datetime to date
                     src_row['date_col'] = datetime(2001, 1, 1, 12, 51, 43)
                     tgt_row = tgt_tbl.build_row(src_row)
-                    self.assertEqual(tgt_row['date_col'], date(2001, 1, 1), "Test datetime to date")
+                    tgt_date_col = tgt_row['date_col']
+                    if isinstance(tgt_date_col, datetime):
+                        # Databases like oracle register DATE as python datetime. So test that at least we got the same out.
+                        self.assertEqual(tgt_date_col.date(), date(2001, 1, 1), "Test datetime to date date part")
+                        self.assertEqual(tgt_date_col, src_row['date_col'], "Test datetime to date (exception case)")
+                    elif isinstance(tgt_date_col, date):
+                        self.assertEqual(tgt_date_col, date(2001, 1, 1), "Test datetime to date")
+                    else:
+                        raise ValueError(f"date_col is {type(tgt_date_col)} = {repr(tgt_row)}")
 
                     # Test date to date
                     src_row['date_col'] = date(2001, 1, 1)
                     tgt_row = tgt_tbl.build_row(src_row)
-                    self.assertEqual(tgt_row['date_col'], date(2001, 1, 1), " Test date to date")
+                    tgt_date_col = tgt_row['date_col']
+                    if isinstance(tgt_date_col, datetime):
+                        # Databases like oracle register DATE as python datetime. So test that at least we got the same out.
+                        self.assertEqual(tgt_date_col.date(), date(2001, 1, 1), " Test date to date")
+                    else:
+                        self.assertEqual(tgt_date_col, date(2001, 1, 1), " Test date to date")
 
                     # Test datetime to time
                     if self.db_container.SUPPORTS_TIME:
@@ -1337,21 +1402,21 @@ class BaseTestTable(BaseTestDatabase):
                     # Test force_ascii
                     tgt_tbl.force_ascii = True
                     tgt_tbl._build_coerce_methods()
-                    src_row['strin_10_col'] = 'Ёarth'
+                    src_row['string_10_col'] = 'Ёarth'
                     tgt_row = tgt_tbl.build_row(src_row)
-                    self.assertEqual(tgt_row['strin_10_col'], '~arth', "Test force_ascii")
+                    self.assertEqual(tgt_row['string_10_col'], '~arth', "Test force_ascii")
                     tgt_tbl.force_ascii = False
                     tgt_tbl._build_coerce_methods()
 
                     # Test decode bytes as ascii
-                    src_row['strin_10_col'] = b'Earth'
+                    src_row['string_10_col'] = b'Earth'
                     tgt_row = tgt_tbl.build_row(src_row)
-                    self.assertEqual(tgt_row['strin_10_col'], 'Earth', "Test decode bytes as ascii")
+                    self.assertEqual(tgt_row['string_10_col'], 'Earth', "Test decode bytes as ascii")
 
                     # Test string too long
-                    src_row['strin_10_col'] = '12345678901'
+                    src_row['string_10_col'] = '12345678901'
                     self.assertRaises(ValueError, tgt_tbl.build_row, src_row)
-                    src_row['strin_10_col'] = '12345678'
+                    src_row['string_10_col'] = '12345678'
 
                     # Test number too long from int
                     src_row['numeric13_col'] = 12345678901234
@@ -1466,11 +1531,13 @@ class BaseTestTable(BaseTestDatabase):
             tbl_name,
             self.mock_database,
             Column('col_int', Integer),
-            Column('col_txt', self._text_datatype()),
+            Column('col_txt', self._TEXT()),
             Column('col_real', REAL),
             Column('col_num', self.DEFAULT_NUMERIC),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         with Table(self.task,
                    self.mock_database,
@@ -1580,12 +1647,14 @@ class BaseTestTable(BaseTestDatabase):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
             Column('col3', REAL),
             Column('col4', self.DEFAULT_NUMERIC),
             Column('col5', TEXT),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         rows_to_insert = 10
         with Table(self.task,

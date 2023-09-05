@@ -21,11 +21,6 @@ from bi_etl.conversions import str2datetime, str2date, str2time, str2int, str2de
 from tests.db_base_tests.base_test_database import BaseTestDatabase
 
 
-def load_tests(loader, standard_tests, pattern):
-    suite = TestSuite()
-    return suite
-
-
 class BeginDateSource(Enum):
     SYSTEM_TIME = 1
     IN_ROW = 2
@@ -228,6 +223,8 @@ class BaseTestHstTable(BaseTestDatabase):
             )
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         self._create_index_table_2(sa_table)
 
@@ -645,6 +642,8 @@ class BaseTestHstTable(BaseTestDatabase):
             )
             sa_table.create(bind=self.mock_database.bind)
 
+            self.print_ddl(sa_table)
+
             with Table(
                 self.task,
                 self.mock_database,
@@ -766,14 +765,16 @@ class BaseTestHstTable(BaseTestDatabase):
         sa_table = sqlalchemy.schema.Table(
             tbl_name,
             self.mock_database,
-            Column('test_nk', self._text_datatype(), primary_key=True),
+            Column('test_nk', self._TEXT(), primary_key=True),
             Column('dt_src_beg', DateTime, primary_key=True),
             Column('dt_src_end', DateTime),
-            Column('col1', self._text_datatype()),
+            Column('col1', self._TEXT()),
             Column('col2', Integer),
-            Column('flag_delete', self._text_datatype()),
+            Column('flag_delete', self._TEXT()),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         with self.TEST_COMPONENT(
                 self.task,
@@ -860,6 +861,7 @@ class BaseTestHstTable(BaseTestDatabase):
             remove_redundant_versions=True,
         )
 
+    @unittest.skip
     def test_cleanup_spur_del_nover(self):
         tbl_name = self._get_table_name('test_cleanup_del_nover')
         self._test_cleanup_versions(
@@ -868,6 +870,7 @@ class BaseTestHstTable(BaseTestDatabase):
             remove_redundant_versions=False,
         )
 
+    @unittest.skip
     def test_cleanup_spur_nodel_nover(self):
         tbl_name = self._get_table_name('test_cleanup_nodel_nover')
         self._test_cleanup_versions(

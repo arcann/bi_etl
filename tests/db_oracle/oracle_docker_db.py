@@ -3,6 +3,7 @@ import platform
 import zipfile
 from pathlib import Path
 from tempfile import NamedTemporaryFile, gettempdir
+from typing import Optional
 from urllib import request
 from urllib.error import HTTPError
 
@@ -26,12 +27,24 @@ class OracleDockerDB(BaseDockerDB):
     SUPPORTS_DECIMAL = True
     SUPPORTS_TIME = False
     SUPPORTS_BOOLEAN = False
+    DATE_AS_DATETIME = True
     MAX_NAME_LEN = 30
     MODE = 'cx_Oracle'
 
     @property
     def TEXT(self):
         return VARCHAR(4000)
+
+    def NUMERIC(
+            self,
+            precision: Optional[int] = None,
+            scale: Optional[int] = None,
+    ):
+        # noinspection PyUnresolvedReferences
+        return sqlalchemy.dialects.oracle.NUMBER(
+            precision, scale,
+            asdecimal=True,
+        )
 
     def _get_driver(self):
         try:
@@ -82,16 +95,23 @@ class OracleDockerDB(BaseDockerDB):
                 oci_dll = client_root / 'oci.dll'
                 if not oci_dll.is_file():
                     print(f"Downloading Oracle instant client for {sys2} version {version} to {client_root}")
-                    zip_file = NamedTemporaryFile(delete=False).name
+                    zip_file_tmp = None
                     try:
-                        request.urlretrieve(client_url, zip_file)
-                    except HTTPError as e:
-                        raise ValueError(f"{e} on url {client_url}")
+                        zip_file_tmp = NamedTemporaryFile(delete=False)
+                        zip_file = zip_file_tmp.name
+                        try:
+                            request.urlretrieve(client_url, zip_file)
+                        except HTTPError as e:
+                            raise ValueError(f"{e} on url {client_url}")
 
-                    # Unzip client
-                    with zipfile.ZipFile(zip_file, "r") as zip_ref:
-                        zip_ref.extractall(client_root)
-                    os.remove(zip_file)
+                        # Unzip client
+                        with zipfile.ZipFile(zip_file, "r") as zip_ref:
+                            zip_ref.extractall(client_root)
+                    finally:
+                        if zip_file_tmp is not None:
+                            zip_file_tmp.close()
+                            if os.path.exists(zip_file_tmp.name):
+                                os.remove(zip_file_tmp.name)
 
                 # noinspection PyTypeChecker
                 client_dirs = [

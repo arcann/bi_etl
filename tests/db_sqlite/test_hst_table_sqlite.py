@@ -10,5 +10,8 @@ class TestHstTableSqlite(BaseTestHstTable):
         super().setUpClass()
         cls.db_container = SqliteDB()
 
+    def test_sql_upsert_nosrgt_del(self):
+        super().test_sql_upsert_nosrgt_del()
+
 
 del BaseTestHstTable

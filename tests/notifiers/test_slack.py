@@ -1,7 +1,6 @@
 import time
 import unittest
 from tempfile import TemporaryDirectory
-from unittest import TestSuite
 from unittest.mock import patch, MagicMock
 
 from config_wrangler.config_templates.logging_config import LoggingConfig
@@ -10,20 +9,6 @@ from bi_etl.config.bi_etl_config_base import Notifiers, BI_ETL_Config_Section, B
 from bi_etl.config.notifiers_config import SlackNotifier
 from bi_etl.notifiers import Slack
 from tests.config_for_tests import EnvironmentSpecificConfigForTests
-
-
-# https://docs.python.org/3/library/unittest.html#load-tests-protocol
-def load_tests(loader, standard_tests, pattern):
-    suite = TestSuite()
-    for test_class in (
-        TestSlackMock,
-        TestSlackDirect,
-        TestSlackKeyring,
-        TestSlackKeePass
-    ):
-        tests = loader.loadTestsFromTestCase(test_class)
-        suite.addTests(tests)
-    return suite
 
 
 class TestSlackMock(unittest.TestCase):

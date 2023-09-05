@@ -1,5 +1,6 @@
 import inspect
 import logging
+import math
 import random
 import typing
 import unittest
@@ -7,10 +8,12 @@ from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import List, Union, Optional
 from unittest import TestSuite
 
 import sqlalchemy
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
+from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import BOOLEAN
 from sqlalchemy.sql.sqltypes import Date
@@ -18,8 +21,6 @@ from sqlalchemy.sql.sqltypes import DateTime
 from sqlalchemy.sql.sqltypes import Float
 from sqlalchemy.sql.sqltypes import Integer
 from sqlalchemy.sql.sqltypes import Interval
-from sqlalchemy.sql.sqltypes import NUMERIC
-from sqlalchemy.sql.sqltypes import Numeric
 from sqlalchemy.sql.sqltypes import REAL
 from sqlalchemy.sql.sqltypes import String
 from sqlalchemy.sql.sqltypes import Time
@@ -30,11 +31,6 @@ from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
 from tests.config_for_tests import build_config
 from tests.dummy_etl_component import DummyETLComponent
-
-
-def load_tests(loader, standard_tests, pattern):
-    suite = TestSuite()
-    return suite
 
 
 class BaseTestDatabase(unittest.TestCase):
@@ -63,12 +59,13 @@ class BaseTestDatabase(unittest.TestCase):
         if cls.__name__.startswith('Base'):
             raise ValueError(
                 f"{cls} is a base and not a testable class. "
-                f"Use load_tests or `del BaseTestTable` to avoid loading this as a test."
+                f"Use pytest config or `del BaseTestTable` to avoid loading this as a test."
             )
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.db_container is not None:
+            # noinspection PyBroadException
             try:
                 cls.db_container.shutdown()
             except Exception:
@@ -130,26 +127,54 @@ class BaseTestDatabase(unittest.TestCase):
         else:
             return self.assertAlmostEqual(float(first), float(second), places=6, msg=msg)
 
-    def _text_datatype(self):
+    def assertAlmostEqualsSignificant(self, first, second, significant_digits: int = 7):
+        if significant_digits < 1:
+            raise ValueError("assertAlmostEqualsSignificant: 'significant_digits' must be >=1")
+
+        first_non_zero = first or second
+        if (first_non_zero == 0) or ((first - second) == 0):
+            return
+
+        magnitude = int(math.floor((math.log10(first_non_zero))))
+        margin = 10 ** (magnitude - significant_digits + 1) / 2.0
+        diff_gt_margin = abs(first - second) - margin > -1e-15
+        if diff_gt_margin:
+            raise AssertionError(f'{first} != {second} to {significant_digits:d} significant figures')
+
+    # noinspection PyPep8Naming
+    def _TEXT(self):
         return self.db_container.TEXT
 
-    def _binary_datatype(self):
+    # noinspection PyPep8Naming
+    def _BINARY(self):
         return self.db_container.BINARY
 
-    def _get_column_list_table_1(self) -> typing.List[Column]:
+    # noinspection PyPep8Naming
+    def _NUMERIC(
+            self,
+            precision: Optional[int] = None,
+            scale: Optional[int] = None,
+    ):
+        return self.db_container.NUMERIC(precision=precision, scale=scale)
+
+    def print_ddl(self, sa_table: sqlalchemy.schema.Table):
+        print("DDL:")
+        print(CreateTable(sa_table).compile(self.mock_database.bind))
+
+    def _get_column_list_table_1(self) -> List[Column]:
         cols = [
             Column('id', Integer, primary_key=True),
             Column('int_col_2', Integer),
-            Column('text_col', self._text_datatype()),
-            Column('text_col_2', self._text_datatype()),
+            Column('text_col', self._TEXT()),
+            Column('text_col_2', self._TEXT()),
             Column('real_col', REAL),
             Column('date_col', Date),
             Column('datetime_col', DateTime),
             Column('float_col', Float),
-            Column('strin_10_col', String(10)),
-            Column('num_col', NUMERIC(38, 6)),
-            Column('numeric13_col', Numeric(13)),
-            Column('delete_flag', self._text_datatype()),
+            Column('string_10_col', String(10)),
+            Column('num_col', self._NUMERIC(38, 6)),
+            Column('numeric13_col', self._NUMERIC(13)),
+            Column('delete_flag', self._TEXT()),
         ]
         if self.db_container.SUPPORTS_TIME:
             cols.append(Column('time_col', Time))
@@ -161,7 +186,7 @@ class BaseTestDatabase(unittest.TestCase):
             cols.append(Column('bool_col', BOOLEAN))
 
         if self.db_container.SUPPORTS_BINARY:
-            cols.append(Column('large_binary_col', self._binary_datatype()))
+            cols.append(Column('large_binary_col', self._BINARY()))
 
         return cols
 
@@ -182,7 +207,7 @@ class BaseTestDatabase(unittest.TestCase):
             if name_with_id not in existing_tables:
                 return name_with_id
 
-    def _create_index_table_1(self, sa_table) -> typing.List[sqlalchemy.schema.Index]:
+    def _create_index_table_1(self, sa_table) -> List[sqlalchemy.schema.Index]:
         return []
 
     def _create_table_1(self, tbl_name) -> sqlalchemy.schema.Table:
@@ -197,7 +222,7 @@ class BaseTestDatabase(unittest.TestCase):
 
         return sa_table
 
-    def _gen_src_rows_1(self, int_range: typing.Union[range, int]) -> typing.Iterator[Row]:
+    def _gen_src_rows_1(self, int_range: Union[range, int]) -> typing.Iterator[Row]:
         source_compontent = self.dummy_etl_component
         iteration_header = source_compontent.generate_iteration_header()
 
@@ -224,7 +249,7 @@ class BaseTestDatabase(unittest.TestCase):
             if self.db_container.SUPPORTS_DECIMAL:
                 row['num_col'] = Decimal(i) / Decimal(10**6)
                 row['numeric13_col'] = Decimal(i * 100)
-            row['strin_10_col'] = f"row {i}"
+            row['string_10_col'] = f"row {i}"
             yield row
 
     def _compare_rows(
@@ -252,7 +277,7 @@ class BaseTestDatabase(unittest.TestCase):
             actual = actual_row[col]
             try:
                 if isinstance(expected, float) or isinstance(actual, float):
-                    self.assertEquivalentNumber(expected, actual, f"Expected {expected} got {actual}")
+                    self.assertEquivalentNumber(expected, actual, f"{col}: Expected {expected} got {actual}")
                 elif isinstance(expected, timedelta) or isinstance(actual, timedelta):
                     if isinstance(expected, str):
                         expected = timedelta(seconds=float(expected))
@@ -269,13 +294,26 @@ class BaseTestDatabase(unittest.TestCase):
                         # noinspection PyTypeChecker
                         actual = timedelta(seconds=actual)
 
-                    self.assertEqual(expected, actual, f"Expected {expected} got {actual}")
+                    self.assertEqual(expected, actual, f"{col}: Expected {expected} got {actual}")
 
                 elif isinstance(expected, self.ApproxDatetime):
-                    self.assertIsNotNone(actual, f"Expected {expected} got {actual}")
-                    self.assertTrue(expected.matches(actual), f"Expected {expected} got {actual}")
+                    self.assertIsNotNone(actual, f"{col}: Expected {expected} got {actual}")
+                    self.assertTrue(expected.matches(actual), f"{col}: Expected {expected} got {actual}")
+                elif self.db_container.DATE_AS_DATETIME and isinstance(expected, datetime) and isinstance(actual, datetime):
+                    # Since datetime is also date... we have to check the case where both are datetime first
+                    self.assertEqual(expected, actual, f"{col}: Expected {expected} got {actual}")
+                elif self.db_container.DATE_AS_DATETIME and isinstance(expected, date) and isinstance(actual, datetime):
+                    self.assertEqual(expected, actual.date(), f"{col}: Expected {expected} got {actual}")
+                    self.assertIn(actual.hour, {0, 12})
+                    self.assertIn(actual.minute, {0})
+                    self.assertIn(actual.second, {0})
+                elif self.db_container.DATE_AS_DATETIME and isinstance(expected, datetime) and isinstance(actual, date):
+                    self.assertEqual(expected.date(), actual, f"{col}: Expected {expected} got {actual}")
+                    self.assertIn(expected.hour, {0, 12})
+                    self.assertIn(expected.minute, {0})
+                    self.assertIn(expected.second, {0})
                 else:
-                    self.assertEqual(expected, actual, f"Expected {expected} got {actual}")
+                    self.assertEqual(expected, actual, f"{col}: Expected {expected} got {actual}")
                 errors_dict[col] = f"OK. Both values are {actual}"
             except AssertionError as e:
                 has_error = True

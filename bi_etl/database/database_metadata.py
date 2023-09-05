@@ -231,7 +231,8 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             )
             if isinstance(sql, str):
                 sql = sqlalchemy.text(sql)
-            if transaction:
+            if transaction or not connection.in_transaction():
+                # Equivalent to Autocommit
                 with connection.begin():
                     result = connection.execute(sql, *list_params, **params)
             else:
@@ -420,13 +421,12 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         else:
             sql = f"drop table IF EXISTS {self.qualified_name(schema, table_name)}"
         self.log.debug(sql)
-        with self.begin():
-            self.execute(
-                sql,
-                transaction=transaction,
-                auto_close=auto_close,
-                connection_name=connection_name,
-            )
+        self.execute(
+            sql,
+            transaction=transaction,
+            auto_close=auto_close,
+            connection_name=connection_name,
+        )
 
     @property
     def dialect(self):

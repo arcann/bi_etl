@@ -11,6 +11,7 @@ from tests.db_base_tests.base_test_database import BaseTestDatabase
 
 
 def load_tests(loader, standard_tests, pattern):
+    # Filter out all
     suite = TestSuite()
     return suite
 

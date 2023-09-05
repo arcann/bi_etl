@@ -9,7 +9,7 @@ from datetime import datetime
 
 from bi_etl.exceptions import NoResultFound, AfterExisting, BeforeAllExisting
 from bi_etl.lookups.autodisk_range_lookup import AutoDiskRangeLookup
-from tests._test_base_range_lookup import _TestBaseRangeLookup
+from tests.lookup_tests._test_base_range_lookup import _TestBaseRangeLookup
 # pylint: disable=missing-docstring, protected-access
 from tests.dummy_etl_component import DummyETLComponent
 
@@ -24,6 +24,7 @@ class TestAutodiskRangeLookup(_TestBaseRangeLookup):
 
     def tearDown(self):
         super().tearDown()
+        self.temp_dir_mgr.cleanup()
 
     def _make_row(self,
                   row_key,
@@ -92,6 +93,9 @@ class TestAutodiskRangeLookup(_TestBaseRangeLookup):
         self.assertRaises(NoResultFound, lookup.find_in_cache, new_row)
 
         self._post_test_cleanup(lookup)
+
+
+del _TestBaseRangeLookup
 
 
 if __name__ == "__main__":

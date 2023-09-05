@@ -185,6 +185,10 @@ class ReadOnlyTable(ETLComponent):
                     extend_existing=True,
                     autoload_with=database.bind,
                 )
+                for column in self.table.columns.values():
+                    # noinspection PyUnresolvedReferences
+                    if isinstance(column.type, sqlalchemy.dialects.oracle.NUMBER):
+                        column.type.asdecimal = True
             except Exception as e:
                 try:
                     self.log.debug(f"Exception {repr(e)} occurred while obtaining definition of {table_name} from the database schema {self.schema}")

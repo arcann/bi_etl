@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime
 
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
-from tests._test_base_lookup import _TestBaseLookup
+from tests.lookup_tests._test_base_lookup import _TestBaseLookup
 
 
 # pylint: disable=missing-docstring, protected-access
@@ -23,6 +23,7 @@ class TestAutodiskLookup(_TestBaseLookup):
 
     def tearDown(self):
         super().tearDown()
+        self.temp_dir.cleanup()
 
     def _makerow(self, row_key):
         source1 = {
@@ -55,6 +56,9 @@ class TestAutodiskLookup(_TestBaseLookup):
         self.assertEqual(len(lookup), rows_before_move + rows_after_move)
 
         self._post_test_cleanup(lookup)
+
+
+del _TestBaseLookup
 
 
 if __name__ == "__main__":

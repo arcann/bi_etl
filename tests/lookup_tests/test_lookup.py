@@ -5,7 +5,7 @@ Created on Jan 5, 2016
 """
 
 from bi_etl.lookups.lookup import Lookup
-from tests._test_base_lookup import _TestBaseLookup
+from tests.lookup_tests._test_base_lookup import _TestBaseLookup
 
 
 class TestLookup(_TestBaseLookup):
@@ -18,4 +18,6 @@ class TestLookup(_TestBaseLookup):
         super().tearDown()
 
     # All tests we need here are in _TestBaseLookup
-        
+
+
+del _TestBaseLookup

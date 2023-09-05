@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 import sqlalchemy
 from sqlalchemy import TEXT, LargeBinary
@@ -10,6 +11,7 @@ class SqliteDB(object):
     SUPPORTS_INTERVAL = False
     SUPPORTS_BOOLEAN = True
     SUPPORTS_BINARY = True
+    DATE_AS_DATETIME = False
     MAX_NAME_LEN = 128
 
     _instance = None
@@ -38,13 +40,23 @@ class SqliteDB(object):
         self.instance_count -= 1
         print(f"del {self.__class__} now {self.instance_count} instance refs")
 
+    # noinspection PyPep8Naming
     @property
     def TEXT(self):
         return TEXT
 
+    # noinspection PyPep8Naming
     @property
     def BINARY(self):
         return LargeBinary
+
+    # noinspection PyPep8Naming
+    def NUMERIC(
+            self,
+            precision: Optional[int] = None,
+            scale: Optional[int] = None,
+    ):
+        return sqlalchemy.sql.sqltypes.NUMERIC(precision, scale)
 
     def get_url(self):
         # return f'sqlite://'

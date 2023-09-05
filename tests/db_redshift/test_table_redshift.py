@@ -5,14 +5,13 @@ import unittest
 
 import sqlalchemy
 from sqlalchemy import Column
-from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.sql.sqltypes import Integer
 
 from bi_etl.bulk_loaders.redshift_s3_csv_loader import RedShiftS3CSVBulk
 from bi_etl.components.table import Table
 from tests.config_for_tests import EnvironmentSpecificConfigForTests
-from tests.db_redshift.redshift_db import RedshiftDB
 from tests.db_base_tests.base_test_table import BaseTestTable
+from tests.db_redshift.redshift_db import RedshiftDB
 
 
 class TestTableRedshift(BaseTestTable):
@@ -85,9 +84,11 @@ class TestTableRedshift(BaseTestTable):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
         bulk_loader = RedShiftS3CSVBulk(self.env_config.s3_bulk, s3_file_delimiter=',')
@@ -108,9 +109,11 @@ class TestTableRedshift(BaseTestTable):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
         bulk_loader = RedShiftS3CSVBulk(self.env_config.s3_bulk, s3_file_delimiter='|')
@@ -134,9 +137,11 @@ class TestTableRedshift(BaseTestTable):
             tbl_name,
             temp_db_meta,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
         )
         sa_table.create(bind=temp_db_meta.bind)
+
+        self.print_ddl(sa_table)
 
         test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
 
@@ -162,9 +167,11 @@ class TestTableRedshift(BaseTestTable):
             tbl_name,
             self.mock_database,
             Column('col1', Integer, primary_key=True),
-            Column('col2', self._text_datatype()),
+            Column('col2', self._TEXT()),
         )
         sa_table.create(bind=self.mock_database.bind)
+
+        self.print_ddl(sa_table)
 
         test_file_path = self.get_test_file_path('bad_csv_bulk.csv')
 
