@@ -17,7 +17,7 @@ repository = "https://github.com/arcann/bi_etl"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
-config-wrangler = ">=1.0.1"
+config-wrangler = ">=1.0.3"
 SQLAlchemy = "1.4.49"
 semidbm = ">=0.5.1"
 psutil = ">=5.7.2"
