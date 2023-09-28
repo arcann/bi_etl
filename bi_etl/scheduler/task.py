@@ -16,7 +16,7 @@ from queue import Empty
 from typing import *
 from inspect import signature
 
-from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase, SQLAlchemyMetadata
+from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
 from config_wrangler.config_types.dynamically_referenced import DynamicallyReferenced
 from pydicti import dicti, Dicti
 
@@ -740,18 +740,13 @@ class ETLTask(object):
         return NotImplementedError()
 
     def get_database_metadata(self, db_config: SQLAlchemyDatabase) -> DatabaseMetadata:
-        if isinstance(db_config, SQLAlchemyMetadata):
-            database_obj = DatabaseMetadata(
-                bind=db_config.get_engine(),
-                schema=db_config.schema,
-            )
-        elif isinstance(db_config, SQLAlchemyDatabase):
+        if isinstance(db_config, SQLAlchemyDatabase):
             database_obj = DatabaseMetadata(
                 bind=db_config.get_engine(),
             )
         else:
             raise ValueError(
-                "get_database_metadata expects SQLAlchemyDatabase or SQLAlchemyMetadata configs. "
+                "get_database_metadata expects SQLAlchemyDatabase config. "
                 f"Got {type(db_config)} {db_config}"
             )
         self.add_database(database_obj)

@@ -4,6 +4,7 @@ from config_wrangler.config_templates.config_hierarchy import ConfigHierarchy
 from config_wrangler.config_templates.credentials import Credentials
 from config_wrangler.config_templates.keepass_config import KeepassConfig
 from config_wrangler.config_templates.password_source import PasswordSource
+from pydantic import PrivateAttr
 
 
 class NotifierConfigBase(ConfigHierarchy):
@@ -77,6 +78,9 @@ class SlackNotifier(NotifierConfigBase):
     If the password_source is KEEPASS, this is an optional filter on the title
     of the keepass entries in the group.
     """
+
+    # Values to hide from config exports
+    _private_value_atts = PrivateAttr(default={'token'})
 
 
 class JiraNotifier(NotifierConfigBase, Credentials):
