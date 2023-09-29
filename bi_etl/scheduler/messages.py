@@ -61,4 +61,4 @@ class ChildSetDisplayName(object):
         self.display_name = display_name
         
     def __repr__(self):
-        return "ChildSetDisplayName(child_task_id={}, display_name={}".format(self.child_task_id, self.display_name)      
+        return "ChildSetDisplayName(child_task_id={}, display_name={}".format(self.child_task_id, self.display_name)

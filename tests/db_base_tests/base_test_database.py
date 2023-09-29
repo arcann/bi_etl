@@ -9,7 +9,6 @@ from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import List, Union, Optional
-from unittest import TestSuite
 
 import sqlalchemy
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase

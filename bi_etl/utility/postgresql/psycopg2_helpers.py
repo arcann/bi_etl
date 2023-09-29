@@ -2,8 +2,9 @@ from pathlib import Path
 from typing import Union
 
 import psycopg2
+from psycopg2 import extensions
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import SQLAlchemyError, DBAPIError
+from sqlalchemy.exc import DBAPIError
 
 
 def get_conn(
@@ -12,7 +13,7 @@ def get_conn(
         password,
         encoding='UTF-8',
 ):
-    conn = psycopg2.connect(database=dbname, user=username, password=password)
+    conn: extensions.connection = psycopg2.connect(database=dbname, user=username, password=password)
     conn.set_client_encoding(encoding)
     return conn
 
@@ -64,7 +65,8 @@ def psycopg2_extract_using_engine(
     -------
 
     """
-    conn = engine.raw_connection()
+    # noinspection PyTypeChecker
+    conn: extensions.connection = engine.raw_connection()
     conn.set_client_encoding(encoding)
     cur = conn.cursor()
     if csv_mode:
@@ -96,7 +98,7 @@ def psycopg2_import_using_cursor(
 
     Parameters
     ----------
-    engine
+    cursor
     table_spec:
         table_name [ ( column_name [, ...] )
         Column names are optional unless the columns in the file do not match the order or set of columns
@@ -177,7 +179,8 @@ def psycopg2_import_using_engine(
     null
     encoding
     """
-    conn = engine.raw_connection()
+    # noinspection PyTypeChecker
+    conn: extensions.connection = engine.raw_connection()
     conn.set_client_encoding(encoding)
     cursor = conn.cursor()
     results = psycopg2_import_using_cursor(

@@ -273,7 +273,7 @@ def dict_to_pairs(obj, prefix=None, delimit='.'):
             for stat_tuple in dict_to_pairs(val, prefix=name, delimit=delimit):
                 yield stat_tuple
         else:
-            yield (name, obj[k])
+            yield name, obj[k]
 
 
 def log_logging_level(log):

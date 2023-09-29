@@ -38,7 +38,7 @@ def bufcount(filename):
     return lines
 
 
-## Fastest for big files
+# Fastest for big files
 def wccount(filename):
     out = subprocess.Popen(['wc', '-l', filename],
                            stdout=subprocess.PIPE,
@@ -61,10 +61,6 @@ def opcount(fname):
 
 def kylecount(fname):
     return sum(1 for _ in open(fname))
-
-
-def countLines(filename):
-    return wccount(filename)
 
 
 def clear_cache():
@@ -131,7 +127,7 @@ if __name__ == '__main__':
 # mapcount           0.027   0.021   4.97
 # itercount          0.044   0.031   7.21
 
-## python3.1 ginstrom.py
+# python3.1 ginstrom.py
 # function      average, s  min, s  ratio
 # wccount           0.0049  0.0046   1.00
 # itercount          0.021    0.02   4.47
@@ -141,7 +137,7 @@ if __name__ == '__main__':
 # simplecount         0.05   0.046  10.20
 # kylecount           0.05    0.05  10.95
 
-## python ginstrom.py /big/mkv/file
+# python ginstrom.py /big/mkv/file
 # function      average, s  min, s  ratio
 # wccount             0.51    0.49   1.00
 # opcount              1.8     1.8   3.58
@@ -150,10 +146,10 @@ if __name__ == '__main__':
 # mapcount              19       2   4.01
 # fadvcount            2.3     2.2   4.52
 # bufcount             2.3     2.2   4.52
-## wc /big/mkv/file
-## 7137518   40523351 1836139137 /big/mkv/file
+# wc /big/mkv/file
+# 7137518   40523351 1836139137 /big/mkv/file
 
-## with --clear-cache
+# with --clear-cache
 # function      average, s  min, s  ratio
 # simplecount         0.06   0.057   1.00
 # opcount            0.067   0.057   1.00
@@ -164,7 +160,7 @@ if __name__ == '__main__':
 # bufcount            0.07   0.062   1.09
 # wccount            0.072   0.065   1.15
 
-## python3.1 with --clear-cache
+# python3.1 with --clear-cache
 # function      average, s  min, s  ratio
 # itercount          0.061   0.057   1.00
 # simplecount        0.069   0.061   1.06

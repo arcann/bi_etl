@@ -5,7 +5,6 @@ import typing
 import unittest
 from datetime import timedelta, datetime
 from enum import Enum
-from unittest import TestSuite
 
 import sqlalchemy
 from sqlalchemy.sql.schema import Column

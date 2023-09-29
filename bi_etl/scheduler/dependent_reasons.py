@@ -49,6 +49,7 @@ class _MutuallyExclusive(_DependentReason):
     def wait_on_status(self, status):
         return status.is_active()
 
+
 MutuallyExclusive = _MutuallyExclusive()
 
 
@@ -68,7 +69,7 @@ class _Follower(_DependentReason):
         super().__init__('Follower task is_alive')
         
     def wait_on_status(self, status):
-        return (status in [Status.waiting_for_cpu, Status.running])
+        return status in [Status.waiting_for_cpu, Status.running]
 
     
 Follower = _Follower()

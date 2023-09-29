@@ -679,11 +679,11 @@ class SchedulerInterface(object):
         if last_heartbeat is None:
             return None
         else:
-            return (datetime.now() - last_heartbeat)
+            return datetime.now() - last_heartbeat
 
     def heatbeat_now(self):
         self.scheduler_row.last_heartbeat = datetime.now()
         self.session.flush()
 
     def __reduce__(self):
-        return (SchedulerInterface, ())
+        return SchedulerInterface, ()

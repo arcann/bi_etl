@@ -151,7 +151,7 @@ class DataAnalyzer(ETLComponent):
                                       "%Y-%m-%d %I:%M %p", "%m-%d-%Y %I:%M %p", "%d-%m-%Y %I:%M %p",
                                       "%Y-%m-%d %I:%M:%S %p", "%m-%d-%Y %I:%M:%S %p", "%d-%m-%Y %I:%M:%S %p",
                                       ]:
-                    # noinspection PyBroadException
+                        # noinspection PyBroadException
                         try:
                             _ = str2date(value, dt_format=dt_format)
                             dt_type = DataAnalyzer.DataType(name="Date")
@@ -161,7 +161,7 @@ class DataAnalyzer(ETLComponent):
                         except Exception:
                             pass
                 else:  # No time in value
-                    for dt_format in ["%Y-%m-%d", "%m-%d-%Y", "%d-%m-%Y",]:
+                    for dt_format in ["%Y-%m-%d", "%m-%d-%Y", "%d-%m-%Y"]:
                         try:
                             _ = str2date(value, dt_format=dt_format)
                             dt_type = DataAnalyzer.DataType(name="Date")

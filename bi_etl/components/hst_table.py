@@ -615,12 +615,13 @@ class HistoryTable(Table):
 
     def insert_row(
             self,
-            source_row: Row,  # Must be a single row
+            source_row: Row,
             additional_insert_values: dict = None,
             source_excludes: typing.Optional[frozenset] = None,
             target_excludes: typing.Optional[frozenset] = None,
             stat_name: str = 'insert',
             parent_stats: Statistics = None,
+            **kwargs
             ) -> Row:
         """
         Inserts a row into the database (batching rows as batch_size)
@@ -636,6 +637,7 @@ class HistoryTable(Table):
             set of target columns to exclude
         stat_name
         parent_stats
+        **kwargs
 
         Returns
         -------
@@ -809,11 +811,7 @@ class HistoryTable(Table):
                 )
 
             # Add the new row
-            self.insert_row(
-                new_row,
-                stat_name=stat_name,
-                parent_stats=parent_stats,
-                )
+            self.insert_row(new_row, stat_name=stat_name, parent_stats=parent_stats)
 
     def _target_excludes_for_updates(self, target_excludes: frozenset):
         if target_excludes is None:
@@ -1675,7 +1673,8 @@ class HistoryTable(Table):
                                 stats.add_to_stat('rows with bad date sequence', 1)
 
                             # Delete the previous row if it's a delete, and this following one is not
-                            if (remove_spurious_deletes
+                            if (
+                                    remove_spurious_deletes
                                     and prior_row[self.delete_flag] == self.delete_flag_yes
                                     and row[self.delete_flag] == self.delete_flag_no
                             ):

@@ -262,9 +262,10 @@ class AutoDiskLookup(Lookup):
             # Python memory is hard to free... so read first rows into RAM and then use disk for all rows after
 
             # Every X rows check memory limits
-            if (self.disk_cache is None
-                and (self.rows_cached - self.last_ram_check_at_row) >= self.ram_check_row_interval
-               ):
+            if (
+                    self.disk_cache is None
+                    and (self.rows_cached - self.last_ram_check_at_row) >= self.ram_check_row_interval
+            ):
                 # Double check our cache size. Calls to cache_row might have overwritten existing rows
                 self.rows_cached = len(self)
                 self.last_ram_check_at_row = self.rows_cached

@@ -57,14 +57,6 @@ class PyArrowDatasetReader(ETLComponent):
         The maximum number of rows to read. *Only applies if Table is used as a source.*
         (inherited from ETLComponent)
         
-    primary_key: list
-        The name of the primary key column(s). Only impacts trace messages.  Default=None.
-        (inherited from ETLComponent)
-    
-    progress_frequency: int
-        How often (in seconds) to output progress messages. None for no progress messages.
-        (inherited from ETLComponent)
-    
     progress_message: str
         The progress message to print. Default is ``"{logical_name} row # {row_number}"``.
         Note ``logical_name`` and ``row_number`` subs.

@@ -3,11 +3,7 @@ Created on Mar 20, 2015
 
 @author: Derek Wood
 """
-import sys
 import typing
-from collections import OrderedDict
-
-OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
 from typing import List
 
 from bi_etl.timer import Timer
@@ -16,7 +12,7 @@ from bi_etl.utility import dict_to_str
 
 class Statistics(object):
     """
-    classdocs
+    Captures ETL task statistics
     """
 
     def __init__(self, stats_id: str, parent: 'Statistics' = None, print_start_stop_times: bool = True):
@@ -24,7 +20,7 @@ class Statistics(object):
         Constructor
         """
         self.stats_id = stats_id
-        self._stats_data = OrderedDict()
+        self._stats_data = dict()
         self.parent_path = None
         if parent is not None:
             self.parent_path = parent.path
@@ -140,7 +136,7 @@ class Statistics(object):
                     self[stats_key] = value
                 elif isinstance(self[stats_key], Statistics):
                     self[stats_key].merge(value)
-                elif isinstance(self[stats_key], OrderedDict):
+                elif isinstance(self[stats_key], dict):
                     self[stats_key] = Statistics(stats_id=stats_key,
                                                  parent=self)
                     self[stats_key].merge(value)
@@ -188,7 +184,7 @@ class Statistics(object):
         if isinstance(obj, str):
             return None
         elif hasattr(obj, 'values'):
-            # If this key matches the target key, return it's value
+            # If this key matches the target key, return its value
             if key in obj:
                 return obj[key]
             # Otherwise recursively check values

@@ -1053,7 +1053,8 @@ class ETLComponent(Iterable):
             code += f"    new_row = self.row_object(iteration_header={new_row_iteration_header.iteration_id})\n"
             code += f"    source_values = source_row.values()\n"
             # TODO: It's worth spending more time here to see if we can do the quick build
-            if (set(new_row_columns).issubset(self.column_names)
+            if (
+                    set(new_row_columns).issubset(self.column_names)
                     and source_excludes is None
                     and source_row.iteration_header.parent == self
                     and len(source_row.values()) == len(new_row_columns)

@@ -286,10 +286,7 @@ class HistoryTableSourceBased(HistoryTable):
                 if additional_insert_values:
                     for colName, value in additional_insert_values.items():
                         new_row[colName] = value
-                new_row = self.insert_row(
-                    new_row,
-                    parent_stats=parent_stats,
-                )
+                new_row = self.insert_row(new_row, parent_stats=parent_stats)
 
                 if insert_callback:
                     insert_callback(new_row)
@@ -711,7 +708,6 @@ class HistoryTableSourceBased(HistoryTable):
         # TODO: Need to "deduplicate" source versions if two have identical values except for the effective_date_column
         deduplicated_source_table = 'public.deduplicated_source'
         self.database.drop_table_if_exists(deduplicated_source_table, connection_name=connection_name, auto_close=False, transaction=False)
-
 
         deduplicate_source_sql = f"""
                CREATE TABLE {deduplicated_source_table} AS

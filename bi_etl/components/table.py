@@ -1581,6 +1581,7 @@ class Table(ReadOnlyTable):
 
         Parameters
         ----------
+        maintain_cache
         source_row
             The row with values to insert
         additional_insert_values:
@@ -3488,11 +3489,11 @@ class Table(ReadOnlyTable):
                     """
                     set_statement_list.append(f"{set_entry[0]} = ({select_part})")
 
-                set_delimiter = ',\n'
-                sql = f"""
-                    UPDATE {self.qualified_table_name} SET {set_delimiter.join(set_statement_list)}
-                    WHERE EXISTS ({select_part})
-                    """
+                    set_delimiter = ',\n'
+                    sql = f"""
+                        UPDATE {self.qualified_table_name} SET {set_delimiter.join(set_statement_list)}
+                        WHERE EXISTS ({select_part})
+                        """
 
         if sql is None:  # SQLite 3.33+ and PostgreSQL
             # https://sqlite.org/lang_update.html

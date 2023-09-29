@@ -45,7 +45,7 @@ class TestAutodiskRangeLookup(_TestBaseRangeLookup):
     def testMemoryLimit(self):
         lookup = self.TestClass('Test', self.key1, parent_component=self.parent_component1, **self.test_class_args)
 
-    def testMemoryLimit(self):
+    def testMemoryLimit2(self):
         lookup = self.TestClass('Test',
                                 self.key1,
                                 parent_component=self.parent_component,

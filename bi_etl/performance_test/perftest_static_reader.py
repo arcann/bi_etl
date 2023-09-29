@@ -1,4 +1,5 @@
 from bi_etl.components.etlcomponent import ETLComponent
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.scheduler.task import ETLTask
 
 
@@ -36,4 +37,4 @@ class TestStaticReader(ETLTask):
 
 
 if __name__ == '__main__':
-    TestStaticReader().run()
+    TestStaticReader(config=BI_ETL_Config_Base()).run()

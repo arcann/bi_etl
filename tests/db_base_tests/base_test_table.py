@@ -5,7 +5,6 @@ Created on Jan 22, 2016
 """
 import enum
 import logging
-import warnings
 from contextlib import ExitStack
 from datetime import date
 from datetime import datetime

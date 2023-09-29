@@ -498,10 +498,6 @@ class ReadOnlyTable(ETLComponent):
         statement:
             The SQL statement to execute
 
-        connection_name:
-            Name of the pooled connection to use
-            Defaults to 'get_one'
-        
         Returns
         -------
         row : :class:`~bi_etl.components.row.row_case_insensitive.Row`
@@ -533,7 +529,7 @@ class ReadOnlyTable(ETLComponent):
             self,
             column_list: typing.Optional[list] = None,
             exclude_cols: typing.Optional[frozenset] = None
-    ) -> sqlalchemy.sql.expression.Select:
+    ) -> sqlalchemy.sql.expression.GenerativeSelect:
         """
         Builds a select statement for this table. 
         
@@ -954,6 +950,7 @@ class ReadOnlyTable(ETLComponent):
         """
         if column is not None:
             column = self.get_column(column)
+        # noinspection PyUnresolvedReferences
         stmt = self.select([functions.count(column).label("count_1")]).select_from(self.table)
         if where is not None:
             if isinstance(where, list):
@@ -1249,7 +1246,7 @@ class ReadOnlyTable(ETLComponent):
         return self.get_pk_lookup().get_list_of_lookup_column_values(row)
 
     def get_primary_key_value_tuple(self, row) -> tuple:
-        return self.get_pk_lookup().get_hashable_combined_key(row)
+        return tuple(self.get_pk_lookup().get_hashable_combined_key(row))
 
     @property
     def natural_key(self) -> list:

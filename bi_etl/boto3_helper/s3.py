@@ -11,11 +11,13 @@ from enum import Enum
 from typing import *
 
 import botocore
+from botocore.exceptions import ClientError
 from config_wrangler.config_templates.aws.s3_bucket import S3_Bucket
 
 from bi_etl.database import DatabaseMetadata
 
 
+# noinspection PyPep8Naming
 class File_Entry(object):
     def __init__(
             self,
@@ -249,7 +251,7 @@ class Boto3_S3(S3_Bucket):
             out_folder: str = None,
             filename: str = None,
             delimiter: str = None,
-        ):
+    ):
 
         log = logging.getLogger(__name__)
         counter = 0
@@ -282,7 +284,7 @@ class Boto3_S3(S3_Bucket):
                 try:
                     self.client.head_object(Bucket=self.bucket_name, Key=f"{fldr}/{filenm}")
                     give_up = True
-                except botocore.exceptions.ClientError as e:
+                except ClientError as e:
                     if e.response['Error']['Code'] == "404":
                         log.warning(f"{filenm} does not exist in {self.bucket_name}/{fldr}. Waiting... {counter}")
                         time.sleep(5)
@@ -314,7 +316,7 @@ class Boto3_S3(S3_Bucket):
             filename: str = None,
             delimiter: str = None,
             region: str = None,
-        ):
+    ):
         log = logging.getLogger(__name__)
 
         if region is None:

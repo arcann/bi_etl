@@ -869,7 +869,7 @@ class ETLTask(object):
         """
         pass
 
-    def load(self):
+    def load(self, **kwargs):
         """
         Placeholder for load. This is where the main body of the ETLTask's work should be performed.
         """

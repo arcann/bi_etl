@@ -8,7 +8,6 @@ Created on Dec 23, 2015
 import logging
 
 
-#pylint: disable=abstract-method
 class MockDatabaseMetadata(object):
     """
     Mock testing of sqlalchemy metadata

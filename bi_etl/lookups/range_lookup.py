@@ -12,6 +12,7 @@ from datetime import datetime
 from sqlalchemy.sql import Selectable
 from sqlalchemy.sql.expression import bindparam
 
+from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.row.row import Row
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.conversions import ensure_datetime
@@ -239,27 +240,35 @@ class RangeLookup(Lookup):
         """
 
         effective_date = kwargs.get('effective_date')
+
+        if not isinstance(self.parent_component, ReadOnlyTable):
+            raise ValueError(
+                "find_in_remote_table requires that parent_component be ReadOnlyTable. "
+                f" got {repr(self.parent_component)}"
+            )
+
+        parent_table: ReadOnlyTable = self.parent_component
         
         if self._remote_lookup_stmt is None:
-            stmt = self.parent_component.select()           
+            stmt = parent_table.select()
             stmt = self._add_remote_stmt_where_clause(stmt)
             self._remote_lookup_stmt = stmt.compile()
             # Build a second statement that does the lookup without dates
             # Which is what our parent Lookup does so we call that
-            stmt_no_date = self.parent_component.select()
+            stmt_no_date = parent_table.select()
             stmt_no_date = super(RangeLookup, self)._add_remote_stmt_where_clause(stmt_no_date)
             # order by the begin date
-            stmt_no_date = stmt_no_date.order_by(self.parent_component.get_column(self.begin_date))
+            stmt_no_date = stmt_no_date.order_by(parent_table.get_column(self.begin_date))
             self._remote_lookup_stmt_no_date = stmt_no_date.compile()
 
         values_dict = self._get_remote_stmt_where_values(row, effective_date)
 
-        rows = list(self.parent_component.execute(self._remote_lookup_stmt, values_dict))
+        rows = list(parent_table.execute(self._remote_lookup_stmt, values_dict))
         if len(rows) == 0:
             # Use the second statement that does the lookup without dates
             # Which is what our parent Lookup does so we call that to set values
             values_dict = super(RangeLookup, self)._get_remote_stmt_where_values(row)
-            results = self.parent_component.execute(self._remote_lookup_stmt_no_date, values_dict)
+            results = parent_table.execute(self._remote_lookup_stmt_no_date, values_dict)
             all_key_rows = results.fetchall()
             if len(all_key_rows) == 0:
                 raise NoResultFound()

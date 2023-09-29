@@ -10,11 +10,11 @@ class StdoutQueue(object):
     """
     This is a stdout replacement that sends messages to a Queue.  It ensures that all messages are strings.
     """
-    def __init__(self,queue):
+    def __init__(self, queue):
         self.queue = queue
 
-    def write(self,msg):
-        if not isinstance(msg,str):
+    def write(self, msg):
+        if not isinstance(msg, str):
             msg = str(msg)
         self.queue.put(msg)
 

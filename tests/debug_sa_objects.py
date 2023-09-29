@@ -9,8 +9,6 @@ import sqlalchemy
 from sqlalchemy.exc import InvalidRequestError
 
 
-#pylint: disable=protected-access
-
 def rowproxy_reconstructor(cls, state):
     obj = cls.__new__(cls)
     obj.__setstate__(state)
@@ -53,14 +51,14 @@ class BaseRowProxy(object):
             processor, _, index = self._parent._key_fallback(key)
         except TypeError:
             if isinstance(key, slice):
-                l = []
+                val_list = []
                 for processor, value in zip(self._processors[key],
                                             self._row[key]):
                     if processor is None:
-                        l.append(value)
+                        val_list.append(value)
                     else:
-                        l.append(processor(value))
-                return tuple(l)
+                        val_list.append(processor(value))
+                return tuple(val_list)
             else:
                 raise
         if index is None:
@@ -153,7 +151,6 @@ class RowProxy(BaseRowProxy):
 def mock_engine():
     buffer = []
     
-    #pylint: disable=unused-argument
     def executor(sql, *a, **kw):
         buffer.append(sql)
     engine = sqlalchemy.create_engine('ORACLE://', strategy='mock', executor=executor)

@@ -13,9 +13,9 @@ class CheckPointTask(ETLTask):
 
     @staticmethod depends_on() should be overridden.
 
-    TaskA--\             /--- Task D
+    TaskA--\\           //--- Task D
     TaskB----Checkpoint------ Task E
-    TaskC--/
+    TaskC--//
     """
 
     def load(self):
