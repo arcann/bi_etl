@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bi_etl"
-version = "1.5.3"
+version = "1.5.4"
 description = "Python ETL Framework"
 keywords=["etl"]
 classifiers = [
@@ -17,7 +17,7 @@ repository = "https://github.com/arcann/bi_etl"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
-config-wrangler = {version="1.0.6", extras=["sqlalchemy"]}
+config-wrangler = {version=">=1.0.7", extras=["sqlalchemy"]}
 SQLAlchemy = ">=1.4.49,<2.0"
 semidbm = ">=0.5.1"
 psutil = ">=5.7.2"
@@ -52,6 +52,7 @@ jira = ["jira"]
 
 slack = ["slack-sdk"]
 
+# Used by .github/workflows/unit_test.yml
 # poetry install -E test
 test = ["psycopg2", "testcontainers"]
 
