@@ -1550,10 +1550,27 @@ class BaseTestTable(BaseTestDatabase):
                 ])
             tbl.set_columns(columns)
 
+            iteration_header = RowIterationHeader()
+
+            #########################################
+            # Test default default_date_time_format
+            # mm/dd/yyyy should work
+            row = Row(iteration_header=iteration_header)
+            row['col_dt'] = '01/23/2018 12:56:33'
+            result_row = tbl.build_row(row)
+            self.assertEqual(result_row['col_dt'], datetime(2018, 1, 23, 12, 56, 33))
+
+            # yyyy-mm-dd should work
+            row = Row(iteration_header=iteration_header)
+            row['col_dt'] = '2019-02-15 12:56:33'
+            result_row = tbl.build_row(row)
+            self.assertEqual(result_row['col_dt'], datetime(2019, 2, 15, 12, 56, 33))
+            #
+            #########################################
+
             tbl.default_date_time_format = '%m/%d/%Y %H:%M:%S'
             tbl.default_date_format = '%m/%d/%Y'
 
-            iteration_header = RowIterationHeader()
             row = Row(iteration_header=iteration_header)
             row['col_int'] = '123456789'
             row['col_txt'] = '1234567890'

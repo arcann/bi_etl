@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bi_etl"
-version = "1.5.5"
+version = "1.5.6"
 description = "Python ETL Framework"
 keywords=["etl"]
 classifiers = [
@@ -17,7 +17,7 @@ repository = "https://github.com/arcann/bi_etl"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
-config-wrangler = {version=">=1.0.7", extras=["sqlalchemy"]}
+config-wrangler = {version=">=1.0.9", extras=["sqlalchemy"]}
 SQLAlchemy = ">=1.4.49,<2.0"
 semidbm = ">=0.5.1"
 psutil = ">=5.7.2"

@@ -229,7 +229,12 @@ class Table(ReadOnlyTable):
         self.last_update_date = None
         self.use_utc_times = False
         self.default_date_format = '%Y-%m-%d'
-        self.default_date_time_format = ('%m/%d/%Y %H:%M:%S', '%m/%d/%Y')
+        self.default_date_time_format = (
+            '%Y-%m-%d %H:%M:%S',
+            '%Y-%m-%d',
+            '%m/%d/%Y %H:%M:%S',
+            '%m/%d/%Y',
+        )
         self.default_time_format = '%H:%M:%S'
         self.default_long_text = 'Not Available'
         self.default_medium_text = 'N/A'
