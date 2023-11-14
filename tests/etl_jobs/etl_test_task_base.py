@@ -9,18 +9,18 @@ import random
 import time
 from datetime import datetime
 
+from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.scheduler.exceptions import ParameterError
 from bi_etl.scheduler.task import ETLTask
+from tests.config_for_tests import build_config
 
 
 class ETL_Test_Task_Base(ETLTask):
-    
-    #===========================================================================
-    # def __init__(self, **kwargs):
-    #     super().__init__(**kwargs)
-    #     self.name = self.__class__.__name__
-    #===========================================================================
-            
+    @classmethod
+    def dagster_get_config(cls, *args, **kwargs) -> BI_ETL_Config_Base:
+        print("Setting test config for dagster run")
+        return build_config()
+
     def load(self):
         self.log.setLevel(logging.DEBUG)
         try:
@@ -34,8 +34,8 @@ class ETL_Test_Task_Base(ETLTask):
                 self.display_name = display_name
                 self.log.info(f'display_name = {self.display_name}')
         except ParameterError:
+            self.log.warning("job_run_seconds not provided. Default range will be used.")
             job_run_seconds = random.randint(1, 5)
         self.log.info(f"Runtime will be {job_run_seconds} seconds")
         time.sleep(job_run_seconds)
-        self.set_parameter('actual_finish', datetime.now(), commit=True)
-        self.log.info(f'actual_finish = {self.get_parameter("actual_finish")}')
+        self.log.info(f'actual_finish = {datetime.now()}')

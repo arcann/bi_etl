@@ -23,6 +23,10 @@ def build_config(
 ) -> ConfigForTests:
     if isinstance(tmp, TemporaryDirectory):
         tmp = tmp.name
+    elif tmp is None:
+        tmp_dir = TemporaryDirectory()
+        tmp = tmp_dir.name
+        # Note: No auto-cleanup in this case
 
     if db_config is None:
         db_config = SQLAlchemyDatabase(

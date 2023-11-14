@@ -31,21 +31,15 @@ class RunSQLScript(ETLTask):
                  scheduler=None,
                  task_rec=None,
                  ):
-        super().__init__(task_id=task_id,
-                         parent_task_id=parent_task_id,
-                         root_task_id=root_task_id,
-                         scheduler=scheduler,
-                         task_rec=task_rec,
-                         config=config)
-        self.database_entry = database_entry
-        self.sql_replacements = sql_replacements
-        self.script_name = Path(script_name)
+        # NOTE: Script path is used for the name of the loader which is needed before calling the parent __init__
+        self.script_path = None
         if script_path is None:
-            self.script_path = None
             self.provided_script_path = '.'
         else:
             self.provided_script_path = script_path
             self.script_path = Path(script_path)
+
+        self.script_name = Path(script_name)
 
         paths_tried = list()
         paths_tried.append(self.script_full_name)
@@ -77,6 +71,16 @@ class RunSQLScript(ETLTask):
             raise ValueError(
                 f"RunSQLScript could not find the script {self.script_name} tried:\n{indent}{paths_tried_str}"
             )
+
+        # Now that we have script path we can call the parent __init__
+        super().__init__(task_id=task_id,
+                         parent_task_id=parent_task_id,
+                         root_task_id=root_task_id,
+                         scheduler=scheduler,
+                         task_rec=task_rec,
+                         config=config)
+        self.database_entry = database_entry
+        self.sql_replacements = sql_replacements
 
     def __getstate__(self):
         odict = super().__getstate__()

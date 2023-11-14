@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bi_etl"
-version = "1.5.6"
+version = "1.6.0"
 description = "Python ETL Framework"
 keywords=["etl"]
 classifiers = [
@@ -40,6 +40,10 @@ psycopg2 = "^2.9.7"
 jira = {version = ">=3.1.1", optional = true}
 slack-sdk = {version = ">=3.19.5", optional = true}
 pykeepass = {version = ">=4.0.5", optional = true}
+dagster = {version = ">=1.5.7", optional = true}
+dagster-webserver = {version = ">=1", optional = true}
+# requests-toolbelt 0.10.0 (used by gql used by dagster) is not compatible with urllib >= 2.0
+urllib3 = "<2"
 
 [tool.poetry.extras]
 # Install with:
@@ -51,6 +55,8 @@ pykeepass = ["pykeepass"]
 jira = ["jira"]
 
 slack = ["slack-sdk"]
+
+dagster = ['dagster', 'dagster-webserver']
 
 # Used by .github/workflows/unit_test.yml
 # poetry install -E test
@@ -72,6 +78,7 @@ slack-sdk = ">=3.19.5"
 numpy = "^1.25.1"
 pyarrow = ">=12.0.1,<15.0.0"
 pykeepass = "^4.0.5"
+dagster = ">=1.5.7"
 
 [tool.poetry.group.docs]
 optional = true

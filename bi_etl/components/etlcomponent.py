@@ -406,14 +406,6 @@ class ETLComponent(Iterable):
         """
         return self._rows_read
 
-    def process_messages(self):
-        """
-        Processes messages for this components task.  Should be called somewhere in any row looping.
-        The standard iterator does this for you.
-        """
-        if self.task is not None:
-            self.task.process_messages()
-
     def _fetch_many_iter(self, result):
         while True:
             chunk = result.fetchmany(self.read_batch_size)
@@ -466,7 +458,6 @@ class ETLComponent(Iterable):
                     columns_in_order=columns_in_order,
                     logical_name=logical_name,
                 )
-            self.process_messages()
             if not self._iterator_applied_filters:
                 if criteria_dict is not None:
                     passed_filter = True
@@ -1244,7 +1235,6 @@ class ETLComponent(Iterable):
 
             # noinspection PyTypeChecker
             if 0.0 < progress_frequency <= progress_timer.seconds_elapsed:
-                self.process_messages()
                 progress_timer.reset()
                 self.log.info(
                     progress_message.format(

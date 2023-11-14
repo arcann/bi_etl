@@ -9,7 +9,6 @@ import unittest
 from tests.config_for_tests import build_config
 from tests.etl_jobs.etl_task_d1 import ETL_Task_D1
 from tests.etl_jobs.etl_task_d2 import ETL_Task_D2
-from tests.etl_jobs.etl_task_d3 import ETL_Task_D3
 
 
 class TestTask(unittest.TestCase):
@@ -52,23 +51,6 @@ class TestTask(unittest.TestCase):
             self.assertEqual(d2.got_param_test1, 123)
         except AttributeError:
             raise RuntimeError("ETL_Task_D2 run did not set got_param_test1")
-
-    @unittest.skip
-    def test_normalized_dependents_set(self):
-        d1 = ETL_Task_D1(config=self.config)
-        d1_deps = d1.normalized_dependents_set
-        self.log.info(f'd1_deps = {d1_deps}')
-        self.assertEqual(d1_deps, set(), 'd1 dependencies not as expected')
-        
-        d2 = ETL_Task_D2(config=self.config, param_test1=123)
-        d2_deps = d2.normalized_dependents_set
-        self.log.info(f'd2_deps = {d2_deps}')
-        self.assertEqual(d2_deps, {d1.name}, 'd2 dependencies not as expected')
-        
-        d3 = ETL_Task_D3(config=self.config)
-        d3_deps = d3.normalized_dependents_set
-        self.log.info(f'd3_deps = {d3_deps}')
-        self.assertEqual(d3_deps, {d2.name}, 'd3 dependencies not as expected')
 
 
 if __name__ == "__main__":

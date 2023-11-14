@@ -1,0 +1,4 @@
+import example_dagster_codebase.simple_etl.simple_etl_task_1
+import example_dagster_codebase.simple_etl.simple_etl_task_2a
+import example_dagster_codebase.simple_etl.simple_etl_task_2b
+import example_dagster_codebase.simple_etl.simple_etl_task_3

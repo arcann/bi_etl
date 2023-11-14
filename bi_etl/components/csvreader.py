@@ -251,6 +251,9 @@ class CSVReader(ETLComponent):
                     #       So we want to make sure to give it whole lines and not cut the
                     #       last line off in the middle.
                     sample_data = ''.join(islice(self.file, self.DELIMITER_SNIFF_LINES))
+                    # CSV Sniffer does a split on only \n
+                    # so if the file has \r as well those get counted as potential delimiters
+                    sample_data = sample_data.replace('\r\n', '\n')
                     dialect = csv.Sniffer().sniff(sample_data, delimiters=delimiters)
                 except csv.Error as e:
                     try:

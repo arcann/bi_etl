@@ -185,10 +185,14 @@ class ReadOnlyTable(ETLComponent):
                     extend_existing=True,
                     autoload_with=database.bind,
                 )
-                for column in self.table.columns.values():
-                    # noinspection PyUnresolvedReferences
-                    if isinstance(column.type, sqlalchemy.dialects.oracle.NUMBER):
-                        column.type.asdecimal = True
+                try:
+                    from sqlalchemy.dialects.oracle import NUMBER
+                    for column in self.table.columns.values():
+                        # noinspection PyUnresolvedReferences
+                        if isinstance(column.type, NUMBER):
+                            column.type.asdecimal = True
+                except ImportError:
+                    pass
             except Exception as e:
                 try:
                     self.log.debug(f"Exception {repr(e)} occurred while obtaining definition of {table_name} from the database schema {self.schema}")
@@ -877,7 +881,7 @@ class ReadOnlyTable(ETLComponent):
                     raise KeyError(
                         f'{self.table_name} does not have a column named {column} '
                         'however multiple other case versions exist'
-                        )
+                    )
                 else:
                     return index_entry
             else:
@@ -975,7 +979,7 @@ class ReadOnlyTable(ETLComponent):
             int_value: int,
             date_value: datetime,
             use_custom_special_values: bool = 'Y'
-        ) -> object:
+    ) -> object:
         target_type = column.type
         special_value = None
         if use_custom_special_values and self.custom_special_values and column.name in self.custom_special_values:
@@ -1165,7 +1169,7 @@ class ReadOnlyTable(ETLComponent):
             allow_duplicates_in_src: bool = False,
             row_limit: int = None,
             parent_stats: Statistics = None,
-            ):
+    ):
         """
         Fill all lookup caches from the table.
 
@@ -1215,7 +1219,7 @@ class ReadOnlyTable(ETLComponent):
             allow_duplicates_in_src=allow_duplicates_in_src,
             row_limit=row_limit,
             parent_stats=parent_stats,
-            )
+        )
         # Set the table always_fallback_to_db value based on if criteria
         # were used to load the cache and the assume_lookup_complete parameter
         if criteria_list is not None or criteria_dict is not None:
