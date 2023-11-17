@@ -4,7 +4,7 @@ from typing import Optional, Mapping, Any
 import dagster
 
 from bi_etl.scheduler.etl_task import DAGSTER_INPUTS_TYPE
-from example_dagster_codebase.partitioned_etl.partioned_etl_task_1 import PartitionedETLTask1
+from example_dagster_codebase.partitioned_statically_etl.partioned_etl_task_1 import PartitionedETLTask1
 from tests.etl_jobs.etl_test_task_base import ETL_Test_Task_Base
 
 
@@ -16,7 +16,7 @@ class PartitionedETLTask2(PartitionedETLTask1):
     def dagster_input_etl_tasks(cls, **kwargs) -> DAGSTER_INPUTS_TYPE:
         import example_dagster_codebase
         return [
-            example_dagster_codebase.partitioned_etl.partioned_etl_task_1.PartitionedETLTask1,
+            example_dagster_codebase.partitioned_statically_etl.partioned_etl_task_1.PartitionedETLTask1,
         ]
 
     @classmethod

@@ -26,7 +26,7 @@ class PartitionedETLTask3(ETL_Test_Task_Base):
     def dagster_input_etl_tasks(cls, **kwargs) -> DAGSTER_INPUTS_TYPE:
         import example_dagster_codebase
         return [
-            example_dagster_codebase.partitioned_etl.partioned_etl_task_2.PartitionedETLTask2,
+            example_dagster_codebase.partitioned_statically_etl.partioned_etl_task_2.PartitionedETLTask2,
         ]
 
     @classmethod
@@ -77,7 +77,7 @@ class PartitionedETLTask3(ETL_Test_Task_Base):
         task2 = self.get_parameter('PartitionedETLTask2')
         self.log.info(f"PartitionedETLTask2 value = {task2}")
         for key in task2:
-            print(f"{key} = {task2[key]}")
+            self.log.info(f"{key} = {task2[key]}")
 
         self.set_parameters(job_run_seconds=3, extra_random_seconds=0)
         # load inherited from ETL_Test_Task_Base

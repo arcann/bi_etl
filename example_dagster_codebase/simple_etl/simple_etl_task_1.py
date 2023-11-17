@@ -1,6 +1,5 @@
-import textwrap
 from datetime import datetime
-from typing import Optional, Mapping, Any
+from typing import Optional, Mapping, Any, Sequence
 
 import dagster
 
@@ -22,22 +21,24 @@ class SimpleETLTask1(ETL_Test_Task_Base):
         return {'example': True}
 
     @classmethod
-    def dagster_schedule_definition(
+    def dagster_schedules(
             cls,
             *,
             debug: bool = False,
             **kwargs
-    ) -> Optional[dagster.ScheduleDefinition]:
+    ) -> Optional[Sequence[dagster.ScheduleDefinition]]:
         # Select all assets in group "special_group_1":
         asset_job = dagster.define_asset_job(
             'SimpleETLTask1_job',
             selection=dagster.AssetSelection.groups(cls.dagster_group_name())
         )
 
-        return dagster.ScheduleDefinition(
-            job=asset_job,
-            cron_schedule="0 9 * * *",
-        )
+        return [
+            dagster.ScheduleDefinition(
+                job=asset_job,
+                cron_schedule="0 9 * * *",
+            )
+        ]
 
     @classmethod
     def dagster_description(

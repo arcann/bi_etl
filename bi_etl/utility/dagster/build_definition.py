@@ -1,4 +1,6 @@
-from typing import List, Type, Optional, Iterable, Union, Mapping, Any
+import inspect
+import types
+from typing import List, Type, Optional, Iterable, Union, Mapping, Any, TypeAlias
 
 import dagster
 from dagster import LoggerDefinition
@@ -9,19 +11,18 @@ from dagster._core.definitions.partitioned_schedule import UnresolvedPartitioned
 # noinspection PyProtectedMember
 from dagster._core.definitions.unresolved_asset_job_definition import UnresolvedAssetJobDefinition
 
-from bi_etl.scheduler.etl_task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask, DAGSTER_SENSOR_TYPE
+
+DAGSTER_ASSETS_TYPE: TypeAlias = Union[dagster.AssetsDefinition, dagster.SourceAsset, CacheableAssetsDefinition]
+DAGSTER_SCHEDULES_TYPE: TypeAlias = Union[dagster.ScheduleDefinition, UnresolvedPartitionedAssetScheduleDefinition]
 
 
 def build_definition(
     etl_task_list: List[Type[ETLTask]],
     *,
-    assets: Optional[
-        Iterable[Union[dagster.AssetsDefinition, dagster.SourceAsset, CacheableAssetsDefinition]]
-    ] = None,
-    schedules: Optional[
-        Iterable[Union[dagster.ScheduleDefinition, UnresolvedPartitionedAssetScheduleDefinition]]
-    ] = None,
-    sensors: Optional[Iterable[dagster.SensorDefinition]] = None,
+    assets: Optional[Iterable[DAGSTER_ASSETS_TYPE]] = None,
+    schedules: Optional[Iterable[DAGSTER_SCHEDULES_TYPE]] = None,
+    sensors: Optional[Iterable[DAGSTER_SENSOR_TYPE]] = None,
     jobs: Optional[Iterable[Union[dagster.JobDefinition, UnresolvedAssetJobDefinition]]] = None,
     resources: Optional[Mapping[str, Any]] = None,
     executor: Optional[Union[dagster.ExecutorDefinition, dagster.Executor]] = None,
@@ -29,23 +30,40 @@ def build_definition(
     asset_checks: Optional[Iterable[dagster.AssetChecksDefinition]] = None,
     debug: bool = False,
 ):
-    assets = assets or list()
-    sensors = sensors or list()
-    schedules = schedules or list()
+    all_assets: List[DAGSTER_ASSETS_TYPE] = list(assets or [])
+    all_sensors: List[DAGSTER_SENSOR_TYPE] = list(sensors or [])
+    all_schedules: List[DAGSTER_SCHEDULES_TYPE] = list(schedules or [])
     for task in etl_task_list:
+        if isinstance(task, types.ModuleType):
+            module = task
+            class_matches = list()
+            for name, obj in inspect.getmembers(module):
+                if inspect.isclass(obj):
+                    # Check that the class is defined in our module and not imported
+                    if obj.__module__ == module.__name__:
+                        baseclasses = inspect.getmro(obj)
+                        if ETLTask in baseclasses and str(obj) != str(ETLTask):
+                            class_matches.append(obj)
+                            print(obj)
+            if len(class_matches) == 0:
+                raise ValueError(f"No ETLTask found in {module}")
+            elif len(class_matches) > 1:
+                raise ValueError(f"Multiple ETLTasks found in {module}")
+            else:
+                task = class_matches[0]
         job_asset = task.dagster_asset_definition(debug=debug)
-        assets.append(job_asset)
-        job_sensor = task.dagster_sensor(debug=debug)
-        if job_sensor is not None:
-            sensors.append(job_sensor)
-        schedule = task.dagster_schedule_definition(debug=debug)
-        if schedule is not None:
-            schedules.append(schedule)
+        all_assets.append(job_asset)
+        job_sensors = task.dagster_sensors(debug=debug)
+        if job_sensors is not None:
+            all_sensors.extend(job_sensors)
+        job_schedules = task.dagster_schedules(debug=debug)
+        if job_schedules is not None:
+            all_schedules.extend(job_schedules)
 
     return dagster.Definitions(
-        assets=assets,
-        sensors=sensors,
-        schedules=schedules,
+        assets=all_assets,
+        sensors=all_sensors,
+        schedules=all_schedules,
         jobs=jobs,
         resources=resources,
         executor=executor,

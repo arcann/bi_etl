@@ -7,10 +7,10 @@ import importlib
 import inspect
 import logging
 import socket
-import textwrap
 import uuid
 import warnings
 from contextlib import ExitStack
+from functools import lru_cache
 from inspect import signature
 from pathlib import Path
 from typing import *
@@ -38,10 +38,17 @@ try:
 except ImportError:
     dagster = Mock()
 
+try:
+    from dagster._core.definitions.sensor_definition import RawSensorEvaluationFunction, SensorDefinition
+except ImportError:
+    RawSensorEvaluationFunction = Mock()
+    SensorDefinition = Mock()
+
 if TYPE_CHECKING:
     from bi_etl.utility.run_sql_script import RunSQLScript
 
 DAGSTER_INPUTS_TYPE: TypeAlias = Optional[List[Union[str, Type['ETL_Task']]]]
+DAGSTER_SENSOR_TYPE: TypeAlias = SensorDefinition
 
 
 class ETLTask(object):
@@ -53,10 +60,10 @@ class ETLTask(object):
     CLASS_VERSION = 1.0
     _task_repo: Dict[str, 'ETLTask'] = dict()
 
-    _DAGSTER_asset_cache = dict()
     DAGSTER_compute_kind = 'python'
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_asset_key(cls, **kwargs) -> dagster.AssetKey:
         module_name = cls.__module__
         asset_key_list = module_name.split('.')
@@ -65,14 +72,17 @@ class ETLTask(object):
         return dagster.AssetKey(asset_key_list)
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_job_name(cls, **kwargs) -> str:
         return cls.dagster_asset_key().path[-1]
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_key_prefix(cls, **kwargs) -> Sequence[str]:
         return cls.dagster_asset_key().path[:-1]
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_group_name(cls, **kwargs) -> Optional[str]:
         """
         group_name (Optional[str]): A string name used to organize multiple assets into groups.
@@ -84,9 +94,11 @@ class ETLTask(object):
         if len(key_prefix) <= 1:
             return None
         else:
+            # Could also build and AssetKey and call to_python_identifier
             return '__'.join(key_prefix[:-1])
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_input_etl_tasks(cls, **kwargs) -> DAGSTER_INPUTS_TYPE:
         """
         List of ETLTask subclasses that are inputs to this task.
@@ -95,6 +107,7 @@ class ETLTask(object):
         return []
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_inputs_asset_id(cls, **kwargs) -> Dict[str, dagster.AssetIn]:
         """
         Starting dictionary of dagster asset inputs.
@@ -103,6 +116,7 @@ class ETLTask(object):
         return {}
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_get_config(
             cls,
             dagster_config: dagster.PermissiveConfig = None,
@@ -122,6 +136,7 @@ class ETLTask(object):
         return BI_ETL_Config_Base_From_Ini_Env()
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_auto_materialize_policy(
             cls,
             *,
@@ -138,6 +153,7 @@ class ETLTask(object):
         # return None
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_retry_policy(
             cls,
             **kwargs
@@ -148,6 +164,7 @@ class ETLTask(object):
         return None
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_code_version(
             cls,
             **kwargs
@@ -160,6 +177,7 @@ class ETLTask(object):
         return None
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_description(
             cls,
             **kwargs
@@ -167,6 +185,7 @@ class ETLTask(object):
         return None
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_op_tags(
             cls,
             **kwargs
@@ -180,6 +199,7 @@ class ETLTask(object):
         return None
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_partitions_def(
             cls,
             *,
@@ -193,6 +213,7 @@ class ETLTask(object):
         return None
 
     @classmethod
+    @lru_cache(maxsize=None)
     def dagster_asset_definition(
             cls,
             scope_set: Optional[Set[dagster.AssetKey]] = None,
@@ -221,12 +242,9 @@ class ETLTask(object):
         AssetsDefinition built using the dagster_* class method results.
 
         """
-        this_asset_key = cls.dagster_asset_key()
-
-        if this_asset_key in cls._DAGSTER_asset_cache:
-            return cls._DAGSTER_asset_cache[this_asset_key]
-
         import dagster
+
+        this_asset_key = cls.dagster_asset_key()
 
         input_dict = cls.dagster_inputs_asset_id()
         input_etl_tasks = cls.dagster_input_etl_tasks()
@@ -281,16 +299,19 @@ class ETLTask(object):
             )
             return job_inst.dagster_results
 
-        cls._DAGSTER_asset_cache[this_asset_key] = run_task_via_dagster
         return run_task_via_dagster
 
     @classmethod
-    def dagster_schedule_definition(
+    def dagster_schedules(
             cls,
             *,
             debug: bool = False,
             **kwargs
-    ) -> Optional[dagster.ScheduleDefinition]:
+    ) -> Optional[Sequence[dagster.ScheduleDefinition]]:
+        """
+        Return one or more schedules linked to this task.
+        They don't have to run only this task.
+        """
         return None
 
     @classmethod
@@ -303,12 +324,15 @@ class ETLTask(object):
         return None
 
     @classmethod
-    def dagster_sensor(
+    def dagster_sensors(
             cls,
             *,
             debug: bool = False,
             **kwargs
-    ):
+    ) -> Optional[Sequence[DAGSTER_SENSOR_TYPE]]:
+        """
+        Return a list of one more sensors for this task
+        """
         return None
 
     def __init__(self,
@@ -385,8 +409,6 @@ class ETLTask(object):
                       parent_task_id=odict['parent_task_id'],
                       root_task_id=odict['root_task_id'],
                       config=odict['config'],
-                      # We don't pass scheduler from the Scheduler to the running instance
-                      # scheduler= odict['scheduler']
                       )
         self.parent_to_child = odict['parent_to_child']
         self.child_to_parent = odict['child_to_parent']

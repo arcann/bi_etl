@@ -9,7 +9,6 @@ classifiers = [
     "Topic :: Database",
 ]
 authors = ["Derek Wood <bietl_info@bietl.dev>"]
-#homepage = "https://bietl.dev/"
 documentation = "https://bietl.dev/docs/"
 readme="README.md"
 license = "MIT"

@@ -1,2 +1,3 @@
 import example_dagster_codebase.simple_etl
-import example_dagster_codebase.partitioned_etl
+import example_dagster_codebase.partitioned_statically_etl
+import example_dagster_codebase.partitioned_dynamicaly_etl
