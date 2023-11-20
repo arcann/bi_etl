@@ -1,19 +1,29 @@
 import random
 import uuid
-from typing import Optional
+from typing import Optional, Dict
 
 import dagster
 
 from bi_etl.scheduler.etl_task import DAGSTER_INPUTS_TYPE
+from bi_etl.utility.dagster_utils.dagster_types import DAGSTER_ASSET_IN
 from tests.etl_jobs.etl_test_task_base import ETL_Test_Task_Base
 
 
 class SimpleETLTask2a(ETL_Test_Task_Base):
+    # Example reference to another asset by asset key instead of ETLTask class / module
+    # Note: This asset could be some other sort of asset and not an ETLTask based asset.
+    @classmethod
+    def dagster_inputs_asset_id(cls, **kwargs) -> Dict[str, DAGSTER_ASSET_IN]:
+        return {
+            'before': dagster.AssetIn(['example', 'other'])
+        }
+
     @classmethod
     def dagster_input_etl_tasks(cls, **kwargs) -> DAGSTER_INPUTS_TYPE:
         import example_dagster_codebase
         return [
-            example_dagster_codebase.simple_etl.simple_etl_task_1.SimpleETLTask1,
+            # Supports module spec (it finds the class inside)
+            example_dagster_codebase.simple_etl.simple_etl_task_1,
         ]
 
     @classmethod

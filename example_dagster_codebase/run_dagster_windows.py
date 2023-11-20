@@ -4,7 +4,8 @@ from typing import List
 
 
 def run_dagster(args: List[str]):
-    subprocess.run("poetry install -E dagster", shell=True, check=True)
+    # subprocess.run("poetry install -E dagster", shell=True, check=True)
+
     os.environ['PYTHONLEGACYWINDOWSSTDIO'] = 'utf-8'
     os.environ['DAGSTER_HOME'] = str('/dagster_home')
     warnings_ignore_list = [

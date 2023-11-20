@@ -7,6 +7,7 @@ import importlib
 import inspect
 import logging
 import socket
+import types
 import uuid
 import warnings
 from contextlib import ExitStack
@@ -14,7 +15,6 @@ from functools import lru_cache
 from inspect import signature
 from pathlib import Path
 from typing import *
-from unittest.mock import Mock
 
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
 from config_wrangler.config_types.dynamically_referenced import DynamicallyReferenced
@@ -32,23 +32,14 @@ from bi_etl.scheduler.exceptions import ParameterError
 from bi_etl.scheduler.status import Status
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
-
-try:
-    import dagster
-except ImportError:
-    dagster = Mock()
-
-try:
-    from dagster._core.definitions.sensor_definition import RawSensorEvaluationFunction, SensorDefinition
-except ImportError:
-    RawSensorEvaluationFunction = Mock()
-    SensorDefinition = Mock()
+from bi_etl.utility.dagster_utils.dagster_types import (
+    dagster,
+    DAGSTER_ASSET_KEY, DAGSTER_INPUTS_TYPE, DAGSTER_ASSET_IN,
+    DAGSTER_CONFIG, DAGSTER_AUTO_MATERIALIZE_POLICY, DAGSTER_SENSOR_TYPE, DAGSTER_ASSETS_TYPE, _DAGSTER_INPUT_TYPE,
+)
 
 if TYPE_CHECKING:
     from bi_etl.utility.run_sql_script import RunSQLScript
-
-DAGSTER_INPUTS_TYPE: TypeAlias = Optional[List[Union[str, Type['ETL_Task']]]]
-DAGSTER_SENSOR_TYPE: TypeAlias = SensorDefinition
 
 
 class ETLTask(object):
@@ -62,14 +53,78 @@ class ETLTask(object):
 
     DAGSTER_compute_kind = 'python'
 
+    @staticmethod
+    def is_etl_task(item: Any):
+        if inspect.isclass(item):
+            baseclasses = inspect.getmro(item)
+            if ETLTask in baseclasses:
+                return True
+        return False
+
+    @staticmethod
+    def get_etl_task_instance(input: _DAGSTER_INPUT_TYPE) -> Type['ETLTask']:
+        if input is None:
+            raise ValueError("get_etl_task_instance got None")
+
+        if isinstance(input, types.ModuleType):
+            module = input
+            class_matches = list()
+            for name, obj in inspect.getmembers(module):
+                if inspect.isclass(obj):
+                    # Check that the class is defined in our module and not imported
+                    if obj.__module__ == module.__name__:
+                        if ETLTask.is_etl_task(obj) and str(obj) != str(ETLTask):
+                            class_matches.append(obj)
+                            print(obj)
+            if len(class_matches) == 0:
+                raise ValueError(f"No ETLTask found in {module}")
+            elif len(class_matches) > 1:
+                raise ValueError(f"Multiple ETLTasks found in {module}")
+            else:
+                return class_matches[0]
+        else:
+            if ETLTask.is_etl_task(input):
+                return input
+            else:
+                raise ValueError(
+                    f"get_etl_task_instance passed {input} type={type(input)}. "
+                    "Expected module or ETLTask based class."
+                )
+
+    @staticmethod
+    def get_etl_task_list(input_list: DAGSTER_INPUTS_TYPE) -> List[Type['ETLTask']]:
+        if input_list is None:
+            return list()
+
+        output_list = list()
+        for task in input_list:
+            if isinstance(task, types.ModuleType):
+                module = task
+                class_matches = list()
+                for name, obj in inspect.getmembers(module):
+                    if inspect.isclass(obj):
+                        # Check that the class is defined in our module and not imported
+                        if obj.__module__ == module.__name__:
+                            if ETLTask.is_etl_task(obj) and str(obj) != str(ETLTask):
+                                class_matches.append(obj)
+                                print(obj)
+                if len(class_matches) == 0:
+                    raise ValueError(f"No ETLTask found in {module}")
+                elif len(class_matches) > 1:
+                    raise ValueError(f"Multiple ETLTasks found in {module}")
+                else:
+                    task = class_matches[0]
+            output_list.append(task)
+        return output_list
+
     @classmethod
     @lru_cache(maxsize=None)
-    def dagster_asset_key(cls, **kwargs) -> dagster.AssetKey:
+    def dagster_asset_key(cls, **kwargs) -> DAGSTER_ASSET_KEY:
         module_name = cls.__module__
         asset_key_list = module_name.split('.')
         class_name = cls.__qualname__
         asset_key_list.append(class_name)
-        return dagster.AssetKey(asset_key_list)
+        return DAGSTER_ASSET_KEY(asset_key_list)
 
     @classmethod
     @lru_cache(maxsize=None)
@@ -108,7 +163,7 @@ class ETLTask(object):
 
     @classmethod
     @lru_cache(maxsize=None)
-    def dagster_inputs_asset_id(cls, **kwargs) -> Dict[str, dagster.AssetIn]:
+    def dagster_inputs_asset_id(cls, **kwargs) -> Dict[str, DAGSTER_ASSET_IN]:
         """
         Starting dictionary of dagster asset inputs.
         Normally the inputs will come from dagster_input_etl_tasks.
@@ -119,7 +174,7 @@ class ETLTask(object):
     @lru_cache(maxsize=None)
     def dagster_get_config(
             cls,
-            dagster_config: dagster.PermissiveConfig = None,
+            dagster_config: DAGSTER_CONFIG = None,
             *,
             debug: bool = False,
             **kwargs
@@ -142,7 +197,7 @@ class ETLTask(object):
             *,
             debug: bool = False,
             **kwargs
-    ) -> Optional[dagster.AutoMaterializePolicy]:
+    ) -> Optional[DAGSTER_AUTO_MATERIALIZE_POLICY]:
         """
         auto_materialize_policy (AutoMaterializePolicy): (Experimental) Configure Dagster to automatically materialize
             this asset according to its FreshnessPolicy and when upstream dependencies change.
@@ -192,7 +247,7 @@ class ETLTask(object):
     ) -> Optional[Mapping[str, Any]]:
         """
         op_tags (Optional[Dict[str, Any]]): A dictionary of tags for the op that computes the asset.
-            Frameworks may expect and require certain metadata to be attached to a op. Values that
+            Frameworks may expect and require certain metadata to be attached to an op. Values that
             are not strings will be json encoded and must meet the criteria that
             `json.loads(json.dumps(value)) == value`.
         """
@@ -216,7 +271,8 @@ class ETLTask(object):
     @lru_cache(maxsize=None)
     def dagster_asset_definition(
             cls,
-            scope_set: Optional[Set[dagster.AssetKey]] = None,
+            scope_set: Optional[Set[DAGSTER_ASSET_KEY]] = None,
+            before_all_assets: Optional[Iterable[DAGSTER_ASSETS_TYPE]] = None,
             *,
             debug: bool = False,
             **kwargs
@@ -245,25 +301,31 @@ class ETLTask(object):
         import dagster
 
         this_asset_key = cls.dagster_asset_key()
-
-        input_dict = cls.dagster_inputs_asset_id()
-        input_etl_tasks = cls.dagster_input_etl_tasks()
-
         if debug:
             print(f"Creating asset {this_asset_key}")
         job_name = this_asset_key.path[-1]
         key_prefix = this_asset_key.path[:-1]
 
-        for dep in input_etl_tasks:
-            dep_asset_key = dep.dagster_asset_key()
-            # Only add the dep if it is in our scope, or we have no scope
-            if scope_set is None or dep_asset_key in scope_set:
-                input_dict[dep_asset_key.path[-1]] = dagster.AssetIn(key=dep_asset_key)
-                if debug:
-                    print(f"   Adding dep {dep_asset_key}")
-            else:
-                if debug:
-                    print(f"   Skipping out of scope input {dep_asset_key}")
+        input_dict = cls.dagster_inputs_asset_id()
+        input_etl_tasks = cls.get_etl_task_list(cls.dagster_input_etl_tasks())
+
+        if input_etl_tasks is None or len(input_etl_tasks) == 0:
+            if before_all_assets is not None:
+                for dep in before_all_assets:
+                    dep_asset_key = dep.key
+                    input_dict[dep_asset_key.path[-1]] = dagster.AssetIn(key=dep_asset_key)
+
+        else:
+            for dep in input_etl_tasks:
+                dep_asset_key = dep.dagster_asset_key()
+                # Only add the dep if it is in our scope, or we have no scope
+                if scope_set is None or dep_asset_key in scope_set:
+                    input_dict[dep_asset_key.path[-1]] = dagster.AssetIn(key=dep_asset_key)
+                    if debug:
+                        print(f"   Adding dep {dep_asset_key}")
+                else:
+                    if debug:
+                        print(f"   Skipping out of scope input {dep_asset_key}")
 
         @dagster.asset(
             name=job_name,

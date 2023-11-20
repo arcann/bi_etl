@@ -13,6 +13,7 @@ class SimpleETLTask2b(ETL_Test_Task_Base):
     def dagster_input_etl_tasks(cls, **kwargs) -> DAGSTER_INPUTS_TYPE:
         import example_dagster_codebase
         return [
+            # Supports full class spec
             example_dagster_codebase.simple_etl.simple_etl_task_1.SimpleETLTask1,
         ]
 

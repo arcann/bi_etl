@@ -1,9 +1,10 @@
 import example_dagster_codebase
-from bi_etl.utility.dagster.build_definition import build_definition
-
+from bi_etl.utility.dagster_utils.build_definition import build_definition
 
 
 etl_task_list = [
+    # Can be ETLTask class references or module references
+    # (as long as the modules contain a single ETLTask)
     example_dagster_codebase.partitioned_statically_etl.partioned_etl_task_1,
     example_dagster_codebase.partitioned_statically_etl.partioned_etl_task_2,
     example_dagster_codebase.partitioned_statically_etl.partioned_etl_task_3,

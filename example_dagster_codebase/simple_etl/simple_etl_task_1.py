@@ -1,8 +1,9 @@
 from datetime import datetime
-from typing import Optional, Mapping, Any, Sequence
+from typing import Optional, Mapping, Any, Sequence, Dict
 
 import dagster
 
+from bi_etl.utility.dagster_utils.dagster_types import DAGSTER_ASSET_IN
 from tests.etl_jobs.etl_test_task_base import ETL_Test_Task_Base
 
 

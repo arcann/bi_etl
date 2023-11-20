@@ -7,8 +7,6 @@ from tests.etl_jobs.etl_test_task_base import ETL_Test_Task_Base
 
 
 class PartitionedETLTask1(ETL_Test_Task_Base):
-    # No dependencies so dagster_input_etl_tasks is not present
-
     @classmethod
     def dagster_group_name(cls, **kwargs) -> Optional[str]:
         return 'special_group_2'

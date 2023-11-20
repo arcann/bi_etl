@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional, Mapping, Any
 
 import dagster
@@ -12,6 +12,7 @@ class PartitionedETLTask2(PartitionedETLTask1):
     """
     NOTE: We inherit from PartitionedETLTask1 to get its partition info replicated heere
     """
+
     @classmethod
     def dagster_input_etl_tasks(cls, **kwargs) -> DAGSTER_INPUTS_TYPE:
         import example_dagster_codebase
