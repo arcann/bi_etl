@@ -1,10 +1,12 @@
+from typing import Optional
+
 import bi_etl.config.notifiers_config as notifiers_config
 from bi_etl.notifiers.notifier_base import NotifierBase
 
 
 class Jira(NotifierBase):
-    def __init__(self, config_section: notifiers_config.JiraNotifier):
-        super().__init__()
+    def __init__(self, config_section: notifiers_config.JiraNotifier, *, name: Optional[str] = None):
+        super().__init__(name=name)
         self.config_section = config_section
 
         # On-instance import since jira is an optional requirement

@@ -1,5 +1,6 @@
 import warnings
 from time import sleep
+from typing import Optional
 
 from config_wrangler.config_templates.credentials import Credentials
 
@@ -8,8 +9,8 @@ from bi_etl.notifiers.notifier_base import NotifierBase
 
 
 class Slack(NotifierBase):
-    def __init__(self, config_section: notifiers_config.SlackNotifier):
-        super().__init__()
+    def __init__(self, config_section: notifiers_config.SlackNotifier, *, name: Optional[str] = None):
+        super().__init__(name=name)
         self.config_section = config_section
 
         try:

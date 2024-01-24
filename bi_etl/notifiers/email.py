@@ -2,14 +2,15 @@ import email
 import re
 import smtplib
 from email.mime.text import MIMEText
+from typing import Optional
 
 import bi_etl.config.notifiers_config as notifiers_config
 from bi_etl.notifiers.notifier_base import NotifierBase, NotifierException
 
 
 class Email(NotifierBase):
-    def __init__(self, config_section: notifiers_config.SMTP_Notifier):
-        super().__init__()
+    def __init__(self, config_section: notifiers_config.SMTP_Notifier, *, name: Optional[str] = None):
+        super().__init__(name=name)
         self.config_section = config_section
 
     def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):

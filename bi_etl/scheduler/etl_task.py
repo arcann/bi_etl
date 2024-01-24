@@ -16,6 +16,7 @@ from inspect import signature
 from pathlib import Path
 from typing import *
 
+from config_wrangler.config_templates.config_hierarchy import ConfigHierarchy
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
 from config_wrangler.config_types.dynamically_referenced import DynamicallyReferenced
 from pydicti import dicti, Dicti
@@ -81,6 +82,7 @@ class ETLTask(object):
             elif len(class_matches) > 1:
                 raise ValueError(f"Multiple ETLTasks found in {module}")
             else:
+                # noinspection PyTypeChecker
                 return class_matches[0]
         else:
             if ETLTask.is_etl_task(input):
@@ -444,6 +446,8 @@ class ETLTask(object):
         self.load_timer = Timer(start_running=False)
         self.finish_timer = Timer(start_running=False)
         self.suppress_notifications = False
+        # noinspection PyTypeChecker
+        self._notifiers: Dict[NotifierBase] = dict()
         self.log_handler = None
         self.dagster_results = None
 
@@ -1001,12 +1005,57 @@ class ETLTask(object):
 
         return self.status == Status.succeeded
 
+    def _build_notifier(self, channel_config: ConfigHierarchy) -> NotifierBase:
+        config_channel_name = channel_config.full_item_name()
+        notifier_class_str = 'unset'
+        try:
+            if channel_config == 'LogNotifier':
+                notifier_class_str = channel_config
+            else:
+                notifier_class_str = channel_config.notifier_class
+
+            if isinstance(channel_config, notifiers_config.LogNotifierConfig):
+                notifier_instance = LogNotifier(name=config_channel_name)
+            elif isinstance(channel_config, notifiers_config.SMTP_Notifier):
+                notifier_instance = Email(channel_config, name=config_channel_name)
+            elif isinstance(channel_config, notifiers_config.SlackNotifier):
+                notifier_instance = Slack(channel_config, name=config_channel_name)
+            elif isinstance(channel_config, notifiers_config.JiraNotifier):
+                notifier_instance = Jira(channel_config, name=config_channel_name)
+            else:
+                module, class_name = channel_config.notifier_class.rsplit('.', 1)
+                mod_object = importlib.import_module(module)
+                class_object = getattr(mod_object, class_name)
+                notifier_instance = class_object(channel_config, name=config_channel_name)
+
+            if notifier_instance is not None:
+                return notifier_instance
+        except Exception as e:
+            self.log.exception(e)
+            if self.config.notifiers.failed_notifications is not None:
+                try:
+                    fallback_message = f'Notification to {channel_config} {notifier_class_str} failed with error={e}'
+                    fallback_notifiers_list = self.get_notifiers(self.config.notifiers.failed_notifications)
+                    for fallback_notifier in fallback_notifiers_list:
+                        fallback_notifier.send(
+                            subject=f"Failed to send to {channel_config}",
+                            message=fallback_message,
+                        )
+                        return fallback_notifier
+                except Exception as e:
+                    self.log.exception(e)
+
+    def get_notifier(self, channel_config: ConfigHierarchy) -> NotifierBase:
+        config_channel_name = channel_config.full_item_name()
+        if config_channel_name not in self._notifiers:
+            self._notifiers[config_channel_name] = self._build_notifier(channel_config)
+        return self._notifiers[config_channel_name]
+
     def get_notifiers(self, channel_list: List[DynamicallyReferenced], auto_include_log=True) -> List[NotifierBase]:
         notifiers_list = list()
-        notifier_class_str = 'unset'
 
         if auto_include_log:
-            notifiers_list.append(LogNotifier())
+            notifiers_list.append(LogNotifier(name='log'))
 
         for config_ref in channel_list:
             config_section = config_ref.get_referenced()
@@ -1015,42 +1064,9 @@ class ETLTask(object):
                     f"Notifier reference {config_ref} is not to an instance of NotifierConfigBase: "
                     f"found type= {type(config_section)} value= {config_section}"
                 )
-            try:
-                if config_section == 'LogNotifier':
-                    notifier_class_str = config_section
-                else:
-                    notifier_class_str = config_section.notifier_class
+            else:
+                notifiers_list.append(self.get_notifier(config_section))
 
-                if isinstance(config_section, notifiers_config.LogNotifierConfig):
-                    notifier_instance = LogNotifier()
-                elif isinstance(config_section, notifiers_config.SMTP_Notifier):
-                    notifier_instance = Email(config_section)
-                elif isinstance(config_section, notifiers_config.SlackNotifier):
-                    notifier_instance = Slack(config_section)
-                elif isinstance(config_section, notifiers_config.JiraNotifier):
-                    notifier_instance = Jira(config_section)
-                else:
-                    module, class_name = config_section.notifier_class.rsplit('.', 1)
-                    mod_object = importlib.import_module(module)
-                    class_object = getattr(mod_object, class_name)
-                    notifier_instance = class_object(config_section)
-
-                if notifier_instance is not None:
-                    notifiers_list.append(notifier_instance)
-            except Exception as e:
-                self.log.exception(e)
-                if self.config.notifiers.failed_notifications is not None:
-                    try:
-                        fallback_message = f'Notification to {config_section} {notifier_class_str} failed with error={e}'
-                        fallback_notifiers_list = self.get_notifiers(self.config.notifiers.failed_notifications)
-                        for fallback_notifier in fallback_notifiers_list:
-                            fallback_notifier.send(
-                                subject=f"Failed to send to {config_section}",
-                                message=fallback_message,
-                            )
-                            notifiers_list.append(fallback_notifier)
-                    except Exception as e:
-                        self.log.exception(e)
         return notifiers_list
 
     def notify(
@@ -1131,13 +1147,21 @@ class ETLTask(object):
                         filtered_channels.append(channel)
 
                 notifiers_list = self.get_notifiers(filtered_channels)
+                notifiers_errors = dict()
                 for notifier in notifiers_list:
                     try:
                         notifier.post_status(
                             status_message=status_message,
                         )
                     except Exception as e:
-                        warnings.warn(repr(e))
+                        notifiers_errors[notifier.name] = e
+
+                if len(notifiers_errors) >= len(notifiers_list):
+                    # All notifiers failed to send status
+                    warnings.warn(
+                        "notify_status called but no notifiers are capable of status messages."
+                        f"Errors = {notifiers_errors}"
+                    )
 
             except Exception as e:
                 self.log.exception(e)

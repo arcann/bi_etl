@@ -4,11 +4,11 @@ Created on Oct 9, 2015
 @author: Derek Wood
 """
 import io
-import typing
 from collections import defaultdict
 from decimal import Context, ROUND_HALF_EVEN
 from operator import itemgetter
 from sys import stdout
+from typing import Optional, Union
 
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.conversions import str2decimal, str2date
@@ -69,7 +69,7 @@ class DataAnalyzer(ETLComponent):
                 return f"{self.name}({self.length},{self.precision})"
 
     def __init__(self,
-                 task: typing.Optional[ETLTask] = None,
+                 task: Optional[ETLTask] = None,
                  logical_name: str = 'DataAnalyzer',
                  **kwargs
                  ):
@@ -223,16 +223,34 @@ class DataAnalyzer(ETLComponent):
         self.row_column_name_set = set()
         self.rows_processed += 1
 
+    @staticmethod
+    def null_safe_max(a: Union[int, None], b: Union[int, None]) -> Union[int, None]:
+        if a is None:
+            if b is None:
+                return None
+            else:
+                return b
+        else:
+            if b is None:
+                return a
+            else:
+                return max(a, b)
+
     def analyze_column(self, column_name, column_value, column_number=None):
         self.column_present_count[column_name] = self.column_present_count.get(column_name, 0) + 1
 
         # Process column names
         if column_number is not None:
             if len(self.column_names) < column_number:
-                self.column_names.append(column_name)
+                if column_name not in self.column_names:
+                    self.column_names.append(column_name)
+                else:
+                    self.column_names_consistent = False
             else:
                 if self.column_names[column_number - 1] != column_name:
                     self.column_names_consistent = False
+                    if column_name not in self.column_names:
+                        self.column_names.append(column_name)
         else:
             if column_name not in self.column_names:
                 self.column_names.append(column_name)
@@ -250,7 +268,7 @@ class DataAnalyzer(ETLComponent):
         value = column_value
         try:
             hash(column_value)
-        except TypeError:  # unhashable type
+        except TypeError:  # un-hashable type
             value = str(column_value)
 
         self.column_valid_values[column_name][value] = self.column_valid_values[column_name].get(value, 0) + 1
@@ -271,10 +289,10 @@ class DataAnalyzer(ETLComponent):
                 new_type = row_type
             else:
                 if existing_type.name in ['str', 'unicode', 'bytes']:
-                    new_type.length = max(row_type.length, existing_type.length)
+                    new_type.length = self.null_safe_max(row_type.length, existing_type.length)
                 elif existing_type.name == 'Date':
                     if row_type.name == 'Date':
-                        new_type.length = max(row_type.length, existing_type.length)
+                        new_type.length = self.null_safe_max(row_type.length, existing_type.length)
                         if isinstance(existing_type.format, dict):
                             # Add one to the counter for this format
                             new_type.format[row_type.format] = new_type.format.get(row_type.format, 0) + 1
@@ -285,20 +303,20 @@ class DataAnalyzer(ETLComponent):
                             new_type.format = fmts
                     elif row_type.name in ['str', 'unicode', 'bytes']:
                         new_type = row_type
-                        new_type.length = max(row_type.length, existing_type.length)
+                        new_type.length = self.null_safe_max(row_type.length, existing_type.length)
                 elif existing_type.name == 'Integer':
                     if row_type.name == 'Integer':
-                        new_type.length = max(row_type.length, existing_type.length)
+                        new_type.length = self.null_safe_max(row_type.length, existing_type.length)
                     elif row_type.name == 'Decimal':
                         new_type = row_type
-                        new_type.length = max(row_type.length, existing_type.length)
+                        new_type.length = self.null_safe_max(row_type.length, existing_type.length)
                     else:
                         new_type = DataAnalyzer.DataType(name='str')
-                        new_type.length = max(row_type.length, existing_type.length)
+                        new_type.length = self.null_safe_max(row_type.length, existing_type.length)
                 else:
                     if row_type.name != existing_type.name:
                         new_type = DataAnalyzer.DataType(name='str')
-                        new_type.length = max(row_type.length, existing_type.length)
+                        new_type.length = self.null_safe_max(row_type.length, existing_type.length)
             self.column_data_types[column_name] = new_type
 
     def analyze_row(self, row):
@@ -430,3 +448,11 @@ class DataAnalyzer(ETLComponent):
                 print("\tApparent Data Types:", file=out)
                 for row_type, freq in sorted(list(type_counts.items()), key=itemgetter(1), reverse=True):
                     print(f'\t\t{freq:,} rows appear to be {row_type}', file=out)
+
+    def get_analysis_str(self) -> str:
+        analysis_block = io.StringIO()
+        self.print_analysis(out=analysis_block)
+        return analysis_block.getvalue()
+
+    def log_analysis(self):
+        self.log.info(self.get_analysis_str())

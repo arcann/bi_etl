@@ -1,10 +1,15 @@
 import multiprocessing
 import time
+from datetime import datetime
+from queue import Empty
+from typing import Optional
+
+from bi_etl.notifiers.notifier_base import NotifierBase
 
 
 class NotifierRetry(NotifierBase):
-    def __init__(self, config_section: notifiers_config.JiraNotifier):
-        super().__init__()
+    def __init__(self, config_section: notifiers_config.JiraNotifier, *, name: Optional[str] = None):
+        super().__init__(name=name)
 
         self._retry_process = None
         self._to_retry_queue = None
