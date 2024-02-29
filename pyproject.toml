@@ -16,8 +16,8 @@ repository = "https://github.com/arcann/bi_etl"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
-config-wrangler = {version=">=1.0.9", extras=["sqlalchemy"]}
-SQLAlchemy = ">=1.4.49,<2.0"
+config-wrangler = {version=">=1.0.16", extras=["sqlalchemy", "aws"]}
+SQLAlchemy = ">=1.4.49"
 semidbm = ">=0.5.1"
 psutil = ">=5.7.2"
 openpyxl = ">=3.0.5"
@@ -41,6 +41,7 @@ slack-sdk = {version = ">=3.19.5", optional = true}
 pykeepass = {version = ">=4.0.6", optional = true}
 dagster = {version = ">=1.5.7", optional = true}
 dagster-webserver = {version = ">=1", optional = true}
+testcontainers = {version = ">=3.5.4", extras = ["mysql, oracle, postgresql, mssqlserver"], optional = true}
 # requests-toolbelt 0.10.0 (used by gql used by dagster) is not compatible with urllib >= 2.0
 urllib3 = "<2"
 
@@ -64,12 +65,12 @@ test = ["psycopg2", "testcontainers"]
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.1"
 toml = "^0.10.1"
-testcontainers = {version = ">=3.5.4", extras = ["mysql oracle postgresql mssqlserver"]}
+testcontainers = {version = ">=3.5.4", extras = ["mysql, oracle, postgresql, mssqlserver"]}
 tox = "^4.6.4"
 boto3 = ">=1.26"
 fastavro = ">=1.5.3"
 psycopg2 = ">=2.9.3"
-sqlalchemy-redshift = "^0.8.14"
+sqlalchemy-redshift = ">=0.8.14"
 sphinx-autobuild = "^2021.3.14"
 oracledb = ">=1.2.0"
 pip = ">=22.1.2"

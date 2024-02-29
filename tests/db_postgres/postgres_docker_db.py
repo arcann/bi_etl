@@ -7,8 +7,7 @@ __all__ = ['PostgresDockerDB']
 
 class PostgresDockerDB(BaseDockerDB):
     """
-
-    Note: On Windows this currently requires docker desktop
+    Note: On Windows this currently requires docker desktop or testcontainers desktop (cloud)
 
     """
     SUPPORTS_DECIMAL = True

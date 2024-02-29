@@ -21,7 +21,7 @@ __all__ = ['OracleDockerDB']
 class OracleDockerDB(BaseDockerDB):
     """
 
-    Note: On Windows this currently requires docker desktop
+    Note: On Windows this currently requires docker desktop or testcontainers desktop (cloud)
 
     """
     SUPPORTS_DECIMAL = True

@@ -27,7 +27,7 @@ class BaseDockerDB(SqliteDB):
         self.container = None
 
         if self.SKIP:
-            raise unittest.SkipTest(f"Skip {self} due to SKIP flag. Is Docker running? See earlier error")
+            raise unittest.SkipTest(f"Skip {self} due to SKIP flag. See earlier error")
 
         try_number = 0
         try_again = True
@@ -46,7 +46,7 @@ class BaseDockerDB(SqliteDB):
                         print(f"Restarting container {self}. Try {try_number}")
                 if not try_again:
                     self.SKIP = True
-                    raise unittest.SkipTest(f"Skip {self} due to {repr(e)}. Is Docker running?")
+                    raise unittest.SkipTest(f"Skip {self} due to {repr(e)}.")
 
     def get_container_class(self):
         raise NotImplementedError
@@ -94,12 +94,12 @@ class BaseDockerDB(SqliteDB):
             print(f"docker container on host {container.get_docker_client().host()}")
             print(f"docker container on url {container.get_docker_client().client.api.base_url}")
 
-            port = self.get_port(container)
-            if hasattr(container, 'port_to_expose'):
-                container.with_bind_ports(container.port_to_expose, port)
-            else:
-                # Oracle only it seems
-                container.with_bind_ports(container.container_port, port)
+            # port = self.get_port(container)
+            # if hasattr(container, 'port_to_expose'):
+            #     container.with_bind_ports(container.port_to_expose, port)
+            # else:
+            #     # Oracle only it seems
+            #     container.with_bind_ports(container.container_port, port)
             # Don't show errors while waiting for the server to start
             waiting_log = logging.getLogger('testcontainers.core.waiting_utils')
             waiting_log.setLevel(logging.WARNING)
@@ -109,7 +109,7 @@ class BaseDockerDB(SqliteDB):
             except Exception as e:
                 raise RuntimeError(
                     "Unable to start Docker container. "
-                    f"Make sure Docker Desktop is running. Error = {e}"
+                    f"Error = {e}"
                 )
         except Exception:
             del container

@@ -1,82 +1,38 @@
 import time
 import unittest
-from tempfile import TemporaryDirectory
-from unittest.mock import patch, MagicMock
+from unittest import mock, SkipTest
 
-from config_wrangler.config_templates.logging_config import LoggingConfig
-
-from bi_etl.config.bi_etl_config_base import Notifiers, BI_ETL_Config_Section, BI_ETL_Config_Base
 from bi_etl.config.notifiers_config import SlackNotifier
 from bi_etl.notifiers import Slack
 from tests.config_for_tests import EnvironmentSpecificConfigForTests
 
 
 class TestSlackMock(unittest.TestCase):
-    __test__ = False
-
-    @classmethod
-    def setUpClass(cls):
-        # patcher = patch('slack')
-        # self.MockSlack = patcher.start()
-        # self.addCleanup(patcher.stop)
-
-        pass
-
-    def get_slack_notifier(self):
-        tmp_obj = TemporaryDirectory()
-        tmp = tmp_obj.name
-
-        class ConfigForSlackMock(BI_ETL_Config_Base):
-            slack_config: SlackNotifier
-
-        config = ConfigForSlackMock(
-            logging=LoggingConfig(
-                log_folder=tmp,
-                log_levels={'root': 'INFO'},
-            ),
-            bi_etl=BI_ETL_Config_Section(
-                environment_name='test'
-            ),
-            notifiers=Notifiers(
-                failures=[],
-            ),
-            slack_config=SlackNotifier(
-                channel='Mock',
-                token='mock',
-            )
+    def test_send_config_token(self):
+        notifier_config = SlackNotifier(
+            channel='test',
+            token='secret_token'
         )
-        return Slack(config.slack_config)
-
-    def test_no_slack(self,):
-        no_module = MagicMock()
-        no_module.function.return_value = ImportError
-        with patch.dict('sys.modules', slack=no_module):
-            with patch.dict('sys.modules', slack_sdk=no_module):
-                with self.assertRaises(ImportError):
-                    notifier = self.get_slack_notifier()
-                    notifier.send('Subject', 'test_send')
-
-    def test_send_v2(self):
         try:
-            from slack_sdk import WebClient
-            with patch('slack_sdk.WebClient') as mock_slack_sdk:
-                no_module = MagicMock()
-                no_module.function.return_value = ImportError
-                with patch.dict('sys.modules', slack=no_module):
-                    notifier = self.get_slack_notifier()
-                    notifier.send('Subject', 'test_send')
-                    mock_slack_sdk.return_value.chat_postMessage.assert_called_once_with(
-                        channel='Mock',
-                        text=f"Subject: test_send",
-                        link_names=False
-                    )
-        except ImportError:
-            raise self.skipTest("slack_sdk not installed")
+            with mock.patch('slack_sdk.WebClient') as client_class:
+                notifier = Slack(notifier_config)
+                client_class.assert_called_with('secret_token')
+                client = client_class.return_value
+                notifier.send('Subject', 'test_send')
+                client.chat_postMessage.assert_called_with(
+                    channel='test',
+                    text='Subject: test_send',
+                    link_names=False
+                )
+        except ModuleNotFoundError as e:
+            raise SkipTest(f"Slack mock failed {e}")
+
+    # TODO: Mock response['error'] == 'ratelimited'
+    # TODO: Mock post_status scenarios
+    # TODO: Test with keepass / keyring. Do we mock those?
 
 
 class BaseTestLiveSlack(unittest.TestCase):
-    __test__ = False
-
     def setUp(self, slack_config=None):
         raise unittest.SkipTest(f"Skip BaseTestLiveSlack")
 
@@ -114,14 +70,17 @@ class BaseTestLiveSlack(unittest.TestCase):
 
 class TestSlackDirect(BaseTestLiveSlack):
     def setUp(self, slack_config=None):
+        # Use the config in section Slack_Test_direct of tests/test_config.ini
         self._setUp('Slack_Test_direct')
 
 
 class TestSlackKeyring(BaseTestLiveSlack):
     def setUp(self, slack_config=None):
+        # Use the config in section Slack_Test_Keyring of tests/test_config.ini
         self._setUp('Slack_Test_Keyring')
 
 
 class TestSlackKeePass(BaseTestLiveSlack):
     def setUp(self, slack_config=None):
+        # Use the config in section Slack_Test_Keepass of tests/test_config.ini
         self._setUp('Slack_Test_Keepass')
