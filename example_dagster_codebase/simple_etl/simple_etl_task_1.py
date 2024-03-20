@@ -1,9 +1,8 @@
 from datetime import datetime
-from typing import Optional, Mapping, Any, Sequence, Dict
+from typing import Optional, Mapping, Any, Sequence
 
 import dagster
 
-from bi_etl.utility.dagster_utils.dagster_types import DAGSTER_ASSET_IN
 from tests.etl_jobs.etl_test_task_base import ETL_Test_Task_Base
 
 
@@ -63,3 +62,7 @@ class SimpleETLTask1(ETL_Test_Task_Base):
         # load inherited from ETL_Test_Task_Base
         super().load()
         self.dagster_results = dagster.Output(datetime.now())
+
+
+if __name__ == '__main__':
+    SimpleETLTask1(config=SimpleETLTask1.dagster_get_config()).run()

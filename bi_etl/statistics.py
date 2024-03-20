@@ -3,8 +3,7 @@ Created on Mar 20, 2015
 
 @author: Derek Wood
 """
-import typing
-from typing import List
+from typing import List, Dict, Any, Union, Optional
 
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
@@ -180,7 +179,36 @@ class Statistics(object):
                            )
 
     @staticmethod
-    def find_item(obj: typing.Union[str, dict, list], key: str):
+    def flatten_statistics(container, prefix: Optional[str] = None, results_container: dict = None) -> Dict[str, Any]:
+        if results_container is None:
+            results_container = {}
+
+        if prefix is not None:
+            key_start = f"{prefix}."
+        else:
+            key_start = ''
+
+        if hasattr(container, 'timer'):
+            timer = container.timer
+            if timer.start_time is not None:
+                results_container[f"{key_start}total_seconds"] = timer.seconds_elapsed
+
+        for key, value in container.items():
+            if key == 'seconds elapsed':
+                # Skip the formatted version of seconds elapsed since we report the total_seconds value above.
+                continue
+            if ' ' in key:
+                key = f"[{key}]"
+
+            if hasattr(value, 'items'):
+                Statistics.flatten_statistics(value, prefix=f"{key_start}{key}", results_container=results_container)
+            else:
+                results_container[f"{key_start}{key}"] = value
+
+        return results_container
+
+    @staticmethod
+    def find_item(obj: Union[str, dict, list], key: str):
         if isinstance(obj, str):
             return None
         elif hasattr(obj, 'values'):

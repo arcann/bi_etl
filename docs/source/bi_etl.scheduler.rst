@@ -1,31 +1,15 @@
 bi\_etl.scheduler package
 =========================
 
-Subpackages
------------
-
-.. toctree::
-   :maxdepth: 1
-
-   bi_etl.scheduler.scheduler_etl_jobs
-
 Submodules
 ----------
 
 .. toctree::
    :maxdepth: 1
 
-   bi_etl.scheduler.dependent_reasons
    bi_etl.scheduler.exceptions
-   bi_etl.scheduler.messages
-   bi_etl.scheduler.models
-   bi_etl.scheduler.queue_io
-   bi_etl.scheduler.scheduler
-   bi_etl.scheduler.scheduler_interface
-   bi_etl.scheduler.sdtout_queue
-   bi_etl.scheduler.special_tasks
    bi_etl.scheduler.status
-   bi_etl.scheduler.task
+   bi_etl.scheduler.etl_task
 
 Module contents
 ---------------

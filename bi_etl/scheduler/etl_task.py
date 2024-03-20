@@ -975,6 +975,9 @@ class ETLTask(object):
             stats_formatted = Statistics.format_statistics(stats)
             self.log.info(f"{self} statistics=\n{stats_formatted}")
 
+            # for entry, value in Statistics.flatten_statistics(stats).items():
+            #     self.log.info(f"{self}.{entry} = {value}")
+
             self.close(error=False)
         except Exception as e:  # pylint: disable=broad-except
             self.close(error=True)

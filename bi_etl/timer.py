@@ -69,6 +69,7 @@ class Timer(object):
             stats['start time'] = self.start_time
         stats['stop time'] = self.stop_time
         stats['seconds elapsed'] = self.seconds_elapsed_formatted
+        stats['total_seconds'] = self.seconds_elapsed
         if self.task_name is None:
             return stats
         else:

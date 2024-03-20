@@ -477,7 +477,7 @@ class ETLComponent(Iterable):
             stats['rows_read'] += 1
             if self.time_first_read:
                 if stats['rows_read'] == 1:
-                    stats['first row seconds'] = stats.timer.seconds_elapsed_formatted
+                    stats['first row seconds'] = stats.timer.seconds_elapsed
                     if self.log_first_row:
                         self.log_progress(row, stats)
 
