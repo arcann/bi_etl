@@ -11,15 +11,15 @@ import logging
 import math
 import sys
 import traceback
-from typing import *
 import warnings
 from datetime import datetime
+from typing import *
 
 import psutil
 # noinspection PyUnresolvedReferences
 from BTrees.OOBTree import OOBTree
-from sqlalchemy.sql import Selectable
 from sqlalchemy.sql.expression import bindparam
+from sqlalchemy.sql.selectable import GenerativeSelect
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
@@ -487,7 +487,7 @@ class Lookup(Iterable):
             return False
         return True
             
-    def _add_remote_stmt_where_clause(self, stmt: Selectable) -> Selectable:
+    def _add_remote_stmt_where_clause(self, stmt: GenerativeSelect) -> GenerativeSelect:
         """
         Only works if parent_component is based on bi_etl.components.readonlytable
         """
@@ -532,16 +532,19 @@ class Lookup(Iterable):
         -------
         A row
         """
-        assert hasattr(self.parent_component, 'execute'), \
-            f'ReadOnlyTable or class with execute method needed ' \
-            f'for DB lookup {type(self.parent_component)} will not work'
+        from bi_etl.components.readonlytable import ReadOnlyTable
+        if not isinstance(self.parent_component, ReadOnlyTable):
+            raise ValueError(
+                "find_in_remote_table requires that parent_component be ReadOnlyTable. "
+                f" got {repr(self.parent_component)}"
+            )
 
         self.stats.timer.start()        
         if self._remote_lookup_stmt is None:
-            # noinspection PyUnresolvedReferences
             stmt = self.parent_component.select()
             stmt = self._add_remote_stmt_where_clause(stmt)
-            self._remote_lookup_stmt = stmt.compile()
+            # noinspection PyUnresolvedReferences
+            self._remote_lookup_stmt = stmt.compile(bind=self.parent_component.database.bind)
 
         values_dict = self._get_remote_stmt_where_values(row)
 

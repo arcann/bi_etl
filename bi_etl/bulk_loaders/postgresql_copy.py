@@ -1,6 +1,3 @@
-# https://www.python.org/dev/peps/pep-0563/
-from __future__ import annotations
-
 import os.path
 import tempfile
 from pathlib import Path
@@ -9,17 +6,21 @@ from typing import *
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.bulk_loaders.postgresql_bulk_load_config import PostgreSQLBulkLoaderConfig
 from bi_etl.components.csv_writer import CSVWriter, QUOTE_MINIMAL
-from bi_etl.utility.postgresql.psycopg2_helpers import psycopg2_import_using_cursor
+from bi_etl.utility.postgresql.psycopg_helpers import psycopg_import_using_cursor
 
 if TYPE_CHECKING:
     from bi_etl.scheduler.task import ETLTask
     from bi_etl.components.table import Table
+else:
+    ETLTask = None
+    Table = None
 
 
 class PostgreSQLCopy(BulkLoader):
-    def __init__(self,
-                 config: PostgreSQLBulkLoaderConfig,
-                 ):
+    def __init__(
+            self,
+            config: PostgreSQLBulkLoaderConfig,
+    ):
         super().__init__(
         )
         self.config = config
@@ -37,11 +38,14 @@ class PostgreSQLCopy(BulkLoader):
         rows_inserted = 0
         conn = None
         try:
-            conn = table_object.table.bind.raw_connection()
-            conn.set_client_encoding(self.config.encoding)
+            conn = table_object.database.bind.raw_connection()
+
+            # conn.set_client_encoding(self.config.encoding)
+            conn.execute("SET client_encoding TO UTF8")
+
             cursor = conn.cursor()
             for file_name in local_files:
-                rows_inserted = psycopg2_import_using_cursor(
+                rows_inserted = psycopg_import_using_cursor(
                     cursor=cursor,
                     table_spec=table_object.qualified_table_name,
                     input_file_path=file_name,

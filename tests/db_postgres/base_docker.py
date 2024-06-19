@@ -130,5 +130,8 @@ class BaseDockerDB(SqliteDB):
         }
 
     def shutdown(self):
-        if self.container is not None:
-            self.container.stop()
+        #  The Ryuk container that is started by Testcontainers core will take care of stopping the singleton container.
+        # If we did shut down the container here, the singleton instance would not be ready for the
+        # next test suite that might need it.  Or at best, it would need to start the container back up.
+        #
+        pass

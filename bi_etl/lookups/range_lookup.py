@@ -9,10 +9,9 @@ from __future__ import annotations
 import typing
 from datetime import datetime
 
-from sqlalchemy.sql import Selectable
 from sqlalchemy.sql.expression import bindparam
+from sqlalchemy.sql.selectable import GenerativeSelect
 
-from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.row.row import Row
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.conversions import ensure_datetime
@@ -204,7 +203,7 @@ class RangeLookup(Lookup):
                 f"effective_date = {effective_date}"
             )
                 
-    def _add_remote_stmt_where_clause(self, stmt: Selectable) -> Selectable:
+    def _add_remote_stmt_where_clause(self, stmt: GenerativeSelect) -> GenerativeSelect:
         stmt = super(RangeLookup, self)._add_remote_stmt_where_clause(stmt)
         # noinspection PyUnresolvedReferences
         stmt = stmt.where(bindparam('eff_date') >= self.parent_component.get_column(self.begin_date))
@@ -241,6 +240,7 @@ class RangeLookup(Lookup):
 
         effective_date = kwargs.get('effective_date')
 
+        from bi_etl.components.readonlytable import ReadOnlyTable
         if not isinstance(self.parent_component, ReadOnlyTable):
             raise ValueError(
                 "find_in_remote_table requires that parent_component be ReadOnlyTable. "
@@ -252,21 +252,21 @@ class RangeLookup(Lookup):
         if self._remote_lookup_stmt is None:
             stmt = parent_table.select()
             stmt = self._add_remote_stmt_where_clause(stmt)
-            self._remote_lookup_stmt = stmt.compile()
+            self._remote_lookup_stmt = stmt.compile(bind=self.parent_component.database.bind)
             # Build a second statement that does the lookup without dates
-            # Which is what our parent Lookup does so we call that
+            # Which is what our parent Lookup does, so we call that
             stmt_no_date = parent_table.select()
             stmt_no_date = super(RangeLookup, self)._add_remote_stmt_where_clause(stmt_no_date)
             # order by the begin date
             stmt_no_date = stmt_no_date.order_by(parent_table.get_column(self.begin_date))
-            self._remote_lookup_stmt_no_date = stmt_no_date.compile()
+            self._remote_lookup_stmt_no_date = stmt_no_date.compile(bind=self.parent_component.database.bind)
 
         values_dict = self._get_remote_stmt_where_values(row, effective_date)
 
         rows = list(parent_table.execute(self._remote_lookup_stmt, values_dict))
         if len(rows) == 0:
             # Use the second statement that does the lookup without dates
-            # Which is what our parent Lookup does so we call that to set values
+            # Which is what our parent Lookup does, so we call that to set values
             values_dict = super(RangeLookup, self)._get_remote_stmt_where_values(row)
             results = parent_table.execute(self._remote_lookup_stmt_no_date, values_dict)
             all_key_rows = results.fetchall()
@@ -310,6 +310,13 @@ class RangeLookup(Lookup):
 
         Only works if parent_component is based on bi_etl.components.readonlytable
         """
+        from bi_etl.components.readonlytable import ReadOnlyTable
+        if not isinstance(self.parent_component, ReadOnlyTable):
+            raise ValueError(
+                "find_versions_list_in_remote_table requires that parent_component be ReadOnlyTable. "
+                f" got {repr(self.parent_component)}"
+            )
+
         self.stats.timer.start()
         if self._remote_lookup_stmt_no_date is None:
             # noinspection PyUnresolvedReferences
@@ -317,7 +324,7 @@ class RangeLookup(Lookup):
             # Call parent _add_remote_stmt_where_clause so that it doesn't add the date filter
             stmt = super()._add_remote_stmt_where_clause(stmt)
             stmt = stmt.order_by(self.begin_date)
-            self._remote_lookup_stmt_no_date = stmt.compile()
+            self._remote_lookup_stmt_no_date = stmt.compile(bind=self.parent_component.database.bind)
 
         values_dict = super()._get_remote_stmt_where_values(row)
 

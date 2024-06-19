@@ -187,7 +187,7 @@ class HistoryTableSourceBased(HistoryTable):
                  task: typing.Optional[ETLTask],
                  database: DatabaseMetadata,
                  table_name: str,
-                 table_name_case_sensitive: bool = None,
+                 table_name_case_sensitive: bool = True,
                  schema: str = None,
                  exclude_columns: frozenset = None,
                  **kwargs
@@ -480,7 +480,7 @@ class HistoryTableSourceBased(HistoryTable):
                                                      )
 
         if self.track_source_rows:
-            # Keep track of source records so we can check if target rows don't exist in source
+            # Keep track of source records, so we can check if target rows don't exist in source
             self.source_keys_processed.add(self.get_natural_key_tuple(source_mapped_as_target_row))
 
         if lookup_name is None:
@@ -604,11 +604,12 @@ class HistoryTableSourceBased(HistoryTable):
         rows_list = list(row_iter)
         for row in rows_list:
             pk_val = row[self.primary_key[0]]
-            if not isinstance(pk_val, int):
-                raise ValueError(f"Row has {pk_val} (not int) primary key value for {self.primary_key[0]} in {row.as_dict}")
-            elif pk_val < 0:
-                # Skip special rows
-                continue
+            if self.auto_generate_key:
+                if not isinstance(pk_val, int):
+                    raise ValueError(f"Row has {pk_val} (not int) primary key value for {self.primary_key[0]} in {row.as_dict}")
+                elif pk_val < 0:
+                    # Skip special rows
+                    continue
 
             if row.status == RowStatus.unknown:
                 pass

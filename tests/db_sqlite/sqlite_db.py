@@ -1,4 +1,5 @@
 import os
+import random
 from typing import Optional
 
 import sqlalchemy
@@ -28,17 +29,8 @@ class SqliteDB(object):
         return cls._instance
 
     def _new_init(self, *args, **kwargs):
-        self.instance_count = 0
-        self.temp_file = f"unit_tests_sqlite.db"
+        self.temp_file = f"unit_tests_sqlite_{random.randint(1, 999)}.db"
         self.container = None
-
-    def __init__(self):
-        self.instance_count += 1
-        print(f"init {self.__class__} now {self.instance_count} instance refs")
-
-    def __del__(self):
-        self.instance_count -= 1
-        print(f"del {self.__class__} now {self.instance_count} instance refs")
 
     # noinspection PyPep8Naming
     @property
@@ -68,6 +60,7 @@ class SqliteDB(object):
 
     def shutdown(self):
         if os.path.exists(self.temp_file):
+            print(f"{self.__class__.__name__} shutdown cleanup")
             try:
                 os.remove(self.temp_file)
             except PermissionError:
@@ -75,6 +68,8 @@ class SqliteDB(object):
                 pass
 
     def create_engine(self):
+        engine_url = self.get_url()
+        print(f"{self.__class__.__name__} engine url: {engine_url}")
         return sqlalchemy.create_engine(
             self.get_url(),
             **self.get_options()

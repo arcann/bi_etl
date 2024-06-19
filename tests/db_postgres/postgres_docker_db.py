@@ -1,3 +1,5 @@
+import unittest
+
 from testcontainers.postgres import PostgresContainer
 
 from tests.db_postgres.base_docker import BaseDockerDB
@@ -18,7 +20,21 @@ class PostgresDockerDB(BaseDockerDB):
     MAX_NAME_LEN = 63
 
     def get_container_class(self, image="postgres:latest"):
-        return PostgresContainer(image=image)
+        try:
+            # noinspection PyPackageRequirements
+            import psycopg
+            driver = 'psycopg'
+        except ImportError:
+            try:
+                # noinspection PyPackageRequirements
+                import psycopg2
+                driver = 'psycopg2'
+            except ImportError:
+                raise unittest.SkipTest(
+                    "Skip PostgreSQL test since driver not installed"
+                )
+        print(f"PostgresContainer driver={driver}")
+        return PostgresContainer(image=image, driver=driver)
 
     def get_options(self):
         # timeout after 1 second in case we have a deadlock that gets a query stuck

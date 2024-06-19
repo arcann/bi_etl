@@ -63,13 +63,7 @@ class BaseTestDatabase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        if cls.db_container is not None:
-            # noinspection PyBroadException
-            try:
-                cls.db_container.shutdown()
-            except Exception:
-                pass
-        del cls.db_container
+        cls.db_container.shutdown()
 
     @staticmethod
     def get_package_path() -> Path:

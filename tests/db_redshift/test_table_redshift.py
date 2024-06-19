@@ -1,6 +1,3 @@
-import importlib
-import subprocess
-import sys
 import unittest
 
 import sqlalchemy
@@ -9,40 +6,15 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from bi_etl.bulk_loaders.redshift_s3_csv_loader import RedShiftS3CSVBulk
 from bi_etl.components.table import Table
-from tests.config_for_tests import EnvironmentSpecificConfigForTests
 from tests.db_base_tests.base_test_table import BaseTestTable
 from tests.db_redshift.redshift_db import RedshiftDB
 
 
 class TestTableRedshift(BaseTestTable):
-    env_config: EnvironmentSpecificConfigForTests
-
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        try:
-            cls.env_config = EnvironmentSpecificConfigForTests()
-            if cls.env_config.test_setup is not None:
-                if cls.env_config.test_setup.libraries_to_install is not None:
-                    for lib_name in cls.env_config.test_setup.libraries_to_install:
-                        package_name = lib_name.replace('-', '_')
-                        try:
-                            importlib.import_module(package_name)
-                            print(f"libraries_to_install {lib_name} package = {package_name} import OK")
-                        except ImportError as e:
-                            print(f"libraries_to_install {lib_name} import {package_name} got {e} so installing it")
-                            subprocess.check_call([sys.executable, '-m', 'pip', 'install', lib_name])
-
-            if cls.env_config.redshift_database is None:
-                raise unittest.SkipTest(f"Skip {cls} due to no redshift_database section")
-            if cls.env_config.s3_bulk is None:
-                raise unittest.SkipTest(f"Skip {cls} due to no s3_bulk section")
-            # For this test class db_container will be instance level
-            cls.db_container = RedshiftDB(cls.env_config.redshift_database)
-        except FileNotFoundError as e:
-            raise unittest.SkipTest(f"Skip {cls} due to not finding config {e}")
-        except ImportError as e:
-            raise unittest.SkipTest(f"Skip {cls} due to not finding required module {e}")
+        cls.db_container = RedshiftDB()
 
     def setUp(self):
         super().setUp()

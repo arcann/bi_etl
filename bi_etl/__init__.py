@@ -1,5 +1,3 @@
-"""
-Don't import anything here! 
+from importlib.metadata import version
 
-That would break the ability of setup.py to import bi_etl.version
-"""
+__version__ = version('bi-etl')

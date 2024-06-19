@@ -32,6 +32,9 @@ class BaseTestHstTable(BaseTestDatabase):
     # Only set UPSERT_COMMIT_EACH_PASS to True for debugging purposes
     UPSERT_COMMIT_EACH_PASS = False
 
+    type1_map = dict()
+    next_type1 = 1
+
     def setUp(self):
         super().setUp()
         self.test_file_search_folders.append('test_hst_table_data')
@@ -59,6 +62,11 @@ class BaseTestHstTable(BaseTestDatabase):
                     key_list.remove(target_table.end_date_column)
             self.assertIsNotNone(
                 key_list,
+                f"Test definition error. key_list not provided and table {target_table} has no natural_key key"
+            )
+            self.assertGreater(
+                len(key_list),
+                0,
                 f"Test definition error. key_list not provided and table {target_table} has no natural_key key"
             )
 
@@ -327,6 +335,13 @@ class BaseTestHstTable(BaseTestDatabase):
 
                 yield row
 
+    def _manually_generate_type_1_srgt(self, row: Row):
+        text_col = row['text_col']
+        if text_col not in self.type1_map:
+            self.type1_map[text_col] = self.next_type1
+            self.next_type1 += 1
+        row['type_1_srgt'] = self.type1_map[text_col]
+
     def _testInsertAndUpsert(
             self,
             load_cache: bool,
@@ -352,17 +367,31 @@ class BaseTestHstTable(BaseTestDatabase):
             if check_for_deletes:
                 tbl.track_source_rows = True
 
+            tbl.natural_key = ['text_col']
+
             if use_type2:
-                tbl.primary_key = ['type_2_srgt']
                 tbl.auto_generate_key = True
-                tbl.natural_key = ['text_col']
+
             if use_type1:
                 tbl.type_1_surrogate = 'type_1_srgt'
+
+            if use_type2:
+                tbl.primary_key = ['type_2_srgt']
+                should_manually_generate_type_1_srgt = False
+            else:
+                if use_type1:
+                    tbl.primary_key = ['type_1_srgt', tbl.begin_date_column]
+                    should_manually_generate_type_1_srgt = True
+                else:
+                    tbl.primary_key = ['text_col', tbl.begin_date_column]
+                    should_manually_generate_type_1_srgt = False
 
             if load_cache:
                 tbl.fill_cache()
 
             for source_row in self._gen_rows_from_csv('test1_insert.csv'):
+                if should_manually_generate_type_1_srgt:
+                    self._manually_generate_type_1_srgt(source_row)
                 tbl.insert_row(source_row)
             tbl.commit()
 
@@ -394,6 +423,8 @@ class BaseTestHstTable(BaseTestDatabase):
 
             print("Perform upserts")
             for source_row in self._gen_rows_from_csv('test1_upsert.csv', transform=False):
+                if should_manually_generate_type_1_srgt:
+                    self._manually_generate_type_1_srgt(source_row)
                 self._transform_csv_row(source_row)
                 if begin_date_source == BeginDateSource.IN_ROW:
                     source_row['begin_date'] = update_time

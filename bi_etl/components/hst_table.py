@@ -674,7 +674,7 @@ class HistoryTable(Table):
                 and self.auto_generate_key
                 and new_row.get(self.type_1_surrogate, None) is None):
             if new_row[self.begin_date_column] == self.default_begin_date:
-                self.autogenerate_sequence(new_row, seq_column=self.type_1_surrogate, force_override=False)
+                self._autogenerate_sequence_for_row(new_row, seq_column=self.type_1_surrogate, force_override=False)
             else:
                 msg = 'Insert cannot maintain type1 surrogate keys for anything except new values. Please use upsert.'
                 warnings.warn(msg)
@@ -761,7 +761,7 @@ class HistoryTable(Table):
             new_row.status = RowStatus.insert
 
             # Force the new row to get a new surrogate key (if enabled)
-            self.autogenerate_key(new_row, force_override=True)
+            self._auto_generate_key_for_row(new_row, force_override=True)
 
             # Apply updates to the new row (use parent class routine to finish the work)
             # It won't send update since new_row.status = RowStatus.insert
@@ -1035,7 +1035,7 @@ class HistoryTable(Table):
                 new_row.set_keeping_parent(type_1_surrogate, e.first_existing_row[type_1_surrogate])
 
             # Generate a new type 2 surrogate key value    
-            self.autogenerate_key(new_row, force_override=True)
+            self._auto_generate_key_for_row(new_row, force_override=True)
 
             if self.last_update_date is not None:
                 self.set_last_update_date(new_row)
@@ -1063,10 +1063,10 @@ class HistoryTable(Table):
 
             # Generate a new type 1 key value
             if type_1_surrogate is not None and self.auto_generate_key:
-                self.autogenerate_sequence(new_row, seq_column=type_1_surrogate, force_override=True)
+                self._autogenerate_sequence_for_row(new_row, seq_column=type_1_surrogate, force_override=True)
 
                 # Generate a new type 2 surrogate key value
-            self.autogenerate_key(new_row, force_override=True)
+            self._auto_generate_key_for_row(new_row, force_override=True)
 
             if self.last_update_date is not None:
                 self.set_last_update_date(new_row)
@@ -2172,7 +2172,7 @@ class HistoryTable(Table):
         if self.natural_key is not None:
             if len(self.natural_key) == 0:
                 raise ValueError(f"Empty natural key for {self}")
-            if not self.autogenerate_key:
+            if not self.auto_generate_key:
                 raise ValueError(
                     f"Natural key for {self} when autogenerate_key = False and primary key is {self.primary_key}"
                     )

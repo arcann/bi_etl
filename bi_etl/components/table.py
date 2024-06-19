@@ -14,7 +14,7 @@ import sys
 import textwrap
 import traceback
 import warnings
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, time, timedelta, timezone
 from decimal import Decimal
 from decimal import InvalidOperation
 from typing import *
@@ -196,6 +196,8 @@ class Table(ReadOnlyTable):
             table_name_case_sensitive: bool = True,
             schema: Optional[str] = None,
             exclude_columns: Optional[set] = None,
+            batch_size: int = DEFAULT_BATCH_SIZE,
+            delete_flag: Optional[str] = None,
             **kwargs
     ):
         # Don't pass kwargs up. They should be set here at the end
@@ -282,6 +284,9 @@ class Table(ReadOnlyTable):
         self.pending_update_rows: Dict[tuple, PendingUpdate] = dict()
 
         self._coerce_methods_built = False
+
+        self.batch_size = batch_size
+        self.delete_flag = delete_flag
 
         # Should be the after all self attributes are created
         self.set_kwattrs(**kwargs)
@@ -421,7 +426,7 @@ class Table(ReadOnlyTable):
         if value == Table.DeleteMethod.bulk_load:
             raise ValueError('Do not manually set bulk mode property. Use set_bulk_loader instead.')
 
-    def autogenerate_sequence(
+    def _autogenerate_sequence_for_row(
             self,
             row: Row,
             seq_column: str,
@@ -435,7 +440,7 @@ class Table(ReadOnlyTable):
             row.set_keeping_parent(seq_column_obj.name, next_key)
             return next_key
 
-    def autogenerate_key(
+    def _auto_generate_key_for_row(
             self,
             row: Row,
             force_override: bool = True,
@@ -450,7 +455,7 @@ class Table(ReadOnlyTable):
                     f"Can't auto generate a compound key with table {self} pk={self.primary_key}"
                 )
             key = pk_list[0]
-            return self.autogenerate_sequence(row, seq_column=key, force_override=force_override)
+            return self._autogenerate_sequence_for_row(row, seq_column=key, force_override=force_override)
 
     # noinspection PyUnresolvedReferences
     def _trace_data_type(
@@ -958,7 +963,7 @@ class Table(ReadOnlyTable):
                         """
             ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
-        if self.table.bind.dialect.dialect_description == 'mssql+pyodbc':
+        if self.database.dialect.dialect_description == 'mssql+pyodbc':
             # fast_executemany Currently causes this error on datetime update (dimension load)
             # [Microsoft][ODBC Driver 17 for SQL Server]Datetime field overflow. Fractional second precision exceeds the scale specified in the parameter binding. (0)
             # Also see https://github.com/sqlalchemy/sqlalchemy/issues/4418
@@ -1276,7 +1281,7 @@ class Table(ReadOnlyTable):
                 elif t_type.python_type == datetime:
                     # If we already have a date or datetime value
                     if isinstance(target_column_value, datetime):
-                        if 'mssql' in self.table.bind.dialect.dialect_description:
+                        if 'mssql' in self.database.dialect.dialect_description:
                             # fast_executemany Currently causes this error on datetime update (dimension load)
                             # [Microsoft][ODBC Driver 17 for SQL Server]Datetime field overflow. Fractional second precision exceeds the scale specified in the parameter binding. (0)
                             # Also see https://github.com/sqlalchemy/sqlalchemy/issues/4418
@@ -1613,7 +1618,7 @@ class Table(ReadOnlyTable):
             parent_stats=stats,
         )
 
-        self.autogenerate_key(new_row, force_override=False)
+        self._auto_generate_key_for_row(new_row, force_override=False)
 
         if self.delete_flag is not None:
             if self.delete_flag not in new_row or new_row[self.delete_flag] is None:
@@ -1817,7 +1822,7 @@ class Table(ReadOnlyTable):
                     for key_name, key_value in key_values_dict.items():
                         key = self.get_column(key_name)
                         stmt = stmt.where(key == bindparam(key.name, type_=key.type))
-                    stmt = stmt.compile()
+                    stmt = stmt.compile(bind=self.database.bind)
                     self.pending_delete_statements.add_statement(delete_stmt_key, stmt)
 
                 self.pending_delete_statements.append_values_by_key(delete_stmt_key, key_values_dict)
@@ -1878,20 +1883,20 @@ class Table(ReadOnlyTable):
         set_of_key_tuples
             List of tuples comprising the primary key values.
             This list represents the rows that should *not* be deleted.
-        lookup_name: str
+        lookup_name:
             The name of the lookup to use to find key tuples.
-        criteria_list : string or list of strings
+        criteria_list :
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        criteria_dict : dict
+        criteria_dict:
             Dict keys should be columns, values are set using = or in
-        use_cache_as_source: bool
+        use_cache_as_source:
             Attempt to read existing rows from the cache?
-        stat_name: string
+        stat_name:
             Name of this step for the ETLTask statistics. Default = 'delete_not_in_set'    
-        progress_frequency: int
+        progress_frequency:
             How often (in seconds) to output progress messages. Default 10. None for no progress messages.
-        parent_stats: bi_etl.statistics.Statistics
+        parent_stats:
             Optional Statistics object to nest this steps statistics in.         
             Default is to place statistics in the ETLTask level statistics.
         """
@@ -1969,18 +1974,18 @@ class Table(ReadOnlyTable):
         
         Parameters
         ----------
-        criteria_list : string or list of strings
+        criteria_list :
             Each string value will be passed to :meth:`sqlalchemy.sql.expression.Select.where`.
             https://goo.gl/JlY9us
-        criteria_dict : dict
+        criteria_dict :
             Dict keys should be columns, values are set using = or in
-        use_cache_as_source: bool
+        use_cache_as_source:
             Attempt to read existing rows from the cache?
         allow_delete_all:
             Allow this method to delete ALL rows if no source rows were processed
-        stat_name: string
+        stat_name:
             Name of this step for the ETLTask statistics.
-        parent_stats: bi_etl.statistics.Statistics
+        parent_stats:
             Optional Statistics object to nest this steps statistics in.
             Default is to place statistics in the ETLTask level statistics.        
 
@@ -2052,7 +2057,7 @@ class Table(ReadOnlyTable):
         if criteria_dict is None:
             criteria_dict = dict()
         # Do no process rows that are already deleted
-        criteria_dict = {self.delete_flag: self.delete_flag_no}
+        criteria_dict[self.delete_flag] = self.delete_flag_no
 
         self.update_not_in_set(
             updates_to_make=self._logical_delete_update,
@@ -2113,6 +2118,7 @@ class Table(ReadOnlyTable):
             criteria_dict=criteria_dict,
             stat_name='logically_delete_not_processed',
             parent_stats=parent_stats,
+            use_cache_as_source=use_cache_as_source,
             **kwargs
         )
         self.source_keys_processed = set()
@@ -2176,7 +2182,7 @@ class Table(ReadOnlyTable):
     def get_current_time(self) -> datetime:
         if self.use_utc_times:
             # Returns the current UTC date and time, as a naive datetime object.
-            return datetime.utcnow()
+            return datetime.now(timezone.utc).replace(tzinfo=None)
         else:
             return datetime.now()
 
@@ -2264,7 +2270,7 @@ class Table(ReadOnlyTable):
                         col_obj = self.get_column(c)
                         bind_name = col_obj.name
                         update_stmt = update_stmt.values({c: bindparam(bind_name, type_=col_obj.type)})
-                    update_stmt = update_stmt.compile()
+                    update_stmt = update_stmt.compile(bind=self.database.bind)
                     pending_update_statements.add_statement(update_stmt_key, update_stmt)
 
                 stmt_values = dict()
@@ -2777,6 +2783,7 @@ class Table(ReadOnlyTable):
                     ):
                 raise RuntimeError(f"{stat_name} called before any source rows were processed.")
         self.update_not_in_set(
+            lookup_name=lookup_name,
             updates_to_make=update_row,
             set_of_key_tuples=self.source_keys_processed,
             criteria_list=criteria_list,
@@ -2958,7 +2965,7 @@ class Table(ReadOnlyTable):
             if additional_insert_values:
                 for colName, value in additional_insert_values.items():
                     new_row[colName] = value
-            self.autogenerate_key(new_row, force_override=True)
+            self._auto_generate_key_for_row(new_row, force_override=True)
             self.insert_row(new_row, parent_stats=stats)
             stats['insert new called'] += 1
             if insert_callback:
@@ -3003,7 +3010,7 @@ class Table(ReadOnlyTable):
         source_row = self.build_row(source_row)
 
         if self.track_source_rows:
-            # Keep track of source records,, so we can check if target rows don't exist in source
+            # Keep track of source records, so we can check if target rows don't exist in source
             self.source_keys_processed.add(self.get_natural_key_tuple(source_row))
 
         try:
@@ -3217,7 +3224,7 @@ class Table(ReadOnlyTable):
                     'default',  # Used for inserts
                     'sql_upsert',
                     'singly',  # Really should not be open, it gets rolled back
-                    # Any others that exist will be commited last
+                    # Any others that exist will be committed last
                 ]
 
                 self.log.info(
@@ -3290,7 +3297,7 @@ class Table(ReadOnlyTable):
                ")"
 
     def _safe_temp_table_name(self, proposed_name):
-        max_identifier_length = self.database.bind.dialect.max_identifier_length
+        max_identifier_length = self.database.dialect.max_identifier_length
         if len(proposed_name) > max_identifier_length:
             alpha_code = int2base(abs(hash(proposed_name)), 36)
             proposed_name = f"tmp{alpha_code}"
@@ -3430,13 +3437,11 @@ class Table(ReadOnlyTable):
     ):
         # Multiple Table Updates
         # https://docs.sqlalchemy.org/en/14/core/tutorial.html#multiple-table-updates
-        conn = self.connection(connection_name)
         database_type = self.database.dialect_name
 
         if extra_where is not None:
             and_extra_where = f"AND {extra_where}"
         else:
-            extra_where = ''
             and_extra_where = ''
 
         sql = None
@@ -3495,6 +3500,7 @@ class Table(ReadOnlyTable):
                     set_statement_list.append(f"{set_entry[0]} = ({select_part})")
 
                     set_delimiter = ',\n'
+                    # noinspection SqlSignature
                     sql = f"""
                         UPDATE {self.qualified_table_name} SET {set_delimiter.join(set_statement_list)}
                         WHERE EXISTS ({select_part})

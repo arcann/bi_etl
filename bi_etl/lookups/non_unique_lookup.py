@@ -231,13 +231,19 @@ class NonUniqueLookup(Lookup):
 
         Only works if parent_component is based on bi_etl.components.readonlytable
         """
+        from bi_etl.components.readonlytable import ReadOnlyTable
+        if not isinstance(self.parent_component, ReadOnlyTable):
+            raise ValueError(
+                "find_in_remote_table requires that parent_component be ReadOnlyTable. "
+                f" got {repr(self.parent_component)}"
+            )
+
         self.stats.timer.start()
         if self._remote_lookup_stmt is None:
-            # noinspection PyUnresolvedReferences
             stmt = self.parent_component.select()
             stmt = super()._add_remote_stmt_where_clause(stmt)
             stmt = stmt.order_by(self.parent_component.primary_key)
-            self._remote_lookup_stmt = stmt.compile()
+            self._remote_lookup_stmt = stmt.compile(bind=self.parent_component.database.bind)
 
         values_dict = super()._get_remote_stmt_where_values(row)
 

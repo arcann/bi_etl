@@ -8,7 +8,7 @@ Submodules
    :maxdepth: 1
 
    bi_etl.utility.postgresql.psql_command
-   bi_etl.utility.postgresql.psycopg2_helpers
+   bi_etl.utility.postgresql.psycopg_helpers
 
 Module contents
 ---------------

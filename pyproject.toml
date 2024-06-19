@@ -16,7 +16,7 @@ repository = "https://github.com/arcann/bi_etl"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
-config-wrangler = {version=">=1.0.16", extras=["sqlalchemy", "aws"]}
+config-wrangler = {version=">=1.0.16", extras=["aws"]}
 SQLAlchemy = ">=1.4.49"
 semidbm = ">=0.5.1"
 psutil = ">=5.7.2"
@@ -34,8 +34,7 @@ pyarrow = {version = ">=10.0.1", optional = true}
 # Note: boto3 version is kept fairly current not due to
 # actual code needs but to limit version checking since
 # scanning hundreds of boto3 versions takes a long time.
-boto3 = {version = ">=1.27", optional = true}
-psycopg2 = "^2.9.7"
+boto3 = {version = ">=1.33", optional = true}
 jira = {version = ">=3.1.1", optional = true}
 slack-sdk = {version = ">=3.19.5", optional = true}
 pykeepass = {version = ">=4.0.6", optional = true}
@@ -66,13 +65,12 @@ all = ['keyring', 'pykeepass', 'jira', 'slack', 'dagster', 'dagster-webserver', 
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.1"
+pytest-xdist = "^3.6.1"
 toml = "^0.10.1"
 testcontainers = {version = ">=3.5.4", extras = ["mysql, oracle, postgresql, mssqlserver"]}
 tox = "^4.6.4"
 boto3 = ">=1.26"
 fastavro = ">=1.5.3"
-psycopg2 = ">=2.9.3"
-sqlalchemy-redshift = ">=0.8.14"
 sphinx-autobuild = "^2021.3.14"
 oracledb = ">=1.2.0"
 pip = ">=22.1.2"
@@ -82,6 +80,15 @@ pyarrow = ">=12.0.1,<15.0.0"
 pykeepass = ">=4.0.5"
 dagster = ">=1.5.7"
 dagster-webserver = ">=1.6.3"
+psycopg = {version = "^3.1.18", extras = ["binary"]}
+paramiko = "*"  # For docker ssh:// support
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-n=auto"
+testpaths = [
+    "tests",
+]
 
 [tool.poetry.group.docs]
 optional = true

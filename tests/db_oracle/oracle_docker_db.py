@@ -9,10 +9,10 @@ from urllib.error import HTTPError
 
 import sqlalchemy
 from sqlalchemy import VARCHAR
+from testcontainers.core.config import testcontainers_config
 from testcontainers.core.generic import DbContainer
-from testcontainers.oracle import OracleDbContainer
 
-from tests.db_oracle.container_oracledb import OracleDbContainerNoCX
+from tests.db_oracle.container_oracledb import OracleDbContainerNoCX, OracleDbContainerFixWait
 from tests.db_postgres.base_docker import BaseDockerDB
 
 __all__ = ['OracleDockerDB']
@@ -134,16 +134,26 @@ class OracleDockerDB(BaseDockerDB):
                 # Oracle Client library has already been initialized
                 pass
 
-    def get_container_class(self, image="wnameless/oracle-xe-11g-r2:latest"):
+    def get_container_class(self):
         if self.MODE == 'oracledb':
-            return OracleDbContainerNoCX(image=image)
+            return OracleDbContainerNoCX(username='test_user', password='secretpw')
         else:
-            return OracleDbContainer(image=image)
+            return OracleDbContainerFixWait(username='test_user', password='secretpw')
 
     def get_container(self) -> DbContainer:
         self._get_driver()
 
+        # testcontainers_config.max_tries = 300
+
+        print(f"${testcontainers_config.max_tries=}")
+        print(f"${testcontainers_config.sleep_time=}")
+        print(f"${testcontainers_config.timeout=}")
+
         container = super().get_container()
+
+        engine_url = container.get_connection_url()
+        print(f"{self.__class__.__name__} engine url: {engine_url}")
+
         return container
 
     def get_options(self):
