@@ -4,7 +4,7 @@
     <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
-    <option name="SDK_HOME" value="D:\code\bi_etl\.venv\Scripts\python.exe" />
+    <option name="SDK_HOME" value="$USER_HOME$/AppData/Local/pypoetry/Cache/virtualenvs/bi-etl-ieS5ysbK-py3.11/Scripts/python.exe" />
     <option name="SDK_NAME" value="Poetry (bi_etl)" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <option name="IS_MODULE_SDK" value="false" />
