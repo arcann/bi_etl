@@ -933,7 +933,7 @@ class HistoryTable(Table):
             source_mapped_as_target_row.set_keeping_parent(self.delete_flag, self.delete_flag_no)
 
         if self.track_source_rows:
-            # Keep track of source records so we can check if target rows don't exist in source
+            # Keep track of source records so that we can check if target rows don't exist in source
             self.source_keys_processed.add(self.get_natural_key_tuple(source_mapped_as_target_row))
 
         # Don't check in begin or end dates for differences

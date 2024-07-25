@@ -200,11 +200,11 @@ class HistoryTableSourceBased(HistoryTable):
                          table_name_case_sensitive=table_name_case_sensitive,
                          exclude_columns=exclude_columns,
                          )
-        self.prior_upsert_key = None
         self.prior_upsert_lookup_name = None
+        self.prior_upsert_key = None
+        self.prior_upsert_row = None
         self.prior_upsert_existing_rows_list = list()
         self.prior_upsert_existing_row_index = 0
-        self.prior_upsert_row = None
         self.prior_upsert_update_callback = None
         self.prior_upsert_insert_callback = None
         self.prior_upsert_stat_name = None
@@ -265,10 +265,13 @@ class HistoryTableSourceBased(HistoryTable):
         nk_tuple = lookup.get_hashable_combined_key(source_mapped_as_target_row)
 
         if self.prior_upsert_key != nk_tuple or self.prior_upsert_lookup_name != lookup_name:
-            # Check if this is the first row and not the end of a batch
+            # Check if this is the end of a batch
             if self.prior_upsert_key is not None:
                 # This is the end of a batch
                 self.finish_pending_existing_rows()
+
+            if self.inserts_use_default_begin_date:
+                source_mapped_as_target_row.set_keeping_parent(self.begin_date_column, self.default_begin_date)
 
             # Reset for the next list
             self.prior_upsert_row = None
@@ -386,7 +389,10 @@ class HistoryTableSourceBased(HistoryTable):
         if self.prior_upsert_row is not None:
             for existing_row in self.prior_upsert_existing_rows_list[self.prior_upsert_existing_row_index:]:
                 existing_begin_date = existing_row[self.begin_date_column]
-                excludes = set(self.primary_key)
+                if self.auto_generate_key:
+                    excludes = set(self.primary_key)
+                else:
+                    excludes = set()
                 excludes.add(self.end_date_column)
                 upsert_row = self.prior_upsert_row.subset(exclude=excludes)
                 upsert_row.set_keeping_parent(self.begin_date_column, existing_begin_date)
@@ -489,7 +495,8 @@ class HistoryTableSourceBased(HistoryTable):
         else:
             lookup = self.get_lookup(lookup_name)
 
-        if len(lookup.lookup_keys) == 1:  # Primary key, it can't be anything else unless not valid.
+        # if len(lookup.lookup_keys) == 1:  # Primary key, it can't be anything else unless not valid.
+        if False:  # Primary key, it can't be anything else unless not valid.
             # PK lookup doesn't need to deal with list of dates, so call the parent upsert routine directly
             return super().upsert(
                 source_row=source_mapped_as_target_row,

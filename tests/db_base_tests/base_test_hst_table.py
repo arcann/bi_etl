@@ -1,6 +1,7 @@
 """
 Created on Jan 27, 2016
 """
+import logging
 import typing
 import unittest
 from datetime import timedelta, datetime
@@ -37,6 +38,7 @@ class BaseTestHstTable(BaseTestDatabase):
 
     def setUp(self):
         super().setUp()
+        self.default_begin_date_source = BeginDateSource.SYSTEM_TIME
         self.test_file_search_folders.append('test_hst_table_data')
 
     # Override  _check_table_rows with a version that processes versioned records
@@ -349,8 +351,10 @@ class BaseTestHstTable(BaseTestDatabase):
             use_type1: bool,
             use_type2: bool,
             check_for_deletes: bool,
-            begin_date_source: BeginDateSource = BeginDateSource.SYSTEM_TIME,
+            begin_date_source: BeginDateSource = None,
     ):
+        if begin_date_source is None:
+            begin_date_source = self.default_begin_date_source
         self._create_table_2(
             tbl_name,
             use_type1,
@@ -392,12 +396,15 @@ class BaseTestHstTable(BaseTestDatabase):
             for source_row in self._gen_rows_from_csv('test1_insert.csv'):
                 if should_manually_generate_type_1_srgt:
                     self._manually_generate_type_1_srgt(source_row)
-                tbl.insert_row(source_row)
+                tbl.upsert(source_row)
             tbl.commit()
 
+            # Erase history of rows processed
+            tbl.source_keys_processed = set()
+
             # Validate data
-            print()
-            print("Validate inserts:")
+            self.log.info('')
+            self.log.info("Validate inserts:")
             self._check_table_rows(
                 expected_row_generator=self._gen_rows_from_csv('test1_insert_expected.csv'),
                 target_table=tbl,
@@ -420,22 +427,27 @@ class BaseTestHstTable(BaseTestDatabase):
             if begin_date_source == BeginDateSource.SYSTEM_TIME:
                 # Mock get_current_time so that it returns a time we can predict
                 tbl.get_current_time = lambda: update_time
+                tbl.default_effective_date = update_time
 
-            print("Perform upserts")
+            self.log.info("Perform upserts")
             for source_row in self._gen_rows_from_csv('test1_upsert.csv', transform=False):
                 if should_manually_generate_type_1_srgt:
                     self._manually_generate_type_1_srgt(source_row)
                 self._transform_csv_row(source_row)
                 if begin_date_source == BeginDateSource.IN_ROW:
-                    source_row['begin_date'] = update_time
+                    if tbl.begin_date_column not in source_row:
+                        source_row[tbl.begin_date_column] = update_time
+                    elif source_row[tbl.begin_date_column] is None:
+                        source_row[tbl.begin_date_column] = update_time
+                    # else use the begin date provided by the source file
 
                 if begin_date_source in {BeginDateSource.IN_ROW, BeginDateSource.SYSTEM_TIME}:
                     tbl.upsert(source_row)
-                else:
+                else:  # begin_date_source == BeginDateSource.PARAMETER
                     tbl.upsert(source_row, effective_date=update_time)
 
             if check_for_deletes:
-                print("Perform deletes")
+                self.log.info("Perform deletes")
                 # Note: For deletes IN_ROW is not really a valid source for the effective date
                 #       We'll pass the parameter instead
                 if begin_date_source in {BeginDateSource.SYSTEM_TIME}:
@@ -450,8 +462,8 @@ class BaseTestHstTable(BaseTestDatabase):
                 upsert_expected_file = 'test1_upsert_expected_with_deletes.csv'
             else:
                 upsert_expected_file = 'test1_upsert_expected_no_deletes.csv'
-            print()
-            print(f"Validate final results with {upsert_expected_file}")
+            self.log.info('')
+            self.log.info(f"Validate final results with {upsert_expected_file}")
             self._check_table_rows(
                 expected_row_generator=self._gen_rows_from_csv(upsert_expected_file),
                 target_table=tbl,
@@ -465,7 +477,7 @@ class BaseTestHstTable(BaseTestDatabase):
                         'default_end_dt': tbl.default_end_date,
                     },
                 ),
-                msg=f"{tbl_name} upsert_expected_rows check",
+                msg=f"{tbl_name} upsert_expected_rows check with {upsert_expected_file}",
             )
 
         self.mock_database.drop_table_if_exists(tbl_name)

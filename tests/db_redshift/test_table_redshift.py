@@ -6,6 +6,7 @@ from sqlalchemy.sql.sqltypes import Integer
 
 from bi_etl.bulk_loaders.redshift_s3_csv_loader import RedShiftS3CSVBulk
 from bi_etl.components.table import Table
+from tests.config_for_tests import EnvironmentSpecificConfigForTests
 from tests.db_base_tests.base_test_table import BaseTestTable
 from tests.db_redshift.redshift_db import RedshiftDB
 
@@ -15,6 +16,12 @@ class TestTableRedshift(BaseTestTable):
     def setUpClass(cls) -> None:
         super().setUpClass()
         cls.db_container = RedshiftDB()
+        try:
+            cls.env_config = EnvironmentSpecificConfigForTests()
+        except ValueError as e:
+            raise unittest.SkipTest(f"Skip {cls} due to config error {e}")
+        except FileNotFoundError as e:
+            raise unittest.SkipTest(f"Skip {cls} due to not finding config {e}")
 
     def setUp(self):
         super().setUp()

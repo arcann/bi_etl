@@ -287,8 +287,6 @@ class BaseTestTable(BaseTestDatabase):
                     )
                 )
                 raise RuntimeError("test")
-                # noinspection PyUnreachableCode
-                print("Other code might have been here")
         except RuntimeError:
             pass
 
@@ -412,7 +410,7 @@ class BaseTestTable(BaseTestDatabase):
             # Validate data
             rows_dict = dict()
             for row in tbl:
-                print(row)
+                self.log.debug(row)
                 rows_dict[row['col1']] = row
 
             self.assertEqual(len(rows_dict), rows_to_insert)
@@ -451,8 +449,7 @@ class BaseTestTable(BaseTestDatabase):
         # Validate data
         rows_dict = dict()
         for row in tbl:
-            print(row, row.values())
-            print(dict_to_str(row))
+            self.log.debug(dict_to_str(row))
             rows_dict[row['col1']] = row
 
         self.assertEqual(len(rows_dict), rows_to_insert)
@@ -543,8 +540,7 @@ class BaseTestTable(BaseTestDatabase):
             # Validate data
             rows_dict = dict()
             for row in tbl:
-                print(row, row.values())
-                print(dict_to_str(row))
+                self.log.debug(dict_to_str(row))
                 rows_dict[row['col1']] = row
 
             self.assertEqual(len(rows_dict), rows_to_insert1 + rows_to_insert2, 'row count check')
@@ -592,8 +588,7 @@ class BaseTestTable(BaseTestDatabase):
             # Validate data
             rows_dict = dict()
             for row in tbl:
-                print(row, row.values())
-                print(dict_to_str(row))
+                self.log.debug(dict_to_str(row))
                 rows_dict[row['col1']] = row
 
             self.assertEqual(len(rows_dict), rows_to_insert1 + rows_to_insert2)
@@ -652,7 +647,7 @@ class BaseTestTable(BaseTestDatabase):
         # Validate data
         rows_dict = dict()
         for row in tbl:
-            print(row, row['col1'], row['col2'])
+            self.log.debug(f"{row}, col1={row['col1']}, col2={row['col2']}")
             rows_dict[row['col1']] = row
 
         self.assertEqual(len(rows_dict), rows_to_insert)
@@ -716,7 +711,7 @@ class BaseTestTable(BaseTestDatabase):
         # Validate data
         rows_dict = dict()
         for row in tbl:
-            print(row, row['col1'], row['col2'])
+            self.log.debug(f"{row}, col1={row['col1']}, col2={row['col2']}")
             rows_dict[row['col1']] = row
 
         self.assertEqual(len(rows_dict), rows_to_insert)
@@ -756,7 +751,7 @@ class BaseTestTable(BaseTestDatabase):
         # Validate data
         rows_dict = dict()
         for row in tbl:
-            print(row, row['col1'], row['col2'])
+            self.log.debug(f"{row}, col1={row['col1']}, col2={row['col2']}")
             rows_dict[row['col1']] = row
 
         self.assertEqual(len(rows_dict), rows_to_insert)
@@ -795,7 +790,7 @@ class BaseTestTable(BaseTestDatabase):
         # Validate data
         rows_dict = dict()
         for row in tbl:
-            print(row, row['col1'], row['col2'])
+            self.log.debug(f"{row}, col1={row['col1']}, col2={row['col2']}")
             rows_dict[row['col1']] = row
 
         self.assertEqual(len(rows_dict), rows_to_insert)
@@ -919,7 +914,7 @@ class BaseTestTable(BaseTestDatabase):
         # Validate data
         rows_dict = dict()
         for row in tbl:
-            print(row, row['col1'], row.values())
+            self.log.debug(f"{row}, col1={row['col1']}, values={row.values()}")
             rows_dict[row['col1']] = row
 
         self.assertEqual(len(rows_dict), rows_to_insert)
@@ -956,7 +951,7 @@ class BaseTestTable(BaseTestDatabase):
             # Validate data
             rows_dict = dict()
             for row in tbl:
-                print(row, row.values())
+                self.log.debug(dict_to_str(row))
                 rows_dict[row['col1']] = row
 
             self.assertEqual(
@@ -997,7 +992,7 @@ class BaseTestTable(BaseTestDatabase):
         # Validate data
         rows_dict = dict()
         for row in tbl:
-            print(row, row.values())
+            self.log.debug(dict_to_str(row))
             rows_dict[row['col1']] = row
 
         self.assertEqual(
@@ -1446,8 +1441,7 @@ class BaseTestTable(BaseTestDatabase):
         # Validate data
         rows_dict = dict()
         for row in tbl:
-            print(row, row.values())
-            print(dict_to_str(row))
+            self.log.debug(dict_to_str(row))
             rows_dict[row['col1']] = row
 
         self.assertEqual(len(rows_dict), 5)
@@ -1499,7 +1493,7 @@ class BaseTestTable(BaseTestDatabase):
             # Validate no data
             rows_dict = dict()
             for row in tbl:
-                print(row)
+                self.log.debug(row)
                 rows_dict[row['col1']] = row
 
             self.assertEqual(len(rows_dict), 0, 'Truncate did not remove rows')
@@ -1519,7 +1513,7 @@ class BaseTestTable(BaseTestDatabase):
             # Validate no data
             rows_dict = dict()
             for row in tbl:
-                print(row)
+                self.log.debug(row)
                 rows_dict[row['col1']] = row
 
             self.assertEqual(len(rows_dict), 0, 'Rollback did not remove rows')

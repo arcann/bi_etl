@@ -59,8 +59,8 @@ class BaseTestSQLQuery(BaseTestDatabase):
 
             # Validate data
             for sql_row, expected_row in zip(sql, expected_rows):
-                print(sql_row.values())
+                self.log.debug(sql_row.values())
                 expected_row = expected_row.subset(keep_only=['id', 'text_col', 'date_col', 'float_col'])
                 expected_row['date_col'] = self._sql_query_date_conv(expected_row['date_col'])
-                print(expected_row.values())
+                self.log.debug(expected_row.values())
                 self._compare_rows(expected_row, actual_row=sql_row)

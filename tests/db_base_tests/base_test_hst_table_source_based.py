@@ -30,8 +30,13 @@ class BaseTestHistoryTableSourceBased(BaseTestHstTable):
             use_type1: bool,
             use_type2: bool,
             check_for_deletes: bool,
-            begin_date_source: BeginDateSource = BeginDateSource.SYSTEM_TIME,
+            begin_date_source: BeginDateSource = None,
     ):
+        # Only IN_ROW is supported for HistoryTableSourceBased
+        if begin_date_source is None:
+            begin_date_source = BeginDateSource.IN_ROW
+        if begin_date_source != BeginDateSource.IN_ROW:
+            self.log.warning(f"Only IN_ROW is supported for HistoryTableSourceBased. Got {begin_date_source}")
 
         super()._testInsertAndUpsert(
             load_cache=load_cache,
@@ -39,9 +44,6 @@ class BaseTestHistoryTableSourceBased(BaseTestHstTable):
             use_type1=use_type1,
             use_type2=use_type2,
             check_for_deletes=check_for_deletes,
-            # Only IN_ROW is supported for HistoryTableSourceBased
-            # TODO: This will lead to running the same test twice,
-            #       but we are not yet ready to change the default to IN_ROW
             begin_date_source=BeginDateSource.IN_ROW,
         )
 

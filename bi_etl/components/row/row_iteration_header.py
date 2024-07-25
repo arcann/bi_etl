@@ -305,7 +305,7 @@ class RowIterationHeader(object):
 
     def _key_error(self, column_name) -> KeyError:
         return KeyError(
-            f"{self.logical_name} has no item {column_name} "
+            f"{self.logical_name} has no item '{column_name}' "
             f"it does have {self._columns_in_order}"
             )
 

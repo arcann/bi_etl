@@ -1,3 +1,4 @@
+import logging
 import os
 import unittest
 from pathlib import Path
@@ -9,6 +10,8 @@ from bi_etl.utility.run_sql_script import RunSQLScript
 class TestRunSQLScript(unittest.TestCase):
 
     def setUp(self):
+        self.log = logging.getLogger(__name__)
+        self.log.setLevel(logging.DEBUG)
         self.config = build_config()
 
     def test_init_various_cwd(self):
@@ -27,7 +30,7 @@ class TestRunSQLScript(unittest.TestCase):
                 package_path / 'docs',
             ]:
                 os.chdir(cwd)
-                print(f"Test from {cwd}")
+                self.log.debug(f"Test from {cwd}")
 
                 # Test with various
                 for script_path, script_name in [
@@ -36,7 +39,7 @@ class TestRunSQLScript(unittest.TestCase):
                     (None, "tests/sql/test1.sql"),
                     ('.', "tests/sql/test1.sql"),
                 ]:
-                    print(f"--Test with path name combo of {script_path} and {script_name}")
+                    self.log.debug(f"--Test with path name combo of {script_path} and {script_name}")
                     script = RunSQLScript(
                         config=self.config,
                         database_entry='target_database',

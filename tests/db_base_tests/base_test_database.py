@@ -26,6 +26,7 @@ from sqlalchemy.sql.sqltypes import Time
 
 from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.row.row import Row
+from bi_etl.conversions import str2date, str2datetime
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.task import ETLTask
 from tests.config_for_tests import build_config
@@ -151,8 +152,8 @@ class BaseTestDatabase(unittest.TestCase):
         return self.db_container.NUMERIC(precision=precision, scale=scale)
 
     def print_ddl(self, sa_table: sqlalchemy.schema.Table):
-        print("DDL:")
-        print(CreateTable(sa_table).compile(self.mock_database.bind))
+        self.log.debug("DDL:")
+        self.log.debug(CreateTable(sa_table).compile(self.mock_database.bind))
 
     def _get_column_list_table_1(self) -> List[Column]:
         cols = [
@@ -258,59 +259,71 @@ class BaseTestDatabase(unittest.TestCase):
         errors_dict = dict()
         has_error = False
         for col in expected_row:
-            if skip_testing is not None:
-                if col in skip_testing:
-                    continue
-            expected = expected_row[col]
-            if special_check_values is not None:
-                if col in special_check_values:
-                    if expected in special_check_values[col]:
-                        expected = special_check_values[col][expected]
-
-            actual = actual_row[col]
             try:
-                if isinstance(expected, float) or isinstance(actual, float):
-                    self.assertEquivalentNumber(expected, actual, f"{col}: Expected {expected} got {actual}")
-                elif isinstance(expected, timedelta) or isinstance(actual, timedelta):
-                    if isinstance(expected, str):
-                        expected = timedelta(seconds=float(expected))
-                    elif isinstance(expected, float):
-                        expected = timedelta(seconds=expected)
-                    elif isinstance(expected, int):
-                        expected = timedelta(seconds=expected)
+                if skip_testing is not None:
+                    if col in skip_testing:
+                        continue
+                expected = expected_row[col]
+                if special_check_values is not None:
+                    if col in special_check_values:
+                        if expected in special_check_values[col]:
+                            expected = special_check_values[col][expected]
 
-                    if isinstance(actual, str):
-                        actual = timedelta(seconds=float(actual))
-                    elif isinstance(actual, float):
-                        actual = timedelta(seconds=actual)
-                    elif isinstance(expected, int):
-                        # noinspection PyTypeChecker
-                        actual = timedelta(seconds=actual)
+                actual = actual_row[col]
+                if isinstance(expected, str) and isinstance(actual, datetime):
+                    # Special values should have already been taken care of
+                    expected = str2datetime(expected, '%Y-%m-%d %H:%M:%S')
+                elif isinstance(expected, str) and isinstance(actual, date):
+                    try:
+                        expected = str2date(expected, '%Y-%m-%d')
+                    except ValueError:
+                        expected = str2datetime(expected, '%Y-%m-%d %H:%M:%S').date()
 
-                    self.assertEqual(expected, actual, f"{col}: Expected {expected} got {actual}")
+                try:
+                    if isinstance(expected, float) or isinstance(actual, float):
+                        self.assertEquivalentNumber(expected, actual, f"{col}: Expected {expected} got {actual}")
+                    elif isinstance(expected, timedelta) or isinstance(actual, timedelta):
+                        if isinstance(expected, str):
+                            expected = timedelta(seconds=float(expected))
+                        elif isinstance(expected, float):
+                            expected = timedelta(seconds=expected)
+                        elif isinstance(expected, int):
+                            expected = timedelta(seconds=expected)
 
-                elif isinstance(expected, self.ApproxDatetime):
-                    self.assertIsNotNone(actual, f"{col}: Expected {expected} got {actual}")
-                    self.assertTrue(expected.matches(actual), f"{col}: Expected {expected} got {actual}")
-                elif self.db_container.DATE_AS_DATETIME and isinstance(expected, datetime) and isinstance(actual, datetime):
-                    # Since datetime is also date... we have to check the case where both are datetime first
-                    self.assertEqual(expected, actual, f"{col}: Expected {expected} got {actual}")
-                elif self.db_container.DATE_AS_DATETIME and isinstance(expected, date) and isinstance(actual, datetime):
-                    self.assertEqual(expected, actual.date(), f"{col}: Expected {expected} got {actual}")
-                    self.assertIn(actual.hour, {0, 12})
-                    self.assertIn(actual.minute, {0})
-                    self.assertIn(actual.second, {0})
-                elif self.db_container.DATE_AS_DATETIME and isinstance(expected, datetime) and isinstance(actual, date):
-                    self.assertEqual(expected.date(), actual, f"{col}: Expected {expected} got {actual}")
-                    self.assertIn(expected.hour, {0, 12})
-                    self.assertIn(expected.minute, {0})
-                    self.assertIn(expected.second, {0})
-                else:
-                    self.assertEqual(expected, actual, f"{col}: Expected {expected} got {actual}")
-                errors_dict[col] = f"OK. Both values are {actual}"
-            except AssertionError as e:
-                has_error = True
-                errors_dict[col] = str(e)
+                        if isinstance(actual, str):
+                            actual = timedelta(seconds=float(actual))
+                        elif isinstance(actual, float):
+                            actual = timedelta(seconds=actual)
+                        elif isinstance(expected, int):
+                            # noinspection PyTypeChecker
+                            actual = timedelta(seconds=actual)
+
+                        self.assertEqual(expected, actual, f"{col}: Expected {expected} got {actual}")
+
+                    elif isinstance(expected, self.ApproxDatetime):
+                        self.assertIsNotNone(actual, f"{col}: Expected {expected} got {actual}")
+                        self.assertTrue(expected.matches(actual), f"{col}: Expected {expected} got {actual}")
+                    elif self.db_container.DATE_AS_DATETIME and isinstance(expected, datetime) and isinstance(actual, datetime):
+                        # Since datetime is also date... we have to check the case where both are datetime first
+                        self.assertEqual(expected, actual, f"{col}: Expected {expected} got {actual}")
+                    elif self.db_container.DATE_AS_DATETIME and isinstance(expected, date) and isinstance(actual, datetime):
+                        self.assertEqual(expected, actual.date(), f"{col}: Expected {expected} got {actual}")
+                        self.assertIn(actual.hour, {0, 12})
+                        self.assertIn(actual.minute, {0})
+                        self.assertIn(actual.second, {0})
+                    elif self.db_container.DATE_AS_DATETIME and isinstance(expected, datetime) and isinstance(actual, date):
+                        self.assertEqual(expected.date(), actual, f"{col}: Expected {expected} got {actual}")
+                        self.assertIn(expected.hour, {0, 12})
+                        self.assertIn(expected.minute, {0})
+                        self.assertIn(expected.second, {0})
+                    else:
+                        self.assertEqual(expected, actual, f"{col}: Expected {expected} got {actual}")
+                    errors_dict[col] = f"OK. Both values are {actual}"
+                except AssertionError as e:
+                    has_error = True
+                    errors_dict[col] = str(e)
+            except ValueError as e:
+                raise ValueError(f"{e} on column {col} on actual_row {actual_row} to expected {expected_row}")
 
         if has_error:
             error_parts = list()
