@@ -11,7 +11,7 @@ from config_wrangler.config_types.dynamically_referenced import DynamicallyRefer
 
 
 class Notifiers(ConfigHierarchy):
-    failures: List[DynamicallyReferenced]
+    failures: List[DynamicallyReferenced] = []
     failed_notifications: Optional[List[DynamicallyReferenced]] = None
 
 
@@ -42,9 +42,9 @@ class BI_ETL_Config_Section(ConfigHierarchy):
 class BI_ETL_Config_Base(ConfigRoot):
     bi_etl: BI_ETL_Config_Section
 
-    logging: LoggingConfig
+    logging: LoggingConfig = LoggingConfig(log_levels={})
 
-    notifiers: Notifiers
+    notifiers: Notifiers = Notifiers(failures=[])
 
     # Child classes inheriting from here will add their own sections
 
