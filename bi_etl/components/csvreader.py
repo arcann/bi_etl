@@ -239,6 +239,13 @@ class CSVReader(ETLComponent):
         )
 
     @property
+    def _file_name(self) -> str:
+        try:
+            return self.file.name
+        except AttributeError:
+            return f'Non-file: {type(self.file)}'
+
+    @property
     def reader(self) -> csv.reader:
         """
         Build or get the csv.reader object.
@@ -256,18 +263,14 @@ class CSVReader(ETLComponent):
                     sample_data = sample_data.replace('\r\n', '\n')
                     dialect = csv.Sniffer().sniff(sample_data, delimiters=delimiters)
                 except csv.Error as e:
-                    try:
-                        name = self.file.name
-                    except AttributeError:
-                        name = self.file
-                    raise ValueError(f"{e} in file {name} delimiters={delimiters}")
+                    raise ValueError(f"{e} in file {self._file_name} delimiters={delimiters}")
                 if dialect.delimiter not in delimiters:
-                    msg = f'Invalid delimiter \'{dialect.delimiter}\' found in {self.file.name} csv file. ' \
+                    msg = f'Invalid delimiter \'{dialect.delimiter}\' found in {self._file_name} csv file. ' \
                           f'Expected one of {delimiters}'
                     self.log.warning(msg)
                     raise ValueError(msg)
                 else:
-                    self.log.info(f'Found delimiter \'{dialect.delimiter}\' in {self.file.name} csv file.')
+                    self.log.info(f'Found delimiter \'{dialect.delimiter}\' in {self._file_name} csv file.')
                 self.dialect = dialect
 
                 self.file.seek(0)
