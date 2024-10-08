@@ -1,5 +1,86 @@
 import logging
-from typing import Optional
+from io import BytesIO, RawIOBase, BufferedIOBase, BufferedReader, TextIOBase, StringIO
+from typing import Optional, Union, BinaryIO, TextIO
+
+
+class NotifierAttachment:
+    def __init__(
+        self,
+        content: Union[RawIOBase, BinaryIO, TextIO, bytes, str] = None,
+        *,
+        filename: Optional[str] = None,
+    ):
+        """
+
+        Parameters
+        ----------
+        content:
+            Content of the attachment.
+        filename:
+            Optional only if content is a FileIO type object that has name.
+            Note: If this name is provided, it overrides content.name value if that also exists.
+        """
+        if hasattr(content, 'read'):
+            try:
+                # noinspection PyUnresolvedReferences
+                self.filename = content.name
+            except AttributeError:
+                self.filename = None
+
+            if filename is not None:
+                self.filename = filename
+            if self.filename is None:
+                raise ValueError("filename must be specified in either content.name or filename parameter")
+            self._content = content
+        else:
+            if filename is None:
+                raise ValueError("filename must be specified if content is not a BufferedReader")
+            self._content = content
+            self.filename = filename
+
+    @property
+    def binary_reader(self) -> BufferedIOBase:
+        if hasattr(self._content, 'read'):
+            if isinstance(self._content, TextIOBase) or isinstance(self._content, StringIO):
+                return BytesIO(self._content.read().encode('utf-8'))
+            else:
+                return BufferedReader(self._content)
+        elif isinstance(self._content, bytes):
+            io_reader = BytesIO(self._content)
+            return io_reader
+        else:
+            io_reader = BytesIO(str(self._content).encode("utf-8"))
+            return io_reader
+
+    @property
+    def str_content(self) -> str:
+        if hasattr(self._content, 'read'):
+            content = self._content.read()
+            if isinstance(content, bytes):
+                return content.decode("utf-8")
+            elif isinstance(content, str):
+                return content
+            else:
+                raise ValueError("content from content.read() was not str or bytes")
+        elif isinstance(self._content, bytes):
+            return self._content.decode("utf-8")
+        else:
+            return str(self._content)
+
+    @property
+    def bytes_content(self) -> bytes:
+        if hasattr(self._content, 'read'):
+            content = self._content.read()
+            if isinstance(content, bytes):
+                return content
+            elif isinstance(content, str):
+                return content.encode("utf-8")
+            else:
+                raise ValueError("content from content.read() was not str or bytes")
+        elif isinstance(self._content, bytes):
+            return self._content
+        else:
+            return str(self._content).encode("utf-8")
 
 
 class NotifierBase(object):

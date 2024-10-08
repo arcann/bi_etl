@@ -1,11 +1,12 @@
 import email
 import re
 import smtplib
+from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from typing import Optional
 
 import bi_etl.config.notifiers_config as notifiers_config
-from bi_etl.notifiers.notifier_base import NotifierBase, NotifierException
+from bi_etl.notifiers.notifier_base import NotifierBase, NotifierException, NotifierAttachment
 
 
 class Email(NotifierBase):
@@ -13,7 +14,14 @@ class Email(NotifierBase):
         super().__init__(name=name)
         self.config_section = config_section
 
-    def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):
+    def send(
+            self,
+            subject,
+            message,
+            sensitive_message=None,
+            attachment: Optional[NotifierAttachment] = None,
+            throw_exception=False
+    ):
         distro_list = self.config_section.distro_list
         if not distro_list:
             self.log.warning(f'{self.config_section} distro_list option not found. No mail sent.')
@@ -40,9 +48,16 @@ class Email(NotifierBase):
                     if 'Sender' not in message:
                         message['Sender'] = self.config_section.email_from
             else:
+                main_message_parts = []
                 if message is None:
-                    message = ''
-                message = MIMEText(message)
+                    main_message_parts.append('No description')
+                else:
+                    main_message_parts.append(message)
+
+                if sensitive_message is not None and self.config_section.include_sensitive:
+                    main_message_parts.append(sensitive_message)
+
+                message = MIMEText('\n'.join(main_message_parts))
                 if subject is not None:
                     subject_escaped = subject
                     reserved_list = ['\n', '\r']
@@ -52,6 +67,9 @@ class Email(NotifierBase):
                     message['subject'] = subject_escaped
                 message['Sender'] = self.config_section.email_from
                 message['To'] = ','.join(to_addresses)
+
+            if attachment is not None:
+                message.attach(MIMEApplication(attachment.bytes_content, Name=attachment.filename))
 
             gateway = self.config_section.gateway_host
             gateway_port = self.config_section.gateway_port

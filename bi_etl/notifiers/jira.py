@@ -1,10 +1,14 @@
-from typing import Optional
+import warnings
+from datetime import datetime
+from enum import Enum, auto
+from typing import Optional, List
 
 import bi_etl.config.notifiers_config as notifiers_config
-from bi_etl.notifiers.notifier_base import NotifierBase
+from bi_etl.notifiers.notifier_base import NotifierBase, NotifierAttachment
 
 
 class Jira(NotifierBase):
+
     def __init__(self, config_section: notifiers_config.JiraNotifier, *, name: Optional[str] = None):
         super().__init__(name=name)
         self.config_section = config_section
@@ -54,28 +58,153 @@ class Jira(NotifierBase):
             exclude_statuses_filter_list.append(f'"{status}"')
         self.exclude_statuses_filter = ','.join(exclude_statuses_filter_list)
 
-    def add_attachment(self, issue, attachment):
-        """Attach an attachment to an issue and returns a Resource for it.
+        self.auto_color_open_tag = f"{{color:#{self.config_section.auto_header_color}}}"
+        self.auto_color_close_tag = "{color}"
+        self.begin_auto_search_part = self.config_section.auto_header_begin_text
+        self.begin_auto_line = ' '.join([self.auto_color_open_tag, self.begin_auto_search_part, self.auto_color_close_tag])
+        self.end_auto_search_part = self.config_section.auto_header_end_text
+        self.end_auto_line = ' '.join([self.auto_color_open_tag, self.end_auto_search_part, self.auto_color_close_tag])
 
-        The client will *not* attempt to open or validate the attachment; it expects a file-like object to be ready
-        for its use. The user is still responsible for tidying up (e.g., closing the file, killing the socket, etc.)
-
-        :param issue: the issue to attach the attachment to
-        :param attachment:
-            file-like object to attach to the issue, also works if it is a string with the filename,
-            or a tuple with a file-like object and a filename.
-
-            If the (file, filename) tuple is not used the file object's ``name`` attribute
-            is used. If you acquired the file-like object by any other method than ``open()``, make sure
-            that a name is specified in one way or the other.
-        :rtype: an Attachment Resource
+    def add_attachment(
+            self,
+            issue,
+            attachment: NotifierAttachment,
+    ):
+        """
+        Attach an attachment to an issue and returns a Resource for it.
         """
         if isinstance(attachment, tuple):
-            attachment, filename = attachment
-        else:
-            filename = None
+            warnings.warn(
+                "tuple attachment (BufferedReader, filename) to Jira notifier is deprecated. "
+                "Send NotifierAttachment instance instead."
+            )
+            io_reader, filename = attachment
+            attachment = NotifierAttachment(io_reader, filename=filename)
 
-        return self.jira_conn.add_attachment(issue=issue, attachment=attachment, filename=filename)
+        return self.jira_conn.add_attachment(issue=issue, attachment=attachment.binary_reader, filename=attachment.filename)
+
+    def cleanup_attachments(
+            self,
+            issue,
+            keep_first_attachment: bool,
+            recent_attachments_to_keep: int,
+    ):
+        all_attachments = issue.fields.attachment
+        user_attachments = []
+        for attachment in all_attachments:
+            if attachment.author.name == self.config_section.user_id:
+                user_attachments.append(attachment)
+        self.log.debug(f"Found {len(user_attachments)} user attachments")
+        if len(user_attachments) > 0:
+            self.log.debug(f"First user attachment = {user_attachments[0]}")
+            self.log.debug(f"Last user attachment = {user_attachments[-1]}")
+            keep_set = set()
+            if keep_first_attachment:
+                keep_set.add(user_attachments[0])
+            if recent_attachments_to_keep > 0:
+                keep_set.update(user_attachments[-1 * recent_attachments_to_keep:])
+            for attachment in user_attachments:
+                if attachment not in keep_set:
+                    self.log.info(f"Deleting attachment {attachment}")
+                    attachment.delete()
+
+    def cleanup_comments(
+            self,
+            issue,
+            keep_first_comment: bool,
+            recent_comments_to_keep: int,
+    ):
+        all_comments = issue.fields.comment.comments
+        user_comments = []
+        for comment in all_comments:
+            if comment.author.name == self.config_section.user_id:
+                user_comments.append(comment)
+        self.log.debug(f"Found {len(user_comments)} user comments")
+        if len(user_comments) > 0:
+            self.log.debug(f"First user comment = {user_comments[0].created}")
+            self.log.debug(f"Last user comment = {user_comments[-1].created}")
+            keep_set = set()
+            # TODO: The first comment is not comments[0]. It is in the description text.
+            #       However we need to not wipe out the human edits to that.
+            #       Maybe add an HR ---- and/or h6. Smallest heading
+            #       With a note that everything between that and the next marker will be
+            #       removed by the bot.
+            # issue.fields.description
+            if keep_first_comment:
+                keep_set.add(user_comments[0])
+            if recent_comments_to_keep > 0:
+                keep_set.update(user_comments[-1 * recent_comments_to_keep:])
+            for comment in user_comments:
+                if comment not in keep_set:
+                    self.log.info(f"Deleting comment #{comment} from {comment.created}")
+                    comment.delete()
+
+    def update_description(
+            self,
+            issue,
+            new_message_parts: List[str],
+    ):
+        class SearchStage(Enum):
+            before_auto = auto()
+            inside_auto = auto()
+            after_auto = auto()
+
+        description = issue.fields.description
+        lines_before = list()
+        auto_lines = list()
+        lines_after = list()
+        stage = SearchStage.before_auto
+        previous_count = 1
+        for num, line in enumerate(description.split('\n')):
+            match stage:
+                case SearchStage.before_auto:
+                    if self.begin_auto_search_part in line:
+                        stage = SearchStage.inside_auto
+                        auto_lines.append(line)
+                    else:
+                        lines_before.append(line)
+                case SearchStage.inside_auto:
+                    if self.config_section.track_incident_count:
+                        if self.config_section.incident_count_prefix in line:
+                            prefix_pos = line.find(self.config_section.incident_count_prefix)
+                            count_pos = prefix_pos + len(self.config_section.incident_count_prefix)
+                            count_str = line[count_pos:]
+                            try:
+                                previous_count = int(count_str)
+                            except ValueError:
+                                previous_count = None
+                    auto_lines.append(line)
+                    if self.end_auto_search_part in line:
+                        stage = SearchStage.after_auto
+                case SearchStage.after_auto:
+                    lines_after.append(line)
+
+        if self.config_section.track_incident_count:
+            # Update the new message with the incremented counter
+            updated_new_message_parts = []
+            for line in new_message_parts:
+                if self.config_section.incident_count_prefix in line:
+                    if previous_count is None:
+                        count_str = 'Error'
+                    else:
+                        count_str = previous_count + 1
+                    updated_new_message_parts.append(f"{self.config_section.incident_count_prefix}{count_str}")
+                else:
+                    updated_new_message_parts.append(line)
+            new_message_parts = updated_new_message_parts
+
+        # Build the new description with any manual text found + the new automated message
+        new_description_lines = list()
+        if len(lines_before) > 0:
+            new_description_lines.extend(lines_before)
+            new_description_lines.append("\n")
+        new_description_lines.extend(new_message_parts)
+        new_description_lines.extend(lines_after)
+
+        new_description = '\n'.join(new_description_lines)
+
+        self.log.debug(f"Updating {issue} description:\n{new_description}")
+        issue.update(description=new_description)
 
     def search(self, subject):
         # Find already opened case, if there is one
@@ -106,14 +235,20 @@ class Jira(NotifierBase):
                 # self.log.debug(p.fields.summary)
                 # self.log.debug(p.fields.description)
                 found_issues.append(iss)
-                case_number = iss.key
         return found_issues
 
-    def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):
+    def send(
+            self,
+            subject,
+            message,
+            sensitive_message=None,
+            attachment: Optional[NotifierAttachment] = None,
+            throw_exception=False
+    ):
         """
         Log a Jira issue
 
-        To use special formatting codes plesae see
+        To use special formatting codes please see
         https://jira.atlassian.com/secure/WikiRendererHelpAction.jspa?section=all
 
         :param subject:
@@ -130,14 +265,27 @@ class Jira(NotifierBase):
         self.log.debug(f'subject={subject}')
         self.log.debug(f'message={message}')
 
-        if message is None:
+        if message is None or message == '':
             message = "_No Description Provided_"
 
+        main_message_parts = [message]
+        if sensitive_message is not None and self.config_section.include_sensitive:
+            main_message_parts.append(sensitive_message)
+        main_message = '\n'.join(main_message_parts)
+
         message_parts = [
-            message,
+            self.begin_auto_line,
         ]
-        if sensitive_message is not None:
-            message_parts.append(sensitive_message)
+        if self.config_section.add_date_to_message:
+            message_parts.append(f"Content from: {datetime.now().isoformat()}")
+
+        if self.config_section.update_description:
+            if self.config_section.track_incident_count:
+                message_parts.append(f"{self.config_section.incident_count_prefix}1")
+
+        message_parts.append(main_message)
+
+        message_parts.append(self.end_auto_line)
 
         existing_issues = self.search(subject)
         if len(existing_issues) > 1:
@@ -160,14 +308,30 @@ class Jira(NotifierBase):
             iss = existing_issues[0]
             case_number = iss.key
             self.log.info(f"Found existing open case {case_number}.")
+            if self.config_section.update_description:
+                self.update_description(iss, message_parts)
+
             if self.comment_on_each_instance:
+                # Cleanup existing comments and attachments
+                self.cleanup_comments(
+                    issue=iss,
+                    keep_first_comment=self.config_section.keep_first_comment,
+                    # Keep one less recent comment since we are about to add one
+                    recent_comments_to_keep=self.config_section.recent_comments_to_keep - 1,
+                )
+                self.cleanup_attachments(
+                    issue=iss,
+                    keep_first_attachment=self.config_section.keep_first_attachment,
+                    # Keep one less recent attachment since we are about to add one
+                    recent_attachments_to_keep=self.config_section.recent_attachments_to_keep - 1,
+
+                )
                 if attachment is not None:
                     attachment_object = self.add_attachment(iss, attachment)
                     self.log.debug(f"Created attachment {attachment_object}")
                 message_parts.insert(0, "New occurrence with message(s):")
-                if message or sensitive_message:
-                    comment = '\n'.join(message_parts)
-                    self.jira_conn.add_comment(iss, comment)
+                if main_message != '':
+                    self.jira_conn.add_comment(iss, main_message)
                     self.log.info(f"Added comment to case {case_number}.")
         else:
             description = '\n'.join(message_parts)
@@ -193,3 +357,12 @@ class Jira(NotifierBase):
             if attachment is not None:
                 attachment_object = self.add_attachment(new_issue, attachment)
                 self.log.debug(f"Created attachment {attachment_object}")
+
+            # If we want to keep the first incident message it needs to be in a comment
+            # Note: We could disable this if update_description is false.
+            #       However, the update_description setting could be later changed.
+            #       There isn't a good way to go back and add the comment with the correct date.
+            #       So best to just add it with the new issue
+            if self.config_section.keep_first_comment:
+                if main_message != '':
+                    self.jira_conn.add_comment(new_issue, main_message)

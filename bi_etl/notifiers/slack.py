@@ -129,6 +129,8 @@ class Slack(NotifierBase):
                 link_names = False
 
             self._post_message(text=message_to_send, link_names=link_names)
+            if sensitive_message is not None and self.config_section.include_sensitive:
+                self._post_message(text=sensitive_message)
 
         else:
             self.log.info(f"Slack message not sent: {message}")

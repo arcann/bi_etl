@@ -12,3 +12,5 @@ class LogNotifier(NotifierBase):
             self.log.info(subject)
         if message is not None:
             self.log.info(message)
+        if sensitive_message is not None and self.config_section.include_sensitive:
+            self.log.info(sensitive_message)
