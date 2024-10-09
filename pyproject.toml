@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bi_etl"
-version = "1.7.0"
+version = "1.7.1"
 description = "Python ETL Framework"
 keywords=["etl"]
 classifiers = [
@@ -57,6 +57,7 @@ slack = ["slack-sdk"]
 
 dagster = ['dagster', 'dagster-webserver']
 
+redshift = ['pyarrow', 'psycopg2']
 # Used by .github/workflows/unit_test.yml
 # poetry install -E test
 test = ["psycopg2", "testcontainers"]

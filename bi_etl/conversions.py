@@ -7,7 +7,7 @@ import string
 from datetime import date, timedelta, timezone
 from datetime import datetime
 from datetime import time
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException
 from typing import Union, Iterable, MutableMapping, Optional
 
 
@@ -104,12 +104,15 @@ def str2decimal(s: str):
         try:  
             s = s.replace(',', '')
             return Decimal(s)
-        except InvalidOperation as e:
+        except DecimalException as e:
             if s[-1] in ['-', '+']:
                 s2 = s[-1] + s[:-1].replace(',', '')
-                return Decimal(s2)
+                try:
+                    return Decimal(s2)
+                except DecimalException as e:
+                    raise ValueError(f"Value {repr(s)} could not be converted to Decimal. {repr(e)}")
             else:
-                raise e
+                raise ValueError(f"Value {repr(s)} could not be converted to Decimal. {repr(e)}")
 
 
 def str2decimal_end_sign(s: str):

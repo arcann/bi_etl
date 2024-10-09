@@ -2,6 +2,8 @@ import logging
 from io import BytesIO, RawIOBase, BufferedIOBase, BufferedReader, TextIOBase, StringIO
 from typing import Optional, Union, BinaryIO, TextIO
 
+from bi_etl.config import notifiers_config
+
 
 class NotifierAttachment:
     def __init__(
@@ -41,6 +43,8 @@ class NotifierAttachment:
     @property
     def binary_reader(self) -> BufferedIOBase:
         if hasattr(self._content, 'read'):
+            if hasattr(self._content, 'seek'):
+                self._content.seek(0)
             if isinstance(self._content, TextIOBase) or isinstance(self._content, StringIO):
                 return BytesIO(self._content.read().encode('utf-8'))
             else:
@@ -55,6 +59,8 @@ class NotifierAttachment:
     @property
     def str_content(self) -> str:
         if hasattr(self._content, 'read'):
+            if hasattr(self._content, 'seek'):
+                self._content.seek(0)
             content = self._content.read()
             if isinstance(content, bytes):
                 return content.decode("utf-8")
@@ -70,6 +76,8 @@ class NotifierAttachment:
     @property
     def bytes_content(self) -> bytes:
         if hasattr(self._content, 'read'):
+            if hasattr(self._content, 'seek'):
+                self._content.seek(0)
             content = self._content.read()
             if isinstance(content, bytes):
                 return content
@@ -88,6 +96,7 @@ class NotifierBase(object):
         class_name = f"{self.__class__.__module__}.{self.__class__.__name__}"
         self.log = logging.getLogger(class_name)
         self.name = name or class_name
+        self.config_section = notifiers_config.NotifierConfigBase(notifier_class=class_name)
 
     def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):
         pass
