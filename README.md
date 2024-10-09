@@ -1,5 +1,9 @@
 # bi_etl Python ETL Framework for BI
 
+[![pypi](https://img.shields.io/pypi/v/bi-etl.svg)](https://pypi.org/project/bi-etl/)
+[![license](https://img.shields.io/github/license/arcann/config_wrangler.svg)](https://github.com/arcann/config_wrangler/blob/master/LICENSE)
+[![Python package](https://github.com/arcann/bi_etl/actions/workflows/unit_test.yml/badge.svg)](https://github.com/arcann/bi_etl/actions/workflows/unit_test.yml)
+
 ## Docs
 
 [Please see the documentation site for detailed documentation.](https://bietl.dev/bi_etl/)
