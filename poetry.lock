@@ -4686,6 +4686,7 @@ test = ["zope.security", "zope.testrunner"]
 
 [extras]
 all = ["dagster", "dagster-webserver", "jira", "keyring", "pykeepass", "testcontainers"]
+avro = ["fastavro"]
 dagster = ["dagster", "dagster-webserver"]
 jira = ["jira"]
 keyring = ["keyring"]
@@ -4697,4 +4698,4 @@ test = ["testcontainers"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0"
-content-hash = "f3aaface4dceacd49a5194152e1b8cf581310b90933d3368b16fdbb9daa2be98"
+content-hash = "8fbb1bc80ef8ea17dd120fcc1765e938fec2a365f5c3d7b0a688b13ebbc1aa13"

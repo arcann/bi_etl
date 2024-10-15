@@ -58,6 +58,9 @@ slack = ["slack-sdk"]
 dagster = ['dagster', 'dagster-webserver']
 
 redshift = ['pyarrow', 'psycopg2']
+
+avro = ['fastavro']
+
 # Used by .github/workflows/unit_test.yml
 # poetry install -E test
 test = ["psycopg2", "testcontainers"]
