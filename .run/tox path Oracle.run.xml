@@ -11,11 +11,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <arguments>
-      <array>
-        <option value="--" />
-        <option value="-p" />
-        <option value="*oracle.py" />
-      </array>
+      <array />
     </arguments>
     <runOnlyEnvs>
       <array>

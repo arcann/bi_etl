@@ -68,25 +68,27 @@ test = ["psycopg2", "testcontainers"]
 all = ['keyring', 'pykeepass', 'jira', 'slack', 'dagster', 'dagster-webserver', "psycopg2", "testcontainers"]
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.4.1"
-pytest-xdist = "^3.6.1"
-toml = "^0.10.1"
-testcontainers = {version = ">=3.5.4", extras = ["mysql, oracle, postgresql, mssqlserver"]}
-tox = "^4.6.4"
 # Keep boto3 fairly current to avoid scanning a huge list of versions
 boto3 = ">=1.33"
-fastavro = ">=1.5.3"
-sphinx-autobuild = "^2021.3.14"
-oracledb = ">=1.2.0"
-pip = ">=22.1.2"
-slack-sdk = ">=3.19.5"
-numpy = "^1.25.1"
-pyarrow = ">=12.0.1,<15.0.0"
-pykeepass = ">=4.0.5"
 dagster = ">=1.5.7"
 dagster-webserver = ">=1.6.3"
-psycopg = {version = "^3.1.18", extras = ["binary"]}
+fastavro = ">=1.5.3"
+junitparser = "^3.2"
+junit2html = "^31.0"
+numpy = "^1.25.1"
+oracledb = ">=1.2.0"
 paramiko = "*"  # For docker ssh:// support
+pip = ">=22.1.2"
+psycopg = {version = "^3.1.18", extras = ["binary"]}
+pyarrow = ">=12.0.1,<15.0.0"
+pykeepass = ">=4.0.5"
+pytest = "^7.4.1"
+pytest-xdist = "^3.6.1"
+slack-sdk = ">=3.19.5"
+sphinx-autobuild = "^2021.3.14"
+testcontainers = {version = ">=3.5.4", extras = ["mysql, oracle, postgresql, mssqlserver"]}
+toml = "^0.10.1"
+tox = "^4.6.4"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
@@ -94,6 +96,10 @@ addopts = "-n=auto"
 testpaths = [
     "tests",
 ]
+
+
+
+
 
 [tool.poetry.group.docs]
 optional = true

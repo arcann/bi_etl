@@ -1,0 +1,1 @@
+poetry run junit2html .\junit.xml junit.html
