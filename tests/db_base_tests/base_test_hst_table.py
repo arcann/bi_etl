@@ -34,7 +34,6 @@ class BaseTestHstTable(BaseTestDatabase):
     UPSERT_COMMIT_EACH_PASS = False
 
     type1_map = dict()
-    next_type1 = 1
 
     def setUp(self):
         super().setUp()
@@ -340,8 +339,10 @@ class BaseTestHstTable(BaseTestDatabase):
     def _manually_generate_type_1_srgt(self, row: Row):
         text_col = row['text_col']
         if text_col not in self.type1_map:
-            self.type1_map[text_col] = self.next_type1
-            self.next_type1 += 1
+            if len(self.type1_map) == 0:
+                self.type1_map[text_col] = 1
+            else:
+                self.type1_map[text_col] = max([v for v in self.type1_map.values()]) + 1
         row['type_1_srgt'] = self.type1_map[text_col]
 
     def _testInsertAndUpsert(

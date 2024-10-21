@@ -97,10 +97,6 @@ testpaths = [
     "tests",
 ]
 
-
-
-
-
 [tool.poetry.group.docs]
 optional = true
 

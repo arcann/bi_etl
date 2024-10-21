@@ -1,7 +1,37 @@
+import os
 from pathlib import Path
+
+import pytest
+from dotenv.main import DotEnv
+
+
+def import_env():
+    test_path = Path(__file__).parent.absolute()
+    config_env_path = test_path / 'config.env'
+    if config_env_path.exists():
+        print(f"Loading environment variables from {config_env_path}")
+        dotenv = DotEnv(config_env_path)
+        dotenv.set_as_environment_variables()
+        for k, v in dotenv.dict().items():
+            setting_now = os.environ[k]
+            print(f"  {k}: read= {v} setting= {setting_now}")
+        print('--end of env--')
+    else:
+        print(f"environment variable file {config_env_path} not found")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def execute_before_any_test():
+    print("execute_before_any_test")
+
+    import_env()
 
 
 def pytest_cmdline_main(config):
+    print("pytest_cmdline_main")
+
+    import_env()
+
     # Fix for pycharm error that tries to run tests out of db_base_tests
     # 1st pass find DB
     db = None

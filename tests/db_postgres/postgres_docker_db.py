@@ -24,7 +24,7 @@ class PostgresDockerDB(BaseDockerDB):
             # noinspection PyPackageRequirements
             import psycopg
             driver = 'psycopg'
-        except ImportError:
+        except (ImportError, ModuleNotFoundError):
             try:
                 # noinspection PyPackageRequirements
                 import psycopg2

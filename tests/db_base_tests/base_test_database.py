@@ -2,6 +2,7 @@ import inspect
 import logging
 import math
 import random
+import string
 import typing
 import unittest
 from datetime import datetime, date, time, timedelta
@@ -12,6 +13,7 @@ from typing import List, Union, Optional
 
 import sqlalchemy
 from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
+from sqlalchemy.exc import NoSuchModuleError
 from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.sql.schema import Column
 from sqlalchemy.sql.sqltypes import BOOLEAN
@@ -36,6 +38,7 @@ from tests.dummy_etl_component import DummyETLComponent
 class BaseTestDatabase(unittest.TestCase):
     db_container = None
     TABLE_PREFIX = ''
+    TABLE_VALID_CHARS = string.ascii_lowercase + string.digits
 
     class ApproxDatetime(object):
         def __init__(self, expected_dt: datetime, interval: timedelta = None):
@@ -71,6 +74,17 @@ class BaseTestDatabase(unittest.TestCase):
         module_path = Path(inspect.getfile(BaseTestDatabase))
         return module_path.parents[1]
 
+    @staticmethod
+    def make_short_table_name(full_name: str, max_length: int) -> str:
+        name_hash = hash(full_name)
+        short_name_list = ['t']
+        base = len(BaseTestDatabase.TABLE_VALID_CHARS)
+        while name_hash != 0 and len(short_name_list) < max_length:
+            char_number = name_hash % base
+            short_name_list.append(BaseTestDatabase.TABLE_VALID_CHARS[char_number])
+            name_hash //= base
+        return ''.join(short_name_list)
+
     def get_test_file_path(self, file_name: str) -> Path:
         # Search the folders from the last added to first added
         # since the last added is the child class that might override a test file
@@ -95,7 +109,10 @@ class BaseTestDatabase(unittest.TestCase):
         self.config = build_config(db_config=db_config, tmp=self.tmp)
         self.task = ETLTask(config=self.config)
         self.dummy_etl_component = DummyETLComponent(task=self.task)
-        engine = self.db_container.create_engine()
+        try:
+            engine = self.db_container.create_engine()
+        except NoSuchModuleError as e:
+            raise unittest.SkipTest(repr(e))
         self.engine = engine
         self.log.info(f"Using DB connection {engine}")
 
@@ -185,17 +202,17 @@ class BaseTestDatabase(unittest.TestCase):
         return cols
 
     def _get_table_name(self, partial_name: str) -> str:
-        existing_tables = self.mock_database.table_inventory()
+        existing_tables = self.mock_database.table_inventory(force_reload=True)
 
         partial_name = partial_name.replace('-', '_')
 
         while True:
             name = f"{self.TABLE_PREFIX}{partial_name}"
 
-            name_suffix_len = 3 + 3  # Room for _99_i1 for table inst 99 index 1
+            name_suffix_len = 3 + 3  # Room for _99_i1 for table instance 99 (random) + index 1-9
 
             if (len(name) + name_suffix_len) > self.db_container.MAX_NAME_LEN:
-                name = name[:self.db_container.MAX_NAME_LEN - name_suffix_len]
+                name = BaseTestDatabase.make_short_table_name(name, self.db_container.MAX_NAME_LEN - name_suffix_len)
 
             name_with_id = f"{name}_{random.randint(1, 99)}"
             if name_with_id not in existing_tables:

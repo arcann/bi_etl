@@ -14,14 +14,14 @@
       <array>
         <option value="--" />
         <option value="-k" />
-        <option value="&quot;TestHstTablePostgres" />
-        <option value="and" />
-        <option value="test_iu_nosrgt_del&quot;" />
+        <option value="TestHstTablePostgres" />
+        <option value="-k" />
+        <option value="test_iu_nosrgt_del" />
       </array>
     </arguments>
     <runOnlyEnvs>
       <array>
-        <option value="py312-oracledb-sqlalchemy20-cw" />
+        <option value="py312-psycopg2-sqlalchemy14-slack_sdk-cw" />
       </array>
     </runOnlyEnvs>
     <method v="2" />

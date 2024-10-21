@@ -4,7 +4,6 @@ import platform
 import random
 import socket
 import unittest
-
 from testcontainers.core import config as tc_config
 from testcontainers.core.generic import DbContainer
 
@@ -20,6 +19,7 @@ class BaseDockerDB(SqliteDB):
 
     """
     SKIP = False
+    ErrorMsg = None
 
     def _new_init(self):
         super()._new_init()
@@ -27,7 +27,7 @@ class BaseDockerDB(SqliteDB):
         self.container = None
 
         if self.SKIP:
-            raise unittest.SkipTest(f"Skip {self} due to SKIP flag. See earlier error")
+            raise unittest.SkipTest(f"Skip {self} due to SKIP flag. Error was {self.ErrorMsg}")
 
         try_number = 0
         try_again = True
@@ -46,7 +46,11 @@ class BaseDockerDB(SqliteDB):
                         print(f"Restarting container {self}. Try {try_number}")
                 if not try_again:
                     self.SKIP = True
-                    raise unittest.SkipTest(f"Skip {self} due to {repr(e)}.")
+                    self.ErrorMsg = (
+                        f"Skip {self} due to {repr(e)}. "
+                        f"For remote docker check environment variables in config.env"
+                    )
+                    raise unittest.SkipTest(self.ErrorMsg)
 
     def get_container_class(self):
         raise NotImplementedError

@@ -40,8 +40,8 @@ class PostgreSQLCopy(BulkLoader):
         try:
             conn = table_object.database.bind.raw_connection()
 
-            # conn.set_client_encoding(self.config.encoding)
-            conn.execute("SET client_encoding TO UTF8")
+            conn.set_client_encoding(self.config.encoding)
+            # conn.execute("SET client_encoding TO UTF8")
 
             cursor = conn.cursor()
             for file_name in local_files:

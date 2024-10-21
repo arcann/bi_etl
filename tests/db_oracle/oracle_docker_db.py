@@ -55,8 +55,11 @@ class OracleDockerDB(BaseDockerDB):
             else:
                 print(f"oracledb requires sqlalchemy 2+. Found {sqlalchemy.__version__}")
                 raise ImportError(f"sqlalchemy version error")
-        except ImportError:
-            import cx_Oracle
+        except (ImportError, ModuleNotFoundError):
+            try:
+                import cx_Oracle
+            except (ImportError, ModuleNotFoundError):
+                raise ImportError('No oracle library found')
             print("cx_Oracle found")
             # noinspection PyBroadException
             try:
