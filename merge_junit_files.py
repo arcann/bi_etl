@@ -13,8 +13,12 @@ def merge_junit_files():
         main_xml = JUnitXml()
     for xml_file in root.glob('*.xml'):
         if xml_file != main_path:
+            print(f"Merging {xml_file}")
             xml = JUnitXml.fromfile(str(xml_file))
             for suite in xml:
+                if suite in main_xml:
+                    print("Starting with a clean JUnitXml")
+                    main_xml = JUnitXml()
                 for case in suite:
                     case.classname = f"{xml_file.stem}/{case.classname}"
             main_xml += xml
