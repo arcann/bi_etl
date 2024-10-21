@@ -6,7 +6,7 @@ from typing import *
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.bulk_loaders.postgresql_bulk_load_config import PostgreSQLBulkLoaderConfig
 from bi_etl.components.csv_writer import CSVWriter, QUOTE_MINIMAL
-from bi_etl.utility.postgresql.psycopg_helpers import psycopg_import_using_cursor
+from bi_etl.utility.postgresql.psycopg_helpers import psycopg_import_using_cursor, set_conn_encoding
 
 if TYPE_CHECKING:
     from bi_etl.scheduler.task import ETLTask
@@ -40,8 +40,7 @@ class PostgreSQLCopy(BulkLoader):
         try:
             conn = table_object.database.bind.raw_connection()
 
-            conn.set_client_encoding(self.config.encoding)
-            # conn.execute("SET client_encoding TO UTF8")
+            set_conn_encoding(conn, self.config.encoding)
 
             cursor = conn.cursor()
             for file_name in local_files:

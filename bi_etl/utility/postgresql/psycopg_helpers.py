@@ -23,6 +23,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError
 
 
+def set_conn_encoding(conn: Connection, encoding='utf-8'):
+    try:
+        conn.set_client_encoding(encoding)
+    except AttributeError:
+        conn.execute("SET client_encoding TO UTF8")
+
+
 def get_conn(
         dbname,
         username,
@@ -32,7 +39,7 @@ def get_conn(
     if psycopg is None:
         raise ImportError("Neither psycopg2 nor psycopg installed")
     conn: Connection = psycopg.connect(database=dbname, user=username, password=password)
-    conn.set_client_encoding(encoding)
+    set_conn_encoding(conn, encoding)
     return conn
 
 
@@ -85,7 +92,7 @@ def psycopg_extract_using_engine(
     """
     # noinspection PyTypeChecker
     conn: Connection = engine.raw_connection()
-    conn.set_client_encoding(encoding)
+    set_conn_encoding(conn, encoding)
     cur = conn.cursor()
     if csv_mode:
         if header:
@@ -210,7 +217,7 @@ def psycopg_import_using_engine(
     """
     # noinspection PyTypeChecker
     conn: Connection = engine.raw_connection()
-    conn.set_client_encoding(encoding)
+    set_conn_encoding(conn, encoding)
     cursor = conn.cursor()
     results = psycopg_import_using_cursor(
         cursor=cursor,
