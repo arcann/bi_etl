@@ -95,6 +95,5 @@ ENV/
 unit_tests_sqlite.db
 /tests/test_db
 /tests/test_config.ini
-/junit*.xml
-/junit*.html
 /tests/config.env
+/junit/
