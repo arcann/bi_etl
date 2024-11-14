@@ -5,7 +5,7 @@ from typing import Optional
 from config_wrangler.config_templates.credentials import Credentials
 
 import bi_etl.config.notifiers_config as notifiers_config
-from bi_etl.notifiers.notifier_base import NotifierBase
+from bi_etl.notifiers.notifier_base import NotifierBase, NotifierAttachment
 
 
 class Slack(NotifierBase):
@@ -110,7 +110,16 @@ class Slack(NotifierBase):
             else:
                 raise
 
-    def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):
+    def send(
+            self,
+            subject: str,
+            message: str,
+            sensitive_message: str = None,
+            attachment: Optional[NotifierAttachment] = None,
+            throw_exception: bool = False,
+            **kwargs
+    ):
+        self.warn_kwargs(**kwargs)
         # Clear the status timestamp so that we create a new status message below this non-status message
         self._status_ts = None
         if self.slack_channel is not None and self.slack_channel != '':

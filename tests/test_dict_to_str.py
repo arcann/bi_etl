@@ -13,7 +13,7 @@ from bi_etl.utility import dict_to_str
 OrderedDict = dict if sys.version_info >= (3, 6) else OrderedDict
 
 
-class Test(unittest.TestCase):
+class TestDictToStr(unittest.TestCase):
     _multiprocess_can_split_ = True
     
     def assertRegexMsg(self, actual, expected_re):

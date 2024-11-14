@@ -1,7 +1,7 @@
 import warnings
 from datetime import datetime
 from enum import Enum, auto
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 import bi_etl.config.notifiers_config as notifiers_config
 from bi_etl.notifiers.notifier_base import NotifierBase, NotifierAttachment
@@ -40,9 +40,7 @@ class Jira(NotifierBase):
                 raise
         priority_name = self.config_section.priority
         if priority_name is not None:
-            for priority_object in self.jira_conn.priorities():
-                if priority_object.name == priority_name:
-                    self.priority_id = priority_object.id
+            self.priority_id = self.get_priority_id(priority_name)
             self.log.debug(f'priority_name = {priority_name} priority_id={self.priority_id}')
         else:
             self.priority_id = None
@@ -61,9 +59,22 @@ class Jira(NotifierBase):
         self.auto_color_open_tag = f"{{color:#{self.config_section.auto_header_color}}}"
         self.auto_color_close_tag = "{color}"
         self.begin_auto_search_part = self.config_section.auto_header_begin_text
-        self.begin_auto_line = ' '.join([self.auto_color_open_tag, self.begin_auto_search_part, self.auto_color_close_tag])
+        self.begin_auto_line = ' '.join(
+            [self.auto_color_open_tag, self.begin_auto_search_part, self.auto_color_close_tag]
+        )
         self.end_auto_search_part = self.config_section.auto_header_end_text
         self.end_auto_line = ' '.join([self.auto_color_open_tag, self.end_auto_search_part, self.auto_color_close_tag])
+
+    def get_priority_id(self, priority_name: str) -> str:
+        priority_id = None
+        for priority_object in self.jira_conn.priorities():
+            if priority_object.name == priority_name:
+                priority_id = priority_object.id
+                break
+        if priority_id is not None:
+            return priority_id
+        else:
+            raise ValueError(f'Priority {priority_name} not found')
 
     def add_attachment(
             self,
@@ -81,7 +92,11 @@ class Jira(NotifierBase):
             io_reader, filename = attachment
             attachment = NotifierAttachment(io_reader, filename=filename)
 
-        return self.jira_conn.add_attachment(issue=issue, attachment=attachment.binary_reader, filename=attachment.filename)
+        return self.jira_conn.add_attachment(
+            issue=issue,
+            attachment=attachment.binary_reader,
+            filename=attachment.filename
+        )
 
     def cleanup_attachments(
             self,
@@ -239,11 +254,15 @@ class Jira(NotifierBase):
 
     def send(
             self,
-            subject,
-            message,
-            sensitive_message=None,
+            subject: str,
+            message: str,
+            sensitive_message: str = None,
             attachment: Optional[NotifierAttachment] = None,
-            throw_exception=False
+            throw_exception: bool = False,
+            labels: Optional[List[str]] = None,
+            priority: Optional[str] = None,
+            custom_fields: Optional[Dict[str, Any]] = None,
+            **kwargs
     ):
         """
         Log a Jira issue
@@ -256,8 +275,14 @@ class Jira(NotifierBase):
         :param sensitive_message:
         :param attachment:
         :param throw_exception:
+        :param labels:  Optional list of labels to apply to the issue. Only used for new issues.
+        :param priority:  Optional priority apply to the issue. Only used for new issues.
+        :param custom_fields:
+            Optional dictionary of custom Jira fields to apply to the issue.
+            Only used for new issues.
         :return:
         """
+        self.warn_kwargs(**kwargs)
         if subject is None:
             raise ValueError(f"Jira notifier requires a valid subject. Message was {message}")
         else:
@@ -343,10 +368,22 @@ class Jira(NotifierBase):
             }
             if self.issue_type is not None:
                 issue_dict['issuetype'] = {'name': self.issue_type}
-            if self.priority_id:
+
+            if priority is not None:
+                issue_dict['priority'] = {'id': self.get_priority_id(priority)}
+            elif self.priority_id:
                 issue_dict['priority'] = {'id': self.priority_id}
+
             if self.component:
                 issue_dict['components'] = [{'name': self.component}, ]
+
+            if labels is not None:
+                issue_dict['labels'] = labels
+            elif self.config_section.labels is not None:
+                issue_dict['labels'] = self.config_section.labels
+
+            if custom_fields is not None:
+                issue_dict.update(custom_fields)
 
             self.log.debug(f'issue_dict={issue_dict}')
 

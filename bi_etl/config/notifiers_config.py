@@ -129,6 +129,8 @@ class JiraNotifier(NotifierConfigBase, Credentials):
     Type of issues to create.
     """
 
+    labels: Optional[List[str]] = None
+
     priority: Optional[str] = None
     """
     Priority to create issues with. None for project default.

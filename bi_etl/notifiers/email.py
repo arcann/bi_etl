@@ -16,12 +16,14 @@ class Email(NotifierBase):
 
     def send(
             self,
-            subject,
-            message,
-            sensitive_message=None,
+            subject: str,
+            message: str,
+            sensitive_message: str = None,
             attachment: Optional[NotifierAttachment] = None,
-            throw_exception=False
+            throw_exception: bool = False,
+            **kwargs
     ):
+        self.warn_kwargs(**kwargs)
         distro_list = self.config_section.distro_list
         if not distro_list:
             self.log.warning(f'{self.config_section} distro_list option not found. No mail sent.')

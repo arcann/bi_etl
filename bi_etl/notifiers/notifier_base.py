@@ -98,7 +98,22 @@ class NotifierBase(object):
         self.name = name or class_name
         self.config_section = notifiers_config.NotifierConfigBase(notifier_class=class_name)
 
-    def send(self, subject, message, sensitive_message=None, attachment=None, throw_exception=False):
+    def warn_kwargs(self, **kwargs):
+        if kwargs is not None:
+            if len(kwargs) > 0:
+                self.log.warning(f"Extra arguments not used by this notifier ({len(kwargs)})")
+                for key, value in kwargs.items():
+                    self.log.warning(f"  {key} = {value}")
+
+    def send(
+            self,
+            subject: str,
+            message: str,
+            sensitive_message: str = None,
+            attachment: Optional[NotifierAttachment] = None,
+            throw_exception: bool = False,
+            **kwargs
+    ):
         pass
 
     def post_status(self, status_message):
