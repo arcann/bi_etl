@@ -22,6 +22,7 @@ class NotifierConfigBase(ConfigHierarchy):
 
 class LogNotifierConfig(NotifierConfigBase):
     notifier_class: str = 'bi_etl.notifiers.log_notifier.LogNotifier'
+    include_sensitive: bool = True
 
 
 class SMTP_Notifier(NotifierConfigBase, Credentials):
@@ -101,7 +102,7 @@ class JiraNotifier(NotifierConfigBase, Credentials):
     notifier_class: str = 'bi_etl.notifiers.jira.Jira'
     server: str
     """
-    HTTP previs for the Jira server to connect to (e.g. https://jira.example.net)
+    HTTP prefix for the Jira server to connect to (e.g. https://jira.example.net)
     """
 
     project: str

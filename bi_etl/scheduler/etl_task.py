@@ -448,6 +448,7 @@ class ETLTask(object):
         self.suppress_notifications = False
         # noinspection PyTypeChecker
         self._notifiers: Dict[NotifierBase] = dict()
+        self.log_notifier = LogNotifier(name='log')
         self.log_handler = None
         self.dagster_results = None
 
@@ -1058,7 +1059,7 @@ class ETLTask(object):
         notifiers_list = list()
 
         if auto_include_log:
-            notifiers_list.append(LogNotifier(name='log'))
+            notifiers_list.append(self.log_notifier)
 
         for config_ref in channel_list:
             config_section = config_ref.get_referenced()
@@ -1080,6 +1081,7 @@ class ETLTask(object):
             sensitive_message: str = None,
             attachment=None,
             skip_channels: set = None,
+            **kwargs
     ):
         if self.suppress_notifications:
             self.log.info(f"Notification to {channel_list} suppressed for:")
@@ -1094,6 +1096,9 @@ class ETLTask(object):
                         filtered_channels.append(channel)
 
                 notifiers_list = self.get_notifiers(filtered_channels)
+                fallback_notifiers_list = self.get_notifiers(self.config.notifiers.failed_notifications)
+                if len(notifiers_list) == 0:
+                    notifiers_list.extend(fallback_notifiers_list)
                 for notifier in notifiers_list:
                     try:
                         notifier.send(
@@ -1101,12 +1106,12 @@ class ETLTask(object):
                             message=message,
                             sensitive_message=sensitive_message,
                             attachment=attachment,
+                            **kwargs
                         )
                     except Exception as e:
                         self.log.exception(e)
                         if self.config.notifiers.failed_notifications is not None:
-                            fallback_message = f"error={e} original_subject={subject} original_message={message}"
-                            fallback_notifiers_list = self.get_notifiers(self.config.notifiers.failed_notifications)
+                            fallback_message = f"error={repr(e)} original_subject={subject} original_message={message}"
                             for fallback_notifier in fallback_notifiers_list:
                                 try:
                                     fallback_notifier.send(

@@ -1,7 +1,7 @@
 import warnings
 from datetime import datetime
 from enum import Enum, auto
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Iterable
 
 import bi_etl.config.notifiers_config as notifiers_config
 from bi_etl.notifiers.notifier_base import NotifierBase, NotifierAttachment
@@ -221,35 +221,56 @@ class Jira(NotifierBase):
         self.log.debug(f"Updating {issue} description:\n{new_description}")
         issue.update(description=new_description)
 
-    def search(self, subject):
+    def search(
+            self,
+            subject: str,
+            subject_alternates: Optional[Iterable[str]] = None,
+    ):
         # Find already opened case, if there is one
-        found_issues = list()
-        # Remove any special characters that break JQL parsing
-        # https://support.atlassian.com/jira-software-cloud/docs/search-syntax-for-text-fields/
-        subject_escaped = subject
-        reserved_list = [
-            '\\', '+', '-', '[', ']', '(', ')', '{', '}',
-            'AND', 'OR', 'NOT',
-            '"', "'", '|', '&&', '!', '*', ':',
-            '?', '~', '^', '%',
-            '\t', '\n', '\r',
-        ]
-        for reserved in reserved_list:
-            subject_escaped = subject_escaped.replace(reserved, ' ')
+        found_issues = set()
+        almost_found_issues = set()
+        search_subjects = [subject]
+        if subject_alternates:
+            search_subjects.extend(subject_alternates)
+        for search_subject in search_subjects:
+            # Remove any special characters that break JQL parsing
+            # https://support.atlassian.com/jira-software-cloud/docs/search-syntax-for-text-fields/
+            subject_escaped = search_subject
+            reserved_list = [
+                '\\', '+', '-', '[', ']', '(', ')', '{', '}',
+                'AND', 'OR', 'NOT',
+                '"', "'", '|', '&&', '!', '*', ':',
+                '?', '~', '^', '%',
+                '\t', '\n', '\r',
+            ]
+            for reserved in reserved_list:
+                subject_escaped = subject_escaped.replace(reserved, ' ')
 
-        issues = self.jira_conn.search_issues(
-            f'project="{self.project}" '
-            f'AND summary~"{subject_escaped}" '
-            f'AND status not in ({self.exclude_statuses_filter})'
-        )
-        for iss in issues:
-            # Double check that name matches since JIRA does a wildcard search and word stemming
-            if iss.fields.summary.strip() == subject:
-                # self.log.debug('Potential match:')
-                # self.log.debug(p.fields.status)
-                # self.log.debug(p.fields.summary)
-                # self.log.debug(p.fields.description)
-                found_issues.append(iss)
+            issues = self.jira_conn.search_issues(
+                f'project="{self.project}" '
+                f'AND summary~"{subject_escaped}" '
+                f'AND status not in ({self.exclude_statuses_filter})'
+            )
+            for iss in issues:
+                # Double check that name matches since JIRA does a wildcard search and word stemming
+                if iss.fields.summary.strip() == search_subject:
+                    # self.log.debug('Potential match:')
+                    # self.log.debug(p.fields.status)
+                    # self.log.debug(p.fields.summary)
+                    # self.log.debug(p.fields.description)
+                    found_issues.add(iss)
+                else:
+                    almost_found_issues.add(iss)
+        for issue in found_issues:
+            if issue in almost_found_issues:
+                almost_found_issues.remove(issue)
+        if len(almost_found_issues) > 0:
+            self.log.debug("Some issues matched Jira search but did not have identical subject strings")
+            for search_subject in search_subjects:
+                self.log.debug(f"{' ' * 5} search for: {search_subject}")
+            for iss in almost_found_issues:
+                self.log.debug(f"{iss.key:10s} found: {iss.fields.summary}")
+            self.log.debug("")
         return found_issues
 
     def send(
@@ -262,6 +283,7 @@ class Jira(NotifierBase):
             labels: Optional[List[str]] = None,
             priority: Optional[str] = None,
             custom_fields: Optional[Dict[str, Any]] = None,
+            subject_alternates: Optional[Iterable[str]] = None,
             **kwargs
     ):
         """
@@ -280,6 +302,10 @@ class Jira(NotifierBase):
         :param custom_fields:
             Optional dictionary of custom Jira fields to apply to the issue.
             Only used for new issues.
+        :param subject_alternates:
+            Optional iterable of other subject values to search for existing issues.
+            This is useful if you change the subject value but want to be able to find
+            existing issues with the old name.
         :return:
         """
         self.warn_kwargs(**kwargs)
@@ -312,7 +338,7 @@ class Jira(NotifierBase):
 
         message_parts.append(self.end_auto_line)
 
-        existing_issues = self.search(subject)
+        existing_issues = self.search(subject, subject_alternates)
         if len(existing_issues) > 1:
             self.log.warning(f"Found multiple open issues with subject {subject}. Finding newest...")
             newest_case_number = 0
@@ -330,9 +356,23 @@ class Jira(NotifierBase):
             # Allow the section below to comment on the newest issue
 
         if len(existing_issues) == 1:
-            iss = existing_issues[0]
+            iss = list(existing_issues)[0]
+
             case_number = iss.key
             self.log.info(f"Found existing open case {case_number}.")
+
+            if attachment is not None:
+                if self.config_section.update_description or self.comment_on_each_instance:
+                    self.cleanup_attachments(
+                        issue=iss,
+                        keep_first_attachment=self.config_section.keep_first_attachment,
+                        # Keep one less recent attachment since we are about to add one
+                        recent_attachments_to_keep=self.config_section.recent_attachments_to_keep - 1,
+
+                    )
+                    attachment_object = self.add_attachment(iss, attachment)
+                    self.log.debug(f"Created attachment {attachment_object}")
+
             if self.config_section.update_description:
                 self.update_description(iss, message_parts)
 
@@ -344,16 +384,6 @@ class Jira(NotifierBase):
                     # Keep one less recent comment since we are about to add one
                     recent_comments_to_keep=self.config_section.recent_comments_to_keep - 1,
                 )
-                self.cleanup_attachments(
-                    issue=iss,
-                    keep_first_attachment=self.config_section.keep_first_attachment,
-                    # Keep one less recent attachment since we are about to add one
-                    recent_attachments_to_keep=self.config_section.recent_attachments_to_keep - 1,
-
-                )
-                if attachment is not None:
-                    attachment_object = self.add_attachment(iss, attachment)
-                    self.log.debug(f"Created attachment {attachment_object}")
                 message_parts.insert(0, "New occurrence with message(s):")
                 if main_message != '':
                     self.jira_conn.add_comment(iss, main_message)
