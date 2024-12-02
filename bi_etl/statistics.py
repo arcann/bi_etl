@@ -63,6 +63,17 @@ class Statistics(object):
         self.used = True
         return self._timer
 
+    def __enter__(self) -> "Statistics":
+        self.timer.start()
+        return self
+
+    def __exit__(self, exit_type, exit_value, exit_traceback):
+        self.timer.stop()
+
+    @property
+    def seconds_elapsed(self) -> float:
+        return self.timer.seconds_elapsed
+
     def __getitem__(self, key):
         if key == 'start time':
             return self.timer.first_start_time

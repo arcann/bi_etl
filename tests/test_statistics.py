@@ -11,7 +11,7 @@ from datetime import datetime
 from bi_etl.statistics import Statistics
 
 
-class Test(unittest.TestCase):
+class TestStatistics(unittest.TestCase):
     _multiprocess_can_split_ = True
 
     def test_nested_stats(self):
@@ -72,6 +72,14 @@ class Test(unittest.TestCase):
         val3 = Statistics.find_item(lst, 'Val3')
         self.assertEqual(val3, 1)
         self.assertGreaterEqual(s2['seconds elapsed'], 0.1)
+
+    def test_context_block(self):
+        with Statistics('tenth') as s:
+            time.sleep(0.1)
+        time.sleep(0.1)
+        self.assertAlmostEqual(s.timer.seconds_elapsed, 0.1, 1)
+        self.assertAlmostEqual(s.seconds_elapsed, 0.1, 1)
+        self.assertAlmostEqual(s['seconds elapsed'], 0.1, 1)
 
 
 if __name__ == "__main__":

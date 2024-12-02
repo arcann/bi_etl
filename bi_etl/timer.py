@@ -122,3 +122,10 @@ class Timer(object):
         self.first_start_time = self.start_time
         self.start_time_precise = Timer.now()
         self.running = True
+
+    def __enter__(self) -> "Timer":
+        self.start()
+        return self
+
+    def __exit__(self, exit_type, exit_value, exit_traceback):
+        self.stop()

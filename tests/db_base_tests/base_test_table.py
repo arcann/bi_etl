@@ -220,7 +220,7 @@ class BaseTestTable(BaseTestDatabase):
                 self.status = 'opened'
                 return self
 
-            def __exit__(self, *exc):
+            def __exit__(self, exit_type, exit_value, exit_traceback):
                 self.status = 'closed'
                 return False
 
