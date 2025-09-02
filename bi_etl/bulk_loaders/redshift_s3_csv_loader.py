@@ -4,6 +4,7 @@ from __future__ import annotations
 import gzip
 import io
 import os.path
+import textwrap
 from typing import *
 from tempfile import TemporaryDirectory
 
@@ -86,24 +87,20 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
         if analyze_compression:
             options += f' COMPUPDATE {self.analyze_compression} '
 
-        if self.s3_region is not None:
-            region_option = f"region '{self.s3_region}'"
+        base_copy = self._get_base_copy(
+           s3_source_path=s3_source_path,
+           table_to_load=table_to_load,
+        )
 
-        else:
-            region_option = ''
-
-        return f"""\
-                COPY {table_to_load} 
-                     FROM 's3://{self.s3_bucket_name}/{s3_source_path}'
-                     CSV 
-                     delimiter '{self.s3_file_delimiter}'
-                     null '{self.null_value}' 
-                     credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'
-                     {region_option}
-                     {header_option} 
-                     {file_compression}
-                     {options}; commit;
-                """
+        return textwrap.dedent(f"""\
+            {base_copy} --CSV specific Options:
+            FORMAT CSV
+            DELIMITER '{self.s3_file_delimiter}'
+            NULL '{self.null_value}' 
+            {header_option} 
+            {file_compression}
+            {options}; commit;
+            """)
 
     def load_from_iterable_partition_fixed(
            self,

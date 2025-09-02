@@ -21,11 +21,11 @@ if TYPE_CHECKING:
 
 
 class RedShiftS3Base(BulkLoader):
-    def __init__(self,
-                 config: S3_Bulk_Loader_Config,
-                 ):
-        super().__init__(
-        )
+    def __init__(
+            self,
+            config: S3_Bulk_Loader_Config,
+    ):
+        super().__init__()
         self.config = config
         self.s3_user_id = self.config.user_id
         self.s3_region = self.config.region_name
@@ -36,11 +36,8 @@ class RedShiftS3Base(BulkLoader):
         self.s3_clear_before = self.config.s3_clear_before
         self.s3_clear_when_done = self.config.s3_clear_when_done
         self.analyze_compression = self.config.analyze_compression
-        self.s3_password = self.config.get_password()
-        self.session = boto3.session.Session(
-            aws_access_key_id=self.s3_user_id,
-            aws_secret_access_key=self.s3_password
-        )
+        self.redshift_copy_iam_role = self.config.redshift_copy_iam_role
+        self.session = self.config.session
         try:
             identity = self.session.client('sts').get_caller_identity()
             self.log.info(f'Account ID = {identity["Account"]}')
@@ -57,6 +54,10 @@ class RedShiftS3Base(BulkLoader):
             'The AWS Access Key Id you provided does not exist in our records.'
         ]
         self.lines_scanned_modifier = 0
+
+    @property
+    def s3_password(self):
+        return self.config.get_password()
 
     def s3_folder_contents(
             self,
@@ -266,6 +267,35 @@ class RedShiftS3Base(BulkLoader):
             connection.close()
 
         return rows_loaded
+
+    def _get_base_copy(
+            self,
+            s3_source_path: str,
+            table_to_load: str,
+    ):
+        if self.s3_region is not None:
+            region_option = f"region '{self.s3_region}'"
+        else:
+            region_option = '--No region'
+
+        if self.redshift_copy_iam_role is not None:
+            role_option = f"IAM_ROLE '{self.redshift_copy_iam_role}'"
+        else:
+            role_option = '--No role'
+
+        if self.s3_user_id is not None:
+            credentials_option = f"credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'"
+        else:
+            credentials_option = '--No credentials'
+
+        return textwrap.dedent(f"""\
+            COPY {table_to_load} 
+                 FROM 's3://{self.s3_bucket_name}/{s3_source_path}'
+                 {credentials_option}
+                 {role_option}
+                 {region_option}
+            """
+        )
 
     def get_copy_sql(
             self,

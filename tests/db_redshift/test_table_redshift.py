@@ -1,6 +1,7 @@
 import unittest
 
 import sqlalchemy
+from config_wrangler.config_templates.password_source import PasswordSource
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
@@ -29,7 +30,7 @@ class TestTableRedshift(BaseTestTable):
 
     def _get_table_name(self, partial_name: str) -> str:
         # Redshift table names are case-insensitive.
-        # sqlalchemy way to handle that is to provide names in lower case
+        # Sqlalchemy way to handle that is to provide names in lower-case
         return super()._get_table_name(partial_name=partial_name).lower()
 
     def testInsertDuplicate(self):
@@ -157,7 +158,8 @@ class TestTableRedshift(BaseTestTable):
         bulk_loader = RedShiftS3CSVBulk(self.env_config.s3_bulk)
         # Note: by breaking s3_password the upload will work (uses bulk_loader.bucket),
         #       but the COPY will fail.
-        bulk_loader.s3_password = 'BAD'
+        bulk_loader.config.raw_password = 'BAD'
+        bulk_loader.config.password_source = PasswordSource.CONFIG_FILE
         with Table(self.task,
                    self.mock_database,
                    table_name=tbl_name) as tbl:
@@ -168,5 +170,6 @@ class TestTableRedshift(BaseTestTable):
                     table_object=tbl,
                 )
             self.assertNotIn(bulk_loader.s3_password, str(e.exception))
+
 
 del BaseTestTable

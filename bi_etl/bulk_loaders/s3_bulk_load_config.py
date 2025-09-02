@@ -11,6 +11,7 @@ class S3_Bulk_Loader_Config(S3_Bucket_Folder):
     s3_file_max_rows: Optional[int] = None
     s3_clear_before: Optional[bool] = True
     s3_clear_when_done: Optional[bool] = True
+    redshift_copy_iam_role: Optional[str] = None
     analyze_compression: Optional[str] = None  # Current Redshift options PRESET, ON, OFF (or TRUE, FALSE for the latter options)
 
     def validate_files(self):
