@@ -82,12 +82,12 @@ class ETLComponent(Iterable):
 
     def __init__(
             self,
-            task: Optional[ETLTask],
+            task: ETLTask | None = None,
             logical_name: Optional[str] = None,
             **kwargs
     ):
         self.default_stats_id = 'read'
-        self.task = task
+        self.task: ETLTask | None = task
         self.logical_name = logical_name or f"{self.__class__.__name__}#{id(self)}"
         self._primary_key = None
         self._primary_key_tuple = tuple()
@@ -233,9 +233,9 @@ class ETLComponent(Iterable):
     ):
         if state:
             self.log.setLevel(logging.DEBUG)
-            self.task.log_logging_level()
         else:
             self.log.setLevel(logging.INFO)
+        if self.task is not None:
             self.task.log_logging_level()
 
     def clear_statistics(self):
@@ -280,7 +280,10 @@ class ETLComponent(Iterable):
         """
         if self._column_names is None:
             self._obtain_column_names()
-        # noinspection PyTypeChecker
+
+        # Check if still None
+        if self._column_names is None:
+            raise ValueError("Column names cannot be None")
         return self._column_names
 
     @column_names.setter
@@ -419,7 +422,7 @@ class ETLComponent(Iterable):
 
     def iter_result(
             self,
-            result_list: object,
+            result_list: Iterable[dict],
             columns_in_order: Optional[list] = None,
             criteria_dict: Optional[dict] = None,
             logical_name: Optional[str] = None,
@@ -437,7 +440,7 @@ class ETLComponent(Iterable):
             stats_id = self.default_stats_id
             if stats_id is None:
                 stats_id = 'read'
-        stats = self.get_unique_stats_entry(stats_id=stats_id, parent_stats=parent_stats)
+        stats: Statistics = self.get_unique_stats_entry(stats_id=stats_id, parent_stats=parent_stats)
         if self.time_all_reads or (self._rows_read == 0 and self.time_first_read):
             stats.timer.start()
         if progress_frequency is None:
@@ -446,9 +449,9 @@ class ETLComponent(Iterable):
         # Support result_list that is actually query result
         if hasattr(result_list, 'fetchmany'):
             # noinspection PyTypeChecker
-            result_iter = self._fetch_many_iter(result_list)
+            result_iter: Iterable[dict] = self._fetch_many_iter(result_list)
         else:
-            result_iter = result_list
+            result_iter: Iterable[dict] = result_list
         this_iteration_header = None
 
         # noinspection PyTypeChecker

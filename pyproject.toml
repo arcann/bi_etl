@@ -43,6 +43,7 @@ dagster-webserver = {version = ">=1", optional = true}
 testcontainers = {version = ">=3.5.4", extras = ["mysql, oracle, postgresql, mssqlserver"], optional = true}
 # requests-toolbelt 0.10.0 (used by gql used by dagster) is not compatible with urllib >= 2.0
 urllib3 = "<2"
+pylint = "^3.3.8"
 
 [tool.poetry.extras]
 # Install with:
@@ -97,13 +98,16 @@ testpaths = [
     "tests",
 ]
 
+
+
 [tool.poetry.group.docs]
 optional = true
 
 [tool.poetry.group.docs.dependencies]
 Sphinx = ">=7.2.2"
 sphinx-paramlinks = ">=0.5.4"
-# sphinx-pydantic = ">=0.1.1" -- Has not been updated for pydantic 2
+# Has not been updated for pydantic 2
+# sphinx-pydantic = ">=0.1.1"
 # sphinx-autodoc-annotation = "^1.0-1"
 autodoc-pydantic = ">=2.0.1"
 sphinx-rtd-theme = ">=1.3.0"
@@ -111,3 +115,8 @@ sphinx-rtd-theme = ">=1.3.0"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pylint.MAIN]
+max-line-length=120
+
+[tool.pylint.'MESSAGES CONTROL']

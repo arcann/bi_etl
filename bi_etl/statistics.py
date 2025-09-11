@@ -3,7 +3,8 @@ Created on Mar 20, 2015
 
 @author: Derek Wood
 """
-from typing import List, Dict, Any, Union, Optional
+from datetime import datetime
+from typing import List, Dict, Any, Union, Optional, Mapping
 
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
@@ -14,7 +15,7 @@ class Statistics(object):
     Captures ETL task statistics
     """
 
-    def __init__(self, stats_id: str, parent: 'Statistics' = None, print_start_stop_times: bool = True):
+    def __init__(self, stats_id: str, parent: Optional['Statistics'] = None, print_start_stop_times: bool = True):
         """
         Constructor
         """
@@ -74,7 +75,7 @@ class Statistics(object):
     def seconds_elapsed(self) -> float:
         return self.timer.seconds_elapsed
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> Union['Statistics', int, float, datetime, None]:
         if key == 'start time':
             return self.timer.first_start_time
         elif key == 'stop  time':
@@ -135,26 +136,35 @@ class Statistics(object):
     def update(self, other):
         return self._stats_data.update(other)
 
-    def merge(self, other):
+    def merge(self, other: Union['Statistics', Dict[str, Any]]):
         for stats_key in other.keys():
             value = other[stats_key]
             if isinstance(value, int):
                 self.add_to_stat(stats_key, value)
             elif (isinstance(value, dict)
                   or isinstance(value, Statistics)):
-                if self[stats_key] == 0:
+                self_stat_value = self[stats_key]
+                if self_stat_value == 0:
                     self[stats_key] = value
-                elif isinstance(self[stats_key], Statistics):
-                    self[stats_key].merge(value)
-                elif isinstance(self[stats_key], dict):
-                    self[stats_key] = Statistics(stats_id=stats_key,
-                                                 parent=self)
-                    self[stats_key].merge(value)
+                elif isinstance(self_stat_value, Statistics):
+                    self_stat_value.merge(value)
+                elif isinstance(self_stat_value, dict):
+                    # First transform item into a Statistics object
+                    self[stats_key] = Statistics(
+                        stats_id=stats_key,
+                        parent=self
+                    )
+                    # Then merge the new value(s)
+                    self_stat_value.merge(value)
                 else:
+                    if isinstance(other, Statistics):
+                        other_path = other.path
+                    else:
+                        other_path = f"{type(other)}"
                     raise ValueError(
                         f"Can't merge {self.path}:{stats_key} "
                         f"type {type(self[stats_key])} "
-                        f"with {other.path}:{stats_key} type {type(value)}"
+                        f"with {other_path}:{stats_key} type {type(value)}"
                     )
 
     def __contains__(self, key):
@@ -190,7 +200,10 @@ class Statistics(object):
                            )
 
     @staticmethod
-    def flatten_statistics(container, prefix: Optional[str] = None, results_container: dict = None) -> Dict[str, Any]:
+    def flatten_statistics(
+            container, prefix: Optional[str] = None,
+            results_container: dict | None = None
+    ) -> Dict[str, Any]:
         if results_container is None:
             results_container = {}
 
@@ -219,7 +232,7 @@ class Statistics(object):
         return results_container
 
     @staticmethod
-    def find_item(obj: Union[str, dict, list], key: str):
+    def find_item(obj: Union['Statistics', str, dict, list], key: str):
         if isinstance(obj, str):
             return None
         elif hasattr(obj, 'values'):

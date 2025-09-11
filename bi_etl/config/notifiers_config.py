@@ -1,11 +1,11 @@
-from typing import List, Optional
+from typing import List, Optional, Annotated, Set
 
 from config_wrangler.config_templates.config_hierarchy import ConfigHierarchy
 from config_wrangler.config_templates.credentials import Credentials
 from config_wrangler.config_templates.keepass_config import KeepassConfig
 from config_wrangler.config_templates.password_source import PasswordSource
 from config_wrangler.validate_config_hierarchy import config_hierarchy_validator
-from pydantic import PrivateAttr
+from pydantic import PrivateAttr, Field
 
 
 class NotifierConfigBase(ConfigHierarchy):
@@ -25,6 +25,7 @@ class LogNotifierConfig(NotifierConfigBase):
     include_sensitive: bool = True
 
 
+# noinspection PyPep8Naming
 class SMTP_Notifier(NotifierConfigBase, Credentials):
     notifier_class: str = 'bi_etl.notifiers.email.Email'
     email_from: str
@@ -95,7 +96,7 @@ class SlackNotifier(NotifierConfigBase):
     """
 
     # Values to hide from config exports
-    _private_value_atts = PrivateAttr(default={'token'})
+    _private_value_atts: Set[str] = PrivateAttr(default_factory=lambda: {'token'})
 
 
 class JiraNotifier(NotifierConfigBase, Credentials):
@@ -120,7 +121,7 @@ class JiraNotifier(NotifierConfigBase, Credentials):
     Add a comment on each new instance of the same issue subject.
     """
 
-    exclude_statuses: List[str] = ['Closed']
+    exclude_statuses: Annotated[List[str], Field(default_factory=lambda: ['Closed'])]
     """
     When searching for existing instances, exclude issues with these statuses.
     """

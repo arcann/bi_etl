@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Dict, List
 
 from junitparser import JUnitXml
+
 try:
     from junit2htmlreport.runner import run as junit2html_run
 except (ImportError, ModuleNotFoundError):
@@ -22,7 +22,7 @@ def merge_junit_files():
             xml = JUnitXml.fromfile(str(xml_file_backup))
         else:
             xml = JUnitXml.fromfile(str(xml_file))
-            xml.write(xml_file_backup, pretty=True)
+            xml.write(str(xml_file_backup), pretty=True)
         for suite in xml:
             for case in suite:
                 classname = case.classname

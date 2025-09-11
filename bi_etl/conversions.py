@@ -5,10 +5,10 @@ Created on Nov 17, 2014
 """
 import string
 from datetime import date, timedelta, timezone
-from datetime import datetime
+from datetime import datetime, tzinfo
 from datetime import time
 from decimal import Decimal, DecimalException
-from typing import Union, Iterable, MutableMapping, Optional
+from typing import Tuple, Union, Iterable, MutableMapping, Optional, Any, List, Dict
 
 
 def strip(s: str):
@@ -31,7 +31,7 @@ def str2int(s: str):
         return int(s.replace(',', ''))
 
 
-def int2base(n, base):
+def int2base(n: int, base: int) -> str:
     valid_digits = string.digits + string.ascii_uppercase
     if base > len(valid_digits):
         raise ValueError(
@@ -45,7 +45,7 @@ def int2base(n, base):
     else:
         sign = 1
 
-    digits = []
+    digits: List[str] = []
     while n:
         digits.append(valid_digits[n % base])
         n = n // base
@@ -255,8 +255,8 @@ def round_datetime_ms(
 
 def change_tz(
         source_datetime: Optional[datetime],
-        from_tzone,
-        to_tzone
+        from_tzone: tzinfo,
+        to_tzone: tzinfo
         ):
     """
     Change time-zones in dates that have no time-zone info, or incorrect time-zone info
@@ -303,7 +303,7 @@ def ensure_datetime(dt: Union[datetime, date]) -> datetime:
 
 
 def ensure_datetime_dict(
-        d: Union[dict, MutableMapping],
+        d: Union[Dict[str, Any], MutableMapping[str, Any]],
         key: str,
         ):
     """
@@ -319,7 +319,7 @@ def ensure_datetime_dict(
         raise ValueError(f'expected datetime for {key}, got {dt}')
 
 
-def nvl(value, default):
+def nvl(value: Any, default: Any) -> Any:
     """
     Pass value through unchanged unless it is NULL (None).
     If it is NULL (None), then return provided default value.
@@ -330,14 +330,14 @@ def nvl(value, default):
         return value
 
 
-def coalesce(*values):
+def coalesce(*values: Any) -> Any:
     for candidate_value in values:
         if candidate_value is not None:
             return candidate_value
     return None
 
 
-def nullif(v, value_to_null):
+def nullif(v: Any, value_to_null: Any) -> Any:
     """
     Pass value through unchanged unless it is equal to provided `value_to_null` value. 
     If `v` ==`value_to_null` value then return NULL (None)
@@ -376,7 +376,7 @@ def default_nines(v: int) -> int:
     return nvl(v, -9999)
 
 
-def str2bytes_size(str_size: str) -> str:
+def str2bytes_size(str_size: str) -> Optional[int]:
     """
     Parses a string containing a size in bytes including KB, MB, GB, TB codes
     into an integer with the actual number of bytes (using 1 KB = 1024). 
@@ -470,15 +470,15 @@ def bytes2human(
     n = int(n)
     if n < 0:
         raise ValueError("n < 0")
-    symbols = SYMBOLS[symbols]
-    prefix = {}
-    for i, s in enumerate(symbols[1:]):
+    symbol_list = SYMBOLS[symbols]
+    prefix: Dict[str, int] = {}
+    for i, s in enumerate(symbol_list[1:]):
         prefix[s] = 1 << (i+1)*10
-    for symbol in reversed(symbols[1:]):
+    for symbol in reversed(symbol_list[1:]):
         if n >= prefix[symbol]:
             value = float(n) / prefix[symbol]
             return format_str % dict(symbol=symbol, value=value)
-    return format_str % dict(symbol=symbols[0], value=n)
+    return format_str % dict(symbol=symbol_list[0], value=n)
 
 
 def human2bytes(s: str) -> int:
@@ -532,7 +532,7 @@ def human2bytes(s: str) -> int:
     return int(num * prefix[letter])
 
 
-def replace_tilda(e):
+def replace_tilda(e: UnicodeEncodeError) -> Tuple[str, int]:
     """
     Used for unicode error to replace invalid ascii with ~
 

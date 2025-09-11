@@ -1,9 +1,10 @@
 import email
+import email.message
 import re
 import smtplib
 from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
-from typing import Optional
+from typing import Optional, Union
 
 import bi_etl.config.notifiers_config as notifiers_config
 from bi_etl.notifiers.notifier_base import NotifierBase, NotifierException, NotifierAttachment
@@ -17,8 +18,8 @@ class Email(NotifierBase):
     def send(
             self,
             subject: str,
-            message: str,
-            sensitive_message: str = None,
+            message: Union[str, email.message.Message],
+            sensitive_message: Optional[str] = None,
             attachment: Optional[NotifierAttachment] = None,
             throw_exception: bool = False,
             **kwargs
@@ -73,13 +74,13 @@ class Email(NotifierBase):
             if attachment is not None:
                 message.attach(MIMEApplication(attachment.bytes_content, Name=attachment.filename))
 
-            gateway = self.config_section.gateway_host
+            gateway = self.config_section.gateway_host or ''
             gateway_port = self.config_section.gateway_port
             gateway_userid = self.config_section.user_id
             gateway_password = self.config_section.get_password()
 
             use_ssl = self.config_section.use_ssl
-            if use_ssl:
+            if use_ssl:                
                 server = smtplib.SMTP_SSL(gateway, port=gateway_port)
             else:
                 server = smtplib.SMTP(gateway, port=gateway_port)

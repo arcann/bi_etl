@@ -7,11 +7,10 @@ Created on Sep 17, 2014
 from __future__ import annotations
 
 import functools
-import typing
 from copy import copy
 from datetime import datetime, date
 from operator import attrgetter
-from typing import Iterable
+from typing import Iterable, Set, Union, Optional, MutableMapping, Mapping, List, FrozenSet, Dict, Any
 
 import sqlalchemy
 from sqlalchemy.sql import sqltypes, functions
@@ -130,13 +129,13 @@ class ReadOnlyTable(ETLComponent):
     NK_LOOKUP = 'NK'
 
     def __init__(self,
-                 task: typing.Optional[ETLTask],
+                 task: Optional[ETLTask],
                  database: DatabaseMetadata,
                  table_name: str,
                  table_name_case_sensitive: bool = True,
-                 schema: str = None,
-                 exclude_columns: set = None,
-                 include_only_columns: set = None,
+                 schema: Optional[str] = None,
+                 exclude_columns: Optional[Set[Union[str, Column]]] = None,
+                 include_only_columns: Optional[Set[Union[str, Column]]] = None,
                  **kwargs
                  ):
         # Don't pass kwargs up. They should be set here at the end
@@ -159,10 +158,10 @@ class ReadOnlyTable(ETLComponent):
         self.database = database
         self._table = None
         self._table_name_case_sensitive = table_name_case_sensitive
-        self._columns = None
-        self._column_names = None
-        self._column_name_index = None
-        self._excluded_columns = None
+        self._columns: List[Column] | None = None
+        self._column_names: List[str] | None = None
+        self._column_name_index: Dict[str, Union[Column, List[Column]]] | None = None
+        self._excluded_columns: Set[str] | None = None
         self._table_name = table_name
         self.schema = schema
         if table_name is not None:
@@ -310,7 +309,7 @@ class ReadOnlyTable(ETLComponent):
                 if isinstance(existing_entry, list):
                     existing_entry.append(column)
                 else:
-                    new_list = list()
+                    new_list: List[Column] = list()
                     new_list.append(existing_entry)
                     new_list.append(column)
                     self._column_name_index[index_version_of_column_name] = new_list
@@ -329,20 +328,23 @@ class ReadOnlyTable(ETLComponent):
     def maintain_cache_during_load(self, value: bool):
         self._maintain_cache_during_load = value
 
-    def set_columns(self, columns):
+    # noinspection PyTypeChecker
+    def set_columns(self, columns: List[Column]):
         # Remove columns from the table
-        for col in self._columns:
-            col.table = None
+        if self._columns is not None:
+            for col in self._columns:
+                col.table = None
         # Clear table from columns passed in
         for col in columns:
             col.table = None
         # Remove the table definition so we can add it back below
         self._columns = columns
         self._column_names = None
-        self.database.remove(self.table)
+        if self.table is not None:
+            self.database.remove(self.table)
         self.table = sqlalchemy.schema.Table(self.table_name, self.database, *self._columns, schema=self.schema, quote=False)
 
-    def exclude_columns(self, columns_to_exclude: set):
+    def exclude_columns(self, columns_to_exclude: Set[Union[str, Column]]):
         """
         Exclude columns from the table. Removes them from all SQL statements.
         
@@ -400,12 +402,12 @@ class ReadOnlyTable(ETLComponent):
         columns_to_exclude = self.column_names_set.difference(columns_to_include)
         self.exclude_columns(set(columns_to_exclude))
 
-    def is_connected(self, connection_name: typing.Optional[str] = None) -> bool:
+    def is_connected(self, connection_name: Optional[str] = None) -> bool:
         return self.database.is_connected(connection_name)
 
     def connection(
             self,
-            connection_name: typing.Optional[str] = None,
+            connection_name: Optional[str] = None,
             open_if_not_exist: bool = True,
             open_if_closed: bool = True,
     ) -> sqlalchemy.engine.base.Connection:
@@ -423,7 +425,7 @@ class ReadOnlyTable(ETLComponent):
             self._connections_used.remove(connection_name)
         self.database.close_connection()
 
-    def close_connections(self, exceptions: typing.Optional[set] = None):
+    def close_connections(self, exceptions: Optional[set] = None):
         self.database.close_connections(exceptions=exceptions)
 
     def close(self, error: bool = False):
@@ -531,8 +533,8 @@ class ReadOnlyTable(ETLComponent):
 
     def select(
             self,
-            column_list: typing.Optional[list] = None,
-            exclude_cols: typing.Optional[frozenset] = None
+            column_list: Optional[list] = None,
+            exclude_cols: Optional[frozenset] = None
     ) -> sqlalchemy.sql.expression.GenerativeSelect:
         """
         Builds a select statement for this table. 
@@ -585,7 +587,7 @@ class ReadOnlyTable(ETLComponent):
             key_values = [key_values]
 
         key_values_dict = dict()
-        if isinstance(key_values, typing.MutableMapping):
+        if isinstance(key_values, MutableMapping):
             for key_name in key_names:
                 if key_name in key_values:
                     key_values_dict[key_name] = key_values[key_name]
@@ -747,7 +749,7 @@ class ReadOnlyTable(ETLComponent):
                     for c in criteria_list:
                         if isinstance(c, str):
                             stmt = stmt.where(text(c))
-                        elif isinstance(c, typing.Mapping):
+                        elif isinstance(c, Mapping):
                             for col, value in c.items():
                                 stmt = stmt.where(self.get_column(col) == value)
                         else:
@@ -772,16 +774,16 @@ class ReadOnlyTable(ETLComponent):
             stats.timer.stop()
 
     def where(self,
-              criteria_list: list = None,
-              criteria_dict: dict = None,
-              order_by: list = None,
-              column_list: typing.List[typing.Union[Column, str]] = None,
-              exclude_cols: typing.FrozenSet[typing.Union[Column, str]] = None,
-              use_cache_as_source: bool = None,
+              criteria_list: List[str] | None = None,
+              criteria_dict: Dict[str, Any] | None = None,
+              order_by: List[Union[str,Column]] | None = None,
+              column_list: List[Union[Column, str]] | None = None,
+              exclude_cols: FrozenSet[Union[Column, str]] | None = None,
+              use_cache_as_source: bool | None = None,
               connection_name: str = 'select',
-              progress_frequency: int = None,
-              stats_id: str = None,
-              parent_stats: Statistics = None,
+              progress_frequency: int | None = None,
+              stats_id: str | None = None,
+              parent_stats: Statistics | None = None,
               ) -> Iterable[Row]:
         """
 
@@ -856,14 +858,14 @@ class ReadOnlyTable(ETLComponent):
                           )
 
     @property
-    def columns(self) -> typing.List[Column]:
+    def columns(self) -> List[Column]:
         """
         A named-based collection of :class:`sqlalchemy.sql.expression.ColumnElement` objects in this table/view. 
         
         """
         return self._columns
 
-    def get_column(self, column: typing.Union[str, Column]) -> Column:
+    def get_column(self, column: Union[str, Column]) -> Column:
         """
         Get the :class:`sqlalchemy.sql.expression.ColumnElement` object for a given column name.
         """
@@ -1234,7 +1236,7 @@ class ReadOnlyTable(ETLComponent):
         self.log.info(f'Lookups will always_fallback_to_db = {self.always_fallback_to_db}')
 
     @functools.lru_cache(maxsize=10)
-    def get_lookup(self, lookup_name: typing.Optional[str]) -> Lookup:
+    def get_lookup(self, lookup_name: Optional[str]) -> Lookup:
         if lookup_name is None:
             lookup_name = self._get_pk_lookup_name()
         return super().get_lookup(lookup_name=lookup_name)
@@ -1349,7 +1351,7 @@ class ReadOnlyTable(ETLComponent):
                       lookup_name: str,
                       source_row: Row,
                       stats_id: str = 'get_by_lookup',
-                      parent_stats: typing.Optional[Statistics] = None,
+                      parent_stats: Optional[Statistics] = None,
                       fallback_to_db: bool = False,
                       ) -> Row:
 
