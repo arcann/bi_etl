@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bi_etl"
-version = "1.8.1a"
+version = "1.8.1"
 description = "Python ETL Framework"
 keywords=["etl"]
 classifiers = [
@@ -16,7 +16,7 @@ repository = "https://github.com/arcann/bi_etl"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
-config-wrangler = {version=">=1.0.16", extras=["aws"]}
+config-wrangler = {version=">=1.3", extras=["aws"]}
 SQLAlchemy = ">=1.4.49"
 semidbm = ">=0.5.1"
 psutil = ">=5.7.2"
@@ -75,7 +75,7 @@ dagster-webserver = ">=1.6.3"
 fastavro = ">=1.5.3"
 junitparser = "^3.2"
 junit2html = "^31.0"
-numpy = "^1.25.1"
+numpy = ">=1.25.1"
 oracledb = ">=1.2.0"
 paramiko = "*"  # For docker ssh:// support
 pip = ">=22.1.2"

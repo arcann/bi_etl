@@ -337,7 +337,6 @@ class ETLTask(object):
             retry_policy=cls.dagster_retry_policy(),
             group_name=cls.dagster_group_name(),
             compute_kind=cls.DAGSTER_compute_kind,
-            freshness_policy=cls.dagster_freshness_policy(),
             code_version=cls.dagster_code_version(),
             description=cls.dagster_description(),
             op_tags=cls.dagster_op_tags(),
@@ -376,15 +375,6 @@ class ETLTask(object):
         Return one or more schedules linked to this task.
         They don't have to run only this task.
         """
-        return None
-
-    @classmethod
-    def dagster_freshness_policy(
-            cls,
-            *,
-            debug: bool = False,
-            **kwargs
-    ) -> Optional[dagster.FreshnessPolicy]:
         return None
 
     @classmethod
