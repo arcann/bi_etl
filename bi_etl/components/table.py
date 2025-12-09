@@ -14,7 +14,8 @@ import warnings
 from datetime import datetime, date, time, timedelta, timezone
 from decimal import Decimal
 from decimal import InvalidOperation
-from typing import Any, Iterable, Callable, List, Tuple, Union, Optional, Set, MutableMapping, MutableSequence
+from enum import IntEnum, unique
+from typing import Any, Iterable, Callable, List, Dict, Tuple, Union, Optional, Set, MutableMapping, MutableSequence
 
 import sqlalchemy
 from gevent import spawn, sleep
@@ -166,24 +167,25 @@ class Table(ReadOnlyTable):
     # Replacement for float Not a Number (NaN) values
     NAN_REPLACEMENT_VALUE = None
 
-    from enum import IntEnum, unique
 
     @unique
     class InsertMethod(IntEnum):
-        execute_many = 1
-        insert_values_list = 2
-        bulk_load = 3
+        EXECUTE_MANY = 1
+        INSERT_VALUES_LIST = 2
+        BULK_LOAD = 3
 
     @unique
     class UpdateMethod(IntEnum):
-        execute_many = 1
-        bulk_load = 3
+        EXECUTE_MANY = 1
+        BULK_LOAD = 3
 
     @unique
     class DeleteMethod(IntEnum):
-        execute_many = 1
-        bulk_load = 3
+        EXECUTE_MANY = 1
+        BULK_LOAD = 3
 
+    # TODO: Change to force named arguments to be used
+    # pylint: disable=super-with-arguments, too-many-positional-arguments
     def __init__(
             self,
             task: Optional[ETLTask],
@@ -205,11 +207,25 @@ class Table(ReadOnlyTable):
             schema=schema,
             exclude_columns=exclude_columns,
             )
+
+        self.TYPE_TO_MAKE_COERCE_MAP = {
+            str: Table._make_str_coerce,
+            bytes: Table._make_bytes_coerce,
+            int: Table._make_int_coerce,
+            float: Table._make_float_coerce,
+            Decimal: Table._make_decimal_coerce,
+            date: Table._make_date_coerce,
+            datetime: Table._make_datetime_coerce,
+            time: Table._make_time_coerce,
+            timedelta: Table._make_timedelta_coerce,
+            bool: Table._make_bool_coerce,
+        }
+
         self.support_multiprocessing = False
         self._special_row_header = None
-        self._insert_method = Table.InsertMethod.execute_many
-        self._update_method = Table.UpdateMethod.execute_many
-        self._delete_method = Table.DeleteMethod.execute_many
+        self._insert_method = Table.InsertMethod.EXECUTE_MANY
+        self._update_method = Table.UpdateMethod.EXECUTE_MANY
+        self._delete_method = Table.DeleteMethod.EXECUTE_MANY
         self.bulk_loader = None
         self._bulk_rollback = False
         self._bulk_load_performed = False
@@ -240,7 +256,6 @@ class Table(ReadOnlyTable):
         self.force_ascii = False
         codecs.register_error('replace_tilda', replace_tilda)
         self.__batch_size = self.DEFAULT_BATCH_SIZE
-        self.__transaction_pool = dict()
         self.skip_coercion_on = {}
 
         self._logical_delete_update = None
@@ -250,8 +265,8 @@ class Table(ReadOnlyTable):
         self.safe_type_mode = True
 
         # Init table "memory"
-        self.max_keys = dict()
-        self.max_locally_allocated_keys = dict()
+        self.max_keys = {}
+        self.max_locally_allocated_keys = {}
         self._table_key_memory = LocalTableMemory(self)
         self._max_keys_lock = contextlib.nullcontext()
 
@@ -268,7 +283,7 @@ class Table(ReadOnlyTable):
         self.insert_hint = None
         # A list of any pending rows to be inserted
         self.pending_insert_stats = None
-        self.pending_insert_rows = list()
+        self.pending_insert_rows = []
 
         # A StatementQueue of any pending delete statements, the queue has the
         # statement itself (based on the keys), and a list of pending values
@@ -277,7 +292,7 @@ class Table(ReadOnlyTable):
 
         # A list of any pending rows to apply as updates
         self.pending_update_stats = None
-        self.pending_update_rows: Dict[tuple, PendingUpdate] = dict()
+        self.pending_update_rows: Dict[tuple, PendingUpdate] = {}
 
         self._coerce_methods_built = False
 
@@ -314,11 +329,11 @@ class Table(ReadOnlyTable):
 
     def __iter__(self) -> Iterable[Row]:
         # Note: yield_per will break if the transaction is committed while we are looping
-        for row in self.where(None):
-            yield row
+        yield from self.where(None)
 
     @property
     def batch_size(self):
+        """ Number of records in a batch for EXECUTE_MANY (e.g. insert) operations"""
         return self.__batch_size
 
     @batch_size.setter
@@ -340,7 +355,7 @@ class Table(ReadOnlyTable):
 
     @property
     def in_bulk_mode(self):
-        return self._insert_method == Table.InsertMethod.bulk_load
+        return self._insert_method == Table.InsertMethod.BULK_LOAD
 
     def set_bulk_loader(
             self,
@@ -349,9 +364,9 @@ class Table(ReadOnlyTable):
         self.log.info(f'Changing {self} to bulk load method')
 
         self.__batch_size = sys.maxsize
-        self._insert_method = Table.InsertMethod.bulk_load
-        self._update_method = Table.UpdateMethod.bulk_load
-        self._delete_method = Table.DeleteMethod.bulk_load
+        self._insert_method = Table.InsertMethod.BULK_LOAD
+        self._update_method = Table.UpdateMethod.BULK_LOAD
+        self._delete_method = Table.DeleteMethod.BULK_LOAD
         self.bulk_loader = bulk_loader
 
     def cache_row(
@@ -394,32 +409,35 @@ class Table(ReadOnlyTable):
 
     @property
     def insert_method(self):
+        """ The  `Table.InsertMethod` method used to apply inserts to the database """
         return self._insert_method
 
     @insert_method.setter
     def insert_method(self, value):
         self._insert_method = value
-        if value == Table.InsertMethod.bulk_load:
+        if value == Table.InsertMethod.BULK_LOAD:
             raise ValueError('Do not manually set bulk mode property. Use set_bulk_loader instead.')
 
     @property
     def update_method(self):
+        """ The  `Table.UpdateMethod` method used to apply updates to the database """
         return self._update_method
 
     @update_method.setter
     def update_method(self, value):
         self._update_method = value
-        if value == Table.UpdateMethod.bulk_load:
+        if value == Table.UpdateMethod.BULK_LOAD:
             raise ValueError('Do not manually set bulk mode property. Use set_bulk_loader instead.')
 
     @property
     def delete_method(self):
+        """ The  `Table.DeleteMethod` method used to apply deletes to the database """
         return self._delete_method
 
     @delete_method.setter
     def delete_method(self, value):
         self._delete_method = value
-        if value == Table.DeleteMethod.bulk_load:
+        if value == Table.DeleteMethod.BULK_LOAD:
             raise ValueError('Do not manually set bulk mode property. Use set_bulk_loader instead.')
 
     def _autogenerate_sequence_for_row(
@@ -431,10 +449,12 @@ class Table(ReadOnlyTable):
         # Make sure we have a column object
         seq_column_obj = self.get_column(seq_column)
         # If key value is not already set, or we are supposed to force override
-        if row.get(seq_column_obj.name) is None or force_override:
+        current_value = row.get(seq_column_obj.name)
+        if current_value is None or force_override:
             next_key = self.table_key_memory.get_next_key(seq_column)
             row.set_keeping_parent(seq_column_obj.name, next_key)
             return next_key
+        return current_value
 
     def _auto_generate_key_for_row(
             self,
@@ -452,6 +472,7 @@ class Table(ReadOnlyTable):
                 )
             key = pk_list[0]
             return self._autogenerate_sequence_for_row(row, seq_column=key, force_override=force_override)
+        return None
 
     # noinspection PyUnresolvedReferences
     def _trace_data_type(
@@ -517,12 +538,13 @@ class Table(ReadOnlyTable):
         method_name = self._get_coerce_method_name_by_object(target_column_object)
         try:
             return getattr(self, method_name)
-        except AttributeError:
+        except AttributeError as e:
             raise AttributeError(
                 f'{self} does not have a coerce method for {target_column_object} '
                 f'- check that vs columns list {self.column_names}'
-            )
+            ) from e
 
+    # pylint: disable=exec-used
     def _make_generic_coerce(
             self,
             target_column_object: ColumnElement,
@@ -543,6 +565,7 @@ class Table(ReadOnlyTable):
         # Add the new function as a method in this class
         exec(f"self.{name} = {name}.__get__(self)")
 
+    # pylint: disable=exec-used
     def _make_str_coerce(
             self,
             target_column_object: ColumnElement,
@@ -601,7 +624,7 @@ class Table(ReadOnlyTable):
                                            f"which cannot accept value '{{target_column_value}}' because "
                                            f"byte length of {{len(target_column_value.encode('utf-8'))}} > "
                                            f"{t_type.length} limit (_make_str_coerce)"
-                                           f"Note: char length is {{len(target_column_value)}}" 
+                                           f"Note: char length is {{len(target_column_value)}}"
                                            )  
                                     raise ValueError(msg)                        
                             """
@@ -628,7 +651,7 @@ class Table(ReadOnlyTable):
                 f"""\
                                     # base indent
                                         if value_len < {t_type.length}:
-                                            target_column_value += ' ' * ({t_type.length} -  len(target_column_value))                    
+                                            target_column_value += ' ' * ({t_type.length} -  len(target_column_value))
                                     """
                 )
         code += str(self._generate_null_check(target_column_object))
@@ -645,6 +668,7 @@ class Table(ReadOnlyTable):
         # Add the new function as a method in this class
         exec(f"self.{name} = {name}.__get__(self)")
 
+    # pylint: disable=exec-used
     def _make_bytes_coerce(
             self,
             target_column_object: ColumnElement,
@@ -711,6 +735,7 @@ class Table(ReadOnlyTable):
         # Add the new function as a method in this class
         exec(f"self.{name} = {name}.__get__(self)")
 
+    # pylint: disable=exec-used
     def _make_int_coerce(
             self,
             target_column_object: ColumnElement,
@@ -751,6 +776,7 @@ class Table(ReadOnlyTable):
         # Add the new function as a method in this class
         exec(f"self.{name} = {name}.__get__(self)")
 
+    # pylint: disable=exec-used
     def _make_float_coerce(
             self,
             target_column_object: ColumnElement,
@@ -800,6 +826,7 @@ class Table(ReadOnlyTable):
         # Add the new function as a method in this class
         exec(f"self.{name} = {name}.__get__(self)")
 
+    # pylint: disable=exec-used
     def _make_decimal_coerce(
             self,
             target_column_object: ColumnElement,
@@ -888,6 +915,7 @@ class Table(ReadOnlyTable):
         # Add the new function as a method in this class
         exec(f"self.{name} = {name}.__get__(self)")
 
+    # pylint: disable=exec-used
     def _make_date_coerce(
             self,
             target_column_object: ColumnElement,
@@ -941,6 +969,7 @@ class Table(ReadOnlyTable):
         # Add the new function as a method in this class
         exec(f"self.{name} = {name}.__get__(self)")
 
+    # pylint: disable=exec-used
     def _make_datetime_coerce(
             self,
             target_column_object: ColumnElement,
@@ -1009,6 +1038,7 @@ class Table(ReadOnlyTable):
         # Add the new function as a method in this class
         exec(f"self.{name} = {name}.__get__(self)")
 
+    # pylint: disable=exec-used
     def _make_time_coerce(
             self,
             target_column_object: ColumnElement,
@@ -1062,6 +1092,7 @@ class Table(ReadOnlyTable):
         # Add the new function as a method in this class
         exec(f"self.{name} = {name}.__get__(self)")
 
+    # pylint: disable=exec-used
     def _make_timedelta_coerce(
             self,
             target_column_object: ColumnElement,
@@ -1113,6 +1144,7 @@ class Table(ReadOnlyTable):
         # Add the new function as a method in this class
         exec(f"self.{name} = {name}.__get__(self)")
 
+    # pylint: disable=exec-used
     def _make_bool_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
         target_name = target_column_object.name
         name = self._get_coerce_method_name_by_object(target_column_object)
@@ -1176,29 +1208,11 @@ class Table(ReadOnlyTable):
             else:
                 t_type = column.type
                 try:
-                    if t_type.python_type == str:
-                        self._make_str_coerce(column)
-                    elif t_type.python_type == bytes:
-                        self._make_bytes_coerce(column)
-                    elif t_type.python_type == int:
-                        self._make_int_coerce(column)
-                    elif t_type.python_type == float:
-                        self._make_float_coerce(column)
-                    elif t_type.python_type == Decimal:
-                        self._make_decimal_coerce(column)
-                    elif t_type.python_type == date:
-                        self._make_date_coerce(column)
-                    elif t_type.python_type == datetime:
-                        self._make_datetime_coerce(column)
-                    elif t_type.python_type == time:
-                        self._make_time_coerce(column)
-                    elif t_type.python_type == timedelta:
-                        self._make_timedelta_coerce(column)
-                    elif t_type.python_type == bool:
-                        self._make_bool_coerce(column)
-                    else:
-                        warnings.warn(f'Table.build_row has no handler for {t_type} = {type(t_type)}')
-                        self._make_generic_coerce(column)
+                    type_specific_make_coerce = self.TYPE_TO_MAKE_COERCE_MAP[t_type.python_type]
+                    type_specific_make_coerce(self, column)
+                except KeyError:
+                    warnings.warn(f'Table.build_row has no handler for {t_type} = {type(t_type)}')
+                    self._make_generic_coerce(column)
                 except NotImplementedError:
                     raise ValueError(f"Column {column} has type {t_type} with no python_type")
 
@@ -1484,7 +1498,7 @@ class Table(ReadOnlyTable):
             stats = self.pending_insert_stats
             if stats is None:
                 stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
-        if self.insert_method == Table.InsertMethod.insert_values_list:
+        if self.insert_method == Table.InsertMethod.INSERT_VALUES_LIST:
             prepare_stats = self.get_stats_entry('prepare ' + stat_name, parent_stats=stats)
             prepare_stats.print_start_stop_times = False
             prepare_stats.timer.start()
@@ -1496,7 +1510,7 @@ class Table(ReadOnlyTable):
                     if stmt is None:
                         prepare_stats['statements prepared'] += 1
                         stmt = f"""
-                            INSERT INTO {self.qualified_table_name} ({', '.join(new_row.columns_in_order)}) 
+                            INSERT INTO {self.qualified_table_name} ({', '.join(new_row.columns_in_order)})
                             VALUES {{values}}
                         """
                         pending_insert_statements.add_statement(stmt_key, stmt)
@@ -1522,7 +1536,7 @@ class Table(ReadOnlyTable):
                 db_stats.timer.stop()
                 db_stats['rows inserted'] += rows_affected
                 del self.pending_insert_rows
-                self.pending_insert_rows = list()
+                self.pending_insert_rows = []
             except Exception as e:
                 # self.log.error(traceback.format_exc())
                 self.log.exception(e)
@@ -1583,7 +1597,7 @@ class Table(ReadOnlyTable):
                 db_stats.timer.stop()
                 db_stats['rows inserted'] += rows_affected
                 del self.pending_insert_rows
-                self.pending_insert_rows = list()
+                self.pending_insert_rows = []
             except SQLAlchemyError as e:
                 self.log.error(
                     f"Bulk insert on {self} failed with error {e}. Applying as single inserts to find error row..."
@@ -1932,7 +1946,7 @@ class Table(ReadOnlyTable):
         stats['rows read'] = 0
         stats['rows deleted'] = 0
         stats.timer.start()
-        deleted_rows = list()
+        deleted_rows = []
         self.begin()
 
         if progress_frequency is None:
@@ -2029,6 +2043,7 @@ class Table(ReadOnlyTable):
             set_of_key_tuples=self.source_keys_processed,
             criteria_list=criteria_list,
             criteria_dict=criteria_dict,
+            use_cache_as_source=use_cache_as_source,
             stat_name=stat_name,
             parent_stats=parent_stats
             )
@@ -2084,7 +2099,7 @@ class Table(ReadOnlyTable):
             self._logical_delete_update[self.delete_flag] = self.delete_flag_yes
 
         if criteria_dict is None:
-            criteria_dict = dict()
+            criteria_dict = {}
         # Do no process rows that are already deleted
         criteria_dict[self.delete_flag] = self.delete_flag_no
 
@@ -2212,8 +2227,8 @@ class Table(ReadOnlyTable):
         if self.use_utc_times:
             # Returns the current UTC date and time, as a naive datetime object.
             return datetime.now(timezone.utc).replace(tzinfo=None)
-        else:
-            return datetime.now()
+        # otherwise
+        return datetime.now()
 
     def set_last_update_date(self, row):
         last_update_date_col = self.get_column_name(self.last_update_date)
@@ -2224,7 +2239,7 @@ class Table(ReadOnlyTable):
     def get_bind_name(self, column_name: str) -> str:
         if self._bind_name_map is None:
             max_len = self.database.dialect.max_identifier_length
-            self._bind_name_map = dict()
+            self._bind_name_map = {}
             bind_names = set()
             for other_column_name in self.column_names:
                 bind_name = f'b_{other_column_name}'
@@ -2302,7 +2317,7 @@ class Table(ReadOnlyTable):
                     update_stmt = update_stmt.compile(bind=self.database.bind)
                     pending_update_statements.add_statement(update_stmt_key, update_stmt)
 
-                stmt_values = dict()
+                stmt_values = {}
                 for key_column, key_value in zip(update_where_keys, update_where_values):
                     key = self.get_column(key_column)
                     bind_name = f"_{key.name}"
@@ -2333,9 +2348,9 @@ class Table(ReadOnlyTable):
             for (stmt, row_dict) in pending_update_statements.iter_single_statements():
                 try:
                     connection.execute(stmt, row_dict)
-                except Exception as e:
+                except Exception as e2:
                     self.log.error(f"Error with row {dict_to_str(row_dict)}")
-                    raise e
+                    raise e2 from e
             # If that didn't cause the error... re-raise the original error
             self.log.error(f"Single updates on {self} did not produce the error. Original error will be issued below.")
             self.rollback()
@@ -3379,33 +3394,33 @@ class Table(ReadOnlyTable):
         database_type = self.database.dialect_name
         if database_type in {'oracle'}:
             if delta.seconds != 0 or delta.microseconds != 0:
-                return f"{column_name} + INTERVAL '{delta.total_seconds()}' SECOND"
+                sql = f"{column_name} + INTERVAL '{delta.total_seconds()}' SECOND"
             elif delta.days != 0:
-                return f"{column_name} + {delta.days}"
+                sql = f"{column_name} + {delta.days}"
         elif database_type in {'postgresql'}:
             if delta.seconds != 0 or delta.microseconds != 0:
-                return f"{column_name} + INTERVAL '{delta.total_seconds()} SECONDS'"
+                sql = f"{column_name} + INTERVAL '{delta.total_seconds()} SECONDS'"
             elif delta.days != 0:
-                return f"{column_name} + INTERVAL '{delta.days} DAY'"
+                sql = f"{column_name} + INTERVAL '{delta.days} DAY'"
         elif database_type in {'mysql'}:
             if delta.seconds != 0:
-                return f"DATE_ADD({column_name}, INTERVAL {delta.total_seconds()} SECOND)"
+                sql = f"DATE_ADD({column_name}, INTERVAL {delta.total_seconds()} SECOND)"
             elif delta.microseconds != 0:
-                return f"DATE_ADD({column_name}, INTERVAL {delta.microseconds} MICROSECOND)"
+                sql = f"DATE_ADD({column_name}, INTERVAL {delta.microseconds} MICROSECOND)"
             elif delta.days != 0:
-                return f"DATE_ADD({column_name}, INTERVAL {delta.days} DAY)"
+                sql = f"DATE_ADD({column_name}, INTERVAL {delta.days} DAY)"
         elif database_type in {'sqlite'}:
             if delta.seconds != 0 or delta.microseconds != 0:
-                return f"datetime({column_name}, '{delta.total_seconds()} SECONDS')"
+                sql = f"datetime({column_name}, '{delta.total_seconds()} SECONDS')"
             elif delta.days != 0:
-                return f"datetime({column_name}, '{delta.days:+d} DAYS')"
+                sql = f"datetime({column_name}, '{delta.days:+d} DAYS')"
         else:
             if delta.seconds != 0 or delta.microseconds != 0:
-                return f"DATEADD(second, {delta.total_seconds()}, {column_name})"
+                sql = f"DATEADD(second, {delta.total_seconds()}, {column_name})"
             elif delta.days != 0:
-                return f"DATEADD(day, {delta.days}, {column_name})"
+                sql = f"DATEADD(day, {delta.days}, {column_name})"
 
-        raise ValueError(f"No _sql_add_timedelta defined for DB {database_type} and timedelta {delta}")
+        return sql
 
     def _sql_date_literal(
             self,
@@ -3440,7 +3455,7 @@ class Table(ReadOnlyTable):
                         {Table._sql_indent_join(matching_columns, 24, suffix=',')}
                     )  
                     WITH max_srgt AS 
-                        (SELECT coalesce(max({self._sql_primary_key_name()}),0)  as max_srgt 
+                        (SELECT coalesce(max({self._sql_primary_key_name()}),0)  as max_srgt
                          FROM {self.qualified_table_name}
                         )
                     SELECT 
@@ -3454,7 +3469,7 @@ class Table(ReadOnlyTable):
                     WHERE NOT EXISTS(
                         SELECT 1 
                         FROM {self.qualified_table_name} e
-                        WHERE {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}" 
+                        WHERE {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}"
                               for nk_col in self.natural_key], 18, prefix='AND ')}
                     )
                 """
@@ -3493,21 +3508,21 @@ class Table(ReadOnlyTable):
                 MERGE INTO {self.qualified_table_name} tgt
                 USING (
                     SELECT
-                        {Table._sql_indent_join([f"{join_entry[1][0]}.{join_entry[1][1]}" 
+                        {Table._sql_indent_join([f"{join_entry[1][0]}.{join_entry[1][1]}"
                                                  for join_entry in list_of_joins]
                                                 , 24, suffix=',')},
-                        {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}" 
+                        {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}"
                                                  for set_num, set_entry in enumerate(list_of_sets)]
                                                 , 16, suffix=',')}
                     FROM {source_sql}
                 ) src
                 ON (
-                    {Table._sql_indent_join([f"tgt.{join_entry[0]} = src.{join_entry[1][1]}" 
+                    {Table._sql_indent_join([f"tgt.{join_entry[0]} = src.{join_entry[1][1]}"
                                              for join_entry in list_of_joins]
                                             , 18, prefix='AND ')}
                 )
                 WHEN MATCHED THEN UPDATE
-                SET {Table._sql_indent_join([f"tgt.{set_entry[0]} = src.col_{set_num}" 
+                SET {Table._sql_indent_join([f"tgt.{set_entry[0]} = src.col_{set_num}"
                                              for set_num, set_entry in enumerate(list_of_sets)]
                                             , 16, suffix=',')}
             """
@@ -3515,10 +3530,10 @@ class Table(ReadOnlyTable):
             sql = f"""
                 UPDATE {self.qualified_table_name} INNER JOIN {source_sql}
                    ON  {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = "
-                                                f"{'.'.join(join_entry[1])}" 
+                                                f"{'.'.join(join_entry[1])}"
                                                 for join_entry in list_of_joins]
                                                , 19, prefix='AND ')}
-                SET {Table._sql_indent_join([f"{target_alias_in_source}.{set_entry[0]} = {set_entry[1]}" 
+                SET {Table._sql_indent_join([f"{target_alias_in_source}.{set_entry[0]} = {set_entry[1]}"
                                              for set_entry in list_of_sets]
                                             , 16, suffix=',')}
             """
@@ -3526,13 +3541,13 @@ class Table(ReadOnlyTable):
         elif database_type in {'mssql'}:
             sql = f"""
                 UPDATE {self.qualified_table_name}
-                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}" 
+                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}"
                                              for set_entry in list_of_sets], 16, suffix=',')}
                 FROM {self.qualified_table_name}
                      INNER JOIN 
                      {source_sql}
                         ON  {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = "
-                                                     f"{'.'.join(join_entry[1])}" 
+                                                     f"{'.'.join(join_entry[1])}"
                                                      for join_entry in list_of_joins]
                                                     , 24, prefix='AND ')}
                 {and_extra_where}
@@ -3549,14 +3564,14 @@ class Table(ReadOnlyTable):
                 set_statement_list = []
                 where_stmt = f"""
                     {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} "
-                                             f"= {join_entry[1][0]}.{join_entry[1][1]}" 
+                                             f"= {join_entry[1][0]}.{join_entry[1][1]}"
                                              for join_entry in list_of_joins], 18, prefix='AND ')}
                     {and_extra_where}
                 """
                 for set_entry in list_of_sets:
                     select_part = f"""
-                        SELECT {set_entry[1]} 
-                        FROM {source_sql} 
+                        SELECT {set_entry[1]}
+                        FROM {source_sql}
                         WHERE {where_stmt}
                     """
                     set_statement_list.append(f"{set_entry[0]} = ({select_part})")
@@ -3572,11 +3587,11 @@ class Table(ReadOnlyTable):
             # https://sqlite.org/lang_update.html
             sql = f"""
                 UPDATE {self.qualified_table_name}
-                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}" 
+                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}"
                                              for set_entry in list_of_sets], 16, suffix=',')}
                 FROM {source_sql}
                 WHERE {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} "
-                                               f"= {join_entry[1][0]}.{join_entry[1][1]}" 
+                                               f"= {join_entry[1][0]}.{join_entry[1][1]}"
                                                for join_entry in list_of_joins], 18, prefix='AND ')}
                 {and_extra_where}
             """
