@@ -1,10 +1,13 @@
 name: Python package
 
+permissions:
+  contents: read
+
 on: [push]
 
 jobs:
-  build:
 
+  build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -18,3 +21,5 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Test with python ${{ matrix.python-version }}
         run: uv run --frozen pytest
+      - name: Test with python newest libs ${{ matrix.python-version }}
+        run: uv run pytest
