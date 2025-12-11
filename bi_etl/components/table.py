@@ -554,10 +554,10 @@ class Table(ReadOnlyTable):
         code = f"def {name}(self, target_column_value):"
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
             """
-                    # base indent
-                        return target_column_value
-                    """
             )
         self._attach_dynamic_method(
             name=name,
@@ -576,39 +576,39 @@ class Table(ReadOnlyTable):
         code = f"def {name}(self, target_column_value):"
         code += textwrap.dedent(
             """\
-                    # base indent
-                        if isinstance(target_column_value, str):
-                    """
-            )
+            # base indent
+                if isinstance(target_column_value, str):
+            """
+        )
         if self.force_ascii:
             # Passing ascii bytes to cx_Oracle is not working.
             # We need to pass a str value.
             # So we'll use encode with 'replace' to force ascii compatibility
             code += textwrap.dedent(
                 """\
-                            # base indent                
-                                    target_column_value = \
-                                        target_column_value.encode('ascii', 'replace_tilda').decode('ascii')
-                            """
-                )
+                # base indent                
+                        target_column_value = \
+                            target_column_value.encode('ascii', 'replace_tilda').decode('ascii')
+                """
+            )
         else:
             code += textwrap.dedent(
                 """\
-                            # base indent                
-                                    pass
-                            """
+                # base indent                
+                        pass
+                """
                 )
         code += textwrap.dedent(
             """\
-                    # base indent            
-                        elif isinstance(target_column_value, bytes):
-                            target_column_value = target_column_value.decode('ascii')
-                        elif target_column_value is None:
-                            return None
-                        else:
-                            target_column_value = str(target_column_value)
-                        """
-            )
+            # base indent            
+                elif isinstance(target_column_value, bytes):
+                    target_column_value = target_column_value.decode('ascii')
+                elif target_column_value is None:
+                    return None
+                else:
+                    target_column_value = str(target_column_value)
+            """
+        )
         # Note: t_type.length is None for CLOB fields
         if t_type.length is not None:
             try:
@@ -649,18 +649,18 @@ class Table(ReadOnlyTable):
         if isinstance(t_type, CHAR):
             code += textwrap.dedent(
                 f"""\
-                                    # base indent
-                                        if value_len < {t_type.length}:
-                                            target_column_value += ' ' * ({t_type.length} -  len(target_column_value))
-                                    """
-                )
+                # base indent
+                    if value_len < {t_type.length}:
+                        target_column_value += ' ' * ({t_type.length} -  len(target_column_value))
+                """
+            )
         code += str(self._generate_null_check(target_column_object))
         code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
             """
-                    # base indent
-                        return target_column_value
-                    """
-            )
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,
@@ -678,17 +678,17 @@ class Table(ReadOnlyTable):
         code = f"def {name}(self, target_column_value):"
         code += textwrap.dedent(
             """\
-                    # base indent            
-                        if isinstance(target_column_value, bytes):
-                            pass
-                        elif isinstance(target_column_value, str):
-                            target_column_value = target_column_value.encode('utf-8')
-                        elif target_column_value is None:
-                            return None
-                        else:
-                            target_column_value = str(target_column_value).encode('utf-8')
-                        """
-            )
+            # base indent            
+                if isinstance(target_column_value, bytes):
+                    pass
+                elif isinstance(target_column_value, str):
+                    target_column_value = target_column_value.encode('utf-8')
+                elif target_column_value is None:
+                    return None
+                else:
+                    target_column_value = str(target_column_value).encode('utf-8')
+            """
+        )
         # t_type.length is None for BLOB, LargeBinary fields.
         # This really might not be required since all
         # discovered types with python_type == bytes:
@@ -698,35 +698,35 @@ class Table(ReadOnlyTable):
                 if t_type.length > 0:
                     code += textwrap.dedent(
                         """\
-                                            # base indent                
-                                                if len(target_column_value) > {len}:
-                                                    msg = (
-                                                       "{table}.{column} has type {type} which cannot accept value 
-                                                       '{{val}}' because length {{val_len}} > {len} 
-                                                       limit (_make_bytes_coerce)"
-                                                    )
-                                                    msg = msg.format(                                
-                                                        val=target_column_value,
-                                                        val_len=len(target_column_value),
-                                                    )
-                                                    raise ValueError(msg)                        
-                                                """
-                        ).format(
+                        # base indent                
+                            if len(target_column_value) > {len}:
+                                msg = (
+                                   "{table}.{column} has type {type} which cannot accept value 
+                                   '{{val}}' because length {{val_len}} > {len} 
+                                   limit (_make_bytes_coerce)"
+                                )
+                                msg = msg.format(                                
+                                    val=target_column_value,
+                                    val_len=len(target_column_value),
+                                )
+                                raise ValueError(msg)                        
+                            """
+                    ).format(
                         len=t_type.length,
                         table=self,
                         column=target_name,
                         type=str(t_type).replace('"', "'"),
-                        )
+                    )
             except TypeError:
                 # t_type.length is not a comparable type
                 pass
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
             """
-                    # base indent
-                        return target_column_value
-                    """
-            )
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,
@@ -742,31 +742,31 @@ class Table(ReadOnlyTable):
         code = f"def {name}(self, target_column_value):"
         code += textwrap.dedent(
             """\
-                    # base indent
-                        try:            
-                            if isinstance(target_column_value, int):
-                                pass
-                            elif target_column_value is None:
-                                return None
-                            elif isinstance(target_column_value, str):
-                                target_column_value = str2int(target_column_value)
-                            elif isinstance(target_column_value, float):
-                                target_column_value = int(target_column_value)            
-                        except ValueError as e:
-                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_int_coerce)".format(                            
-                                        val=target_column_value,
-                                        e=e,
-                                    )
-                            raise ValueError(msg)
-                        """
+            # base indent
+                try:            
+                    if isinstance(target_column_value, int):
+                        pass
+                    elif target_column_value is None:
+                        return None
+                    elif isinstance(target_column_value, str):
+                        target_column_value = str2int(target_column_value)
+                    elif isinstance(target_column_value, float):
+                        target_column_value = int(target_column_value)            
+                except ValueError as e:
+                    msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_int_coerce)".format(                            
+                                val=target_column_value,
+                                e=e,
+                            )
+                    raise ValueError(msg)
+            """
             ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
             """
-                    # base indent
-                        return target_column_value
-                    """
-            )
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,
@@ -786,37 +786,37 @@ class Table(ReadOnlyTable):
         # can explicitly use float
         code += textwrap.dedent(
             """\
-                    # base indent
-                        try:            
-                            if isinstance(target_column_value, float):
-                                if math.isnan(target_column_value):
-                                    target_column_value = self.NAN_REPLACEMENT_VALUE
-                            elif target_column_value is None:
-                                return None            
-                            elif isinstance(target_column_value, str):
-                                target_column_value = str2float(target_column_value)            
-                            elif isinstance(target_column_value, int):
-                                target_column_value = float(target_column_value)
-                            elif isinstance(target_column_value, Decimal):
-                                if math.isnan(target_column_value):
-                                    target_column_value = self.NAN_REPLACEMENT_VALUE
-                                else:
-                                    target_column_value = float(target_column_value)
-                        except ValueError as e:
-                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_float_coerce)".format(                            
-                                        val=target_column_value,
-                                        e=e,
-                                    )
-                            raise ValueError(msg)
-                        """
+            # base indent
+                try:            
+                    if isinstance(target_column_value, float):
+                        if math.isnan(target_column_value):
+                            target_column_value = self.NAN_REPLACEMENT_VALUE
+                    elif target_column_value is None:
+                        return None            
+                    elif isinstance(target_column_value, str):
+                        target_column_value = str2float(target_column_value)            
+                    elif isinstance(target_column_value, int):
+                        target_column_value = float(target_column_value)
+                    elif isinstance(target_column_value, Decimal):
+                        if math.isnan(target_column_value):
+                            target_column_value = self.NAN_REPLACEMENT_VALUE
+                        else:
+                            target_column_value = float(target_column_value)
+                except ValueError as e:
+                    msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_float_coerce)".format(                            
+                                val=target_column_value,
+                                e=e,
+                            )
+                    raise ValueError(msg)
+                """
             ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
             """
-                    # base indent
-                        return target_column_value
-                    """
-            )
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,
@@ -835,14 +835,14 @@ class Table(ReadOnlyTable):
 
         code += textwrap.dedent(
             """\
-                    # base indent            
-                        if isinstance(target_column_value, Decimal):
-                            pass
-                        elif isinstance(target_column_value, float):
-                            pass
-                        elif target_column_value is None:
-                            return None
-                        """
+            # base indent
+                if isinstance(target_column_value, Decimal):
+                    pass
+                elif isinstance(target_column_value, float):
+                    pass
+                elif target_column_value is None:
+                    return None
+            """
             )
 
         # If for performance reasons you don't want this conversion...
@@ -852,19 +852,19 @@ class Table(ReadOnlyTable):
         # guarantee no commas can explicitly use float or Decimal
         code += textwrap.dedent(
             """\
-                    # base indent            
-                        elif isinstance(target_column_value, str):
-                            try:
-                                target_column_value = str2decimal(target_column_value)
-                            except ValueError as e:
-                                msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_decimal_coerce)"
-                                msg = msg.format(                            
-                                            val=target_column_value,
-                                            e=e,
-                                        )
-                                raise ValueError(msg)
-                    """
-            ).format(table=self, column=target_column_object.name)
+            # base indent            
+                elif isinstance(target_column_value, str):
+                    try:
+                        target_column_value = str2decimal(target_column_value)
+                    except ValueError as e:
+                        msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_decimal_coerce)"
+                        msg = msg.format(                            
+                                    val=target_column_value,
+                                    e=e,
+                                )
+                        raise ValueError(msg)
+            """
+        ).format(table=self, column=target_column_object.name)
 
         # t_type.length is None for BLOB, LargeBinary fields.
         # This really might not be required since all
@@ -875,21 +875,21 @@ class Table(ReadOnlyTable):
             integer_digits_allowed = t_type.precision - scale
             code += textwrap.dedent(
                 """\
-                            # base indent
-                                if target_column_value is not None:
-                                    digits = get_integer_places(target_column_value)            
-                                    if digits > {integer_digits_allowed}:
-                                        msg = ("{table}.{column} can't accept '{{val}}' since it has "
-                                               "{{digits}} integer digits (_make_decimal_coerce)"
-                                               "which is > {integer_digits_allowed} by "
-                                               "(prec {precision} - scale {scale}) limit"
-                                        )
-                                        msg = msg.format(                            
-                                                val=target_column_value,
-                                                digits=digits,
-                                            )
-                                        raise ValueError(msg)
-                                """
+                # base indent
+                    if target_column_value is not None:
+                        digits = get_integer_places(target_column_value)            
+                        if digits > {integer_digits_allowed}:
+                            msg = ("{table}.{column} can't accept '{{val}}' since it has "
+                                   "{{digits}} integer digits (_make_decimal_coerce)"
+                                   "which is > {integer_digits_allowed} by "
+                                   "(prec {precision} - scale {scale}) limit"
+                            )
+                            msg = msg.format(                            
+                                    val=target_column_value,
+                                    digits=digits,
+                                )
+                            raise ValueError(msg)
+                """
                 ).format(
                 table=self,
                 column=target_name,
@@ -900,11 +900,11 @@ class Table(ReadOnlyTable):
 
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
             """
-                    # base indent
-                        return target_column_value
-                    """
-            )
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,
@@ -917,50 +917,62 @@ class Table(ReadOnlyTable):
     ):
         name = self._get_coerce_method_name_by_object(target_column_object)
         self.log.debug(f"Making dynamic function {name} -> date")
-        code = f"def {name}(self, target_column_value):"
+        import_code = textwrap.dedent(
+            f"""\
+            from datetime import date
+            from bi_etl.conversions import str2date
+            from bi_etl.conversions import str2datetime
+            """
+        )
+        code = textwrap.dedent(
+            f"""\
+            def {name}(self, target_column_value):
+            """
+        )
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
         # can explicitly use float
         code += textwrap.dedent(
             """\
-                    # base indent  
-                        try:
-                            # Note datetime check must be 1st because datetime tests as an instance of date  
-                            if isinstance(target_column_value, datetime):
-                                target_column_value = date(target_column_value.year,
-                                                           target_column_value.month,
-                                                           target_column_value.day)        
-                            elif isinstance(target_column_value, date):
-                                pass            
-                            elif target_column_value is None:
-                                return None
-                            elif isinstance(target_column_value, str):
-                                target_column_value = str2date(target_column_value, dt_format=self.default_date_format)
-                            else:
-                                target_column_value = str2date(
-                                    str(target_column_value), 
-                                    dt_format=self.default_date_format
-                                )
-                        except ValueError as e:
-                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_date_coerce) {{fmt}}"
-                            msg = msg.format(                            
-                                        val=target_column_value,
-                                        e=e,
-                                        fmt=self.default_date_format,
-                                    )
-                            raise ValueError(msg)
-                        """
+            # base indent  
+                try:
+                    # Note datetime check must be 1st because datetime tests as an instance of date  
+                    if isinstance(target_column_value, datetime):
+                        target_column_value = date(target_column_value.year,
+                                                   target_column_value.month,
+                                                   target_column_value.day)        
+                    elif isinstance(target_column_value, date):
+                        pass            
+                    elif target_column_value is None:
+                        return None
+                    elif isinstance(target_column_value, str):
+                        target_column_value = str2date(target_column_value, dt_format=self.default_date_format)
+                    else:
+                        target_column_value = str2date(
+                            str(target_column_value), 
+                            dt_format=self.default_date_format
+                        )
+                except ValueError as e:
+                    msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_date_coerce) {{fmt}}"
+                    msg = msg.format(                            
+                                val=target_column_value,
+                                e=e,
+                                fmt=self.default_date_format,
+                            )
+                    raise ValueError(msg)
+            """
             ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
             """
-                    # base indent
-                        return target_column_value
-                    """
             )
         self._attach_dynamic_method(
             name=name,
             code=code,
+            import_code=import_code,
         )
 
     # pylint: disable=exec-used
@@ -970,36 +982,44 @@ class Table(ReadOnlyTable):
     ):
         name = self._get_coerce_method_name_by_object(target_column_object)
         self.log.debug(f"Making dynamic function {name} -> datetime")
-        code = f"def {name}(self, target_column_value):"
+        code = textwrap.dedent(
+            f"""\
+            from datetime import date, datetime, timedelta
+            from bi_etl.conversions import str2date
+            from bi_etl.conversions import str2datetime
+
+            def {name}(self, target_column_value):
+            """
+        )
         code += textwrap.dedent(
             """\
-                    # base indent
-                        try:            
-                            if isinstance(target_column_value, datetime):
-                                pass
-                            elif isinstance(target_column_value, timedelta):
-                                pass
-                            elif target_column_value is None:
-                                return None            
-                            elif isinstance(target_column_value, date):
-                                target_column_value = datetime.combine(target_column_value, time.min)            
-                            elif isinstance(target_column_value, str):
-                                target_column_value = str2datetime(target_column_value,
-                                                                   dt_format=self.default_date_time_format)
-                            else:
-                                target_column_value = str2datetime(str(target_column_value),
-                                                                   dt_format=self.default_date_time_format)
-                        except ValueError as e:
-                            msg = ("{table}.{column} can't accept " 
-                                   "'{{val}}' due to {{e}} (_make_datetime_coerce) {{fmt}}"
+            # base indent
+                try:            
+                    if isinstance(target_column_value, datetime):
+                        pass
+                    elif isinstance(target_column_value, timedelta):
+                        pass
+                    elif target_column_value is None:
+                        return None            
+                    elif isinstance(target_column_value, date):
+                        target_column_value = datetime.combine(target_column_value, time.min)            
+                    elif isinstance(target_column_value, str):
+                        target_column_value = str2datetime(target_column_value,
+                                                           dt_format=self.default_date_time_format)
+                    else:
+                        target_column_value = str2datetime(str(target_column_value),
+                                                           dt_format=self.default_date_time_format)
+                except ValueError as e:
+                    msg = ("{table}.{column} can't accept " 
+                           "'{{val}}' due to {{e}} (_make_datetime_coerce) {{fmt}}"
+                    )
+                    msg = msg.format(                            
+                                val=target_column_value,
+                                e=e,
+                                fmt=self.default_date_time_format,
                             )
-                            msg = msg.format(                            
-                                        val=target_column_value,
-                                        e=e,
-                                        fmt=self.default_date_time_format,
-                                    )
-                            raise ValueError(msg)
-                        """
+                    raise ValueError(msg)
+            """
             ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         if self.database.dialect.dialect_description == 'mssql+pyodbc':
@@ -1014,17 +1034,17 @@ class Table(ReadOnlyTable):
                 self.log.warning(f"Rounding microseconds on {target_column_object}")
 
                 code += textwrap.dedent(
-                    """
-                                            # base indent
-                                                target_column_value = round_datetime_ms(target_column_value, 3)
-                    """
-                    )
-        code += textwrap.dedent(
-            """
+                    """\
                     # base indent
-                        return target_column_value
+                        target_column_value = round_datetime_ms(target_column_value, 3)
                     """
-            )
+                )
+        code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
+            """
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,
@@ -1037,46 +1057,52 @@ class Table(ReadOnlyTable):
     ):
         name = self._get_coerce_method_name_by_object(target_column_object)
         self.log.debug(f"Making dynamic function {name} -> time")
-        code = f"def {name}(self, target_column_value):"
+        code = textwrap.dedent(
+            f"""\
+            from datetime import time
+            
+            def {name}(self, target_column_value):
+            """
+        )
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
         # can explicitly use float
         code += textwrap.dedent(
             """\
-                    # base indent
-                        try:            
-                            if isinstance(target_column_value, time):
-                                pass
-                            elif target_column_value is None:
-                                return None            
-                            elif isinstance(target_column_value, datetime):
-                                target_column_value = time(target_column_value.hour,
-                                                           target_column_value.minute,
-                                                           target_column_value.second,
-                                                           target_column_value.microsecond,
-                                                           target_column_value.tzinfo,
-                                                           )            
-                            elif isinstance(target_column_value, str):
-                                target_column_value = str2time(target_column_value, dt_format=self.default_time_format)
-                            else:
-                                target_column_value = str2time(
-                                str(target_column_value), 
-                                dt_format=self.default_time_format
-                                )
-                        except ValueError as e:
-                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_time_coerce)".format(                            
-                                        val=target_column_value,
-                                        e=e,
-                                    )
-                            raise ValueError(msg)
-                        """
+            # base indent
+                try:            
+                    if isinstance(target_column_value, time):
+                        pass
+                    elif target_column_value is None:
+                        return None            
+                    elif isinstance(target_column_value, datetime):
+                        target_column_value = time(target_column_value.hour,
+                                                   target_column_value.minute,
+                                                   target_column_value.second,
+                                                   target_column_value.microsecond,
+                                                   target_column_value.tzinfo,
+                                                   )            
+                    elif isinstance(target_column_value, str):
+                        target_column_value = str2time(target_column_value, dt_format=self.default_time_format)
+                    else:
+                        target_column_value = str2time(
+                        str(target_column_value), 
+                        dt_format=self.default_time_format
+                        )
+                except ValueError as e:
+                    msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_time_coerce)".format(                            
+                                val=target_column_value,
+                                e=e,
+                            )
+                    raise ValueError(msg)
+            """
             ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
             """
-                    # base indent
-                        return target_column_value
-                    """
             )
         self._attach_dynamic_method(
             name=name,
@@ -1096,39 +1122,39 @@ class Table(ReadOnlyTable):
         # can explicitly use float
         code += textwrap.dedent(
             """\
-                    # base indent            
-                        try:
-                            if isinstance(target_column_value, timedelta):
-                                pass
-                            elif target_column_value is None:
-                                return None
-                            elif isinstance(target_column_value, float):
-                                if math.isnan(target_column_value):
-                                    target_column_value = self.NAN_REPLACEMENT_VALUE
-                                target_column_value = timedelta(seconds=target_column_value)
-                            elif isinstance(target_column_value, str):
-                                target_column_value = str2float(target_column_value)
-                                target_column_value = timedelta(seconds=target_column_value)
-                            elif isinstance(target_column_value, int):
-                                target_column_value = timedelta(seconds=target_column_value)
-                            else:
-                                target_column_value = timedelta(seconds=target_column_value)
-                        except (TypeError, ValueError) as e:
-                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_timedelta_coerce)"
-                            msg = msg.format(                            
-                                        val=target_column_value,
-                                        e=e,
-                                    )
-                            raise ValueError(msg)
-                        """
+            # base indent            
+                try:
+                    if isinstance(target_column_value, timedelta):
+                        pass
+                    elif target_column_value is None:
+                        return None
+                    elif isinstance(target_column_value, float):
+                        if math.isnan(target_column_value):
+                            target_column_value = self.NAN_REPLACEMENT_VALUE
+                        target_column_value = timedelta(seconds=target_column_value)
+                    elif isinstance(target_column_value, str):
+                        target_column_value = str2float(target_column_value)
+                        target_column_value = timedelta(seconds=target_column_value)
+                    elif isinstance(target_column_value, int):
+                        target_column_value = timedelta(seconds=target_column_value)
+                    else:
+                        target_column_value = timedelta(seconds=target_column_value)
+                except (TypeError, ValueError) as e:
+                    msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_timedelta_coerce)"
+                    msg = msg.format(                            
+                                val=target_column_value,
+                                e=e,
+                            )
+                    raise ValueError(msg)
+            """
             ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
             """
-                    # base indent
-                        return target_column_value
-                    """
-            )
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,
@@ -1145,44 +1171,44 @@ class Table(ReadOnlyTable):
         # can explicitly use float
         code += textwrap.dedent(
             """\
-                    # base indent
-                        try:            
-                            if isinstance(target_column_value, bool):
-                                pass                        
-                            elif target_column_value is None:
-                                return None
-                            elif isinstance(target_column_value, str):
-                                target_column_value = target_column_value.lower()
-                                if target_column_value in ['true', 'yes', 'y']:
-                                    target_column_value = True
-                                elif target_column_value in ['false', 'no', 'n']:
-                                    target_column_value = True
-                                else:
-                                    type_error = True
-                                    msg = ("{table}.{column} unexpected value {{val}} "
-                                           "(expected true/false, yes/no, y/n)"
-                                    )
-                                    msg = msg.format(                            
-                                            val=target_column_value,                            
-                                        )
-                                    raise ValueError(msg)
-                            else:
-                                target_column_value = bool(target_column_value)
-                        except (TypeError, ValueError) as e:
-                            msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_bool_coerce)".format(                            
-                                        val=target_column_value,
-                                        e=e,
-                                    )
+            # base indent
+                try:            
+                    if isinstance(target_column_value, bool):
+                        pass                        
+                    elif target_column_value is None:
+                        return None
+                    elif isinstance(target_column_value, str):
+                        target_column_value = target_column_value.lower()
+                        if target_column_value in ['true', 'yes', 'y']:
+                            target_column_value = True
+                        elif target_column_value in ['false', 'no', 'n']:
+                            target_column_value = True
+                        else:
+                            type_error = True
+                            msg = ("{table}.{column} unexpected value {{val}} "
+                                   "(expected true/false, yes/no, y/n)"
+                            )
+                            msg = msg.format(                            
+                                    val=target_column_value,                            
+                                )
                             raise ValueError(msg)
-                        """
+                    else:
+                        target_column_value = bool(target_column_value)
+                except (TypeError, ValueError) as e:
+                    msg = "{table}.{column} can't accept '{{val}}' due to {{e}} (_make_bool_coerce)".format(                            
+                                val=target_column_value,
+                                e=e,
+                            )
+                    raise ValueError(msg)
+            """
             ).format(table=self, column=target_name, )
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
+            """\
+            # base indent
+                return target_column_value
             """
-                    # base indent
-                        return target_column_value
-                    """
-            )
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,

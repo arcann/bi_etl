@@ -8,25 +8,54 @@ from __future__ import annotations
 
 import functools
 import logging
+import math
 import types
 import warnings
 from collections import defaultdict
+from datetime import datetime, date, timedelta, time
+from decimal import Decimal
 from operator import attrgetter
 from typing import *
+
+from sqlalchemy.sql.schema import Column
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
+# from bi_etl.conversions import str2date
+from bi_etl.conversions import str2datetime
+from bi_etl.conversions import str2decimal
+from bi_etl.conversions import str2float
+from bi_etl.conversions import str2int
+from bi_etl.conversions import str2time
 from bi_etl.exceptions import ColumnMappingError
 from bi_etl.lookups.autodisk_lookup import AutoDiskLookup
 from bi_etl.lookups.lookup import Lookup
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
-from sqlalchemy.sql.schema import Column
+from bi_etl.utility import get_integer_places
 
 if TYPE_CHECKING:
     from bi_etl.scheduler.task import ETLTask
+
+# TODO: Remove these, add import_code to _attach_dynamic_method calls instead
+# used by dynamic code
+# pylint: disable=pointless-statement
+math.isnan
+Decimal
+date
+datetime
+time
+timedelta
+# str2date
+str2datetime
+str2decimal
+str2float
+str2int
+str2time
+get_integer_places
+
 
 __all__ = ['ETLComponent']
 
@@ -976,8 +1005,11 @@ class ETLComponent(Iterable):
             self,
             name: str,
             code: str,
+            import_code: Optional[str] = None,
     ) -> types.FunctionType:
         try:
+            if import_code is not None:
+                exec(import_code, globals(), globals())
             code_object = compile(code, f'dynamic_code.{name}', 'exec')
             # Create a dictionary to hold the method's namespace
             method_namespace = vars(self)

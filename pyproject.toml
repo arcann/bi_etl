@@ -73,6 +73,7 @@ dev = [
     "sphinx-autobuild>=2021.3.14,<2022",
     "testcontainers[mysql, oracle, postgres, mssql]>=3.5.4",
     "toml>=0.10.1,<0.11",
+    "coverage>=7.13.0",
 ]
 docs = [
     "Sphinx>=7.2.2",
