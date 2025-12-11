@@ -33,28 +33,28 @@ __all__ = ['ETLComponent']
 
 class ETLComponent(Iterable):
     """
-    Base class for ETLComponents (readers, writers, etc)
-    
+    Base class for ETLComponents (readers, writers, etc.)
+
     Parameters
     ----------
     task: ETLTask
         The  instance to register in (if not None)
-    
+
     logical_name: str
         The logical name of this source. Used for log messages.
-        
+
     Attributes
     ----------
     log_first_row : boolean
         Should we log progress on the first row read. *Only applies if used as a source.*
-        
+
     max_rows : int, optional
         The maximum number of rows to read. *Only applies if Table is used as a source.*
 
     progress_message: str
         The progress message to print. Default is ``"{logical_name} row # {row_number}"``.
         Note ``logical_name`` and ``row_number`` subs.
-            
+
     """
     DEFAULT_PROGRESS_FREQUENCY = 10
     """
@@ -124,14 +124,14 @@ class ETLComponent(Iterable):
         if task is not None:
             task.register_object(self)
 
-        self.__lookups = dict()
+        self.__lookups = {}
         # Default lookup class is AutoDiskLookup
         self.default_lookup_class = AutoDiskLookup
-        self.default_lookup_class_kwargs = dict()
+        self.default_lookup_class_kwargs = {}
 
         self.sanity_check_default_iterator_done = False
         self.sanity_checked_sources = set()
-        self._row_builders = dict()
+        self._row_builders = {}
 
         self.ignore_source_not_in_target = False
         self.ignore_target_not_in_source = False
@@ -141,7 +141,7 @@ class ETLComponent(Iterable):
         self.cache_filled = False
         self.cache_clean = False
 
-        # Should be the last call of every init            
+        # Should be the last call of every init
         self.set_kwattrs(**kwargs)
 
     @staticmethod
@@ -156,6 +156,9 @@ class ETLComponent(Iterable):
         }
 
     def set_kwattrs(self, **kwargs):
+        """
+        Apply init kwargs to existing attributes in this class
+        """
         # Certain values need to be set before others in order to work correctly
         kw_order = defaultdict(lambda: 9999)
         kw_order.update(self.kwattrs_order())
@@ -319,7 +322,8 @@ class ETLComponent(Iterable):
             for instance_number, instance_index in enumerate(instance_list):
                 new_name = name + '_' + str(instance_number + 1)
                 self.log.warning(
-                    f'Column name {self._column_names[instance_index]} in position {instance_index} was duplicated and was renamed to {new_name}'
+                    f'Column name {self._column_names[instance_index]} '
+                    f'in position {instance_index} was duplicated and was renamed to {new_name}'
                 )
                 self._column_names[instance_index] = new_name
 
@@ -329,8 +333,6 @@ class ETLComponent(Iterable):
         A set containing the column names for this component.
         Usable to quickly check if the component contains a certain column.
         """
-        # TODO: Make this a frozenset
-
         if self._column_names_set is None:
             self._column_names_set = set(self.column_names)
         return self._column_names_set
@@ -517,14 +519,14 @@ class ETLComponent(Iterable):
     def __iter__(self) -> Iterable[Row]:
         """
         Iterate over all rows.
-        
+
         Yields
         ------
         row: :class:`~bi_etl.components.row.row_case_insensitive.Row`
             :class:`~bi_etl.components.row.row_case_insensitive.Row` object with contents of a table/view row.
         """
         # Note: iter_result has a lot of important statistics keeping features
-        # So we use that on top of _raw_rows 
+        # So we use that on top of _raw_rows
         return self.iter_result(self._raw_rows())
 
     def where(
@@ -970,6 +972,33 @@ class ETLComponent(Iterable):
     def _get_coerce_method_name_by_str(self, target_column_name: str) -> str:
         return ''
 
+    def _attach_dynamic_method(
+            self,
+            name: str,
+            code: str,
+    ) -> types.FunctionType:
+        try:
+            code_object = compile(code, f'dynamic_code.{name}', 'exec')
+            # Create a dictionary to hold the method's namespace
+            method_namespace = vars(self)
+            exec(code_object, globals(), method_namespace)
+            executable_func = method_namespace[name]
+        except Exception as e:
+            raise RuntimeError(f"{e} from code:\n{code}") from e
+        # dynamic_func = types.FunctionType(
+        #     executable_func,
+        #     globals=globals(),
+        #     name=f"{self}.{name}",
+        # )
+        dynamic_method = types.MethodType(
+            executable_func,
+            self,
+        )
+        # # Add the new function as a method in this class
+        setattr(self, name, dynamic_method)
+        self.log.debug(f"Created dynamic function {name}")
+        return dynamic_method
+
     def build_row(
             self,
             source_row: Row,
@@ -1067,15 +1096,12 @@ class ETLComponent(Iterable):
                 code += f"    ]\n"
                 code += f"    new_row._data_values = new_row_values\n"
             code += f"    return new_row\n"
-            try:
-                code = compile(code, filename=build_row_method_name, mode='exec')
-                exec(code)
-            except SyntaxError as e:
-                self.log.exception(f"{e} from code\n{code}")
-                raise RuntimeError('Error with generated code')
-            # Add the new function as a method in this class
-            exec(f"self.{build_row_method_name} = {build_row_method_name}.__get__(self)")
-            build_row_method = getattr(self, build_row_method_name)
+
+            build_row_method = self._attach_dynamic_method(
+                name=build_row_method_name,
+                code=code,
+            )
+            # build_row_method = getattr(self, build_row_method_name)
             self._row_builders[build_row_key] = build_row_method
 
         new_row = self._row_builders[build_row_key](source_row)

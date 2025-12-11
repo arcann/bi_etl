@@ -10,6 +10,7 @@ import math
 import sys
 import textwrap
 import traceback
+import types
 import warnings
 from datetime import datetime, date, time, timedelta, timezone
 from decimal import Decimal
@@ -544,12 +545,14 @@ class Table(ReadOnlyTable):
                 f'- check that vs columns list {self.column_names}'
             ) from e
 
+
     # pylint: disable=exec-used
     def _make_generic_coerce(
             self,
             target_column_object: ColumnElement,
     ):
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} generic")
         code = f"def {name}(self, target_column_value):"
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
@@ -558,12 +561,10 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            exec(code)
-        except SyntaxError as e:
-            self.log.exception(f"{e} from code\n{code}")
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
 
     # pylint: disable=exec-used
     def _make_str_coerce(
@@ -573,6 +574,7 @@ class Table(ReadOnlyTable):
         target_name = target_column_object.name
         t_type = target_column_object.type
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} -> str")
         code = f"def {name}(self, target_column_value):"
         code += textwrap.dedent(
             """\
@@ -661,12 +663,10 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            exec(code)
-        except SyntaxError as e:
-            self.log.exception(f"{e} from code\n{code}")
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
 
     # pylint: disable=exec-used
     def _make_bytes_coerce(
@@ -676,6 +676,7 @@ class Table(ReadOnlyTable):
         target_name = target_column_object.name
         t_type = target_column_object.type
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} -> bytes")
         code = f"def {name}(self, target_column_value):"
         code += textwrap.dedent(
             """\
@@ -728,12 +729,10 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            exec(code)
-        except SyntaxError as e:
-            self.log.exception(f"{e} from code\n{code}")
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
 
     # pylint: disable=exec-used
     def _make_int_coerce(
@@ -741,6 +740,7 @@ class Table(ReadOnlyTable):
             target_column_object: ColumnElement,
     ):
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} -> int")
         code = f"def {name}(self, target_column_value):"
         code += textwrap.dedent(
             """\
@@ -769,12 +769,11 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            exec(code)
-        except SyntaxError as e:
-            self.log.exception(f"{e} from code\n{code}")
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
+
 
     # pylint: disable=exec-used
     def _make_float_coerce(
@@ -782,6 +781,7 @@ class Table(ReadOnlyTable):
             target_column_object: ColumnElement,
     ):
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} -> float")
         code = f"def {name}(self, target_column_value):"
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
@@ -819,12 +819,10 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            exec(code)
-        except SyntaxError as e:
-            self.log.exception(f"{e} from code\n{code}")
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
 
     # pylint: disable=exec-used
     def _make_decimal_coerce(
@@ -834,6 +832,7 @@ class Table(ReadOnlyTable):
         target_name = target_column_object.name
         t_type = target_column_object.type
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} -> decimal")
         code = f"def {name}(self, target_column_value):"
 
         code += textwrap.dedent(
@@ -908,12 +907,10 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            exec(code)
-        except SyntaxError as e:
-            self.log.exception(f"{e} from code\n{code}")
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
 
     # pylint: disable=exec-used
     def _make_date_coerce(
@@ -921,6 +918,7 @@ class Table(ReadOnlyTable):
             target_column_object: ColumnElement,
     ):
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} -> date")
         code = f"def {name}(self, target_column_value):"
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
@@ -962,12 +960,10 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            exec(code)
-        except SyntaxError as e:
-            self.log.exception(f"{e} from code\n{code}")
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
 
     # pylint: disable=exec-used
     def _make_datetime_coerce(
@@ -975,6 +971,7 @@ class Table(ReadOnlyTable):
             target_column_object: ColumnElement,
     ):
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} -> datetime")
         code = f"def {name}(self, target_column_value):"
         code += textwrap.dedent(
             """\
@@ -1030,13 +1027,10 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            code = compile(code, filename='_make_datetime_coerce', mode='exec')
-            exec(code)
-        except SyntaxError as e:
-            raise RuntimeError(f"{e} from code:\n{code}") from e
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
 
     # pylint: disable=exec-used
     def _make_time_coerce(
@@ -1044,6 +1038,7 @@ class Table(ReadOnlyTable):
             target_column_object: ColumnElement,
     ):
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} -> time")
         code = f"def {name}(self, target_column_value):"
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
@@ -1085,12 +1080,10 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            exec(code)
-        except SyntaxError as e:
-            self.log.exception(f"{e} from code\n{code}")
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
 
     # pylint: disable=exec-used
     def _make_timedelta_coerce(
@@ -1098,6 +1091,7 @@ class Table(ReadOnlyTable):
             target_column_object: ColumnElement,
     ):
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} -> timedelta")
         code = f"def {name}(self, target_column_value):"
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
@@ -1137,17 +1131,16 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            exec(code)
-        except SyntaxError as e:
-            self.log.exception(f"{e} from code\n{code}")
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
 
     # pylint: disable=exec-used
     def _make_bool_coerce(self, target_column_object: 'sqlalchemy.sql.expression.ColumnElement'):
         target_name = target_column_object.name
         name = self._get_coerce_method_name_by_object(target_column_object)
+        self.log.debug(f"Making dynamic function {name} -> bool")
         code = f"def {name}(self, target_column_value):"
         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
         # The thought is that ETL jobs that need the performance and can guarantee no commas
@@ -1192,13 +1185,10 @@ class Table(ReadOnlyTable):
                         return target_column_value
                     """
             )
-        try:
-            code = compile(code, filename='_make_bool_coerce', mode='exec')
-            exec(code)
-        except SyntaxError as e:
-            self.log.exception(f"{e} from code\n{code}")
-        # Add the new function as a method in this class
-        exec(f"self.{name} = {name}.__get__(self)")
+        self._attach_dynamic_method(
+            name=name,
+            code=code,
+        )
 
     def _build_coerce_methods(self):
         self._coerce_methods_built = True

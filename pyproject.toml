@@ -2,21 +2,16 @@
 name = "bi_etl"
 version = "1.8.2"
 description = "Python ETL Framework"
+authors = [{ name = "Derek Wood", email = "bietl_info@bietl.dev" }]
+requires-python = ">=3.10"
+readme = "README.md"
+license = "MIT"
 keywords = ["etl"]
 classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Development Status :: 5 - Production/Stable",
     "Topic :: Database",
 ]
-authors = [
-    { name = "Derek Wood", email = "bietl_info@bietl.dev" },
-]
-documentation = "https://bietl.dev/docs/"
-readme = "README.md"
-license = "MIT"
-repository = "https://github.com/arcann/bi_etl"
-requires-python = ">=3.10"
-
 dependencies = [
     "config-wrangler[aws]>=1.3",
     "SQLAlchemy>=1.4.49",
@@ -29,74 +24,69 @@ dependencies = [
     "pydicti>=1.1.6",
     "more-itertools>=9.0.0",
 ]
-
-[tool.poetry.dependencies]
-# Python upper bound needed for locking versions
-python = ">=3.10,<4.0"
+documentation = "https://bietl.dev/docs/"
+repository = "https://github.com/arcann/bi_etl"
 
 [project.optional-dependencies]
-# Install with:
-# poetry install -E keyring
-
 keyring = ["keyring>=21.1.0"]
-
 pykeepass = ["pykeepass>=4.0.6"]
-
 jira = ["jira>=3.1.1"]
-
 slack = ["slack-sdk>=3.19.5"]
+redshift = [
+    "pyarrow>=10.0.1",
+    "psycopg2",
+]
+avro = ["fastavro>=1.0.0"]
+all = [
+    "keyring",
+    "pykeepass",
+    "jira",
+    "slack",
+    "dagster",
+    "dagster-webserver",
+    "psycopg2",
+]
+test = [
+    "psycopg2",
+    "testcontainers",
+]
 
-dagster = ['dagster>=1.5.7', 'dagster-webserver>=1']
+[dependency-groups]
+dev = [
+    "boto3>=1.40",
+    "dagster>=1.5.7",
+    "dagster-webserver>=1.6.3",
+    "fastavro>=1.5.3",
+    "junitparser>=3.2,<4",
+    "junit2html>=31.0,<32",
+    "numpy>=1.25.1",
+    "oracledb>=1.2.0",
+    "paramiko",
+    "pip>=22.1.2",
+    "psycopg[binary]>=3.1.18,<4",
+    "pyarrow>=12.0.1",
+    "pykeepass>=4.0.5",
+    "pylint>=3.3.8,<4",
+    "pytest>=7.4.1,<8",
+    "pytest-xdist>=3.6.1,<4",
+    "slack-sdk>=3.19.5",
+    "sphinx-autobuild>=2021.3.14,<2022",
+    "testcontainers[mysql, oracle, postgres, mssql]>=3.5.4",
+    "toml>=0.10.1,<0.11",
+]
+docs = [
+    "Sphinx>=7.2.2",
+    "sphinx-paramlinks>=0.5.4",
+    "autodoc-pydantic>=2.0.1",
+    "sphinx-rtd-theme>=1.3.0",
+]
 
-redshift = ['pyarrow>=10.0.1', 'psycopg2']
-
-avro = ['fastavro>=1.0.0']
-
-all = ['keyring', 'pykeepass', 'jira', 'slack', 'dagster', 'dagster-webserver', 'psycopg2']
-
-# Used by .github/workflows/unit_test.yml
-# poetry install -E test
-test = ["psycopg2", "testcontainers"]
-
-[tool.poetry.group.dev.dependencies]
-# Keep boto3 fairly current to avoid scanning a huge list of versions
-boto3 = ">=1.40"
-dagster = ">=1.5.7"
-dagster-webserver = ">=1.6.3"
-fastavro = ">=1.5.3"
-junitparser = "^3.2"
-junit2html = "^31.0"
-numpy = ">=1.25.1"
-oracledb = ">=1.2.0"
-paramiko = "*"  # For docker ssh:// support
-pip = ">=22.1.2"
-psycopg = {version = "^3.1.18", extras = ["binary"]}
-pyarrow = ">=12.0.1"
-pykeepass = ">=4.0.5"
-pylint = "^3.3.8"
-pytest = "^7.4.1"
-pytest-xdist = "^3.6.1"
-slack-sdk = ">=3.19.5"
-sphinx-autobuild = "^2021.3.14"
-testcontainers = {version = ">=3.5.4", extras = ["mysql, oracle, postgresql, mssqlserver"]}
-toml = "^0.10.1"
-tox = "^4.6.4"
-
-[tool.poetry.group.docs]
-optional = true
-
-[tool.poetry.group.docs.dependencies]
-Sphinx = ">=7.2.2"
-sphinx-paramlinks = ">=0.5.4"
-# Has not been updated for pydantic 2
-# sphinx-pydantic = ">=0.1.1"
-# sphinx-autodoc-annotation = "^1.0-1"
-autodoc-pydantic = ">=2.0.1"
-sphinx-rtd-theme = ">=1.3.0"
+[tool.uv]
+default-groups = ["dev"]
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
