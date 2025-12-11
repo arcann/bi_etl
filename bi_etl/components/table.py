@@ -10,7 +10,6 @@ import math
 import sys
 import textwrap
 import traceback
-import types
 import warnings
 from datetime import datetime, date, time, timedelta, timezone
 from decimal import Decimal
@@ -19,15 +18,6 @@ from enum import IntEnum, unique
 from typing import Any, Iterable, Callable, List, Dict, Tuple, Union, Optional, Set, MutableMapping, MutableSequence
 
 import sqlalchemy
-from gevent import spawn, sleep
-from gevent.queue import Queue
-from sqlalchemy import CHAR, Column
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.sql import ColumnElement
-from sqlalchemy.sql.dml import UpdateBase
-from sqlalchemy.sql.expression import bindparam
-from sqlalchemy.sql.type_api import TypeEngine
-
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.get_next_key.local_table_memory import LocalTableMemory
@@ -53,6 +43,14 @@ from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
 from bi_etl.utility import get_integer_places
+from gevent import spawn, sleep
+from gevent.queue import Queue
+from sqlalchemy import CHAR, Column
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.sql import ColumnElement
+from sqlalchemy.sql.dml import UpdateBase
+from sqlalchemy.sql.expression import bindparam
+from sqlalchemy.sql.type_api import TypeEngine
 
 
 @dataclasses.dataclass

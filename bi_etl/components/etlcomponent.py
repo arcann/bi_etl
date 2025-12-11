@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import functools
 import logging
+import types
 import warnings
 from collections import defaultdict
 from operator import attrgetter
 from typing import *
-
-from sqlalchemy.sql.schema import Column
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
@@ -24,6 +23,7 @@ from bi_etl.lookups.lookup import Lookup
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
+from sqlalchemy.sql.schema import Column
 
 if TYPE_CHECKING:
     from bi_etl.scheduler.task import ETLTask
