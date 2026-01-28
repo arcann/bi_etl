@@ -259,7 +259,15 @@ class XLSXReader(ETLComponent):
         this_iteration_header = self.full_iteration_header
         for row in self.active_worksheet.iter_rows(min_row=self.start_row):
             if len(row) > 0:
-                self.__active_row = row[0].row
+                found_non_empty_cell = False
+                for cell in row:
+                    if hasattr(cell, 'row'):  # 'EmptyCell' object has no attribute 'row'
+                        self.__active_row = cell
+                        found_non_empty_cell = True
+                        break
+                if not found_non_empty_cell:
+                    # skip entirely empty row
+                    continue
             else:
                 self.__active_row += 1
             row_values = XLSXReader._get_cell_values(row)           
