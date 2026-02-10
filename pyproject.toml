@@ -61,8 +61,8 @@ dev = [
     "junit2html>=31.0,<32",
     "numpy>=1.25.1",
     "oracledb>=1.2.0",
+    # paramiko is for SSH docker access
     "paramiko",
-    "pip>=22.1.2",
     "psycopg[binary]>=3.1.18,<4",
     "pyarrow>=12.0.1",
     "pykeepass>=4.0.5",
