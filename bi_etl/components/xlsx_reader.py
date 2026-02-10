@@ -19,15 +19,15 @@ __all__ = ['XLSXReader']
 class XLSXReader(ETLComponent):
     """
     XLSXReader will read rows from a Microsoft Excel XLSX formatted workbook.
-    
+
     Parameters
     ----------
     task: ETLTask
         The  instance to register in (if not None)
-    
+
     file_name: str
         The file_name to parse as xlsx.
-        
+
     logical_name: str
         The logical name of this source. Used for log messages.
 
@@ -35,37 +35,37 @@ class XLSXReader(ETLComponent):
     ----------
     column_names: list
         The names to use for columns
-        
+
     header_row: int
         The sheet row to read headers from. Default = 1.
-    
+
     start_row: int
-        The first row to parse for data. Default = header_row + 1 
-    
+        The first row to parse for data. Default = header_row + 1
+
     workbook: :class:`openpyxl.workbook.workbook.Workbook`
         The workbook that was opened.
-        
+
     log_first_row : boolean
         Should we log progress on the first row read. *Only applies if used as a source.*
         (inherited from ETLComponent)
-        
+
     max_rows : int, optional
         The maximum number of rows to read. *Only applies if Table is used as a source.*
         (inherited from ETLComponent)
-        
+
     primary_key: list
         The name of the primary key column(s). Only impacts trace messages.  Default=None.
         (inherited from ETLComponent)
-    
+
     progress_frequency: int
         How often (in seconds) to output progress messages. None for no progress messages.
         (inherited from ETLComponent)
-    
+
     progress_message: str
         The progress message to print. Default is ``"{logical_name} row # {row_number}"``.
         Note ``logical_name`` and ``row_number`` subs.
         (inherited from ETLComponent)
-        
+
     restkey: str
         Column name to catch extra long rows (more columns than we have column names)
         when reading values (extra values).
@@ -82,11 +82,11 @@ class XLSXReader(ETLComponent):
                  ):
         self.file_name = file_name
         if logical_name is None:
-            try: 
+            try:
                 logical_name = os.path.basename(self.file_name)
             except (AttributeError, TypeError):
                 logical_name = str(self.file_name)
-        
+
         # Don't pass kwargs up. They should be set here at the end
         super().__init__(
             task=task,
@@ -95,12 +95,12 @@ class XLSXReader(ETLComponent):
 
         # column to catch long rows (more values than columns)
         self.restkey = 'extra data past last delimiter'
-        # default value for short rows (value for missing keys)    
-        self.restval = None    
-                  
-        self.__header_row = 1    
+        # default value for short rows (value for missing keys)
+        self.restval = None
+
+        self.__header_row = 1
         self.__start_row = None
-        self.__active_row = None               
+        self.__active_row = None
 
         self._workbook = None
         self._active_worksheet: Optional[Worksheet] = None
@@ -111,7 +111,7 @@ class XLSXReader(ETLComponent):
 
     def __repr__(self):
         return f"XLSXReader({self.logical_name})"
-    
+
     @property
     def header_row(self) -> int:
         """
@@ -122,7 +122,7 @@ class XLSXReader(ETLComponent):
     @header_row.setter
     def header_row(self, value: int):
         self.__header_row = value
-        
+
     @property
     def start_row(self) -> int:
         """
@@ -151,13 +151,13 @@ class XLSXReader(ETLComponent):
             # Original open code if the openpyxl libary can properly close the file
             # self._workbook = load_workbook(filename=self.file_name, read_only=True)
         return self._workbook
-    
+
     def set_active_worksheet_by_name(self, sheet_name: str):
         self._active_worksheet = self.workbook[sheet_name]
         self._active_worksheet_name = sheet_name
         self._column_names = None
         self._full_iteration_header = None
-        
+
     def set_active_worksheet_by_number(self, sheet_number: int):
         """
         Change to an existing worksheet based on the sheet number.
@@ -168,7 +168,7 @@ class XLSXReader(ETLComponent):
         else:
             raise ValueError(f"{self} does not have a worksheet numbered {sheet_number}")
         self.set_active_worksheet_by_name(sheet_name)
-    
+
     @property
     def active_worksheet(self):
         if self._active_worksheet is None:
@@ -181,10 +181,10 @@ class XLSXReader(ETLComponent):
         #     self.set_active_worksheet_by_number(0)
         # return self._active_worksheet_name
         return self.active_worksheet.title
-    
+
     def get_sheet_names(self):
         return self.workbook.sheetnames
-    
+
     def get_sheet_by_name(self, name):
         """Returns a worksheet by its name.
 
@@ -192,7 +192,7 @@ class XLSXReader(ETLComponent):
         ----------
         name: str
             The name of the worksheet to look for
-            
+
         Returns
         -------
         openpyxl.worksheet.worksheet.Worksheet
@@ -203,7 +203,7 @@ class XLSXReader(ETLComponent):
             return self.workbook[name]
         except KeyError:
             return
-    
+
     @property
     def line_num(self):
         """
@@ -211,16 +211,16 @@ class XLSXReader(ETLComponent):
         line_num differs from rows_read in that rows_read deals with rows that would be returned to the caller
         """
         return self.__active_row
-    
+
     def _obtain_column_names(self):
         try:
-            row = self.read_header_row()                
+            row = self.read_header_row()
             self._column_names = row
             if self.trace_data:
                 self.log.debug(f"Column names read: {self._column_names}")
         except StopIteration:
             pass
-    
+
     @staticmethod
     def _get_cell_value(cell):
         value = cell.value
@@ -233,12 +233,12 @@ class XLSXReader(ETLComponent):
             if value == datetime(1899, 12, 30):
                 value = time(12, 0, 0)
         return value
-    
+
     @staticmethod
     def _get_cell_values(row_cells) -> list:
         # Convert empty strings to None to be consistent with DB reads
         return list(map(XLSXReader._get_cell_value, row_cells))
-        
+
     def read_header_row(self):
         # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
         # noinspection PyTypeChecker
@@ -262,7 +262,7 @@ class XLSXReader(ETLComponent):
                 found_non_empty_cell = False
                 for cell in row:
                     if hasattr(cell, 'row'):  # 'EmptyCell' object has no attribute 'row'
-                        self.__active_row = cell
+                        self.__active_row = cell.row
                         found_non_empty_cell = True
                         break
                 if not found_non_empty_cell:
@@ -270,7 +270,7 @@ class XLSXReader(ETLComponent):
                     continue
             else:
                 self.__active_row += 1
-            row_values = XLSXReader._get_cell_values(row)           
+            row_values = XLSXReader._get_cell_values(row)
             d = self.Row(data=row_values[:len_column_names], iteration_header=this_iteration_header)
             len_column_names = len(self.column_names)
             len_row = len(row_values)
@@ -283,8 +283,8 @@ class XLSXReader(ETLComponent):
                 # This could be done in a faster way, but hopefully is rare so not worth optimizing
                 for key in self.column_names[len_row]:
                     d[key] = self.restval
-            yield d 
-            
+            yield d
+
     def close(self, error: bool = False):
         if not self.is_closed:
             if self._workbook is not None:
