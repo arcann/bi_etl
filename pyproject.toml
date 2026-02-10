@@ -34,7 +34,7 @@ jira = ["jira>=3.1.1"]
 slack = ["slack-sdk>=3.19.5"]
 redshift = [
     "pyarrow>=10.0.1",
-    "psycopg2",
+    "psycopg2-binary",
 ]
 avro = ["fastavro>=1.0.0"]
 all = [
@@ -44,10 +44,10 @@ all = [
     "slack",
     "dagster",
     "dagster-webserver",
-    "psycopg2",
+    "psycopg2-binary",
 ]
 test = [
-    "psycopg2",
+    "psycopg2-binary",
     "testcontainers",
 ]
 
@@ -75,6 +75,7 @@ dev = [
     "toml>=0.10.1,<0.11",
     "coverage>=7.13.0",
     "tox>=4.34.1",
+    "tox-uv>=1.29.0",
 ]
 docs = [
     "Sphinx>=7.2.2",
