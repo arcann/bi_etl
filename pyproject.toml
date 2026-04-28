@@ -1,6 +1,6 @@
 [project]
 name = "bi_etl"
-version = "1.8.4"
+version = "1.9.0"
 description = "Python ETL Framework"
 authors = [{ name = "Derek Wood", email = "bietl_info@bietl.dev" }]
 requires-python = ">=3.10"

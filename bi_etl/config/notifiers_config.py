@@ -1,4 +1,4 @@
-from typing import List, Optional, Annotated, Set
+from typing import List, Optional, Annotated, Set, Any
 
 from config_wrangler.config_templates.config_hierarchy import ConfigHierarchy
 from config_wrangler.config_templates.credentials import Credentials
@@ -137,6 +137,12 @@ class JiraNotifier(NotifierConfigBase, Credentials):
     """
     Priority to create issues with. None for project default.
     """
+
+    team_name: Optional[str] = None
+    epic_id: Optional[str] = None
+    parent_issue: Optional[str] = None
+
+    custom_field_default_values: Optional[dict[str, Any]] = None
 
     subject_prefix: str = ''
     """

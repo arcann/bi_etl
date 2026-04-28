@@ -64,6 +64,8 @@ class Jira(NotifierBase):
         )
         self.end_auto_search_part = self.config_section.auto_header_end_text
         self.end_auto_line = ' '.join([self.auto_color_open_tag, self.end_auto_search_part, self.auto_color_close_tag])
+        self._fields = None
+        self._teams_map = None
 
     def get_priority_id(self, priority_name: str) -> str:
         priority_id = None
@@ -273,6 +275,46 @@ class Jira(NotifierBase):
             self.log.debug("")
         return found_issues
 
+    def _get_fields(self):
+        if self._fields is None:
+            self._fields = self.jira_conn.fields()
+        return self._fields
+
+    def _get_field_map_name_to_id(self) -> dict[str, str]:
+        field_map = {}
+        fields = self.jira_conn.fields()
+        for field in self._get_fields():
+            field_map[field['name']] = field['id']
+        return field_map
+
+    def _get_field_id_set(self) -> set[str]:
+        field_id_set = set()
+        for field in self._get_fields():
+            field_id_set.add(field['id'])
+        return field_id_set
+
+    def _get_teams(self) -> dict[str, int]:
+        if self._teams_map is None:
+            url = f"{self.jira_conn.server_url}/rest/teams/1.0/teams/find"
+
+            # Use the library's built-in session which handles authentication headers
+            response = self.jira_conn._session.post(
+                url,
+                data={'query': "", 'excludedIds': [], 'maxResults': 200},
+                headers={
+                    'Accept': 'application/json',
+                }
+            )
+
+            self._teams_map = {}
+            if response.status_code == 200:
+                teams = response.json().get('teams', [])
+                for team in teams:
+                    self._teams_map[team['title']] = team['id']
+            else:
+                self.log.error(f"Error getting teams: {response.status_code}\n{response.content}")
+        return self._teams_map
+
     def send(
             self,
             subject: str,
@@ -412,8 +454,68 @@ class Jira(NotifierBase):
             elif self.config_section.labels is not None:
                 issue_dict['labels'] = self.config_section.labels
 
+            # Issue parent
+            if self.config_section.parent_issue is not None:
+                issue_dict['parent'] = {'key': self.config_section.parent_issue}
+
+            # Epic
+            if self.config_section.epic_id is not None:
+                # Note: We might call these get methods more than once but cache the 1st result
+                field_map_name_to_id = self._get_field_map_name_to_id()
+                try:
+                    epic_field_id = field_map_name_to_id['Epic Link']
+                except KeyError:
+                    raise ValueError(
+                        f"'Epic Link' field not found. "
+                        f"Valid fields are {list(field_map_name_to_id.keys())}"
+                    )
+                issue_dict[epic_field_id] = self.config_section.epic_id
+
+            if self.config_section.team_name is not None:
+                # Note: We might call these get methods more than once but cache the 1st result
+                field_map_name_to_id = self._get_field_map_name_to_id()
+                valid_teams_dict = self._get_teams()
+                try:
+                    team_id = valid_teams_dict[self.config_section.team_name]
+                except KeyError:
+                    raise ValueError(
+                        f"Team name {self.config_section.team_name} is not valid. "
+                        f"Valid teams are {list(valid_teams_dict.keys())}"
+                    )
+
+                try:
+                    team_field_id = field_map_name_to_id['Team']
+                except KeyError:
+                    raise ValueError(
+                        f"'Team' field not found. "
+                        f"Valid fields are {list(field_map_name_to_id.keys())}"
+                    )
+                # noinspection PyTypeChecker
+                issue_dict[team_field_id] = str(team_id)
+
+            custom_field_dict = {}
+            if self.config_section.custom_field_default_values:
+                custom_field_dict.update(self.config_section.custom_field_default_values)
+
             if custom_fields is not None:
-                issue_dict.update(custom_fields)
+                custom_field_dict.update(custom_fields)
+
+            custom_field_dict_by_id = {}
+            if len(custom_field_dict) > 0:
+                # Note: We might call these get methods more than once but cache the 1st result
+                field_map_name_to_id = self._get_field_map_name_to_id()
+                field_id_set = self._get_field_id_set()
+                for custom_field_name, value in custom_field_dict.items():
+                    try:
+                        issue_dict[field_map_name_to_id[custom_field_name]] = value
+                    except KeyError:
+                        if custom_field_name in field_id_set:
+                            # It wasn't a field name but rather a field ID
+                            issue_dict[custom_field_name] = value
+                        else:
+                            self.log.warning(
+                                f"Custom field {custom_field_name} is not a valid field name or id. Skipped."
+                            )
 
             self.log.debug(f'issue_dict={issue_dict}')
 
