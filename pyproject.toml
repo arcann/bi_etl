@@ -86,8 +86,6 @@ docs = [
 
 [tool.uv]
 default-groups = ["dev"]
-exclude-newer = "1 week"
-
 
 [build-system]
 requires = ["hatchling"]

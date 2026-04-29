@@ -284,7 +284,7 @@ class RedShiftS3Base(BulkLoader):
             role_option = '--No role'
 
         if self.s3_user_id is not None:
-            credentials_option = f"credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'"
+            credentials_option = f"CREDENTIALS 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'"
         else:
             credentials_option = '--No credentials'
 
