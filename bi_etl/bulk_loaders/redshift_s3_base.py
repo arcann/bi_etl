@@ -135,7 +135,7 @@ class RedShiftS3Base(BulkLoader):
 
         self.log.debug(f'Getting pg_last_copy_id')
 
-        pg_last_copy_id_res = connection.execute("select pg_last_copy_id() as id")
+        pg_last_copy_id_res = connection.execute(text("select pg_last_copy_id() as id"))
         pg_last_copy_id_row = next(pg_last_copy_id_res)
         pg_last_copy_id = pg_last_copy_id_row.id
 
@@ -208,10 +208,10 @@ class RedShiftS3Base(BulkLoader):
 
             try:
                 connection = table_object.connection()
-                connection.execute(copy_sql)
+                connection.execute(text(copy_sql))
                 # Load worked we can stop looping
                 keep_trying = False
-                connection.execute(f"COMMIT;")
+                connection.execute(text("COMMIT;"))
             except sqlalchemy.exc.SQLAlchemyError as e:
                 safe_e = str(e).replace(self.s3_password, '*' * 8)
 
@@ -252,7 +252,7 @@ class RedShiftS3Base(BulkLoader):
             # Default to -1 rows to indicate error
             rows_loaded = -1
             try:
-                results = connection.execute(sql)
+                results = connection.execute(text(sql))
                 for row in results:
                     lines_scanned = row.lines_scanned
                     file_cnt = row.file_cnt
