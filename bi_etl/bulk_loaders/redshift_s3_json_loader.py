@@ -6,6 +6,7 @@ import io
 import json
 import os.path
 import os.path
+import textwrap
 from typing import *
 from datetime import datetime
 from tempfile import TemporaryDirectory
@@ -39,17 +40,18 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
             analyze_compression: str = None,
             options: str = '',
     ):
-        analyze_compression = analyze_compression or self.analyze_compression
-        if analyze_compression:
-            options += f' COMPUPDATE {self.analyze_compression} '
+        base_copy = self._get_base_copy(
+            s3_source_path=s3_source_path,
+            table_to_load=table_to_load,
+        )
 
-        return f"""\
-                COPY {table_to_load} FROM 's3://{self.s3_bucket_name}/{s3_source_path}'                      
-                     credentials 'aws_access_key_id={self.s3_user_id};aws_secret_access_key={self.s3_password}'
-                     JSON 'auto'
-                     {file_compression}  
-                     {options}
-               """
+        return textwrap.dedent(f"""\
+            {base_copy} --JSON specific Options:                      
+            JSON 'auto'
+            {file_compression}
+            {self._get_compression_option_str(analyze_compression)}
+            {options}; commit;
+            """)
 
     @staticmethod
     def json_serializer(value):

@@ -78,19 +78,15 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             analyze_compression: str = None,
             options: str = '',
     ):
+        base_copy = self._get_base_copy(
+            s3_source_path=s3_source_path,
+            table_to_load=table_to_load,
+        )
+
         if self.has_header:
             header_option = 'IGNOREHEADER 1'
         else:
             header_option = ''
-
-        analyze_compression = analyze_compression or self.analyze_compression
-        if analyze_compression:
-            options += f' COMPUPDATE {self.analyze_compression} '
-
-        base_copy = self._get_base_copy(
-           s3_source_path=s3_source_path,
-           table_to_load=table_to_load,
-        )
 
         return textwrap.dedent(f"""\
             {base_copy} --CSV specific Options:
@@ -99,6 +95,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             NULL '{self.null_value}' 
             {header_option} 
             {file_compression}
+            {self._get_compression_option_str(analyze_compression)}
             {options}; commit;
             """)
 

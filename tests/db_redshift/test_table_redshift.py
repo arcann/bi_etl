@@ -5,7 +5,10 @@ from config_wrangler.config_templates.password_source import PasswordSource
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
+from bi_etl.bulk_loaders.redshift_s3_avro_loader import RedShiftS3AvroBulk
 from bi_etl.bulk_loaders.redshift_s3_csv_loader import RedShiftS3CSVBulk
+from bi_etl.bulk_loaders.redshift_s3_json_loader import RedShiftS3JSONBulk
+from bi_etl.bulk_loaders.redshift_s3_parquet_loader import RedShiftS3ParquetBulk
 from bi_etl.components.table import Table
 from tests.config_for_tests import EnvironmentSpecificConfigForTests
 from tests.db_base_tests.base_test_table import BaseTestTable
@@ -39,6 +42,21 @@ class TestTableRedshift(BaseTestTable):
     def testRedShiftS3CSVBulk_Insert_DefaultConfig(self):
         tbl_name = self._get_table_name('testBulkInsertAndIterateNoKey')
         bulk_loader = RedShiftS3CSVBulk(self.env_config.s3_bulk)
+        self._testBulkInsertAndIterateNoKey(tbl_name, bulk_loader)
+
+    def testRedShiftS3ParquetBulk_Insert_DefaultConfig(self):
+        tbl_name = self._get_table_name('testBulkInsertAndIterateNoKey')
+        bulk_loader = RedShiftS3ParquetBulk(self.env_config.s3_bulk)
+        self._testBulkInsertAndIterateNoKey(tbl_name, bulk_loader)
+
+    def testRedShiftS3JSONBulk_Insert_DefaultConfig(self):
+        tbl_name = self._get_table_name('testBulkInsertAndIterateNoKey')
+        bulk_loader = RedShiftS3JSONBulk(self.env_config.s3_bulk)
+        self._testBulkInsertAndIterateNoKey(tbl_name, bulk_loader)
+
+    def testRedShiftS3AvroBulk_Insert_DefaultConfig(self):
+        tbl_name = self._get_table_name('testBulkInsertAndIterateNoKey')
+        bulk_loader = RedShiftS3AvroBulk(self.env_config.s3_bulk)
         self._testBulkInsertAndIterateNoKey(tbl_name, bulk_loader)
 
     def testRedShiftS3CSVBulk_Insert_Various(self):

@@ -297,6 +297,16 @@ class RedShiftS3Base(BulkLoader):
             """
         )
 
+    def _get_compression_option_str(
+            self,
+            analyze_compression: str = None,
+    ) -> str:
+        analyze_compression = analyze_compression or self.analyze_compression
+        if analyze_compression:
+            return f"COMPUPDATE {self.analyze_compression}"
+        else:
+            return '--No COMPUPDATE'
+
     def get_copy_sql(
             self,
             s3_source_path: str,
