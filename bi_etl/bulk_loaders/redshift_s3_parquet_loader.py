@@ -38,6 +38,15 @@ class RedShiftS3ParquetBulk(RedShiftS3Base):
     def needs_all_columns(self):
         return False
 
+    def _get_region_specifier(self) -> str:
+        """
+        Called by _get_base_copy to get the region specifier in the COPY statement
+        """
+        if self.s3_region is not None:
+            return '-- AWS does not support region for PARQUET'
+        else:
+            return '--No region (and not supported for PARQUET)'
+
     def get_copy_sql(
             self,
             s3_source_path: str,

@@ -1,6 +1,6 @@
 [project]
 name = "bi_etl"
-version = "1.9.1"
+version = "1.9.2a1"
 description = "Python ETL Framework"
 authors = [{ name = "Derek Wood", email = "bietl_info@bietl.dev" }]
 requires-python = ">=3.10"
@@ -54,7 +54,7 @@ test = [
 [dependency-groups]
 dev = [
     "boto3>=1.40",
-    "boto3-stubs~=1.42.78",
+    "boto3-stubs>=1.40",
     "dagster>=1.5.7",
     "dagster-webserver>=1.6.3",
     "fastavro>=1.5.3",

@@ -268,15 +268,22 @@ class RedShiftS3Base(BulkLoader):
 
         return rows_loaded
 
+    def _get_region_specifier(self) -> str:
+        """
+        Called by _get_base_copy to get the region specifier in the COPY statement.
+        Some sub-classes will need to override (e.g. PARQUET)
+        """
+        if self.s3_region is not None:
+            return f"region '{self.s3_region}'"
+        else:
+            return '--No region'
+
     def _get_base_copy(
             self,
             s3_source_path: str,
             table_to_load: str,
     ):
-        if self.s3_region is not None:
-            region_option = f"region '{self.s3_region}'"
-        else:
-            region_option = '--No region'
+        region_option = self._get_region_specifier()
 
         if self.redshift_copy_iam_role is not None:
             role_option = f"IAM_ROLE '{self.redshift_copy_iam_role}'"
