@@ -714,7 +714,7 @@ class BaseTestTable(BaseTestDatabase):
                        key_values=[i],
                        )
             # self.task.debug_sql(False)
-        tbl.commit()
+        tbl.execute("COMMIT")
         # Commit again to test resiliency
         tbl.commit()
 
