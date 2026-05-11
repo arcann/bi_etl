@@ -371,6 +371,8 @@ class BaseTestTable(BaseTestDatabase):
             tbl.insert(row)
         if commit:
             tbl.commit()
+            # Commit again to test resiliency
+            tbl.commit()
 
     @staticmethod
     def _generate_test_rows(
@@ -494,6 +496,8 @@ class BaseTestTable(BaseTestDatabase):
                     row['col4'] = i / 100000000.0
 
                     tbl.insert(row)
+                tbl.commit()
+                # Commit again to test resiliency
                 tbl.commit()
                 self.fail('Error not raised (or passed on) on duplicate key')
             except (DatabaseError, sqlalchemy.exc.StatementError):
@@ -633,6 +637,8 @@ class BaseTestTable(BaseTestDatabase):
 
             tbl.insert(row)
         tbl.commit()
+        # Commit again to test resiliency
+        tbl.commit()
 
         for i in range(rows_to_insert):
             # self.task.debug_sql()
@@ -642,6 +648,8 @@ class BaseTestTable(BaseTestDatabase):
                        key_values=[i + 100],
                        )
             # self.task.debug_sql(False)
+        tbl.commit()
+        # Commit again to test resiliency
         tbl.commit()
 
         # Validate data
@@ -707,6 +715,8 @@ class BaseTestTable(BaseTestDatabase):
                        )
             # self.task.debug_sql(False)
         tbl.commit()
+        # Commit again to test resiliency
+        tbl.commit()
 
         # Validate data
         rows_dict = dict()
@@ -747,6 +757,8 @@ class BaseTestTable(BaseTestDatabase):
             tbl.update(updates_to_make=row)
             # self.task.debug_sql(False)
         tbl.commit()
+        # Commit again to test resiliency
+        tbl.commit()
 
         # Validate data
         rows_dict = dict()
@@ -785,6 +797,8 @@ class BaseTestTable(BaseTestDatabase):
             row['col4'] = i / 100000000.0
             tbl.update_where_pk(updates_to_make=row)
             # self.task.debug_sql(False)
+        tbl.commit()
+        # Commit again to test resiliency
         tbl.commit()
 
         # Validate data
@@ -890,7 +904,7 @@ class BaseTestTable(BaseTestDatabase):
         iteration_header = RowIterationHeader()
         rows_generated = list()
         for i in range(rows_to_insert):
-            # only update even rows            
+            # only update even rows
             # self.task.debug_sql()
             tbl.trace_sql = True
             # DO NOT use full table row since we want a column to not exist
@@ -941,6 +955,9 @@ class BaseTestTable(BaseTestDatabase):
             self.mock_database,
             table_name=tbl_name
         ) as tbl:
+            # Commit early to test resiliency
+            tbl.commit()
+
             self._generate_test_rows(tbl, rows_to_insert)
 
             # Do the deletes
@@ -1633,7 +1650,7 @@ class BaseTestTable(BaseTestDatabase):
 
         self.mock_database.drop_table_if_exists(tbl_name)
 
-    # TODO: Test update_not_in_set, delete_not_in_set 
+    # TODO: Test update_not_in_set, delete_not_in_set
 
     @staticmethod
     def _generate_bulk_test_row(
