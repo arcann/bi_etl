@@ -42,6 +42,9 @@ class XLSXReader(ETLComponent):
     start_row: int
         The first row to parse for data. Default = header_row + 1
 
+    start_col: int
+        The first column to parse for data. Default = 1
+
     workbook: :class:`openpyxl.workbook.workbook.Workbook`
         The workbook that was opened.
 
@@ -100,6 +103,7 @@ class XLSXReader(ETLComponent):
 
         self.__header_row = 1
         self.__start_row = None
+        self.start_col = 1
         self.__active_row = None
 
         self._workbook = None
@@ -157,6 +161,7 @@ class XLSXReader(ETLComponent):
         self._active_worksheet_name = sheet_name
         self._column_names = None
         self._full_iteration_header = None
+        self.lookups.clear()
 
     def set_active_worksheet_by_number(self, sheet_number: int):
         """
@@ -243,7 +248,7 @@ class XLSXReader(ETLComponent):
         # See https://openpyxl.readthedocs.org/en/latest/tutorial.html
         # noinspection PyTypeChecker
         row = next(self.active_worksheet.iter_rows(
-            min_col=1,
+            min_col=self.start_col,
             min_row=self.header_row,
             max_col=None,
             max_row=self.header_row,
@@ -257,7 +262,10 @@ class XLSXReader(ETLComponent):
         self.__active_row = self.start_row
         len_column_names = len(self.column_names)
         this_iteration_header = self.full_iteration_header
-        for row in self.active_worksheet.iter_rows(min_row=self.start_row):
+        for row in self.active_worksheet.iter_rows(
+                min_col=self.start_col,
+                min_row=self.start_row,
+        ):
             if len(row) > 0:
                 found_non_empty_cell = False
                 for cell in row:

@@ -9,7 +9,8 @@ from typing import *
 
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.table import Table as WorksheetTable, TableStyleInfo
+from openpyxl.worksheet.filters import AutoFilter
+from openpyxl.worksheet.table import Table as WorksheetTable, TableStyleInfo, TableColumn
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.xlsx_reader import XLSXReader
@@ -22,15 +23,15 @@ __all__ = ['XLSXWriter']
 class XLSXWriter(XLSXReader):
     """
     XLSXWriter will write rows to a Microsoft Excel XLSX formatted workbook.
-    
+
     Parameters
     ----------
     task: ETLTask
         The  instance to register in (if not None)
-    
+
     file_name: str
         The file_name to parse as xlsx.
-        
+
     logical_name: str
         The logical name of this source. Used for log messages.
 
@@ -42,43 +43,46 @@ class XLSXWriter(XLSXReader):
     ----------
     column_names: list
         The names to use for columns
-        
+
     header_row: int
         The sheet row to read headers from. Default = 1.
-    
+
     start_row: int
-        The first row to parse for data. Default = header_row + 1 
-    
+        The first row to parse for data. Default = header_row + 1
+
+    start_col: int
+        The first column to parse for data. Default = 1
+
     workbook: :class:`openpyxl.workbook.workbook.Workbook`
         The workbook that was opened.
-        
+
     log_first_row : boolean
         Should we log progress on the first row read. *Only applies if used as a source.*
         (inherited from ETLComponent)
-        
+
     max_rows : int, optional
         The maximum number of rows to read. *Only applies if Table is used as a source.*
         (inherited from ETLComponent)
-        
+
     primary_key: list
         The name of the primary key column(s). Only impacts trace messages.  Default=None.
         (inherited from ETLComponent)
-    
+
     progress_frequency: int
         How often (in seconds) to output progress messages. None for no progress messages.
         (inherited from ETLComponent)
-    
+
     progress_message: str
         The progress message to print. Default is ``"{logical_name} row # {row_number}"``.
         Note ``logical_name`` and ``row_number`` subs.
         (inherited from ETLComponent)
-        
+
     restkey: str
         Column name to catch extra long rows (more columns than we have column names)
         when reading values (extra values).
-        
+
     restval: str
-        The value to put in columns that are in the column_names but 
+        The value to put in columns that are in the column_names but
         not present in a given row when reading (missing values).
     """
     def __init__(self,
@@ -226,6 +230,9 @@ class XLSXWriter(XLSXReader):
         assert len(source_row) > 0, f"Empty row passed into {self} insert"
 
         values = []
+        if self.start_col != 1:
+            for _ in range(self.start_col - 1):
+                values.append(None)
         for column_name in self.column_names:
             if additional_insert_values and column_name in additional_insert_values:
                 col_value = additional_insert_values[column_name]
@@ -271,9 +278,9 @@ class XLSXWriter(XLSXReader):
         """
         if self._insert_cnt_this_sheet == 0:
             return
-        last_col_letter = get_column_letter(len(self.column_names))
+        last_col_letter = get_column_letter(self.start_col - 1 + len(self.column_names))
 
-        table_ref = f"A1:{last_col_letter}{self._insert_cnt_this_sheet + 1}"
+        table_ref = f"A{self.start_col}:{last_col_letter}{self._insert_cnt_this_sheet + self.start_row}"
         self.log.debug(f"Adding table to worksheet {self.active_worksheet_name} for range {table_ref}")
 
         table = WorksheetTable(
@@ -289,10 +296,12 @@ class XLSXWriter(XLSXReader):
         )
         table.tableStyleInfo = style
 
-        # noinspection PyProtectedMember
-        table._initialise_columns()
-        for column, value in zip(table.tableColumns, self.column_names):
-            column.name = value
+        idx = self.start_col
+        for col_name in self.column_names:
+            col = TableColumn(id=idx, name=col_name)
+            idx += 1
+            table.tableColumns.append(col)
+        table.autoFilter = AutoFilter(ref=table.ref)
         self.active_worksheet.add_table(table)
 
     def insert(
@@ -326,7 +335,7 @@ class XLSXWriter(XLSXReader):
                  parent_stats=parent_stats,
                  **kwargs
              )
-            
+
     def close(self, error: bool = False):
         """
         Close the xlsx file, saving first if ``error`` is false.

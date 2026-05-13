@@ -142,6 +142,28 @@ class TestXLSReader(unittest.TestCase):
             with self.assertRaises(StopIteration):
                 _ = next(src_iter)
 
+    def test_lookup(self):
+        src_file = os.path.join(self.test_files_path, 'simple.xlsx')
+        self.maxDiff = None
+        with XLSXReader(self.task, src_file) as src:
+            pk_lookup = src.define_lookup(
+                lookup_name='pk',
+                lookup_keys=['str'],
+            )
+            src.fill_cache()
+
+            self.assertIs(pk_lookup, src.get_lookup('pk'))
+
+            jane = pk_lookup.find({'str': 'Jane'})
+            self.assertEqual(jane['str'], 'Jane')
+            self.assertEqual(jane['int'], 100)
+
+            # Test that reading the file still works after fill_cache
+            src_iter = iter(src)
+            row = next(src_iter)
+            self.assertEqual(row['str'], 'Bob')
+
+
     def test_mixed_row_len(self):
         src_file = os.path.join(self.test_files_path, 'mixed_row_len.xlsx')
         self.maxDiff = None
