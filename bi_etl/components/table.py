@@ -3174,10 +3174,8 @@ class Table(ReadOnlyTable):
     def transaction(
             self,
             connection_name: Optional[str] = None
-    ):
-        connection_name = self.database.resolve_connection_name(connection_name)
-        self._connections_used.add(connection_name)
-        return self.database.begin(connection_name)
+    ) -> sqlalchemy.engine.base.Transaction:
+        return self.database.transaction(connection_name)
 
     def begin(
             self,
@@ -3350,7 +3348,9 @@ class Table(ReadOnlyTable):
             else:
                 self.log.debug(f"{self} rollback on all active connections {self._connections_used}")
                 for connection_name in self._connections_used:
-                    self.database.rollback(connection_name)
+                    tx = self.transaction(connection_name)
+                    if tx is not None and tx.is_active:
+                        tx.rollback()
                 self._connections_used = set()
             if begin_new:
                 self.begin(connection_name=connection_name)

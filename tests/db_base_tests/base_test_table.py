@@ -122,9 +122,8 @@ class BaseTestTable(BaseTestDatabase):
         ) as tbl:
             pass
         self.assertTrue(tbl.is_closed)
-        for trans in mock_db._transactions:
-            self.assertFalse(trans.is_active)
         for conn in mock_db._connection_pool:
+            self.assertFalse(conn.transaction.is_active)
             self.assertTrue(conn.is_closed)
 
     def testReleaseMany(self):
@@ -152,9 +151,8 @@ class BaseTestTable(BaseTestDatabase):
 
         self.assertTrue(tbl1.is_closed)
         self.assertTrue(tbl2.is_closed)
-        for trans in mock_db._transactions:
-            self.assertFalse(trans.is_active)
         for conn in mock_db._connection_pool:
+            self.assertFalse(conn.transaction.is_active)
             self.assertTrue(conn.is_closed)
 
     def testReleaseExitStack(self):
@@ -183,9 +181,8 @@ class BaseTestTable(BaseTestDatabase):
 
         self.assertTrue(tbl1.is_closed)
         self.assertTrue(tbl2.is_closed)
-        for trans in mock_db._transactions:
-            self.assertFalse(trans.is_active)
         for conn in mock_db._connection_pool:
+            self.assertFalse(conn.transaction.is_active)
             self.assertTrue(conn.is_closed)
 
     def testReleaseExplicitAutoClose(self):
@@ -233,9 +230,8 @@ class BaseTestTable(BaseTestDatabase):
         self.assertTrue(tbl1.is_closed)
         self.assertTrue(tbl2.is_closed)
         self.assertEqual(ctx.status, 'closed')
-        for trans in mock_db._transactions:
-            self.assertFalse(trans.is_active)
         for conn in mock_db._connection_pool:
+            self.assertFalse(conn.transaction.is_active)
             self.assertTrue(conn.is_closed)
 
     def testReleaseImplicitAutoClose(self):
@@ -265,9 +261,8 @@ class BaseTestTable(BaseTestDatabase):
 
         self.assertTrue(tbl1.is_closed)
         self.assertTrue(tbl2.is_closed)
-        for trans in mock_db._transactions:
-            self.assertFalse(trans.is_active)
         for conn in mock_db._connection_pool:
+            self.assertFalse(conn.transaction.is_active)
             self.assertTrue(conn.is_closed)
 
     def testReleaseManyFailed(self):
@@ -291,9 +286,8 @@ class BaseTestTable(BaseTestDatabase):
             pass
 
         self.assertTrue(tbl1.is_closed)
-        for trans in mock_db._transactions:
-            self.assertFalse(trans.is_active)
         for conn in mock_db._connection_pool:
+            self.assertFalse(conn.transaction.is_active)
             self.assertTrue(conn.is_closed)
 
     def testInitExcludeCol(self):

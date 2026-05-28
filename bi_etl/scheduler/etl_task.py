@@ -976,6 +976,7 @@ class ETLTask(object):
             self.status = Status.failed
             if not handle_exceptions:
                 raise e
+            self.log.error(f"{repr(e)}")
             self.log.exception(e)
             if not self.suppress_notifications:
                 environment = self.config.bi_etl.environment_name

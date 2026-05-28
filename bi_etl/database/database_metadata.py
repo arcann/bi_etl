@@ -11,6 +11,7 @@ import sqlalchemy
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.schema import DEFAULT_NAMING_CONVENTION
+from sqlalchemy.exc import InvalidRequestError
 
 from bi_etl.utility.case_insentive_set import CaseInsentiveSet
 
@@ -48,7 +49,6 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         self._uses_bytes_length_limits = uses_bytes_length_limits
 
         self._connection_pool = dict()
-        self._transactions = dict()
         self.default_connection_name = 'default'
 
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
@@ -161,26 +161,31 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
 
     def _begin(self, connection_name: str) -> sqlalchemy.engine.base.Transaction:
         tx = self.connection(connection_name=connection_name).begin()
-        self._transactions[connection_name] = tx
         return tx
 
     def begin(self, connection_name: str = None) -> sqlalchemy.engine.base.Transaction:
         connection_name = self.resolve_connection_name(connection_name)
-        if connection_name not in self._transactions:
+        tx = self.transaction(connection_name=connection_name)
+        if tx is None:
             tx = self._begin(connection_name)
         else:
-            tx = self._transactions[connection_name]
             if not tx.is_active:
                 tx = self._begin(connection_name)
         return tx
 
-    def has_active_transaction(self, connection_name: str = None):
-        connection_name = self.resolve_connection_name(connection_name)
-        if connection_name not in self._transactions:
-            return False
+    def transaction(self, connection_name: str = None) -> sqlalchemy.engine.Transaction:
+        conn = self.connection(connection_name=connection_name)
+        nested_trans = conn.get_nested_transaction()
+        if nested_trans is not None:
+            return nested_trans
         else:
-            tx = self._transactions[connection_name]
-            return tx.is_active
+            return conn.get_transaction()
+
+    def has_active_transaction(self, connection_name: str = None) -> bool:
+        tx = self.transaction(connection_name=connection_name)
+        if tx is None:
+            return False
+        return tx.is_active
 
     def commit(self, connection_name: str = None):
         """
@@ -191,29 +196,21 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         ----------
         connection_name
         """
-        connection_name = self.resolve_connection_name(connection_name)
-        if connection_name not in self._transactions:
-            self.log.debug(f"Commit: There is no transaction recorded for {self} {connection_name}")
+        if not self.has_active_transaction(connection_name=connection_name):
+            self.log.debug(f"Commit: There is no active transaction recorded for {self} {connection_name}")
         else:
-            tx = self._transactions[connection_name]
-            if tx.is_active:
-                self.log.info(f'Commit on {self} {connection_name} connection started')
-                tx.commit()
-                self.log.debug(f'Commit on {self} {connection_name} connection done')
-            else:
-                self.log.info(f'Connection {self} {connection_name} transaction not active (commit called)')
+            tx = self.transaction(connection_name=connection_name)
+            self.log.info(f'Commit on {self} {connection_name} connection started')
+            tx.commit()
+            self.log.debug(f'Commit on {self} {connection_name} connection done')
 
     def rollback(self, connection_name: str = None):
-        connection_name = self.resolve_connection_name(connection_name)
-        if connection_name not in self._transactions:
-            raise RuntimeError(f"rollback: There is no transaction recorded for {self} {connection_name}")
+        if not self.has_active_transaction(connection_name=connection_name):
+            raise RuntimeError(f"rollback: There is no active transaction recorded for {self} {connection_name}")
         else:
-            tx = self._transactions[connection_name]
-            if tx.is_active:
-                tx.rollback()
-                self.log.info(f'Rollback on {self} {connection_name} connection done')
-            else:
-                raise RuntimeError(f'Connection {self} {connection_name} transaction not active (rollback called)')
+            tx = self.transaction(connection_name=connection_name)
+            tx.rollback()
+            self.log.info(f'Rollback on {self} {connection_name} connection done')
 
     def execute(
             self,
@@ -231,12 +228,32 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             )
             if isinstance(sql, str):
                 sql = sqlalchemy.text(sql)
+
             if transaction or not connection.in_transaction():
+                do_begin = True
+                current_transaction = connection.get_transaction()
+                if current_transaction is not None:
+                    if not current_transaction.is_active:
+                        # Work-around for connection.begin in Name: sqlalchemy Version: 2.0.49
+                        # which only checks if _transaction is None it does not check for is_active
+                        connection._transaction = None
+                        current_transaction = None
+                    else:
+                        # Already in active transaction
+                        do_begin = False
                 # Equivalent to Autocommit
-                with connection.begin():
-                    result = connection.execute(sql, *list_params, **params)
             else:
-                result = connection.execute(sql, *list_params, **params)
+                do_begin = False
+
+            try:
+                if do_begin:
+                    with connection.begin():
+                        result = connection.execute(sql, *list_params, **params)
+                else:
+                    result = connection.execute(sql, *list_params, **params)
+            except InvalidRequestError as e:
+                print(f"{e} with trans {current_transaction}")
+
             return result
         finally:
             if auto_close:
