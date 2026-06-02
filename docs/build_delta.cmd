@@ -1,1 +1,1 @@
-poetry run sphinx-build -b html -N -w issues.log source build
+uv run --group docs sphinx-build -b html -N -w issues.log source build

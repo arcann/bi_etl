@@ -1,2 +1,1 @@
-poetry install --with=docs
-poetry run sphinx-build -b html -E -N -w issues.log source build
+uv run --group docs sphinx-build -b html -E -N -w issues.log source build

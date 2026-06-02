@@ -2879,7 +2879,7 @@ class Table(ReadOnlyTable):
 
     def upsert(
             self,
-            source_row: Union[Row, List[Row]],
+            source_row: Row,
             lookup_name: Optional[str] = None,
             skip_update_check_on: Optional[frozenset] = None,
             do_not_update: Optional[Iterable] = None,
