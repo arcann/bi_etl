@@ -16,7 +16,7 @@ from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 
 if TYPE_CHECKING:
     from bi_etl.components.table import Table
-    from bi_etl.scheduler.task import ETLTask
+    from bi_etl.scheduler.etl_task import ETLTask
 
 
 class RedShiftS3AvroBulk(RedShiftS3Base):

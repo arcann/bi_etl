@@ -11,7 +11,7 @@ import unittest
 from tempfile import TemporaryDirectory
 
 from bi_etl.components.xlsx_reader import XLSXReader
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from tests.config_for_tests import build_config
 
 

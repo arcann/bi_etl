@@ -5,7 +5,7 @@ Created on Sept 12 2016
 """
 from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.database.database_metadata import DatabaseMetadata
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 
 
 class CopyTableData(ETLTask):

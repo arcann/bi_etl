@@ -20,7 +20,7 @@ from bi_etl.conversions import ensure_datetime
 from bi_etl.database.database_metadata import DatabaseMetadata
 from bi_etl.exceptions import AfterExisting, NoResultFound, BeforeAllExisting
 from bi_etl.lookups.autodisk_range_lookup import AutoDiskRangeLookup
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 
@@ -39,7 +39,7 @@ class HistoryTable(Table):
     task : ETLTask
         The  instance to register in (if not None)
 
-    database : bi_etl.scheduler.task.Database
+    database : bi_etl.scheduler.etl_task.Database
         The database to find the table/view in.
 
     table_name : str

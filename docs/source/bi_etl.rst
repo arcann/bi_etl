@@ -16,6 +16,8 @@ Subpackages
    bi_etl.informatica
    bi_etl.lookups
    bi_etl.notifiers
+   bi_etl.parallel
+   bi_etl.performance_test
    bi_etl.scheduler
    bi_etl.utility
 
@@ -32,3 +34,10 @@ Submodules
    bi_etl.timer
    bi_etl.version
 
+Module contents
+---------------
+
+.. automodule:: bi_etl
+   :members:
+   :show-inheritance:
+   :undoc-members:

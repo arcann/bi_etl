@@ -18,5 +18,5 @@ Module contents
 
 .. automodule:: bi_etl.informatica
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

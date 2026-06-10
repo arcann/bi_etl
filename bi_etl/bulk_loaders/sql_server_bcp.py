@@ -5,7 +5,7 @@ from typing import *
 
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.components.table import Table
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from bi_etl.utility.bcp_helpers import create_bcp_format_file, run_bcp, BCPError, BCP_Config
 
 

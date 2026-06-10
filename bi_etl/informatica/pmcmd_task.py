@@ -5,7 +5,7 @@ Created on May 5, 2015
 """
 from bi_etl.informatica.pmcmd import PMCMD
 from bi_etl.scheduler.exceptions import ParameterError
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 
 
 class PMCMD_Task(ETLTask):
@@ -14,7 +14,7 @@ class PMCMD_Task(ETLTask):
     """
     def init(self):
         """
-        pre-load initialization.        
+        pre-load initialization.
         """
         try:
             folder = self.get_parameter('folder')
@@ -24,11 +24,11 @@ class PMCMD_Task(ETLTask):
             folder = 'MASTER'
             self.set_parameter('folder', folder)
             self.set_parameter('workflow', 'wf_TEST_Derek')
-        
+
         self.cmd = PMCMD(config=self.config, folder= folder)
 
     def load(self):
-        
+
         workflow = self.get_parameter('workflow')
         self.cmd.startworkflow(workflow)
         try:

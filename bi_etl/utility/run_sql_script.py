@@ -14,7 +14,7 @@ from pydicti import Dicti
 
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.database import DatabaseMetadata
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from bi_etl.timer import Timer
 
 

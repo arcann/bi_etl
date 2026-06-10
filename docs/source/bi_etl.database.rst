@@ -15,5 +15,5 @@ Module contents
 
 .. automodule:: bi_etl.database
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

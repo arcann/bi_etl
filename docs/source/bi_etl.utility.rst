@@ -18,7 +18,7 @@ Submodules
 
    bi_etl.utility.ask
    bi_etl.utility.bcp_helpers
-   bi_etl.utility.case_insentive_set
+   bi_etl.utility.case_insensitive_set
    bi_etl.utility.copy_table_data
    bi_etl.utility.line_counter
    bi_etl.utility.logging_helpers
@@ -31,5 +31,5 @@ Module contents
 
 .. automodule:: bi_etl.utility
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

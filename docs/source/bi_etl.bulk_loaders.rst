@@ -1,6 +1,9 @@
 bi\_etl.bulk\_loaders package
 =============================
 
+Submodules
+----------
+
 .. toctree::
    :maxdepth: 1
 
@@ -16,3 +19,10 @@ bi\_etl.bulk\_loaders package
    bi_etl.bulk_loaders.s3_bulk_load_config
    bi_etl.bulk_loaders.sql_server_bcp
 
+Module contents
+---------------
+
+.. automodule:: bi_etl.bulk_loaders
+   :members:
+   :show-inheritance:
+   :undoc-members:

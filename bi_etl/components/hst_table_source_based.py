@@ -8,7 +8,7 @@ from bi_etl.components.row.row_status import RowStatus
 from bi_etl.components.table import Table
 from bi_etl.database import DatabaseMetadata
 from bi_etl.exceptions import NoResultFound
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 
@@ -43,7 +43,7 @@ class HistoryTableSourceBased(HistoryTable):
     task : ETLTask
         The  instance to register in (if not None)
 
-    database : bi_etl.scheduler.task.Database
+    database : bi_etl.scheduler.etl_task.Database
         The database to find the table/view in.
 
     table_name : str

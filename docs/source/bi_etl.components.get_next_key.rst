@@ -17,5 +17,5 @@ Module contents
 
 .. automodule:: bi_etl.components.get_next_key
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

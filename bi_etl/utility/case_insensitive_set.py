@@ -1,7 +1,7 @@
 from collections.abc import MutableSet
 
 
-class CaseInsentiveSet(MutableSet):
+class CaseInsensitiveSet(MutableSet):
     """
     Implements a case-insensitive set while still preserving the case of the first instance of each item.
     """

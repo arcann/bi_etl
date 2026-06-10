@@ -15,7 +15,7 @@ from bi_etl.timer import Timer
 
 if TYPE_CHECKING:
     from bi_etl.components.table import Table
-    from bi_etl.scheduler.task import ETLTask
+    from bi_etl.scheduler.etl_task import ETLTask
 
 
 class RedShiftS3CSVBulk(RedShiftS3Base):

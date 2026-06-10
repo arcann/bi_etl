@@ -14,7 +14,7 @@ from openpyxl.worksheet.table import Table as WorksheetTable, TableStyleInfo, Ta
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.xlsx_reader import XLSXReader
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from bi_etl.statistics import Statistics
 
 __all__ = ['XLSXWriter']

@@ -30,7 +30,7 @@ from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.row.row import Row
 from bi_etl.conversions import str2date, str2datetime
 from bi_etl.database import DatabaseMetadata
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from tests.config_for_tests import build_config
 from tests.dummy_etl_component import DummyETLComponent
 

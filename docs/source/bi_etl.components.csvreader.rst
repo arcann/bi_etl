@@ -1,8 +1,7 @@
 bi\_etl.components.csvreader module
 ===================================
 
-.. autoclass:: bi_etl.components.csvreader.CSVReader
+.. automodule:: bi_etl.components.csvreader
    :members:
-   :undoc-members:
    :show-inheritance:
-   :noindex:
+   :undoc-members:

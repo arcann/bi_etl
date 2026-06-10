@@ -20,5 +20,5 @@ Module contents
 
 .. automodule:: bi_etl.lookups
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

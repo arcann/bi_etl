@@ -37,7 +37,7 @@ from bi_etl.utility import dict_to_str
 from bi_etl.utility import get_integer_places
 
 if TYPE_CHECKING:
-    from bi_etl.scheduler.task import ETLTask
+    from bi_etl.scheduler.etl_task import ETLTask
 
 # TODO: Remove these, add import_code to _attach_dynamic_method calls instead
 # used by dynamic code

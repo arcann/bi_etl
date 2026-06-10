@@ -11,7 +11,7 @@ from sqlalchemy import Column
 
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.row.row import Row
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from bi_etl.statistics import Statistics
 
 __all__ = ['W3CReader']

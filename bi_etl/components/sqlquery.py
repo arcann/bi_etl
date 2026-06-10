@@ -10,7 +10,7 @@ import sqlalchemy
 
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.database import DatabaseMetadata
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 
 
 class SQLQuery(ETLComponent):
@@ -18,8 +18,8 @@ class SQLQuery(ETLComponent):
     A class for reading an arbitrary SQL statement.
     Consider using sqlalchemy.sql.text to wrap the SQL.
     http://docs.sqlalchemy.org/en/latest/core/tutorial.html#using-text
-    
-    
+
+
     """
     @unique
     class ParamType(IntEnum):
@@ -40,18 +40,18 @@ class SQLQuery(ETLComponent):
         super(SQLQuery, self).__init__(task=task,
                                        logical_name=logical_name
                                        )
-        
+
         self.engine = database.bind
         self.sql = sql
         self.param_mode = SQLQuery.ParamType.bind
         self._first_row = None
-        
+
         # Should be the last call of every init
-        self.set_kwattrs(**kwargs) 
+        self.set_kwattrs(**kwargs)
 
     def __repr__(self):
         return f"SQLQuery({self.logical_name or id(self)})"
-    
+
     def __str__(self):
         return repr(self)
 
@@ -64,7 +64,7 @@ class SQLQuery(ETLComponent):
         else:
             select_result = self._raw_rows_format_parameters()
         return select_result
-    
+
     def _obtain_column_names(self):
         # Column_names can be slow to obtain
         # We might even error out if the query requires parameters

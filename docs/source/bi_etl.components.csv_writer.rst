@@ -1,8 +1,7 @@
 bi\_etl.components.csv\_writer module
 =====================================
 
-.. autoclass:: bi_etl.components.csv_writer.CSVWriter
-    :members:
-    :undoc-members:
-    :show-inheritance:
-    :noindex:
+.. automodule:: bi_etl.components.csv_writer
+   :members:
+   :show-inheritance:
+   :undoc-members:

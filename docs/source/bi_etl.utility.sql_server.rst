@@ -14,5 +14,5 @@ Module contents
 
 .. automodule:: bi_etl.utility.sql_server
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

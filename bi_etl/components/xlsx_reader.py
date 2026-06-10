@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from bi_etl.components.etlcomponent import ETLComponent
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 
 __all__ = ['XLSXReader']
 

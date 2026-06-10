@@ -1,6 +1,9 @@
 bi\_etl.config package
 ======================
 
+Submodules
+----------
+
 .. toctree::
    :maxdepth: 1
 
@@ -8,7 +11,10 @@ bi\_etl.config package
    bi_etl.config.notifiers_config
    bi_etl.config.scheduler_config
 
+Module contents
+---------------
+
 .. automodule:: bi_etl.config
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

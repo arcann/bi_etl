@@ -6,7 +6,7 @@ import pyarrow
 from pyarrow.dataset import Dataset
 
 from bi_etl.components.etlcomponent import ETLComponent
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 
 __all__ = ['PyArrowDatasetReader']
 
@@ -21,12 +21,12 @@ class PyArrowDatasetReader(ETLComponent):
       * A unified interface that supports different sources and file formats and different file systems (local, cloud).
       * Discovery of sources (crawling directories, handle directory-based partitioned datasets, basic schema normalization, ..)
       * Optimized reading with predicate pushdown (filtering rows), projection (selecting and deriving columns), and optionally parallel reading.
-    
+
     Parameters
     ----------
     task:
         The  instance to register in (if not None)
-    
+
     source:
         Path pointing to a single file: Open a FileSystemDataset from a single file.
 
@@ -40,7 +40,7 @@ class PyArrowDatasetReader(ETLComponent):
     format:
         Currently "parquet", "ipc" / "arrow" / "feather", "csv", and "orc" are supported.
         For Feather, only version 2 files are supported.
-        
+
     logical_name:
         The logical name of this source. Used for log messages.
 
@@ -52,11 +52,11 @@ class PyArrowDatasetReader(ETLComponent):
     log_first_row : boolean
         Should we log progress on the first row read. *Only applies if used as a source.*
         (inherited from ETLComponent)
-        
+
     max_rows : int, optional
         The maximum number of rows to read. *Only applies if Table is used as a source.*
         (inherited from ETLComponent)
-        
+
     progress_message: str
         The progress message to print. Default is ``"{logical_name} row # {row_number}"``.
         Note ``logical_name`` and ``row_number`` subs.

@@ -1,7 +1,7 @@
 from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.table import Table
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base_From_Ini_Env
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 
 
 class D_WBS(ETLTask):

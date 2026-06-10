@@ -1,6 +1,18 @@
 bi\_etl.components package
 ==========================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 1
+
+   bi_etl.components.get_next_key
+   bi_etl.components.row
+
+Submodules
+----------
+
 .. toctree::
    :maxdepth: 1
 
@@ -18,8 +30,10 @@ bi\_etl.components package
    bi_etl.components.xlsx_reader
    bi_etl.components.xlsx_writer
 
-.. toctree::
-   :maxdepth: 1
+Module contents
+---------------
 
-   bi_etl.components.get_next_key
-   bi_etl.components.row
+.. automodule:: bi_etl.components
+   :members:
+   :show-inheritance:
+   :undoc-members:

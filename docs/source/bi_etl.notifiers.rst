@@ -1,6 +1,9 @@
 bi\_etl.notifiers package
 =========================
 
+Submodules
+----------
+
 .. toctree::
    :maxdepth: 1
 
@@ -10,7 +13,10 @@ bi\_etl.notifiers package
    bi_etl.notifiers.notifier_base
    bi_etl.notifiers.slack
 
+Module contents
+---------------
+
 .. automodule:: bi_etl.notifiers
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

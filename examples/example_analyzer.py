@@ -8,7 +8,7 @@ from config_wrangler.config_templates.logging_config import LoggingConfig
 from bi_etl.components.csvreader import CSVReader
 from bi_etl.components.data_analyzer import DataAnalyzer
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base, BI_ETL_Config_Section, Notifiers
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 
 
 class Analyzer(ETLTask):

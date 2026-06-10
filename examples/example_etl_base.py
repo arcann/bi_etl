@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Optional, cast
 
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from examples.example_config import ExampleETLConfig
 
 

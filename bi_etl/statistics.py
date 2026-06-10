@@ -39,7 +39,7 @@ class Statistics(object):
     def __repr__(self):
         return dict_to_str(self)
 
-    # Allow a Statistics object to follow the ETLTask interface as used by bi_etl.scheduler.task.ETLTask#statistics
+    # Allow a Statistics object to follow the ETLTask interface as used by bi_etl.scheduler.etl_task.ETLTask#statistics
     @property
     def statistics(self):
         return self

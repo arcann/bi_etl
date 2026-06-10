@@ -6,5 +6,5 @@ Module contents
 
 .. automodule:: bi_etl.exceptions
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

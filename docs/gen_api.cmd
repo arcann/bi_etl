@@ -1,1 +1,1 @@
-uv run --group docs sphinx-apidoc -f -d 1 --no-headings -o source -e ..\bi_etl
+uv run --group docs sphinx-apidoc -f -d 1 -o source -e ..\bi_etl

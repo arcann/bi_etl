@@ -11,7 +11,7 @@ from datetime import datetime
 
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
 from bi_etl.scheduler.exceptions import ParameterError
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from tests.config_for_tests import build_config
 
 

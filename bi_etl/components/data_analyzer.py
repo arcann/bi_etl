@@ -12,18 +12,18 @@ from typing import Optional, Union
 
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.conversions import str2decimal, str2date
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from bi_etl.utility import get_integer_places
 
 
 # noinspection PyBroadException
 class DataAnalyzer(ETLComponent):
     """
-    Class that analyzes the data rows passed to it. 
+    Class that analyzes the data rows passed to it.
     * Tracks distinct columns passed in
     * Tracks datatype of each column
     * Tracks valid values of each column
-    
+
     Parameters
     ----------
     task: ETLTask
@@ -125,7 +125,7 @@ class DataAnalyzer(ETLComponent):
                 # Note: We could use _isinteger() however that calls 1.0 an integer.
                 # Whereas a file with 1.0 values indicates possible fractional values
                 # Decimal('1.0').as_tuple().exponent returns -1
-                # or 
+                # or
                 # Decimal('1.0')._exp returns -1
                 (_, digits, exponent) = dec.as_tuple()
                 if exponent >= 0:

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.schema import DEFAULT_NAMING_CONVENTION
 from sqlalchemy.exc import InvalidRequestError
 
-from bi_etl.utility.case_insentive_set import CaseInsentiveSet
+from bi_etl.utility.case_insensitive_set import CaseInsensitiveSet
 
 
 class DatabaseMetadata(sqlalchemy.schema.MetaData):
@@ -268,8 +268,8 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             dpapi_connection=None
     ):
         """
-        Execute a stored procedure 
-        
+        Execute a stored procedure
+
         Parameters
         ----------
         procedure_name: str
@@ -283,11 +283,11 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
 
         dpapi_connection:
             A raw dpapi connection to use. Optional.
-            
+
         Raises
         ------
         sqlalchemy.exc.DBAPIError:
-            API error            
+            API error
         sqlalchemy.exc.DatabaseError:
             Proxy for database error
         """
@@ -378,7 +378,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             except ImportError:
                 inspect = Inspector.from_engine
             inspector = inspect(self.bind)
-            self._table_inventory[schema] = CaseInsentiveSet(inspector.get_table_names(schema=schema))
+            self._table_inventory[schema] = CaseInsensitiveSet(inspector.get_table_names(schema=schema))
         return self._table_inventory[schema]
 
     @staticmethod

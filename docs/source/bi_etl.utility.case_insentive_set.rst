@@ -1,7 +1,7 @@
-bi\_etl.utility.case\_insentive\_set module
+bi\_etl.utility.case\_insensitive\_set module
 ===========================================
 
-.. automodule:: bi_etl.utility.case_insentive_set
+.. automodule:: bi_etl.utility.case_insensitive_set
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:

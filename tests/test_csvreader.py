@@ -9,7 +9,7 @@ import os
 import unittest
 
 from bi_etl.components.csvreader import CSVReader
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from tests.config_for_tests import build_config
 
 

@@ -33,7 +33,7 @@ from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.table import Table
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from bi_etl.utility import dict_to_str
 from tests.db_base_tests.base_test_database import BaseTestDatabase
 

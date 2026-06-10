@@ -9,7 +9,7 @@ from typing import Optional
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.config.bi_etl_config_base import BI_ETL_Config_Base
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from tests.config_for_tests import build_config
 
 

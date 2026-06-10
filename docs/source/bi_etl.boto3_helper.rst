@@ -1,6 +1,8 @@
 bi\_etl.boto3\_helper package
 =============================
 
+Submodules
+----------
 
 .. toctree::
    :maxdepth: 1
@@ -11,3 +13,10 @@ bi\_etl.boto3\_helper package
    bi_etl.boto3_helper.session
    bi_etl.boto3_helper.ssm
 
+Module contents
+---------------
+
+.. automodule:: bi_etl.boto3_helper
+   :members:
+   :show-inheritance:
+   :undoc-members:

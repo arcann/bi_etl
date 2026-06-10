@@ -37,7 +37,7 @@ from bi_etl.conversions import str2time
 from bi_etl.database import DatabaseMetadata
 from bi_etl.exceptions import NoResultFound
 from bi_etl.lookups.lookup import Lookup
-from bi_etl.scheduler.task import ETLTask
+from bi_etl.scheduler.etl_task import ETLTask
 from bi_etl.statement_queue import StatementQueue
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
@@ -70,7 +70,7 @@ class Table(ReadOnlyTable):
     task : ETLTask
         The  instance to register in (if not None)
 
-    database : bi_etl.scheduler.task.Database
+    database : bi_etl.scheduler.etl_task.Database
         The database to find the table/view in.
 
     table_name : str

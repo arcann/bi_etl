@@ -9,7 +9,7 @@ from bi_etl.components.csv_writer import CSVWriter, QUOTE_MINIMAL
 from bi_etl.utility.postgresql.psycopg_helpers import psycopg_import_using_cursor, set_conn_encoding
 
 if TYPE_CHECKING:
-    from bi_etl.scheduler.task import ETLTask
+    from bi_etl.scheduler.etl_task import ETLTask
     from bi_etl.components.table import Table
 else:
     ETLTask = None

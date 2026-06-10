@@ -1,6 +1,9 @@
 bi\_etl.components.row package
 ==============================
 
+Submodules
+----------
+
 .. toctree::
    :maxdepth: 1
 
@@ -12,8 +15,10 @@ bi\_etl.components.row package
    bi_etl.components.row.row_iteration_header_case_insensitive
    bi_etl.components.row.row_status
 
+Module contents
+---------------
 
 .. automodule:: bi_etl.components.row
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
