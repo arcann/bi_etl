@@ -123,6 +123,8 @@ class XLSXWriter(XLSXReader):
                            for (low, high) in _illegal_unichrs]
         self._illegal_xml_chars_RE = re.compile(u'[%s]' % u''.join(_illegal_ranges))
 
+        self.read_only = False
+
         # Should be the last call of every init
         self.set_kwattrs(**kwargs)
 
@@ -145,7 +147,12 @@ class XLSXWriter(XLSXReader):
                 self._workbook = Workbook(write_only=True)
             else:
                 if os.path.isfile(self.file_name):
-                    self._workbook = load_workbook(filename=self.file_name, read_only=False)
+                    self._workbook = load_workbook(
+                        filename=self.file_name,
+                        # Ignore self.read_only and force to False, nothing else makes sense here.
+                        read_only=False,
+                        data_only=self.data_only,
+                    )
                 else:
                     self._workbook = Workbook()
                     del self._workbook['Sheet']

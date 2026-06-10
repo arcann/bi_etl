@@ -105,6 +105,8 @@ class XLSXReader(ETLComponent):
         self.__start_row = None
         self.start_col = 1
         self.__active_row = None
+        self.read_only = True
+        self.data_only = True
 
         self._workbook = None
         self._active_worksheet: Optional[Worksheet] = None
@@ -133,10 +135,10 @@ class XLSXReader(ETLComponent):
         The sheet row to start reading data from.
         Default = header_row + 1
         """
-        if self.__start_row is not None:
-            return self.__start_row
-        else:
-            return self.header_row + 1
+        if self.__start_row is None:
+            self.__start_row = self.header_row + 1
+
+        return self.__start_row
 
     @start_row.setter
     def start_row(self, value: int):
@@ -151,7 +153,11 @@ class XLSXReader(ETLComponent):
             # Work around for openpyxl close not working correctly
             with open(self.file_name, "rb") as f:
                 in_mem_file = io.BytesIO(f.read())
-            self._workbook = load_workbook(filename=in_mem_file, read_only=True)
+            self._workbook = load_workbook(
+                filename=in_mem_file,
+                read_only=self.read_only,
+                data_only=self.data_only,
+            )
             # Original open code if the openpyxl libary can properly close the file
             # self._workbook = load_workbook(filename=self.file_name, read_only=True)
         return self._workbook
@@ -190,7 +196,7 @@ class XLSXReader(ETLComponent):
     def get_sheet_names(self):
         return self.workbook.sheetnames
 
-    def get_sheet_by_name(self, name):
+    def get_sheet_by_name(self, name) -> Worksheet | None:
         """Returns a worksheet by its name.
 
         Parameters
@@ -207,7 +213,7 @@ class XLSXReader(ETLComponent):
         try:
             return self.workbook[name]
         except KeyError:
-            return
+            return None
 
     @property
     def line_num(self):
