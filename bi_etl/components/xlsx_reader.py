@@ -136,7 +136,7 @@ class XLSXReader(ETLComponent):
         Default = header_row + 1
         """
         if self.__start_row is None:
-            self.__start_row = self.header_row + 1
+            return self.header_row + 1
 
         return self.__start_row
 
