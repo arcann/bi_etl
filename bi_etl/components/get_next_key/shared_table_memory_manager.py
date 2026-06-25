@@ -3,14 +3,6 @@ import multiprocessing
 from bi_etl.components.get_next_key.shared_table_memory import SharedTableMemory
 
 
-def main():
-    pass
-
-
-if __name__ == '__main__':
-    main()
-
-
 class SharedTableMemoryManager(object):
     def __init__(self, manager):
         self.table_dict = manager.dict()
