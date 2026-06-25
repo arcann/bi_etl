@@ -2,14 +2,17 @@ import logging
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 from pprint import pformat
+
+from bi_etl.utility.postgresql.psql_config import PSQL_Config
 
 log = logging.getLogger('etl.utils.psql_command')
 
 
 def generate_extract_sql(table_name, sql_file_path, output_file_path, delimiter='\\013', null='', encoding='UTF-8'):
     with open(sql_file_path, "wt") as f:
-        f.write("\copy {table_name} to '{output_file_path}' with delimiter E'{delimiter}' NULL '{null}' ENCODING '{encoding}';".format(
+        f.write("\\copy {table_name} to '{output_file_path}' with delimiter E'{delimiter}' NULL '{null}' ENCODING '{encoding}';".format(
             table_name=table_name,
             output_file_path=output_file_path,
             delimiter=delimiter,
@@ -18,18 +21,18 @@ def generate_extract_sql(table_name, sql_file_path, output_file_path, delimiter=
         ))
 
     """  Commands to re-encode content as UTF-16
-    powershell -c "Get-Content -Encoding utf8  -TotalCount 1 .\output.txt | Set-Content -Encoding Unicode output-utf16le.txt
-    powershell -c "Get-Content -Encoding utf8 .\output.txt | Add-Content -Encoding Unicode output-utf16le.txt
+    powershell -c "Get-Content -Encoding utf8  -TotalCount 1 .\\output.txt | Set-Content -Encoding Unicode output-utf16le.txt
+    powershell -c "Get-Content -Encoding utf8 .\\output.txt | Add-Content -Encoding Unicode output-utf16le.txt
     """
 
 
-def psql(config, dbname, username, password, sql_file_path):
-    cmd = [config.get('psql', 'path', fallback='psql'),
+def psql(config: PSQL_Config, dbname: str, username: str, password: str, sql_file_path: str | Path):
+    cmd = [config.psql_path,
            '--dbname', dbname,
            '--username', username,
            # Password must be set in %APPDATA%\postgresql\pgpass.conf
            # For example C:\Users\__developer__\AppData\Roaming\postgresql\pgpass.conf
-           '--file', sql_file_path,
+           '--file', str(sql_file_path),
            ]
     log.debug([x for x in cmd])
     messages = list()
@@ -49,7 +52,7 @@ def psql(config, dbname, username, password, sql_file_path):
         #         line = line.strip()
         #         messages.append(line)
         #         self.log.info(line)
-        outs, errs = p.communicate(input=password + "\n")
+        outs, errs = p.communicate(input=f"{password}\n".encode('utf8'))
         # outs, errs = p.communicate()
         rc = p.returncode
         if rc != 0:

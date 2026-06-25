@@ -62,41 +62,38 @@ class RowIterationHeader(object):
             primary_key: Optional[Iterable] = None,
             parent: Optional[ETLComponent] = None,
             columns_in_order: Optional[Iterable] = None,
-            owner_pid: int = None,
+            owner_pid: int | None = None,
             ):
         with RowIterationHeader.lock:
             RowIterationHeader.next_iteration_id += 1
             self.iteration_id = RowIterationHeader.next_iteration_id
             RowIterationHeader.instance_dict[self.iteration_id] = self
         self.column_definition_locked = False
-        if columns_in_order:
-            columns_in_order = list(columns_in_order)
-            self._column_count = len(columns_in_order)
-        else:
-            self._column_count = 0
         self.owner_pid = owner_pid
         self.row_count = 0
-        self.logical_name = logical_name or id(self)
+        self.logical_name: str = logical_name or str(id(self))
         self._primary_key = None
         self.primary_key = primary_key
         self.parent = parent
         self._actions_to_next_headers = dict()
-        self._columns_positions = dict()
+        self._columns_positions: dict[str, int] = dict()
         self._name_map_db = self.__shared_name_map_db
+        self._columns_in_order: list[str] = list()
         if columns_in_order is not None:
-            self._columns_in_order = None
+            self._column_count = 0
             self.columns_in_order = columns_in_order
+            self._column_count = len(self.columns_in_order)
             with RowIterationHeader.lock:
                 self._name_map_db.update({col: col for col in columns_in_order})
         else:
-            self._columns_in_order = list()
+            self._column_count = 0
         self.columns_frozen = False
         self._cached_column_set = None
-        self._cached_positioned_column_set = None
-        self._cached_columns_in_order_tuple = None
-        self._action_position = None
-        self.action_id = None
-        self.action_count = 0
+        self._cached_positioned_column_set: set[tuple[str, int]] | None = None
+        self._cached_columns_in_order_tuple: tuple[str, ...] | None = None
+        self._action_position: int | list[int] | None = None
+        self.action_id: tuple | None = None
+        self.action_count: int = 0
 
     def get_cross_process_iteration_header(self):
         return (
@@ -199,8 +196,9 @@ class RowIterationHeader(object):
             new_header.action_count = self.action_count + 1
             new_header.action_id = action
             if not start_empty:
-                new_header._columns_in_order = self._columns_in_order.copy()
-                new_header._columns_positions = self._columns_positions.copy()
+                if self._columns_in_order is not None:
+                    new_header._columns_in_order = list(self._columns_in_order)
+                new_header._columns_positions = dict(self._columns_positions)
                 new_header._column_count = self._column_count
 
             self._actions_to_next_headers[action] = new_header
@@ -216,12 +214,16 @@ class RowIterationHeader(object):
         return repr(self)
 
     @property
-    def columns_in_order(self) -> Sequence:
+    def columns_in_order(self) -> Sequence[str]:
         """
         A list of the columns of this row in the order they were defined.
         """
         if self._cached_columns_in_order_tuple is None:
-            self._cached_columns_in_order_tuple = tuple(self._columns_in_order)
+            if self._columns_in_order is not None:
+                self._cached_columns_in_order_tuple = tuple(self._columns_in_order)
+            else:
+                self._cached_columns_in_order_tuple = tuple()
+        assert self._cached_columns_in_order_tuple is not None
         return self._cached_columns_in_order_tuple
 
     @columns_in_order.setter
@@ -270,11 +272,13 @@ class RowIterationHeader(object):
         See positioned_column_set instead.
         """
         if self._cached_column_set is None:
+            if self._columns_in_order is None:
+                return frozenset([])
             self._cached_column_set = frozenset(self._columns_in_order)
         return self._cached_column_set
 
     @property
-    def positioned_column_set(self) -> Set[tuple]:
+    def positioned_column_set(self) -> set[tuple[str, int]]:
         """
         An ImmutableSet of the tuples (column, position) for this row.
         Used to store different row configurations in a dictionary or set.
@@ -284,10 +288,12 @@ class RowIterationHeader(object):
         """
         if self._cached_positioned_column_set is None:
             tpl_lst = list()
-            for key, position in enumerate(self._columns_in_order):
-                tpl = (key, position)
-                tpl_lst.append(tpl)
+            if self._columns_in_order is not None:
+                for key, position in enumerate(self._columns_in_order):
+                    tpl = (key, position)
+                    tpl_lst.append(tpl)
             self._cached_positioned_column_set = get_cached_frozen_set(tpl_lst)
+            assert self._cached_positioned_column_set is not None
         return self._cached_positioned_column_set
 
     def add_row(self, row):
@@ -366,7 +372,7 @@ class RowIterationHeader(object):
             new_header = self.get_next_header(action_tuple)
             new_header.add_row(row)
             if new_header._action_position is None:
-                new_header._action_position = new_header._add_column(column_name)
+                new_header._action_position = [new_header._add_column(column_name)]
             else:
                 pass
 
@@ -407,7 +413,7 @@ class RowIterationHeader(object):
         # Clear LRU cache of get_column_position
         self.get_column_position.cache_clear()
         try:
-            position = self._columns_positions[old_name]
+            position: int = self._columns_positions[old_name]
             # Only check if target column name exists if we found the source name
             # This way we can have two renames that both map to the same target as long as
             # 1) Only one of the source column names exists
@@ -425,6 +431,7 @@ class RowIterationHeader(object):
                 del new_header._columns_positions[old_name]
                 new_header._columns_positions[new_name] = position
                 if new_header.primary_key is not None:
+                    assert new_header.primary_key is not None
                     try:
                         pk_position = new_header.primary_key.index(old_name)
                         new_header.primary_key[pk_position] = new_name
@@ -436,7 +443,7 @@ class RowIterationHeader(object):
             else:
                 raise ValueError(
                     f'Rename error: {old_name} is not a column in this Row. '
-                    f'Valid columns in {self.logical_name} from {self.parent} are {self._columns_positions.keys()}'
+                    f'Valid columns in {self.logical_name} from {self.parent} are {list(self._columns_positions.keys())}'
                 )
         return new_header
 
@@ -505,6 +512,7 @@ class RowIterationHeader(object):
             self.get_column_position.cache_clear()
             action_tuple = ('-:', column_name)
             new_header = self.get_next_header(action_tuple)
+            assert new_header._columns_in_order is not None
             new_header.add_row(row)
             if new_header._action_position is None:
                 position = new_header._columns_positions[column_name]
@@ -514,8 +522,10 @@ class RowIterationHeader(object):
                 for following_col in new_header._columns_in_order[position:]:
                     new_header._columns_positions[following_col] -= 1
                 new_header._column_count = len(new_header._columns_in_order)
-                if self.primary_key is not None and column_name in self.primary_key:
-                    self.primary_key.remove(column_name)
+                if self.primary_key is not None:
+                    assert isinstance(self.primary_key, list)
+                    if column_name in self.primary_key:
+                        self.primary_key.remove(column_name)
             # Protected access is required here since we can't call __delitem__, it calls this method.
             # noinspection PyProtectedMember
             del row._data_values[new_header._action_position]
@@ -575,6 +585,7 @@ class RowIterationHeader(object):
                 new_iteration_header.rename_columns(rename_map, no_new_header=True)
             old_positions_list = list()
             sub_pos = 0
+            assert self._columns_in_order is not None
             for parent_position, old_column_name in enumerate(self._columns_in_order):
                 remove_column = True
                 new_column_name = new_iteration_header._columns_in_order[sub_pos]
@@ -587,6 +598,7 @@ class RowIterationHeader(object):
                 if remove_column:
                     del new_iteration_header._columns_in_order[sub_pos]
                     del new_iteration_header._columns_positions[new_column_name]
+            assert new_iteration_header._columns_in_order is not None
             new_iteration_header._column_count = len(new_iteration_header._columns_in_order)
             new_iteration_header._action_position = old_positions_list
             # These should already be None unless running in the debugger, since it might have called
@@ -595,6 +607,8 @@ class RowIterationHeader(object):
         # Build the new row based on the _action_position details
         # Protected access is required here since we can't call setitem it calls this method.
         # noinspection PyProtectedMember
+        assert new_iteration_header._action_position is not None
+        assert isinstance(new_iteration_header._action_position, list)
         sub_row._data_values = [row._data_values[old_pos] for old_pos in new_iteration_header._action_position]
         return sub_row
 

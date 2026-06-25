@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List, Optional
 
 from pydantic import field_validator
@@ -23,6 +24,7 @@ class BI_ETL_Config_Section(ConfigHierarchy):
     lookup_disk_swap_at_process_ram_usage_mb: float = 2.5 * 1024**3
     task_finder_base_module: Optional[str] = None
     task_finder_sql_base: Optional[str] = None
+    temp_dir: Optional[Path] = None
 
     scheduler: Optional[SchedulerConfig] = None
 

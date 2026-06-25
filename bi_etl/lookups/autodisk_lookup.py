@@ -105,7 +105,7 @@ class AutoDiskLookup(Lookup):
             self.path = path
         else:
             if self.config is not None:
-                self.path = self.config.get('Cache', 'path', fallback=DiskLookup.DEFAULT_PATH)
+                self.path = self.config.bi_etl.temp_dir
             else:
                 self.path = DiskLookup.DEFAULT_PATH
 

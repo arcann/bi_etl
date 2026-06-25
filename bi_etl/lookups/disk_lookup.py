@@ -38,7 +38,7 @@ class DiskLookup(Lookup):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: ETLComponent,
-                 config: BI_ETL_Config_Base = None,
+                 config: BI_ETL_Config_Base | None = None,
                  use_value_cache: bool = True,
                  path=None,
                  init_parent: bool = True,
@@ -69,7 +69,7 @@ class DiskLookup(Lookup):
             self.path = path
         else:
             if self.config is not None:
-                self.path = self.config.get('Cache', 'path', fallback=DiskLookup.DEFAULT_PATH)
+                self.path = self.config.bi_etl.temp_dir
             else:
                 self.path = DiskLookup.DEFAULT_PATH
             
@@ -90,6 +90,7 @@ class DiskLookup(Lookup):
             else:
                 file = os.path.join(self._cache_file_path, 'data')
                 self.dbm = dbm.open(file, 'n')
+            # noinspection PyTypeChecker
             self._cache = shelve.BsdDbShelf(
                 self.dbm,
                 protocol=pickle.HIGHEST_PROTOCOL,
