@@ -358,15 +358,20 @@ class Table(ReadOnlyTable):
 
     def set_bulk_loader(
             self,
-            bulk_loader: BulkLoader
+            bulk_loader: BulkLoader | None
     ):
-        self.log.info(f'Changing {self} to bulk load method')
-
-        self.__batch_size = sys.maxsize
-        self._insert_method = Table.InsertMethod.BULK_LOAD
-        self._update_method = Table.UpdateMethod.BULK_LOAD
-        self._delete_method = Table.DeleteMethod.BULK_LOAD
         self.bulk_loader = bulk_loader
+        if bulk_loader is None:
+            self.log.info(f'Changing {self} to NOT use bulk load method')
+            self._insert_method = Table.InsertMethod.EXECUTE_MANY
+            self._update_method = Table.UpdateMethod.EXECUTE_MANY
+            self._delete_method = Table.DeleteMethod.EXECUTE_MANY
+        else:
+            self.log.info(f'Changing {self} to bulk load method')
+            self.__batch_size = sys.maxsize
+            self._insert_method = Table.InsertMethod.BULK_LOAD
+            self._update_method = Table.UpdateMethod.BULK_LOAD
+            self._delete_method = Table.DeleteMethod.BULK_LOAD
 
     def cache_row(
             self,
@@ -2890,7 +2895,7 @@ class Table(ReadOnlyTable):
             source_excludes: Optional[frozenset] = None,
             target_excludes: Optional[frozenset] = None,
             stat_name: str = 'upsert',
-            parent_stats: Statistics = None,
+            parent_stats: Statistics | None = None,
             **kwargs
     ):
         """

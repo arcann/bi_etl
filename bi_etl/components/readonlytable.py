@@ -1348,7 +1348,7 @@ class ReadOnlyTable(ETLComponent):
         )
 
     def get_by_lookup(self,
-                      lookup_name: str,
+                      lookup_name: str | Lookup,
                       source_row: Row,
                       stats_id: str = 'get_by_lookup',
                       parent_stats: Optional[Statistics] = None,
