@@ -1694,6 +1694,7 @@ class Table(ReadOnlyTable):
 
         if self.in_bulk_mode:
             if not self.upsert_called:
+                stats['type'] = 'inserts to bulk collector'
                 if self._bulk_iter_sentinel is None:
                     self.log.info(f"Setting up {self} worker to collect insert_row rows")
                     # It does make sense to default to not caching inserted rows
@@ -1710,6 +1711,7 @@ class Table(ReadOnlyTable):
                         table_object=self,
                         progress_frequency=None,
                     )
+                stats['rows_queued'] += 1
                 self._bulk_iter_queue.put(new_row)
                 self._bulk_iter_max_q_length = max(self._bulk_iter_max_q_length, len(self._bulk_iter_queue))
                 # Allow worker to act if it is ready
@@ -1801,10 +1803,8 @@ class Table(ReadOnlyTable):
     def _delete_pending_batch(
             self,
             stat_name: str = 'delete',
-            parent_stats: Iterable[Statistics] = None,
+            parent_stats: Iterable[Statistics] | None = None,
     ):
-        if self.in_bulk_mode:
-            raise InvalidOperation('_delete_pending_batch not allowed in bulk mode')
         if self.pending_delete_statements.row_count > 0:
             if parent_stats is not None:
                 stats = parent_stats
@@ -1860,7 +1860,7 @@ class Table(ReadOnlyTable):
         del key_names
         del key_values
 
-        if self.in_bulk_mode:
+        if self.in_bulk_mode and self.upsert_called:
             maintain_cache = True
         else:
             self.begin()
@@ -1915,7 +1915,7 @@ class Table(ReadOnlyTable):
                         self.uncache_row(full_row)
                 if not found_matching_lookup:
                     warnings.warn(
-                        f'{self}.delete called with maintain_cache=True and a set of keys that do not match any lookup.'
+                        f'{self}.delete called with maintain_cache_during_load=True and a set of keys that do not match any lookup.'
                         f'This will be very slow. Keys used = {key_columns_set}'
                     )
                     self.uncache_where(key_names=key_values_dict.keys(), key_values_dict=key_values_dict)
@@ -2003,12 +2003,13 @@ class Table(ReadOnlyTable):
                     f"key={existing_key} deletes_done = {stats['rows deleted']}"
                 )
             if existing_key not in set_of_key_tuples:
-                stats['rows deleted'] += 1
-
                 deleted_rows.append(row)
                 # In bulk mode we just need to remove them from the cache,
                 # which is done below where we loop over deleted_rows
-                if not self.in_bulk_mode:
+                if self.in_bulk_mode and self.upsert_called:
+                    stats['rows deleted in cache'] += 1
+                else:
+                    stats['rows deleted'] += 1
                     self.delete(key_values=row, lookup_name=self._get_pk_lookup_name(), maintain_cache=False)
 
         for row in deleted_rows:
@@ -2296,8 +2297,6 @@ class Table(ReadOnlyTable):
         -------
 
         """
-        if self.in_bulk_mode:
-            raise InvalidOperation('_update_pending_batch not allowed in bulk mode')
         if len(self.pending_update_rows) == 0:
             return
         assert self.primary_key, "add_pending_update called for table with no primary key"
@@ -2483,7 +2482,9 @@ class Table(ReadOnlyTable):
         if add_to_cache and self.maintain_cache_during_load:
             self.cache_row(row, allow_update=True, allow_insert=allow_insert)
 
-        if not self.in_bulk_mode:
+        if self.in_bulk_mode and self.upsert_called:
+            stats['update cache'] += 1
+        else:
             # Check that the row isn't pending an insert
             if row.status != RowStatus.insert:
 
@@ -2877,6 +2878,7 @@ class Table(ReadOnlyTable):
             pk_lookup = self.get_pk_lookup()
             pk_lookup.cache_enabled = True
 
+            # TODO: Should we actually fill the cache? Note: Legacy code does this manually
             self.cache_filled = True
             self.cache_clean = True
             self.always_fallback_to_db = False
@@ -2970,7 +2972,7 @@ class Table(ReadOnlyTable):
             if not lookup_object.cache_enabled and self.maintain_cache_during_load and self.batch_size > 1:
                 raise AssertionError("Caching needs to be turned on if batch mode is on!")
             if self.in_bulk_mode and not (lookup_object.cache_enabled and self.maintain_cache_during_load):
-                raise AssertionError("Caching needs to be turned on if bulk mode is on!")
+                raise AssertionError("Caching needs to be turned on for upserts if bulk mode is on!")
             del lookup_object
 
             existing_row = self.get_by_lookup(lookup_name, source_mapped_as_target_row, parent_stats=stats)
@@ -3200,6 +3202,11 @@ class Table(ReadOnlyTable):
                 self.log.info("Not performing bulk load due to rollback")
             else:
                 if self.bulk_loader is not None:
+                    # Need to delete pending first in case we are doing delete & insert pairs
+                    self._delete_pending_batch(parent_stats=parent_stats)
+                    # Need to update pending first in case we are doing update & insert pairs
+                    self._update_pending_batch(parent_stats=parent_stats)
+                    # Start bulk load for inserts
                     stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)
                     stats.timer.start()
                     assert isinstance(
@@ -3214,6 +3221,7 @@ class Table(ReadOnlyTable):
                             row_count = self.bulk_loader.load_table_from_cache(self, temp_table)
                             stats['rows_loaded'] = row_count
                         else:
+                            stats['rows_loaded'] = None
                             self.log.info(
                                 f"Bulk for {self} -- nothing to do. Neither Upsert nor insert_row was called."
                                 )
