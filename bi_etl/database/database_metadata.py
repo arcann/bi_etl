@@ -460,9 +460,10 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
             *list_params,
             connection_name: str | None = None,
             **params
-    ):
+    ) -> sqlalchemy.engine.Result | sqlalchemy.engine.CursorResult:
         """
-        Execute SQL within an existing transaction without auto-closing.
+        Execute SQL within an existing transaction. Do not open a new transaction.
+        Do not close the connection.
 
         Parameters
         ----------
@@ -475,7 +476,7 @@ class DatabaseMetadata(sqlalchemy.schema.MetaData):
         **params : dict
             Named parameters for the SQL
         """
-        self.execute(
+        return self.execute(
             sql=sql,
             connection_name=connection_name,
             transaction=False,
