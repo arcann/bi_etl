@@ -83,6 +83,11 @@ class CSVReader(ETLComponent):
         delimiter: str
             The delimiter used in the file. Default is ','.
 
+        sniff_allowed_delimiters: list[str]
+            A list of delimiters to allow the CSV sniffer to use.
+            Only used if delimiter is None (or not proivided).
+            Defaults to [',', '|', '\t']
+
         doublequote: boolean
             Controls how instances of quotechar appearing inside a column should themselves be quoted.
             When True, the character is doubled.
@@ -209,6 +214,7 @@ class CSVReader(ETLComponent):
         # Begin csv module params
         self.dialect = "excel"
         self.delimiter = None
+        self.sniff_allowed_delimiters = [',', '|', '\t']
         self.doublequote = True
         self.escapechar = None
         self.quotechar = '"'
@@ -252,7 +258,7 @@ class CSVReader(ETLComponent):
         """
         if self.__reader is None:
             if self.delimiter is None:
-                delimiters = ''.join([',', '|', '\t'])
+                allowed_delimiters = ''.join(self.sniff_allowed_delimiters)
                 try:
                     # Note: The sniff routine builds a histogram for delimiter frequency
                     #       So we want to make sure to give it whole lines and not cut the
@@ -261,12 +267,14 @@ class CSVReader(ETLComponent):
                     # CSV Sniffer does a split on only \n
                     # so if the file has \r as well those get counted as potential delimiters
                     sample_data = sample_data.replace('\r\n', '\n')
-                    dialect = csv.Sniffer().sniff(sample_data, delimiters=delimiters)
+                    dialect = csv.Sniffer().sniff(sample_data, delimiters=allowed_delimiters)
                 except csv.Error as e:
-                    raise ValueError(f"{e} in file {self._file_name} delimiters={delimiters}")
-                if dialect.delimiter not in delimiters:
+                    raise ValueError(
+                        f"{e} in file {self._file_name} sniff_allowed_delimiters={self.sniff_allowed_delimiters}"
+                    )
+                if dialect.delimiter not in self.sniff_allowed_delimiters:
                     msg = f'Invalid delimiter \'{dialect.delimiter}\' found in {self._file_name} csv file. ' \
-                          f'Expected one of {delimiters}'
+                          f'Expected one of {self.sniff_allowed_delimiters}'
                     self.log.warning(msg)
                     raise ValueError(msg)
                 else:

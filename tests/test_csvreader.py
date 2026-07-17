@@ -74,6 +74,37 @@ class Test(unittest.TestCase):
                 except StopIteration:
                     pass
 
+    def testUTF8_semicolon_csv_with_header_where(self):
+        src_file = os.path.join(Test.get_test_files_path(), 'utf8_with_header_semi_colon.csv')
+        # print(srcFile)
+        logical_name = os.path.basename(src_file)
+        quoted_src_file = repr(src_file)
+        # print(quotedSrcFile)
+        self.maxDiff = None
+        # Test passing opened file
+        with open(src_file, mode='rt', encoding='utf-8') as srcFileData:
+            with CSVReader(self.task, srcFileData, sniff_allowed_delimiters=[',', '|', '\t', ';']) as src:
+                self.assertEqual(src.column_names, ['str', 'int', 'float', 'date', 'unicode'])
+                expected_repr = (
+                    f"CSVReader(task={self.task},logical_name={logical_name},"
+                    f"filedata=<_io.TextIOWrapper name={quoted_src_file} mode='rt' encoding='utf-8'>,"
+                    f"primary_key=[],column_names=['str', 'int', 'float', 'date', 'unicode'])"
+                )
+                self.assertEqual(repr(src), expected_repr)
+                src_iter = src.where(criteria_dict={'str': 'Bob'})
+                row = next(src_iter)
+                self.assertEqual(src.rows_read, 1, 'rows_read error')
+                self.assertEqual(row['str'], 'Bob')
+                self.assertEqual(row['int'], '1')
+                self.assertEqual(row['float'], '1.5')
+                self.assertEqual(row['date'], '1/1/2000')
+                self.assertEqual(row['unicode'], u'©Me')
+                try:
+                    _ = next(src_iter)
+                    self.fail('StopIteration expected at end of file')
+                except StopIteration:
+                    pass
+
     def testUTF8_pipe_with_header(self):
         src_file = os.path.join(self.test_files_path, 'utf8_with_header.pipe')
         logical_name = os.path.basename(src_file)
