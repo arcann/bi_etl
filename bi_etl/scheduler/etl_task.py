@@ -1046,21 +1046,28 @@ class ETLTask(object):
             self._notifiers[config_channel_name] = self._build_notifier(channel_config)
         return self._notifiers[config_channel_name]
 
-    def get_notifiers(self, channel_list: List[DynamicallyReferenced], auto_include_log=True) -> List[NotifierBase]:
+    def get_notifiers(self, channel_list: List[notifiers_config.NotifierConfigBase], auto_include_log=True) -> List[NotifierBase]:
         notifiers_list = list()
 
         if auto_include_log:
             notifiers_list.append(self.log_notifier)
 
-        for config_ref in channel_list:
-            config_section = config_ref.get_referenced()
+        for config_section in channel_list:
             if not isinstance(config_section, notifiers_config.NotifierConfigBase):
-                raise ValueError(
-                    f"Notifier reference {config_ref} is not to an instance of NotifierConfigBase: "
-                    f"found type= {type(config_section)} value= {config_section}"
-                )
-            else:
-                notifiers_list.append(self.get_notifier(config_section))
+                if hasattr(config_section, 'get_referenced'):
+                    self.log.warning(f"Trying {config_section} as a DynamicallyReferenced type of value")
+                    config_section = config_section.get_referenced()
+                    if not isinstance(config_section, notifiers_config.NotifierConfigBase):
+                        raise ValueError(
+                            f"Notifier reference {config_section} is not to an instance of NotifierConfigBase: "
+                            f"found type= {type(config_section)} value= {config_section}"
+                        )
+                else:
+                    raise ValueError(
+                        f"Notifier reference {config_section} is not to an instance of NotifierConfigBase: "
+                        f"found type= {type(config_section)} value= {config_section}"
+                    )
+            notifiers_list.append(self.get_notifier(config_section))
 
         return notifiers_list
 
