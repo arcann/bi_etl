@@ -34,15 +34,10 @@ class Slack(NotifierBase):
         if self.config_section.token is None or self.config_section.token == '':
             slack_token_credentials = Credentials(
                 user_id='slack',
-                password_source=self.config_section.token_source,
-                raw_password=self.config_section.token,
-                keyring_section=self.config_section.keyring_section,
-                # keepass_config=self.config_section.keepass_config,
-                keepass=self.config_section.keepass,
-                keepass_group=self.config_section.keepass_group,
-                keepass_title=self.config_section.keepass_title,
-            )
+                **config_section.model_dump()
+            )            
             config_section.add_child('slack_token_credentials', slack_token_credentials)
+            self.log.info(f"Using slack_token_credentials: {slack_token_credentials}")
             slack_token = slack_token_credentials.get_password()
         else:
             slack_token = self.config_section.token
