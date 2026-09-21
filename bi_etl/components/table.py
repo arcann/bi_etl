@@ -1219,6 +1219,33 @@ class Table(ReadOnlyTable):
             code=code,
         )
 
+    @staticmethod
+    def _get_python_type(t_type: sqlalchemy.sql.type_api.TypeEngine) -> type:
+        try:
+            return t_type.python_type
+        except NotImplementedError:
+            # Special handling for SQL types that don't have a python_type
+            type_name = type(t_type)
+            if type_name in {
+                'databricks.sqlalchemy._types.TIMESTAMP',
+                'databricks.sqlalchemy._types.TIMESTAMP_NTZ',
+            }:
+                return datetime
+            elif type_name in {
+                'databricks.sqlalchemy._types.DatabricksTimeType'
+            }:
+                return time
+            elif type_name in {
+                'databricks.sqlalchemy._types.DatabricksStringType'
+            }:
+                return str
+            elif type_name in {
+                'databricks.sqlalchemy._types.TINYINT'
+            }:
+                return int
+            else:
+                raise
+
     def _build_coerce_methods(self):
         self._coerce_methods_built = True
         for column in self.columns:
@@ -1227,13 +1254,17 @@ class Table(ReadOnlyTable):
             else:
                 t_type = column.type
                 try:
-                    type_specific_make_coerce = self.TYPE_TO_MAKE_COERCE_MAP[t_type.python_type]
+                    python_type = self._get_python_type(t_type)
+                except NotImplementedError:
+                    raise ValueError(f"Column {column} has type {t_type} repr={repr(t_type)} type={type(t_type)} with no python_type")
+
+                try:
+                    # noinspection bad-index
+                    type_specific_make_coerce = self.TYPE_TO_MAKE_COERCE_MAP[python_type]
                     type_specific_make_coerce(self, column)
                 except KeyError:
                     warnings.warn(f'Table.build_row has no handler for {t_type} = {type(t_type)}')
                     self._make_generic_coerce(column)
-                except NotImplementedError:
-                    raise ValueError(f"Column {column} has type {t_type} repr={repr(t_type)} type={type(t_type)} with no python_type")
 
     def column_coerce_type(
             self,
