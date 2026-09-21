@@ -1225,7 +1225,7 @@ class Table(ReadOnlyTable):
             return t_type.python_type
         except NotImplementedError:
             # Special handling for SQL types that don't have a python_type
-            type_name = type(t_type)
+            type_name = type(t_type).__name__
             if type_name in {
                 'databricks.sqlalchemy._types.TIMESTAMP',
                 'databricks.sqlalchemy._types.TIMESTAMP_NTZ',
