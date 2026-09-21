@@ -491,9 +491,11 @@ class Row(MutableMapping):
         """
         old_name = self.iteration_header.get_column_name(old_name)
         new_name = self.iteration_header.get_column_name(new_name)
-        self.iteration_header = self.iteration_header.rename_column(old_name,
-                                                                    new_name,
-                                                                    ignore_missing=ignore_missing)
+        self.iteration_header = self.iteration_header.rename_column(
+            old_name,
+            new_name,
+            ignore_missing=ignore_missing
+        )
 
     def rename_columns(self,
                        rename_map: Union[dict, List[tuple]],

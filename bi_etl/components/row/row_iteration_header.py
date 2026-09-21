@@ -410,6 +410,10 @@ class RowIterationHeader(object):
                 All new rows created with this header will immediately get the new name,
                 in which case you won't want to call this method again.
         """
+        # Detect do-nothing renames
+        if new_name == old_name:
+            return self
+
         # Clear LRU cache of get_column_position
         self.get_column_position.cache_clear()
         try:
