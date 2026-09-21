@@ -1219,28 +1219,29 @@ class Table(ReadOnlyTable):
             code=code,
         )
 
-    @staticmethod
-    def _get_python_type(t_type: sqlalchemy.sql.type_api.TypeEngine) -> type:
+    def _get_python_type(self, t_type: sqlalchemy.sql.type_api.TypeEngine) -> type:
         try:
             return t_type.python_type
         except NotImplementedError:
             # Special handling for SQL types that don't have a python_type
-            type_name = type(t_type).__name__
+            type_name = type(t_type).__name__.upper()
+            self.log.debug(f"Checking for overrides for type {type_name}")
             if type_name in {
-                'databricks.sqlalchemy._types.TIMESTAMP',
-                'databricks.sqlalchemy._types.TIMESTAMP_NTZ',
+                'TIMESTAMP',
+                'TIMESTAMP_NTZ',
             }:
                 return datetime
             elif type_name in {
-                'databricks.sqlalchemy._types.DatabricksTimeType'
+                'DATABRICKSTIMETYPE'
+                'TIME',
             }:
                 return time
             elif type_name in {
-                'databricks.sqlalchemy._types.DatabricksStringType'
+                'DATABRICKSSTRINGTYPE',
             }:
                 return str
             elif type_name in {
-                'databricks.sqlalchemy._types.TINYINT'
+                'TINYINT'
             }:
                 return int
             else:
@@ -1256,7 +1257,7 @@ class Table(ReadOnlyTable):
                 try:
                     python_type = self._get_python_type(t_type)
                 except NotImplementedError:
-                    raise ValueError(f"Column {column} has type {t_type} repr={repr(t_type)} type={type(t_type)} with no python_type")
+                    raise ValueError(f"Column {column} has type str={t_type} repr={repr(t_type)} type={type(t_type)} with no python_type")
 
                 try:
                     # noinspection bad-index
