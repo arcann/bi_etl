@@ -164,6 +164,7 @@ class ReadOnlyTable(ETLComponent):
         self._excluded_columns: Set[str] | None = None
         self._table_name = table_name
         self.schema = schema
+        self.log.warning(f"Starting schema = {self.schema} and table_name = {table_name}")
         if table_name is not None:
             # Note from sqlalchemy:
             # Names which contain no upper case characters will be treated as case-insensitive names, and will not
@@ -171,7 +172,8 @@ class ReadOnlyTable(ETLComponent):
             # Names with any number of upper case characters will be quoted and sent exactly. Note that this behavior
             # applies even for databases which standardize upper case names as case-insensitive such as Oracle.
             if '.' in table_name:
-                self.schema, table_name = table_name.split('.', 1)
+                self.schema, table_name = table_name.rsplit('.', maxsplit=1)
+                self.log.warning(f"After split schema = {self.schema} and table_name = {table_name}")
 
             if not table_name_case_sensitive:
                 table_name = table_name.lower()

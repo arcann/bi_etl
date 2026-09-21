@@ -1233,7 +1233,7 @@ class Table(ReadOnlyTable):
                     warnings.warn(f'Table.build_row has no handler for {t_type} = {type(t_type)}')
                     self._make_generic_coerce(column)
                 except NotImplementedError:
-                    raise ValueError(f"Column {column} has type {t_type} with no python_type")
+                    raise ValueError(f"Column {column} has type {t_type} repr={repr(t_type)} type={type(t_type)} with no python_type")
 
     def column_coerce_type(
             self,
