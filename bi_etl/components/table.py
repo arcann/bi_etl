@@ -193,7 +193,7 @@ class Table(ReadOnlyTable):
             table_name_case_sensitive: bool = True,
             schema: Optional[str] = None,
             exclude_columns: Optional[Set[Union[str, Column]]] = None,
-            batch_size: int = DEFAULT_BATCH_SIZE,
+            batch_size: int | None = None,
             delete_flag: Optional[str] = None,
             **kwargs
     ):
@@ -255,7 +255,9 @@ class Table(ReadOnlyTable):
         self.force_ascii = False
         codecs.register_error('replace_tilda', replace_tilda)
 
-        if self.task is not None:
+        if batch_size is not None:
+            self.__batch_size = batch_size
+        elif self.task is not None:
             self.__batch_size = self.task.config.bi_etl.default_batch_size
         else:
             self.__batch_size = self.DEFAULT_BATCH_SIZE
@@ -300,7 +302,6 @@ class Table(ReadOnlyTable):
 
         self._coerce_methods_built = False
 
-        self.batch_size = batch_size
         self.delete_flag = delete_flag
 
         # Should be the after all self attributes are created
