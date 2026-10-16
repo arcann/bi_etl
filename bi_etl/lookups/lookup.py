@@ -53,7 +53,7 @@ class Lookup(Iterable):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: ETLComponent,
-                 config: BI_ETL_Config_Base = None,
+                 config: BI_ETL_Config_Base | None = None,
                  use_value_cache: bool = True,
                  **kwargs):
         self.lookup_name = lookup_name
@@ -402,7 +402,7 @@ class Lookup(Iterable):
             self,
             key_names: Sequence,
             key_values_dict: Mapping,
-            limit: int = None
+            limit: int | None = None
             ):
         """
         Scan all cached rows (expensive) to find list of rows that match criteria.
@@ -502,7 +502,7 @@ class Lookup(Iterable):
     def _get_remote_stmt_where_values(
             self,
             row: ROW_TYPES,
-            effective_date: datetime = None,
+            effective_date: datetime | None = None,
             ) -> dict:
         values_dict = dict()
         col_num = 1
@@ -544,7 +544,9 @@ class Lookup(Iterable):
             stmt = self.parent_component.select()
             stmt = self._add_remote_stmt_where_clause(stmt)
             # noinspection PyUnresolvedReferences
-            self._remote_lookup_stmt = stmt.compile(bind=self.parent_component.database.bind)
+            # Compile was causing errors
+            # .compile(bind=self.parent_component.database.bind)
+            self._remote_lookup_stmt = stmt
 
         values_dict = self._get_remote_stmt_where_values(row)
 
@@ -569,7 +571,7 @@ class Lookup(Iterable):
             row: ROW_TYPES,
             fallback_to_db: bool = True,
             maintain_cache: bool = True,
-            stats: Statistics = None,
+            stats: Statistics | None = None,
             ) -> list:
         """
 
@@ -643,7 +645,7 @@ class Lookup(Iterable):
              row: ROW_TYPES,
              fallback_to_db: bool = True,
              maintain_cache: bool = True,
-             stats: Statistics = None,
+             stats: Statistics | None = None,
              **kwargs
              ) -> Row:
         if self.cache_enabled:

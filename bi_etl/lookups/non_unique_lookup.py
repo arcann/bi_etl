@@ -24,7 +24,7 @@ class NonUniqueLookup(Lookup):
                  lookup_name: str,
                  lookup_keys: list,
                  parent_component: ETLComponent,
-                 config: BI_ETL_Config_Base = None,
+                 config: BI_ETL_Config_Base | None = None,
                  use_value_cache: bool = True,
                  value_for_none='<None>',  # Needs to be comparable to datatypes in the key actual None is not.
                  ):
@@ -243,7 +243,9 @@ class NonUniqueLookup(Lookup):
             stmt = self.parent_component.select()
             stmt = super()._add_remote_stmt_where_clause(stmt)
             stmt = stmt.order_by(self.parent_component.primary_key)
-            self._remote_lookup_stmt = stmt.compile(bind=self.parent_component.database.bind)
+            self._remote_lookup_stmt = stmt
+            # Compile was causing errors
+            # .compile(bind=self.parent_component.database.bind)
 
         values_dict = super()._get_remote_stmt_where_values(row)
 

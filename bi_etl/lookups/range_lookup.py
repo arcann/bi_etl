@@ -22,20 +22,20 @@ from bi_etl.utility import dict_to_str
 if typing.TYPE_CHECKING:
     from bi_etl.components.etlcomponent import ETLComponent
 
-
 __all__ = ['RangeLookup']
 
 
 class RangeLookup(Lookup):
-    def __init__(self,
-                 lookup_name: str,
-                 lookup_keys: list,
-                 parent_component: ETLComponent,
-                 begin_date,
-                 end_date,
-                 config: BI_ETL_Config_Base = None,
-                 use_value_cache: bool = True,
-                 ):
+    def __init__(
+            self,
+            lookup_name: str,
+            lookup_keys: list,
+            parent_component: ETLComponent,
+            begin_date,
+            end_date,
+            config: BI_ETL_Config_Base | None = None,
+            use_value_cache: bool = True,
+            ):
         super().__init__(
             lookup_name=lookup_name,
             lookup_keys=lookup_keys,
@@ -85,11 +85,11 @@ class RangeLookup(Lookup):
 
             lk_tuple = self.get_hashable_combined_key(row)
             if self._cache is None:
-                self.init_cache()                
+                self.init_cache()
             versions_collection = self._cache.get(lk_tuple, None)
             effective_date = ensure_datetime(row[self.begin_date])
             assert isinstance(effective_date, datetime)
-                
+
             if versions_collection is None:
                 versions_collection = Lookup.VERSION_COLLECTION_TYPE()
 
@@ -100,32 +100,32 @@ class RangeLookup(Lookup):
                     self.log.error(f'New duplicate row = {repr(row)}')
                     raise ValueError(
                         f'Key {lk_tuple} + date {effective_date} already in cache and allow_update was False'
-                        )
+                    )
             else:
                 self._len += 1
-            
+
             versions_collection[effective_date] = row
             # TODO: Move above into if versions_collection is None so it's done only once
             self._cache[lk_tuple] = versions_collection
-            
+
             # Capture memory usage snapshots
-            if self._row_size is None:   
+            if self._row_size is None:
                 self._get_first_row_size(row)
             else:
                 self.check_estimate_row_size()
-            
+
     def uncache_row(self, row: Lookup.ROW_TYPES):
         if isinstance(row, tuple) or isinstance(row, list):
             raise ValueError(
                 f"{self.__class__.__name__}.uncache_row requires a Row not a tuple since it needs the date"
-                )
+            )
         else:
             lk_tuple = self.get_hashable_combined_key(row)
         if self._cache is not None:
             versions_collection = self._cache.get(lk_tuple, None)
             effective_date = ensure_datetime(row[self.begin_date])
-                
-            if versions_collection:                
+
+            if versions_collection:
                 # Look for and remove existing instance that are exactly the same date
                 try:
                     del versions_collection[effective_date]
@@ -202,7 +202,7 @@ class RangeLookup(Lookup):
                 f"versions_collection key[0]= {next(versions_collection.keys())}\n"
                 f"effective_date = {effective_date}"
             )
-                
+
     def _add_remote_stmt_where_clause(self, stmt: GenerativeSelect) -> GenerativeSelect:
         stmt = super(RangeLookup, self)._add_remote_stmt_where_clause(stmt)
         # noinspection PyUnresolvedReferences
@@ -214,8 +214,8 @@ class RangeLookup(Lookup):
     def _get_remote_stmt_where_values(
             self,
             row: Lookup.ROW_TYPES,
-            effective_date: datetime = None,
-            ) -> dict:
+            effective_date: datetime | None = None,
+    ) -> dict:
         values_dict = super(RangeLookup, self)._get_remote_stmt_where_values(row)
         if effective_date is None:
             if isinstance(row, tuple) or isinstance(row, list):
@@ -226,12 +226,12 @@ class RangeLookup(Lookup):
                 effective_date = ensure_datetime(row[self.begin_date])
         values_dict['eff_date'] = effective_date
         return values_dict
-    
+
     def find_in_remote_table(
             self,
             row: Lookup.ROW_TYPES,
             **kwargs
-            ) -> Row:
+    ) -> Row:
         """
         Find a matching row in the lookup based on the lookup index (keys)
         
@@ -248,11 +248,14 @@ class RangeLookup(Lookup):
             )
 
         parent_table: ReadOnlyTable = self.parent_component
-        
+
         if self._remote_lookup_stmt is None:
             stmt = parent_table.select()
             stmt = self._add_remote_stmt_where_clause(stmt)
-            self._remote_lookup_stmt = stmt.compile(bind=self.parent_component.database.bind)
+            self._remote_lookup_stmt = stmt
+            # Compile was causing errors
+            # .compile(bind=self.parent_component.database.bind)
+
             # Build a second statement that does the lookup without dates
             # Which is what our parent Lookup does, so we call that
             stmt_no_date = parent_table.select()
@@ -281,7 +284,7 @@ class RangeLookup(Lookup):
                     elif (ensure_datetime(row[self.begin_date])
                           >= ensure_datetime(effective_date)
                           >= ensure_datetime(row[self.end_date])
-                          ):
+                    ):
                         return row
                 # If we reach this point return the last row in an AfterExisting exception
                 raise AfterExisting(prior_row=row, effective_date=effective_date)
@@ -301,7 +304,7 @@ class RangeLookup(Lookup):
                     msg += '...'
                     break
                 msg += dict_to_str(self.get_list_of_lookup_column_values(r), depth=2)
-                msg += '\n--------------------------\n' 
+                msg += '\n--------------------------\n'
             raise RuntimeError(msg)
 
     def find_versions_list_in_remote_table(self, row: Lookup.ROW_TYPES) -> list:
@@ -324,7 +327,9 @@ class RangeLookup(Lookup):
             # Call parent _add_remote_stmt_where_clause so that it doesn't add the date filter
             stmt = super()._add_remote_stmt_where_clause(stmt)
             stmt = stmt.order_by(self.begin_date)
-            self._remote_lookup_stmt_no_date = stmt.compile(bind=self.parent_component.database.bind)
+            self._remote_lookup_stmt_no_date = stmt
+            # Compile was causing errors
+            # .compile(bind=self.parent_component.database.bind)
 
         values_dict = super()._get_remote_stmt_where_values(row)
 

@@ -11,7 +11,7 @@ from decimal import Decimal, DecimalException
 from typing import Tuple, Union, Iterable, MutableMapping, Optional, Any, List, Dict
 
 
-def strip(s: str):
+def strip(s: str | None) -> str | None:
     """
     Python str.strip() except that it handles None values.
     """
@@ -21,7 +21,7 @@ def strip(s: str):
         return s.strip()
 
 
-def str2int(s: str):
+def str2int(s: str | None) -> int | None:
     """
     String to integer
     """

@@ -5,11 +5,9 @@ Created on Mar 2, 2015
 """
 import logging
 from datetime import datetime, date
-from typing import Dict, Any, List, Mapping, Tuple
+from typing import Dict, Any, List, Mapping, Tuple, Generator
 
 import sqlalchemy
-
-from bi_etl.components.row.row import Row
 
 
 class StatementQueue(object):
@@ -35,13 +33,13 @@ class StatementQueue(object):
         # 2) It doesn't count the INSERT INTO clause part (e.g. INSERT INTO perf_test (c1,c2,dt,i1,f1,d1) VALUES )
         self.size_soft_limit = 60000 * 4096
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
-        
+
     def __len__(self):
         return self.row_count
-    
+
     def get_statement_by_key(self, key):
         return self.statements.get(key)
-    
+
     def add_statement(self, key, stmt):
         self.statements[key] = stmt
 
@@ -67,7 +65,7 @@ class StatementQueue(object):
     def encapsulate_row_value_list(value_list: list) -> str:
         return ','.join([StatementQueue.encapsulate_value(v) for v in value_list])
 
-    def values_str_list(self, rows, row_limit: int = None, size_soft_limit: int = None):
+    def values_str_list(self, rows, row_limit: int | None = None, size_soft_limit: int | None = None):
         if row_limit is None:
             row_limit = self.row_limit
         if size_soft_limit is None:
@@ -83,7 +81,9 @@ class StatementQueue(object):
                 self.log.debug(f'insert stmt row limit {row_limit:,} reached')
             elif size_soft_limit is not None and size > size_soft_limit:
                 limit_reached = True
-                self.log.debug(f'insert stmt size limit {size_soft_limit:,} reached or exceeded with {size:,} for {line_counter:,} lines')
+                self.log.debug(
+                    f'insert stmt size limit {size_soft_limit:,} reached or exceeded with {size:,} for {line_counter:,} lines'
+                )
             if limit_reached:
                 values_str_list.append(",".join(values_str))
                 values_str = []
@@ -96,6 +96,16 @@ class StatementQueue(object):
         # Add the final list
         values_str_list.append(",".join(values_str))
         return values_str_list
+
+    def print_details(self):
+        print("Statement Queue:")
+        for stmtKey in self.statements.keys():
+            stmt = self.statements[stmtKey]
+            print(f" statement: {stmt}")
+            values = self.statement_values[stmtKey]
+            print(f" values count = {len(values)}")
+            for row in values:
+                print(f"   values row= {row}")
 
     def execute(self, connection) -> int:
         rows_affected = 0
@@ -126,8 +136,8 @@ class StatementQueue(object):
                 self.statement_values[stmtKey].clear()
             self.row_count = 0
         return rows_affected
-    
-    def iter_single_statements(self) -> Tuple[sqlalchemy.sql.base.Executable, Row]:
+
+    def iter_single_statements(self) -> Generator[Tuple[sqlalchemy.sql.base.Executable, Mapping[str, Any]]]:
         if self.row_count > 0:
             for stmtKey in self.statements.keys():
                 stmt = self.statements[stmtKey]
@@ -163,11 +173,11 @@ class StatementQueue(object):
                     orig = None
                 raise sqlalchemy.exc.StatementError(msg, str(stmt), vals, orig)
         return rows_affected
-        
+
     def append_values_by_key(self, key, values):
         values_list = self.statement_values.get(key)
         if values_list is None:
             values_list = list()
             self.statement_values[key] = values_list
         values_list.append(values)
-        self.row_count += 1    
+        self.row_count += 1

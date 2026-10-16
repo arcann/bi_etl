@@ -18,6 +18,15 @@ from enum import IntEnum, unique
 from typing import Any, Iterable, Callable, List, Dict, Tuple, Union, Optional, Set, MutableMapping, MutableSequence
 
 import sqlalchemy
+from gevent import spawn, sleep
+from gevent.queue import Queue
+from sqlalchemy import CHAR, Column
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.sql import ColumnElement
+from sqlalchemy.sql.dml import UpdateBase
+from sqlalchemy.sql.expression import bindparam
+from sqlalchemy.sql.type_api import TypeEngine
+
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.get_next_key.local_table_memory import LocalTableMemory
@@ -43,14 +52,6 @@ from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
 from bi_etl.utility import dict_to_str
 from bi_etl.utility import get_integer_places
-from gevent import spawn, sleep
-from gevent.queue import Queue
-from sqlalchemy import CHAR, Column
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.sql import ColumnElement
-from sqlalchemy.sql.dml import UpdateBase
-from sqlalchemy.sql.expression import bindparam
-from sqlalchemy.sql.type_api import TypeEngine
 
 
 @dataclasses.dataclass
@@ -166,7 +167,6 @@ class Table(ReadOnlyTable):
     # Replacement for float Not a Number (NaN) values
     NAN_REPLACEMENT_VALUE = None
 
-
     @unique
     class InsertMethod(IntEnum):
         EXECUTE_MANY = 1
@@ -205,7 +205,7 @@ class Table(ReadOnlyTable):
             table_name_case_sensitive=table_name_case_sensitive,
             schema=schema,
             exclude_columns=exclude_columns,
-            )
+        )
 
         self.TYPE_TO_MAKE_COERCE_MAP = {
             str: Table._make_str_coerce,
@@ -307,7 +307,7 @@ class Table(ReadOnlyTable):
                 if self._bulk_load_performed:
                     self.log.debug(
                         f"{self}.close() NOT causing bulk load since a bulk load has already been performed."
-                        )
+                    )
                 elif error:
                     self.log.info(f"{self}.close() NOT causing bulk load due to error.")
                 else:
@@ -518,7 +518,7 @@ class Table(ReadOnlyTable):
                         )
                         raise ValueError(msg)                    
                 """
-                    )
+                )
         return code
 
     def _get_coerce_method_name_by_str(self, target_column_name: str) -> str:
@@ -548,7 +548,6 @@ class Table(ReadOnlyTable):
                 f'- check that vs columns list {self.column_names}'
             ) from e
 
-
     # pylint: disable=exec-used
     def _make_generic_coerce(
             self,
@@ -563,7 +562,7 @@ class Table(ReadOnlyTable):
             # base indent
                 return target_column_value
             """
-            )
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,
@@ -602,7 +601,7 @@ class Table(ReadOnlyTable):
                 # base indent                
                         pass
                 """
-                )
+            )
         code += textwrap.dedent(
             """\
             # base indent            
@@ -633,7 +632,7 @@ class Table(ReadOnlyTable):
                                            )  
                                     raise ValueError(msg)                        
                             """
-                            )
+                        )
                     else:
                         code += textwrap.dedent(
                             f"""\
@@ -647,7 +646,7 @@ class Table(ReadOnlyTable):
                                            )
                                     raise ValueError(msg)                        
                             """
-                            )
+                        )
             except TypeError:
                 # t_type.length is not a comparable type
                 pass
@@ -764,7 +763,7 @@ class Table(ReadOnlyTable):
                             )
                     raise ValueError(msg)
             """
-            ).format(table=self, column=target_column_object.name)
+        ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
             """\
@@ -776,7 +775,6 @@ class Table(ReadOnlyTable):
             name=name,
             code=code,
         )
-
 
     # pylint: disable=exec-used
     def _make_float_coerce(
@@ -814,7 +812,7 @@ class Table(ReadOnlyTable):
                             )
                     raise ValueError(msg)
                 """
-            ).format(table=self, column=target_column_object.name)
+        ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
             """\
@@ -848,7 +846,7 @@ class Table(ReadOnlyTable):
                 elif target_column_value is None:
                     return None
             """
-            )
+        )
 
         # If for performance reasons you don't want this conversion...
         #   DON'T send in a string!
@@ -895,7 +893,7 @@ class Table(ReadOnlyTable):
                                 )
                             raise ValueError(msg)
                 """
-                ).format(
+            ).format(
                 table=self,
                 column=target_name,
                 integer_digits_allowed=integer_digits_allowed,
@@ -966,14 +964,14 @@ class Table(ReadOnlyTable):
                             )
                     raise ValueError(msg)
             """
-            ).format(table=self, column=target_column_object.name)
+        ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
             """\
             # base indent
                 return target_column_value
             """
-            )
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,
@@ -1025,7 +1023,7 @@ class Table(ReadOnlyTable):
                             )
                     raise ValueError(msg)
             """
-            ).format(table=self, column=target_column_object.name)
+        ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         if self.database.dialect.dialect_description == 'mssql+pyodbc':
             # fast_executemany Currently causes this error on datetime update (dimension load)
@@ -1101,14 +1099,14 @@ class Table(ReadOnlyTable):
                             )
                     raise ValueError(msg)
             """
-            ).format(table=self, column=target_column_object.name)
+        ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
             """\
             # base indent
                 return target_column_value
             """
-            )
+        )
         self._attach_dynamic_method(
             name=name,
             code=code,
@@ -1152,7 +1150,7 @@ class Table(ReadOnlyTable):
                             )
                     raise ValueError(msg)
             """
-            ).format(table=self, column=target_column_object.name)
+        ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
             """\
@@ -1206,7 +1204,7 @@ class Table(ReadOnlyTable):
                             )
                     raise ValueError(msg)
             """
-            ).format(table=self, column=target_name, )
+        ).format(table=self, column=target_name, )
         code += self._generate_null_check(target_column_object)
         code += textwrap.dedent(
             """\
@@ -1257,7 +1255,9 @@ class Table(ReadOnlyTable):
                 try:
                     python_type = self._get_python_type(t_type)
                 except NotImplementedError:
-                    raise ValueError(f"Column {column} has type str={t_type} repr={repr(t_type)} type={type(t_type)} with no python_type")
+                    raise ValueError(
+                        f"Column {column} has type str={t_type} repr={repr(t_type)} type={type(t_type)} with no python_type"
+                        )
 
                 try:
                     # noinspection bad-index
@@ -1357,7 +1357,7 @@ class Table(ReadOnlyTable):
                             target_column_value.year,
                             target_column_value.month,
                             target_column_value.day
-                            )
+                        )
                     # If we already have a date
                     elif isinstance(target_column_value, date):
                         pass
@@ -1383,12 +1383,12 @@ class Table(ReadOnlyTable):
                         target_column_value = str2datetime(
                             target_column_value,
                             dt_format=self.default_date_time_format
-                            )
+                        )
                     else:
                         target_column_value = str2datetime(
                             str(target_column_value),
                             dt_format=self.default_date_time_format
-                            )
+                        )
                 elif t_type.python_type == time:
                     # If we already have a datetime, make it a time
                     if isinstance(target_column_value, datetime):
@@ -1398,7 +1398,7 @@ class Table(ReadOnlyTable):
                             target_column_value.second,
                             target_column_value.microsecond,
                             target_column_value.tzinfo,
-                            )
+                        )
                     # If we already have a date or time value
                     elif isinstance(target_column_value, time):
                         pass
@@ -1406,7 +1406,7 @@ class Table(ReadOnlyTable):
                         target_column_value = str2time(
                             str(target_column_value),
                             dt_format=self.default_time_format
-                            )
+                        )
                 elif t_type.python_type == timedelta:
                     # If we already have an interval value
                     if isinstance(target_column_value, timedelta):
@@ -1600,7 +1600,7 @@ class Table(ReadOnlyTable):
                     # If that didn't cause the error... re raise the original error
                     self.log.error(
                         f"Single inserts on {self} did not produce the error. Original error will be issued below."
-                        )
+                    )
                     self.rollback()
                     raise
                 except Exception as e_single:
@@ -1628,6 +1628,7 @@ class Table(ReadOnlyTable):
                                 self.log.error(f'Extra column found in pending_insert_rows row {new_row}')
                                 raise
                         # this was causing InterfaceError: (cx_Oracle.InterfaceError) not a query
+                        # and in databricks ObjectNotExecutableError
                         # stmt = stmt.compile()
                         pending_insert_statements.add_statement(stmt_key, stmt)
                     prepare_stats['rows prepared'] += 1
@@ -1652,7 +1653,7 @@ class Table(ReadOnlyTable):
             except SQLAlchemyError as e:
                 self.log.error(
                     f"Bulk insert on {self} failed with error {e}. Applying as single inserts to find error row..."
-                    )
+                )
                 self.rollback()
                 self.begin()
                 # Retry one at a time
@@ -1661,7 +1662,7 @@ class Table(ReadOnlyTable):
                     # If that didn't cause the error... re raise the original error
                     self.log.error(
                         f"Single inserts on {self} did not produce the error. Original error will be issued below."
-                        )
+                    )
                     self.rollback()
                     raise
                 except Exception as e_single:
@@ -1915,7 +1916,8 @@ class Table(ReadOnlyTable):
                     for key_name, key_value in key_values_dict.items():
                         key = self.get_column(key_name)
                         stmt = stmt.where(key == bindparam(key.name, type_=key.type))
-                    stmt = stmt.compile(bind=self.database.bind)
+                    # In databricks causes ObjectNotExecutableError
+                    # stmt = stmt.compile(bind=self.database.bind)
                     self.pending_delete_statements.add_statement(delete_stmt_key, stmt)
 
                 self.pending_delete_statements.append_values_by_key(delete_stmt_key, key_values_dict)
@@ -2098,7 +2100,7 @@ class Table(ReadOnlyTable):
             use_cache_as_source=use_cache_as_source,
             stat_name=stat_name,
             parent_stats=parent_stats
-            )
+        )
         self.source_keys_processed = set()
 
     def logically_delete_not_in_set(
@@ -2364,7 +2366,8 @@ class Table(ReadOnlyTable):
                         col_obj = self.get_column(c)
                         bind_name = col_obj.name
                         update_stmt = update_stmt.values({c: bindparam(bind_name, type_=col_obj.type)})
-                    update_stmt = update_stmt.compile(bind=self.database.bind)
+                    # In databricks causes ObjectNotExecutableError
+                    # update_stmt = update_stmt.compile(bind=self.database.bind)
                     pending_update_statements.add_statement(update_stmt_key, update_stmt)
 
                 stmt_values = {}
@@ -2393,10 +2396,11 @@ class Table(ReadOnlyTable):
             # Retry one at a time
             self.log.error(
                 f"Bulk update on {self} failed with error {e}. Applying as single updates to find error row..."
-                )
+            )
             connection = self.connection(connection_name='singly')
             for (stmt, row_dict) in pending_update_statements.iter_single_statements():
                 try:
+                    # noinspection bad-argument-type
                     connection.execute(stmt, row_dict)
                 except Exception as e2:
                     self.log.error(f"Error with row {dict_to_str(row_dict)}")
@@ -2409,11 +2413,11 @@ class Table(ReadOnlyTable):
         stats.timer.stop()
 
     def _add_pending_update(
-        self,
-        update_where_keys: Tuple[str],
-        update_where_values: Iterable[Any],
-        update_row_new_values: Row,
-        parent_stats: Optional[Statistics] = None,
+            self,
+            update_where_keys: Tuple[str],
+            update_where_values: Iterable[Any],
+            update_row_new_values: Row,
+            parent_stats: Optional[Statistics] = None,
     ):
         if not self.primary_key:
             raise ValueError("add_pending_update called for table with no primary key")
@@ -2679,7 +2683,7 @@ class Table(ReadOnlyTable):
                 source_excludes=source_excludes,
                 target_excludes=target_excludes,
                 parent_stats=stats
-                )
+            )
             return
 
         source_mapped_as_target_row = self.build_row(
@@ -2687,7 +2691,7 @@ class Table(ReadOnlyTable):
             source_excludes=source_excludes,
             target_excludes=target_excludes,
             parent_stats=stats,
-            )
+        )
 
         stmt = self._update_stmt()
         if not update_all_rows:
@@ -2802,7 +2806,7 @@ class Table(ReadOnlyTable):
                 criteria_dict=criteria_dict,
                 connection_name='select',
                 parent_stats=stats
-                ):
+        ):
             if row.status == RowStatus.unknown:
                 pass
             stats['rows read'] += 1
@@ -2813,7 +2817,7 @@ class Table(ReadOnlyTable):
                 self.log.info(
                     f"update_not_in_set current current row#={stats['rows read']:,} "
                     f"row key={existing_key} updates done so far = {stats['updates count']:,}"
-                    )
+                )
 
             if existing_key not in set_of_key_tuples:
                 stats['updates count'] += 1
@@ -2881,10 +2885,10 @@ class Table(ReadOnlyTable):
             # But that's only an issue if there are target rows
             if any(
                     True for _ in self.where(
-                            criteria_list=criteria_list,
-                            criteria_dict=criteria_dict,
+                        criteria_list=criteria_list,
+                        criteria_dict=criteria_dict,
                     )
-                    ):
+            ):
                 raise RuntimeError(f"{stat_name} called before any source rows were processed.")
         self.update_not_in_set(
             lookup_name=lookup_name,
@@ -2904,7 +2908,7 @@ class Table(ReadOnlyTable):
             raise ValueError(
                 "Upsert called on a table that is using insert_row method.  "
                 "Please manually set upsert_called = True before load operations."
-                )
+            )
         if self.in_bulk_mode and not self.upsert_called:
             # One time setup
             pk_lookup = self.get_pk_lookup()
@@ -3243,7 +3247,7 @@ class Table(ReadOnlyTable):
                     stats.timer.start()
                     assert isinstance(
                         self.bulk_loader, BulkLoader
-                        ), f'bulk_loader property needs to be instance of bulk_loader not {type(self.bulk_loader)}'
+                    ), f'bulk_loader property needs to be instance of bulk_loader not {type(self.bulk_loader)}'
                     self.close_connections()
                     if self._bulk_iter_sentinel is None:
                         if self.upsert_called:
@@ -3256,7 +3260,7 @@ class Table(ReadOnlyTable):
                             stats['rows_loaded'] = None
                             self.log.info(
                                 f"Bulk for {self} -- nothing to do. Neither Upsert nor insert_row was called."
-                                )
+                            )
                     else:
                         self.log.info(f"Bulk load from insert_row for {self}")
                         # Finish the iterator on the queue
@@ -3528,8 +3532,10 @@ class Table(ReadOnlyTable):
                     WHERE NOT EXISTS(
                         SELECT 1 
                         FROM {self.qualified_table_name} e
-                        WHERE {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}"
-                              for nk_col in self.natural_key], 18, prefix='AND ')}
+                        WHERE {Table._sql_indent_join(
+            [f"e.{nk_col} = s.{nk_col}"
+             for nk_col in self.natural_key], 18, prefix='AND '
+            )}
                     )
                 """
 
@@ -3567,48 +3573,64 @@ class Table(ReadOnlyTable):
                 MERGE INTO {self.qualified_table_name} tgt
                 USING (
                     SELECT
-                        {Table._sql_indent_join([f"{join_entry[1][0]}.{join_entry[1][1]}"
-                                                 for join_entry in list_of_joins]
-                                                , 24, suffix=',')},
-                        {Table._sql_indent_join([f"{set_entry[1]} as col_{set_num}"
-                                                 for set_num, set_entry in enumerate(list_of_sets)]
-                                                , 16, suffix=',')}
+                        {Table._sql_indent_join(
+                [f"{join_entry[1][0]}.{join_entry[1][1]}"
+                 for join_entry in list_of_joins]
+                , 24, suffix=','
+                )},
+                        {Table._sql_indent_join(
+                [f"{set_entry[1]} as col_{set_num}"
+                 for set_num, set_entry in enumerate(list_of_sets)]
+                , 16, suffix=','
+                )}
                     FROM {source_sql}
                 ) src
                 ON (
-                    {Table._sql_indent_join([f"tgt.{join_entry[0]} = src.{join_entry[1][1]}"
-                                             for join_entry in list_of_joins]
-                                            , 18, prefix='AND ')}
+                    {Table._sql_indent_join(
+                [f"tgt.{join_entry[0]} = src.{join_entry[1][1]}"
+                 for join_entry in list_of_joins]
+                , 18, prefix='AND '
+                )}
                 )
                 WHEN MATCHED THEN UPDATE
-                SET {Table._sql_indent_join([f"tgt.{set_entry[0]} = src.col_{set_num}"
-                                             for set_num, set_entry in enumerate(list_of_sets)]
-                                            , 16, suffix=',')}
+                SET {Table._sql_indent_join(
+                [f"tgt.{set_entry[0]} = src.col_{set_num}"
+                 for set_num, set_entry in enumerate(list_of_sets)]
+                , 16, suffix=','
+                )}
             """
         elif database_type in {'mysql'}:
             sql = f"""
                 UPDATE {self.qualified_table_name} INNER JOIN {source_sql}
-                   ON  {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = "
-                                                f"{'.'.join(join_entry[1])}"
-                                                for join_entry in list_of_joins]
-                                               , 19, prefix='AND ')}
-                SET {Table._sql_indent_join([f"{target_alias_in_source}.{set_entry[0]} = {set_entry[1]}"
-                                             for set_entry in list_of_sets]
-                                            , 16, suffix=',')}
+                   ON  {Table._sql_indent_join(
+                [f"{self.qualified_table_name}.{join_entry[0]} = "
+                 f"{'.'.join(join_entry[1])}"
+                 for join_entry in list_of_joins]
+                , 19, prefix='AND '
+                )}
+                SET {Table._sql_indent_join(
+                [f"{target_alias_in_source}.{set_entry[0]} = {set_entry[1]}"
+                 for set_entry in list_of_sets]
+                , 16, suffix=','
+                )}
             """
         # SQL Server
         elif database_type in {'mssql'}:
             sql = f"""
                 UPDATE {self.qualified_table_name}
-                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}"
-                                             for set_entry in list_of_sets], 16, suffix=',')}
+                SET {Table._sql_indent_join(
+                [f"{set_entry[0]} = {set_entry[1]}"
+                 for set_entry in list_of_sets], 16, suffix=','
+                )}
                 FROM {self.qualified_table_name}
                      INNER JOIN 
                      {source_sql}
-                        ON  {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} = "
-                                                     f"{'.'.join(join_entry[1])}"
-                                                     for join_entry in list_of_joins]
-                                                    , 24, prefix='AND ')}
+                        ON  {Table._sql_indent_join(
+                [f"{self.qualified_table_name}.{join_entry[0]} = "
+                 f"{'.'.join(join_entry[1])}"
+                 for join_entry in list_of_joins]
+                , 24, prefix='AND '
+                )}
                 {and_extra_where}
             """
         elif database_type == 'sqlite':
@@ -3622,9 +3644,11 @@ class Table(ReadOnlyTable):
                 # Older
                 set_statement_list = []
                 where_stmt = f"""
-                    {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} "
-                                             f"= {join_entry[1][0]}.{join_entry[1][1]}"
-                                             for join_entry in list_of_joins], 18, prefix='AND ')}
+                    {Table._sql_indent_join(
+                    [f"{self.qualified_table_name}.{join_entry[0]} "
+                     f"= {join_entry[1][0]}.{join_entry[1][1]}"
+                     for join_entry in list_of_joins], 18, prefix='AND '
+                    )}
                     {and_extra_where}
                 """
                 for set_entry in list_of_sets:
@@ -3646,12 +3670,16 @@ class Table(ReadOnlyTable):
             # https://sqlite.org/lang_update.html
             sql = f"""
                 UPDATE {self.qualified_table_name}
-                SET {Table._sql_indent_join([f"{set_entry[0]} = {set_entry[1]}"
-                                             for set_entry in list_of_sets], 16, suffix=',')}
+                SET {Table._sql_indent_join(
+                [f"{set_entry[0]} = {set_entry[1]}"
+                 for set_entry in list_of_sets], 16, suffix=','
+                )}
                 FROM {source_sql}
-                WHERE {Table._sql_indent_join([f"{self.qualified_table_name}.{join_entry[0]} "
-                                               f"= {join_entry[1][0]}.{join_entry[1][1]}"
-                                               for join_entry in list_of_joins], 18, prefix='AND ')}
+                WHERE {Table._sql_indent_join(
+                [f"{self.qualified_table_name}.{join_entry[0]} "
+                 f"= {join_entry[1][0]}.{join_entry[1][1]}"
+                 for join_entry in list_of_joins], 18, prefix='AND '
+                )}
                 {and_extra_where}
             """
         sql_timer = Timer()
