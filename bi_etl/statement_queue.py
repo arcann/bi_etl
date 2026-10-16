@@ -12,7 +12,7 @@ import sqlalchemy
 
 class StatementQueue(object):
     """
-    A queue of pending SQLAlchemyy statements
+    A queue of pending SQLAlchemy statements
     """
 
     def __init__(self, execute_with_binds=True):
@@ -101,7 +101,8 @@ class StatementQueue(object):
         print("Statement Queue:")
         for stmtKey in self.statements.keys():
             stmt = self.statements[stmtKey]
-            print(f" statement: {stmt}")
+            # noinspection string-conversion-without-dunder-method
+            print(f" statement: {repr(stmt)}")
             values = self.statement_values[stmtKey]
             print(f" values count = {len(values)}")
             for row in values:
@@ -112,6 +113,15 @@ class StatementQueue(object):
         if self.row_count > 0:
             for stmtKey in self.statements.keys():
                 stmt = self.statements[stmtKey]
+
+                # Work around for DatabricksStatementCompiler not being executable
+                # noinspection string-conversion-without-dunder-method
+                if 'DatabricksStatementCompiler' in str(type(stmt)):
+                    self.log.warning(f"Got DatabricksStatementCompiler. Turning it back.")
+                    # noinspection string-conversion-without-dunder-method
+                    stmt = sqlalchemy.text(str(stmt))
+                    self.statements[stmtKey] = stmt
+
                 values = self.statement_values[stmtKey]
                 if len(values) > 0:
                     if self.execute_with_binds:
@@ -137,7 +147,7 @@ class StatementQueue(object):
             self.row_count = 0
         return rows_affected
 
-    def iter_single_statements(self) -> Generator[Tuple[sqlalchemy.sql.base.Executable, Mapping[str, Any]]]:
+    def iter_single_statements(self) -> Generator[Tuple[sqlalchemy.sql.base.Executable, Mapping[str, Any]], None, None]:
         if self.row_count > 0:
             for stmtKey in self.statements.keys():
                 stmt = self.statements[stmtKey]

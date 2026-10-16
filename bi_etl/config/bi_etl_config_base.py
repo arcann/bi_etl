@@ -16,6 +16,7 @@ class Notifiers(ConfigHierarchy):
     failures: List[NotifierConfigBase] = DelimitedListField(default=[])
     failed_notifications: List[NotifierConfigBase] = DelimitedListField(default=[])
 
+
 # Class defining bi_etl's own config settings
 # noinspection PyPep8Naming
 class BI_ETL_Config_Section(ConfigHierarchy):
@@ -27,6 +28,8 @@ class BI_ETL_Config_Section(ConfigHierarchy):
     temp_dir: Optional[Path] = None
 
     scheduler: Optional[SchedulerConfig] = None
+
+    default_batch_size: int = 25000
 
     # noinspection PyNestedDecorators
     @field_validator('lookup_disk_swap_at_percent_ram_used', 'lookup_disk_swap_at_process_ram_usage_mb')

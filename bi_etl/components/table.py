@@ -254,7 +254,12 @@ class Table(ReadOnlyTable):
         self.default_char1_text = '?'
         self.force_ascii = False
         codecs.register_error('replace_tilda', replace_tilda)
-        self.__batch_size = self.DEFAULT_BATCH_SIZE
+
+        if self.task is not None:
+            self.__batch_size = self.task.config.bi_etl.default_batch_size
+        else:
+            self.__batch_size = self.DEFAULT_BATCH_SIZE
+
         self.skip_coercion_on = {}
 
         self._logical_delete_update = None
@@ -1549,6 +1554,7 @@ class Table(ReadOnlyTable):
             stats = self.pending_insert_stats
             if stats is None:
                 stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
+
         if self.insert_method == Table.InsertMethod.INSERT_VALUES_LIST:
             prepare_stats = self.get_stats_entry('prepare ' + stat_name, parent_stats=stats)
             prepare_stats.print_start_stop_times = False
@@ -1560,10 +1566,10 @@ class Table(ReadOnlyTable):
                     stmt = pending_insert_statements.get_statement_by_key(stmt_key)
                     if stmt is None:
                         prepare_stats['statements prepared'] += 1
-                        stmt = f"""
+                        stmt = sqlalchemy.text(f"""
                             INSERT INTO {self.qualified_table_name} ({', '.join(new_row.columns_in_order)})
                             VALUES {{values}}
-                        """
+                        """)
                         pending_insert_statements.add_statement(stmt_key, stmt)
                     prepare_stats['rows prepared'] += 1
                     stmt_values = new_row.values()
