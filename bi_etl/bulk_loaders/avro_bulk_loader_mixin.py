@@ -5,7 +5,7 @@ import os.path
 from datetime import date, datetime, time as time_type, timedelta
 from decimal import Decimal
 from tempfile import TemporaryDirectory
-from typing import *
+from typing import TYPE_CHECKING, Callable, Iterable, Optional
 
 import fastavro
 
@@ -20,10 +20,7 @@ class AvroBulkLoaderMixin:
     """Mixin providing Avro schema generation, chunk writing, codec setup, and loading.
 
     Subclasses must call :meth:`_init_avro` from their ``__init__`` to
-    configure the compression codec, and must provide ``self.config``
-    (with a ``temp_file_path`` attribute), ``self.s3_file_max_rows``, and
-    a :meth:`load_from_files` implementation for :meth:`load_from_iterable`
-    to delegate to.
+    configure the compression codec and set the chunk size.
 
     .. note::
 
@@ -43,18 +40,21 @@ class AvroBulkLoaderMixin:
                return False
     """
 
-    def _init_avro(self):
-        """Initialise Avro compression codec.  Call from subclass ``__init__``."""
+    def _init_avro(self, chunk_size: int = 50000):
+        """
+        Initialise Avro. Call from subclass ``__init__``.
+        """
+        self.chunk_size = chunk_size
         try:
             import snappy
             self.codec = 'snappy'
         except ImportError:
             self.codec = 'deflate'
+        self._translate_columns: dict[str, Callable] = {}
 
     # --- Schema helpers ------------------------------------------------------
 
-    @staticmethod
-    def _get_avro_schema(table_object: Table, table_name: str) -> dict:
+    def _get_avro_schema(self, table_object: Table, table_name: str) -> dict:
         """Build an Avro record schema from *table_object*'s columns."""
         type_map = {
             str: ['string'],
@@ -62,7 +62,7 @@ class AvroBulkLoaderMixin:
             date: ['string'],
             datetime: ['string'],
             time_type: ['string'],
-            timedelta: ['string'],
+            timedelta: ['long'],
             bool: ['boolean'],
             int: ['long'],
             float: ['double'],
@@ -71,7 +71,20 @@ class AvroBulkLoaderMixin:
         fields = []
         columns = table_object.columns
         for column in columns:
-            col_type = type_map.get(column.type.python_type, ['string'])
+            python_type = column.type.python_type
+            col_type = type_map.get(python_type, ['string'])
+            if col_type[0] == 'string' and python_type != str:
+                conversion_function = str
+                if python_type == date:
+                    conversion_function = date.isoformat
+                elif python_type == datetime:
+                    conversion_function = datetime.isoformat
+                elif python_type == timedelta:
+                    conversion_function = timedelta.total_seconds
+                elif python_type == time_type:
+                    conversion_function = time_type.isoformat
+
+                self._translate_columns[column.name] = conversion_function
             fields.append({
                 'name': column.name,
                 'type': ['null'] + col_type,
@@ -159,9 +172,14 @@ class AvroBulkLoaderMixin:
 
             progress_timer = Timer()
             for row_number, row in enumerate(iterable):
-                data_chunk.append(row.as_dict)
+                data_dict = row.as_dict
+                # Translate column values
+                for column_name, translate_function in self._translate_columns.items():
+                    if column_name in data_dict:
+                        data_dict[column_name] = translate_function(data_dict[column_name])
+                data_chunk.append(data_dict)
 
-                if len(data_chunk) >= self.s3_file_max_rows:
+                if len(data_chunk) >= self.chunk_size:
                     data_length += len(data_chunk)
                     file_number += 1
                     self._write_avro_chunk(
@@ -208,3 +226,4 @@ class AvroBulkLoaderMixin:
             else:
                 self.log.info(f"{self} had nothing to do with 0 rows found")
                 return 0
+

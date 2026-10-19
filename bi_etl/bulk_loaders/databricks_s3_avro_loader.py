@@ -32,7 +32,7 @@ class DatabricksS3AvroBulkLoader(S3BulkLoaderMixin, AvroBulkLoaderMixin, BulkLoa
         if self.s3_file_max_rows is None:
             self.s3_file_max_rows = 50000
 
-        self._init_avro()
+        self._init_avro(chunk_size=self.s3_file_max_rows)
 
     @property
     def needs_all_columns(self):

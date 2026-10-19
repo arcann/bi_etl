@@ -22,7 +22,7 @@ class RedShiftS3AvroBulk(AvroBulkLoaderMixin, RedShiftS3Base):
         # Redshift appears to count the schema as a line read
         self.lines_scanned_modifier = -1
 
-        self._init_avro()
+        self._init_avro(chunk_size=self.s3_file_max_rows)
 
     @property
     def needs_all_columns(self):
