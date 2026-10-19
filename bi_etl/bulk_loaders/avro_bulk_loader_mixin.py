@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os.path
+from dataclasses import dataclass
 from datetime import date, datetime, time as time_type, timedelta
 from decimal import Decimal
 from tempfile import TemporaryDirectory
@@ -53,41 +54,36 @@ class AvroBulkLoaderMixin:
         self._translate_columns: dict[str, Callable] = {}
 
     # --- Schema helpers ------------------------------------------------------
-
+    
     def _get_avro_schema(self, table_object: Table, table_name: str) -> dict:
         """Build an Avro record schema from *table_object*'s columns."""
+        @dataclass
+        class TypeDefn:
+            type_list: list[str | dict]
+            conversion_function: Callable | None = None
+
         type_map = {
-            str: ['string'],
-            bytes: ['bytes'],
-            date: ['string'],
-            datetime: ['string'],
-            time_type: ['string'],
-            timedelta: ['long'],
-            bool: ['boolean'],
-            int: ['long'],
-            float: ['double'],
-            Decimal: ['int', 'double'],
+            str: TypeDefn(type_list=['string']),
+            bytes: TypeDefn(type_list=['bytes']),
+            date: TypeDefn(type_list=['date']),
+            datetime: TypeDefn(type_list=['timestamp-millis']),
+            time_type: TypeDefn(type_list=['time-millis']),
+            timedelta: TypeDefn(type_list=['long'], conversion_function=timedelta.total_seconds),
+            bool: TypeDefn(type_list=['boolean']),
+            int: TypeDefn(type_list=['long']),
+            float: TypeDefn(type_list=['double']),
+            Decimal: TypeDefn(type_list=['int', 'double']),
         }
         fields = []
         columns = table_object.columns
         for column in columns:
             python_type = column.type.python_type
-            col_type = type_map.get(python_type, ['string'])
-            if col_type[0] == 'string' and python_type != str:
-                conversion_function = str
-                if python_type == date:
-                    conversion_function = date.isoformat
-                elif python_type == datetime:
-                    conversion_function = datetime.isoformat
-                elif python_type == timedelta:
-                    conversion_function = timedelta.total_seconds
-                elif python_type == time_type:
-                    conversion_function = time_type.isoformat
-
-                self._translate_columns[column.name] = conversion_function
+            col_type_defn = type_map.get(python_type, TypeDefn(['string'], conversion_function=str))
+            if col_type_defn.conversion_function is not None:
+                self._translate_columns[column.name] = col_type_defn.conversion_function
             fields.append({
                 'name': column.name,
-                'type': ['null'] + col_type,
+                'type': ['null', *col_type_defn.type_list],
                 'default': None,
             })
         return {

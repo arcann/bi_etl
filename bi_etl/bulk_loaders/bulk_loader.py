@@ -23,13 +23,13 @@ class BulkLoader(ABC):
         self,
     ):
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
-        self._redact_values = []
+        self._redact_values = set()
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}()"
 
     def add_redact_value(self, redact_value: str):
-        self._redact_values.append(redact_value)
+        self._redact_values.add(redact_value)
 
     def log_with_redactions(
             self,

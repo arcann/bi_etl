@@ -47,20 +47,9 @@ class DatabricksS3AvroBulkLoader(S3BulkLoaderMixin, AvroBulkLoaderMixin, BulkLoa
     ) -> str:
         # Credentials are optional: the Databricks cluster's instance profile
         # or Unity Catalog storage credential typically handles S3 access.
-        credentials = '--no credentials'
-        s3_user_id = self.config.user_id
-        if s3_user_id is not None:
-            s3_password = self.config.get_password()
-            self.add_redact_value(s3_password)
-            credentials = (
-                f"CREDENTIAL (AWS_ACCESS_KEY = '{s3_user_id}', "
-                f"AWS_SECRET_KEY = '{s3_password}')"
-            )
-
         return (
             f"COPY INTO {table_to_load}\n"
             f"FROM 's3://{self.s3_bucket_name}/{s3_source_path}'\n"
-            f"{credentials}\n"
             f"FILEFORMAT = AVRO\n"
             f"COPY_OPTIONS ('mergeSchema' = 'true')"
         )

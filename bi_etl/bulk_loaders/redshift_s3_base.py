@@ -151,7 +151,6 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
     ) -> int:
         copy_sql = textwrap.dedent(copy_sql)
         sql_safe_pw = copy_sql.replace(self.s3_password, '*' * 8)
-        self.log.debug(sql_safe_pw)
 
         keep_trying = True
         wait_seconds = 15
