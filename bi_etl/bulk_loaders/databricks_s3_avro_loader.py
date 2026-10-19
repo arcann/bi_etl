@@ -17,7 +17,11 @@ else:
 
 
 class DatabricksS3AvroBulkLoader(BulkLoader, S3BulkLoaderMixin, AvroBulkLoaderMixin):
-    """Bulk loader for Databricks using Avro files staged to S3 and COPY INTO."""
+    """
+    Bulk loader for Databricks using Avro files staged to S3 and COPY INTO.
+
+    Note: s3_file_max_rows is used as the Avro chunk size    
+    """
 
     def __init__(
             self,
@@ -46,7 +50,7 @@ class DatabricksS3AvroBulkLoader(BulkLoader, S3BulkLoaderMixin, AvroBulkLoaderMi
     ) -> str:
         # Credentials are optional: the Databricks cluster's instance profile
         # or Unity Catalog storage credential typically handles S3 access.
-        credentials = ''
+        credentials = '--no credentials'
         s3_user_id = self.config.user_id
         if s3_user_id is not None:
             s3_password = self.config.get_password()
