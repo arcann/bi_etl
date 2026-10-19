@@ -1,6 +1,7 @@
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
+import logging
 import os.path
 import textwrap
 import time
@@ -52,7 +53,9 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
 
     @property
     def s3_password(self):
-        return self.config.get_password()
+        password = self.config.get_password()
+        self.add_redact_value(password)
+        return password
 
     def _post_upload_verify(self, s3_path: str):
         """Wait for uploaded file to be available in S3 (eventual consistency)."""
@@ -75,7 +78,7 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
 
     def _get_error_details(
             self,
-            connection: sqlalchemy.engine.base.Connection,
+            connection: sqlalchemy.engine.base.Connection | None,
             exception: sqlalchemy.exc.SQLAlchemyError,
             s3_source_path: str,
     ) -> BulkLoaderException:
@@ -165,12 +168,12 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
                 keep_trying = False
                 connection.execute(text("COMMIT;"))
             except sqlalchemy.exc.SQLAlchemyError as e:
-                safe_e = str(e).replace(self.s3_password, '*' * 8)
-
                 # Check if the error is non-recoverable
-
                 self.log.error('!' * 80)
-                self.log.error(f'!! Details for {safe_e} below:')
+                self.log_with_redactions(
+                    log_level=logging.ERROR,
+                    message=f'!! Details for {e} below:'
+                )
                 self.log.error('!' * 80)
 
                 bulk_loader_exception = self._get_error_details(
@@ -181,14 +184,22 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
 
                 if 'S3ServiceException' in str(e):
                     if any(error in str(e) for error in self.non_recoverable_error_matches):
-                        self.log.error(f"Cannot recover from this error - {safe_e}")
+                        self.log_with_redactions(
+                            log_level=logging.ERROR,
+                            message=f"Cannot recover from this error - {e}"
+                        )
                         keep_trying = False
                     elif time.time() > t_end:
-                        self.log.info(f'{wait_seconds} seconds recovery wait time exceeded. File cannot be loaded. {t_end}')
+                        self.log.info(
+                            f'{wait_seconds} seconds recovery wait time exceeded. File cannot be loaded. {t_end}'
+                        )
                         keep_trying = False
 
                     if keep_trying:
-                        self.log.info(f'Will retry in 5 seconds file copy after S3ServiceException failure - {safe_e}')
+                        self.log_with_redactions(
+                            log_level=logging.ERROR,
+                            message=f'Will retry in 5 seconds file copy after S3ServiceException failure - {e}'
+                        )
                         time.sleep(5)
                     else:
                         raise bulk_loader_exception from None

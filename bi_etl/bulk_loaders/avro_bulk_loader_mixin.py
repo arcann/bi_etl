@@ -4,28 +4,39 @@ from __future__ import annotations
 import os.path
 from datetime import date, datetime, time as time_type, timedelta
 from decimal import Decimal
+from tempfile import TemporaryDirectory
 from typing import *
 
 import fastavro
 
+from bi_etl.timer import Timer
+
 if TYPE_CHECKING:
     from bi_etl.components.table import Table
+    from bi_etl.scheduler.etl_task import ETLTask
 
 
 class AvroBulkLoaderMixin:
-    """Mixin providing Avro schema generation, chunk writing, and codec setup.
+    """Mixin providing Avro schema generation, chunk writing, codec setup, and loading.
 
     Subclasses must call :meth:`_init_avro` from their ``__init__`` to
-    configure the compression codec.
+    configure the compression codec, and must provide ``self.config``
+    (with a ``temp_file_path`` attribute), ``self.s3_file_max_rows``, and
+    a :meth:`load_from_files` implementation for :meth:`load_from_iterable`
+    to delegate to.
 
     .. note::
 
+       :class:`~bi_etl.bulk_loaders.bulk_loader.BulkLoader` also defines
+       :meth:`load_from_iterable` (raising ``NotImplementedError``).  For
+       this mixin's implementation to win the MRO, concrete Avro loaders
+       must list ``AvroBulkLoaderMixin`` *before* :class:`BulkLoader` (or
+       any base deriving from it) in their own bases.
+
        This mixin intentionally does **not** override
-       :attr:`~bi_etl.bulk_loaders.bulk_loader.BulkLoader.needs_all_columns`.
-       Because :class:`BulkLoader` already defines that property (returning
-       ``True``), Python's MRO would resolve to ``BulkLoader`` before a
-       mixin listed later in the bases.  Each concrete Avro loader should
-       override the property directly::
+       :attr:`~bi_etl.bulk_loaders.bulk_loader.BulkLoader.needs_all_columns`,
+       since the correct value is loader-specific, not generic to Avro.
+       Each concrete Avro loader should override the property directly::
 
            @property
            def needs_all_columns(self):
@@ -95,3 +106,105 @@ class AvroBulkLoaderMixin:
         with open(filepath, 'wb') as avro_file:
             fastavro.writer(avro_file, parsed_schema, data_chunk, codec=self.codec)
         self.log.debug(f"Closed bulk load chunk {file_number}: {filepath}")
+
+    # --- Load from iterable ---------------------------------------------------
+
+    def load_from_iterable(
+            self,
+            iterable: Iterable,
+            table_object: Table,
+            table_to_load: str | None = None,
+            perform_rename: bool = False,
+            progress_frequency: int = 10,
+            analyze_compression: str | None = None,
+            parent_task: Optional[ETLTask] = None,
+    ) -> int:
+        """Write rows from *iterable* to local Avro files and load them via :meth:`load_from_files`.
+
+        Parameters
+        ----------
+        iterable
+            Source of :class:`~bi_etl.components.row.row.Row` objects to load.
+        table_object
+            Table the rows are being loaded into.
+        table_to_load
+            Name of the table (or temp table) to load into. Defaults to
+            ``table_object.qualified_table_name``.
+        perform_rename
+            Passed through to :meth:`load_from_files`.
+        progress_frequency
+            Seconds between progress log messages. Pass ``None`` to disable.
+        analyze_compression
+            Passed through to :meth:`load_from_files`.
+        parent_task
+            Unused by this implementation, present for interface compatibility.
+
+        Returns
+        -------
+        int
+            Number of rows written.
+        """
+        table_to_load = table_to_load or table_object.qualified_table_name
+
+        with TemporaryDirectory(
+                dir=self.config.temp_file_path,
+                ignore_cleanup_errors=True,
+        ) as temp_dir:
+            parsed_schema = self._parse_avro_schema(table_object, table_to_load)
+
+            file_number = 0
+            data_length = 0
+            local_files_list = []
+            data_chunk = []
+
+            progress_timer = Timer()
+            for row_number, row in enumerate(iterable):
+                data_chunk.append(row.as_dict)
+
+                if len(data_chunk) >= self.s3_file_max_rows:
+                    data_length += len(data_chunk)
+                    file_number += 1
+                    self._write_avro_chunk(
+                        temp_dir=temp_dir,
+                        file_number=file_number,
+                        parsed_schema=parsed_schema,
+                        data_chunk=data_chunk,
+                        local_files_list=local_files_list,
+                    )
+                    data_chunk = []
+
+                if progress_frequency is not None:
+                    if 0 < progress_frequency < progress_timer.seconds_elapsed:
+                        self.log.info(f"Wrote row {row_number:,}")
+                        progress_timer.reset()
+
+            # Write final chunk
+            if data_chunk:
+                data_length += len(data_chunk)
+                file_number += 1
+                self._write_avro_chunk(
+                    temp_dir=temp_dir,
+                    file_number=file_number,
+                    parsed_schema=parsed_schema,
+                    data_chunk=data_chunk,
+                    local_files_list=local_files_list,
+                )
+
+            if data_length > 0:
+                self.log.debug(f"Loading from files {local_files_list}")
+                rows_loaded = self.load_from_files(
+                    local_files_list,
+                    table_object=table_object,
+                    table_to_load=table_to_load,
+                    perform_rename=perform_rename,
+                    analyze_compression=analyze_compression,
+                )
+                if rows_loaded != data_length:
+                    self.log.error(
+                        f"COPY from files should have loaded {data_length:,} "
+                        f"but it reports {rows_loaded:,} rows loaded"
+                    )
+                return data_length
+            else:
+                self.log.info(f"{self} had nothing to do with 0 rows found")
+                return 0

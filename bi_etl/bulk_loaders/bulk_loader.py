@@ -1,6 +1,8 @@
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+
 import logging
 import uuid
 from typing import *
@@ -16,11 +18,31 @@ if TYPE_CHECKING:
     from bi_etl.scheduler.etl_task import ETLTask
 
 
-class BulkLoader(object):
+class BulkLoader(ABC):
     def __init__(
         self,
     ):
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+        self._redact_values = []
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}()"
+
+    def add_redact_value(self, redact_value: str):
+        self._redact_values.append(redact_value)
+
+    def log_with_redactions(
+            self,
+            *,
+            log_level: int,
+            message: str
+    ):
+        for redaction in self._redact_values:
+            message = message.replace(redaction, '*' * 6)
+        self.log.log(
+            level=log_level,
+            msg=message,
+        )
 
     @property
     def needs_all_columns(self):
@@ -43,11 +65,11 @@ class BulkLoader(object):
             self,
             local_files: list,
             table_object: Table,
-            table_to_load: str = None,
+            table_to_load: str | None = None,
             perform_rename: bool = False,
             file_compression: str = '',
             options: str = '',
-            analyze_compression: str = None,
+            analyze_compression: str | None = None,
     ) -> int:
         raise NotImplementedError()
 
@@ -55,10 +77,10 @@ class BulkLoader(object):
             self,
             iterator: Iterator,
             table_object: Table,
-            table_to_load: str = None,
+            table_to_load: str | None = None,
             perform_rename: bool = False,
             progress_frequency: int = 10,
-            analyze_compression: str = None,
+            analyze_compression: str | None = None,
             parent_task: Optional[ETLTask] = None,
     ) -> int:
         return self.load_from_iterable(
@@ -71,14 +93,15 @@ class BulkLoader(object):
             parent_task=parent_task,
         )
 
+    @abstractmethod
     def load_from_iterable(
             self,
             iterable: Iterable,
             table_object: Table,
-            table_to_load: str = None,
+            table_to_load: str | None = None,
             perform_rename: bool = False,
             progress_frequency: int = 10,
-            analyze_compression: str = None,
+            analyze_compression: str | None = None,
             parent_task: Optional[ETLTask] = None,
     ) -> int:
         raise NotImplementedError()
@@ -86,10 +109,10 @@ class BulkLoader(object):
     def load_table_from_cache(
             self,
             table_object: Table,
-            table_to_load: str = None,
+            table_to_load: str | None = None,
             perform_rename: bool = False,
             progress_frequency: int = 10,
-            analyze_compression: str = None,
+            analyze_compression: str | None = None,
     ) -> int:
         row_count = self.load_from_iterable(
             iterable=table_object.cache_iterable(),
@@ -103,7 +126,7 @@ class BulkLoader(object):
 
     def rename_table(
             self,
-            temp_table_name: str,
+            temp_table_name: str | None,
             table_object: Table,
     ):
         if temp_table_name is not None:
@@ -116,6 +139,7 @@ class BulkLoader(object):
                     table_name=temp_table_name,
                     database=table_object.database,
             ) as table_to_load_object:
+                assert isinstance(table_to_load_object, Table)
                 table_object.table.rename(old_name)
                 table_to_load_object.table.rename(table_object.table_name)
         else:
@@ -153,6 +177,7 @@ class BulkLoader(object):
                             created = True
                         except (sqlalchemy.exc.OperationalError, sqlalchemy.exc.InvalidRequestError):
                             tmp_id += 1
+                    assert table_name is not None
                     update_table_object = Table(
                         task=table_object.task,
                         table_name=table_name,
