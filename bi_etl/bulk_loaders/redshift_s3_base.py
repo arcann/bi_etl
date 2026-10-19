@@ -14,30 +14,27 @@ from sqlalchemy import text
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.bulk_loaders.bulk_loader_exception import BulkLoaderException
 from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
+from bi_etl.bulk_loaders.s3_bulk_loader_mixin import S3BulkLoaderMixin
 from bi_etl.conversions import strip
 
 if TYPE_CHECKING:
     from bi_etl.components.table import Table
 
 
-class RedShiftS3Base(BulkLoader):
+class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
     def __init__(
             self,
             config: S3_Bulk_Loader_Config,
     ):
         super().__init__()
         self.config = config
+        self._init_s3(config)
         self.s3_user_id = self.config.user_id
         self.s3_region = self.config.region_name
-        self.s3_bucket_name = self.config.bucket_name
-        self.s3_folder = self.config.folder
         self.s3_files_to_generate = self.config.s3_files_to_generate
         self.s3_file_max_rows = self.config.s3_file_max_rows
-        self.s3_clear_before = self.config.s3_clear_before
-        self.s3_clear_when_done = self.config.s3_clear_when_done
         self.analyze_compression = self.config.analyze_compression
         self.redshift_copy_iam_role = self.config.redshift_copy_iam_role
-        self.session = self.config.session
         try:
             identity = self.session.client('sts').get_caller_identity()
             self.log.info(f'Account ID = {identity["Account"]}')
@@ -45,8 +42,6 @@ class RedShiftS3Base(BulkLoader):
             self.log.info(f"Canonical  user = {self.session.client('s3').list_buckets()['Owner']}")
         except Exception as e:
             self.log.warning(e)
-        self.s3 = self.session.resource('s3')
-        self.bucket = self.s3.Bucket(self.s3_bucket_name)
 
         self.non_recoverable_error_matches = [
             'The S3 bucket addressed by the query is in a different region from this cluster.',
@@ -59,67 +54,24 @@ class RedShiftS3Base(BulkLoader):
     def s3_password(self):
         return self.config.get_password()
 
-    def s3_folder_contents(
-            self,
-            s3_full_folder,
-    ):
-        return [bucket_object for bucket_object in self.bucket.objects.filter(Prefix=s3_full_folder)]
-
-    def clean_s3_folder(
-            self,
-            s3_full_folder,
-    ):
-        self.log.info(f'Cleaning S3 folder {s3_full_folder}')
-        for bucket_object in self.bucket.objects.filter(Prefix=s3_full_folder):
-            self.log.info(f'Removing {bucket_object}')
-            bucket_object.delete()
-
-    def _upload_files_to_s3(
-            self,
-            local_files: list,
-            s3_full_folder: str,
-    ):
-        if self.s3_clear_before:
-            self.clean_s3_folder(s3_full_folder)
-        else:
-            folder_contents = self.s3_folder_contents(s3_full_folder)
-            if folder_contents:
-                raise FileExistsError('The target S3 folder is not empty and s3_clear_before = False.'
-                                      f'Existing contents = {folder_contents}')
-
-        s3_files = list()
-        total_size = 0
-        # Upload the files
-        for file_number, local_path in enumerate(local_files):
-            file_size = os.path.getsize(local_path)
-            total_size += file_size
-            s3_path = f'{s3_full_folder}/{os.path.basename(local_path)}'
-            self.log.info(f"Uploading from '{local_path}' to {self.s3_bucket_name}' key '{s3_path}' size = {file_size:,} bytes")
-            s3_files.append(f's3://{self.s3_bucket_name}/{s3_path}')
-            self.bucket.upload_file(
-                str(local_path),
-                str(s3_path),
-            )
-
-            response = None
-            t_end = time.time() + 60 * 3
-            while response is None:
-                key = s3_path
-                objs = list(self.bucket.objects.filter(Prefix=key))
-                if len(objs) > 0 and objs[0].key == key:
-                    # self.log.info(f'{key} exists. {t_end}')
-                    response = True
+    def _post_upload_verify(self, s3_path: str):
+        """Wait for uploaded file to be available in S3 (eventual consistency)."""
+        response = None
+        t_end = time.time() + 60 * 3
+        while response is None:
+            key = s3_path
+            objs = list(self.bucket.objects.filter(Prefix=key))
+            if len(objs) > 0 and objs[0].key == key:
+                # self.log.info(f'{key} exists. {t_end}')
+                response = True
+            else:
+                if time.time() > t_end:
+                    self.log.info(f'{key} is not available for loading. 3 minute wait is over. FATAL. {t_end}')
+                    response = False
                 else:
-                    if time.time() > t_end:
-                        self.log.info(f'{key} is not available for loading. 3 minute wait is over. FATAL. {t_end}')
-                        response = False
-                    else:
-                        self.log.info(f'{key} is probably not finished syncing among AWS S3 nodes, we will retry again after 5 second. {time.time()}')
-                        time.sleep(5)
-                        response = self.bucket.Object(s3_path).get()
-
-        self.log.info(f"Uploaded {total_size:,} bytes in total to {s3_full_folder}")
-        return s3_files
+                    self.log.info(f'{key} is probably not finished syncing among AWS S3 nodes, we will retry again after 5 second. {time.time()}')
+                    time.sleep(5)
+                    response = self.bucket.Object(s3_path).get()
 
     def _get_error_details(
             self,

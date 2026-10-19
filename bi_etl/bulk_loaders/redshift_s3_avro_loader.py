@@ -1,16 +1,11 @@
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
-import os.path
-import os.path
 import textwrap
-from datetime import date, datetime, time, timedelta
-from decimal import Decimal
 from tempfile import TemporaryDirectory
 from typing import *
 
-import fastavro
-
+from bi_etl.bulk_loaders.avro_bulk_loader_mixin import AvroBulkLoaderMixin
 from bi_etl.bulk_loaders.redshift_s3_base import RedShiftS3Base
 from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 
@@ -19,7 +14,7 @@ if TYPE_CHECKING:
     from bi_etl.scheduler.etl_task import ETLTask
 
 
-class RedShiftS3AvroBulk(RedShiftS3Base):
+class RedShiftS3AvroBulk(RedShiftS3Base, AvroBulkLoaderMixin):
     def __init__(
         self,
         config: S3_Bulk_Loader_Config,
@@ -33,11 +28,7 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
         # Redshift appears to count the schema as a line read
         self.lines_scanned_modifier = -1
 
-        try:
-            import snappy
-            self.codec = 'snappy'
-        except ImportError:
-            self.codec = 'deflate'
+        self._init_avro()
 
     @property
     def needs_all_columns(self):
@@ -64,23 +55,6 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
             {options}; commit;
             """)
 
-    def _write_to_file(
-            self,
-            temp_dir,
-            file_number: int,
-            parsed_schema,
-            data_chunk: list,
-            local_files_list: list,
-    ):
-
-        self.log.debug(f"Starting bulk load chunk {file_number}")
-        filepath = os.path.join(temp_dir, f'data_{file_number}.avro')
-        local_files_list.append(filepath)
-        with open(filepath, 'wb') as avro_file:
-            # avro_iterators = self.distribute(iterator, writer_pool_size)
-            fastavro.writer(avro_file, parsed_schema, data_chunk, codec=self.codec)
-        self.log.debug(f"Closed bulk load chunk {file_number}: {filepath}")
-
     def load_from_iterable(
         self,
         iterable: Iterable,
@@ -95,43 +69,7 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
         table_to_load = table_to_load or table_object.qualified_table_name
 
         with TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
-            # Generate schema from table
-            fields = list()
-            type_map = {
-                str: ['string'],
-                bytes: ['bytes'],
-                date: ['string'],
-                datetime: ['string'],
-                time: ['string'],
-                timedelta: ['string'],
-                bool: ['boolean'],
-                int: ['long'],
-                float: ['double'],
-                Decimal: ['int', 'double'],
-            }
-            for column in table_object.columns:
-                if column.type.python_type in type_map:
-                    col_type = type_map[column.type.python_type]
-                else:
-                    col_type = ['string']
-
-                fields.append({
-                    'name': column.name,
-                    'type': ["null"] + col_type,
-                    'default': None,
-                })
-
-            schema = {
-                "name": table_to_load,
-                "type": "record",
-                'fields': fields,
-            }
-
-            self.log.debug(f"schema = {schema}")
-
-            parsed_schema = fastavro.parse_schema(schema)
-
-            self.log.debug(f"parsed_schema = {parsed_schema}")
+            parsed_schema = self._parse_avro_schema(table_object, table_to_load)
 
             file_number = 0
             data_length = 0
@@ -148,7 +86,7 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
                 if len(data_chunk) >= self.s3_file_max_rows:
                     data_length += len(data_chunk)
                     file_number += 1
-                    self._write_to_file(
+                    self._write_avro_chunk(
                         temp_dir=temp_dir,
                         file_number=file_number,
                         parsed_schema=parsed_schema,
@@ -158,10 +96,10 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
                     data_chunk = list()
 
             # Write final chunk
-            if len(data_chunk) >= 0:
+            if data_chunk:
                 data_length += len(data_chunk)
                 file_number += 1
-                self._write_to_file(
+                self._write_avro_chunk(
                     temp_dir=temp_dir,
                     file_number=file_number,
                     parsed_schema=parsed_schema,
@@ -178,7 +116,8 @@ class RedShiftS3AvroBulk(RedShiftS3Base):
                 analyze_compression=analyze_compression,
             )
             if rows_loaded != data_length:
-                self.log.error(f"COPY from files should have loaded {data_length:,} but it reports {rows_loaded:,} rows loaded")
-            else:
-                self.log.info(f"{self} had nothing to do with 0 rows found")
+                self.log.error(
+                    f"COPY from files should have loaded {data_length:,} "
+                    f"but it reports {rows_loaded:,} rows loaded"
+                )
             return data_length
