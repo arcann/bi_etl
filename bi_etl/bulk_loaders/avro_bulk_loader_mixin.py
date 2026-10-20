@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Callable, Iterable, Optional
 import fastavro
 
 from bi_etl.timer import Timer
+from bi_etl.utility.json import json_dumps
+
 
 if TYPE_CHECKING:
     from bi_etl.components.table import Table
@@ -62,22 +64,39 @@ class AvroBulkLoaderMixin:
             type_list: list[str | dict]
             conversion_function: Callable | None = None
 
+        map_type = {"type": "map", "values": "string"}
+        array_type = {"type": "array", "items": "string"}
+
         type_map = {
             str: TypeDefn(type_list=['string']),
             bytes: TypeDefn(type_list=['bytes']),
             date: TypeDefn(type_list=['date']),
-            datetime: TypeDefn(type_list=['timestamp-millis']),
-            time_type: TypeDefn(type_list=['time-millis']),
+            datetime: TypeDefn(type_list=[
+                {
+                    "type": "long",
+                    "logicalType": "timestamp-millis"
+                }
+            ]),
+            time_type: TypeDefn(type_list=[
+                {
+                    "type": "long",
+                    "logicalType": 'time-millis',
+                }
+            ]),
             timedelta: TypeDefn(type_list=['long'], conversion_function=timedelta.total_seconds),
             bool: TypeDefn(type_list=['boolean']),
             int: TypeDefn(type_list=['long']),
             float: TypeDefn(type_list=['double']),
             Decimal: TypeDefn(type_list=['int', 'double']),
+            object: TypeDefn(type_list=['string'], conversion_function=json_dumps),
+            dict: TypeDefn(type_list=['string'], conversion_function=json_dumps),
+            list: TypeDefn(type_list=['string'], conversion_function=json_dumps),
+            set: TypeDefn(type_list=['string'], conversion_function=json_dumps),
         }
         fields = []
         columns = table_object.columns
         for column in columns:
-            python_type = column.type.python_type
+            python_type = table_object._get_python_type(column.type)
             col_type_defn = type_map.get(python_type, TypeDefn(['string'], conversion_function=str))
             if col_type_defn.conversion_function is not None:
                 self._translate_columns[column.name] = col_type_defn.conversion_function
@@ -94,9 +113,15 @@ class AvroBulkLoaderMixin:
 
     def _parse_avro_schema(self, table_object: Table, table_name: str):
         """Build and parse an Avro schema, returning the parsed form."""
-        schema = self._get_avro_schema(table_object, table_name)
-        self.log.debug(f"Avro schema = {schema}")
-        return fastavro.parse_schema(schema)
+        schema = self._get_avro_schema(table_object, table_name)        
+        try:
+            parsed_schema = fastavro.parse_schema(schema)
+            self.log.debug(f"Avro schema = {schema}")
+            self.log.debug(f"Avro parsed_schema = {parsed_schema}")
+            return parsed_schema
+        except Exception:
+            self.log.error(f"Avro schema that errored = {schema}")
+            raise
 
     # --- Chunk writing -------------------------------------------------------
 

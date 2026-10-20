@@ -207,7 +207,7 @@ class Table(ReadOnlyTable):
             exclude_columns=exclude_columns,
         )
 
-        self.TYPE_TO_MAKE_COERCE_MAP = {
+        self.TYPE_TO_MAKE_COERCE_MAP: dict[type, Callable[['Table', ColumnElement], None]] = {
             str: Table._make_str_coerce,
             bytes: Table._make_bytes_coerce,
             int: Table._make_int_coerce,
@@ -218,6 +218,7 @@ class Table(ReadOnlyTable):
             time: Table._make_time_coerce,
             timedelta: Table._make_timedelta_coerce,
             bool: Table._make_bool_coerce,
+            object: Table._make_generic_coerce,
         }
 
         self.support_multiprocessing = False
@@ -336,6 +337,13 @@ class Table(ReadOnlyTable):
         # Note: yield_per will break if the transaction is committed while we are looping
         yield from self.where(None)
 
+    def get_dialect_description(self) -> str | None :
+        try:
+            # noinspection unresolved-references
+            return self.database.dialect.dialect_description
+        except AttributeError:
+            return None
+
     @property
     def batch_size(self):
         """ Number of records in a batch for EXECUTE_MANY (e.g. insert) operations"""
@@ -394,7 +402,8 @@ class Table(ReadOnlyTable):
                         column = self.get_column(column_name)
                         default = column.default
                         if not column.nullable and default is None:
-                            if column.type.python_type == str:
+                            python_type = self._get_python_type(column.type)
+                            if python_type == str:
                                 col_len = column.type.length
                                 if col_len > 4 and self.database.uses_bytes_length_limits:
                                     col_len = int(col_len / 4)
@@ -534,14 +543,14 @@ class Table(ReadOnlyTable):
 
     def _get_coerce_method_name_by_object(
             self,
-            target_column_object: Union[str, 'sqlalchemy.sql.expression.ColumnElement']
+            target_column_object: 'str | sqlalchemy.sql.expression.ColumnElement'
     ) -> str:
         target_column_name = self.get_column_name(target_column_object)
         return self._get_coerce_method_name_by_str(target_column_name)
 
     def get_coerce_method(
             self,
-            target_column_object: Union[str, 'sqlalchemy.sql.expression.ColumnElement']
+            target_column_object: 'str | sqlalchemy.sql.expression.ColumnElement'
     ) -> Callable:
         if not self._coerce_methods_built:
             self._build_coerce_methods()
@@ -1031,7 +1040,8 @@ class Table(ReadOnlyTable):
             """
         ).format(table=self, column=target_column_object.name)
         code += self._generate_null_check(target_column_object)
-        if self.database.dialect.dialect_description == 'mssql+pyodbc':
+
+        if self.get_dialect_description() == 'mssql+pyodbc':
             # fast_executemany Currently causes this error on datetime update (dimension load)
             # [Microsoft][ODBC Driver 17 for SQL Server]Datetime field overflow.
             # Fractional second precision exceeds the scale specified in the parameter binding. (0)
@@ -1225,8 +1235,11 @@ class Table(ReadOnlyTable):
 
     def _get_python_type(self, t_type: sqlalchemy.sql.type_api.TypeEngine) -> type:
         try:
-            return t_type.python_type
+            python_type = t_type.python_type
         except NotImplementedError:
+            python_type = None
+
+        if python_type is None or python_type is object:
             # Special handling for SQL types that don't have a python_type
             type_name = type(t_type).__name__.upper()
             self.log.debug(f"Checking for overrides for type {type_name}")
@@ -1248,8 +1261,19 @@ class Table(ReadOnlyTable):
                 'TINYINT'
             }:
                 return int
+            elif type_name in {
+                'DATABRICKSVARIANT'
+            }:
+                return object
             else:
-                raise
+                raise ValueError(
+                    f"Could not get python type for {t_type} repr={repr(t_type)}. "
+                    f"{type_name=} "
+                    f"{python_type=}"
+                )
+        else:
+            # noinspection bad-return
+            return python_type
 
     def _build_coerce_methods(self):
         self._coerce_methods_built = True
@@ -1259,18 +1283,25 @@ class Table(ReadOnlyTable):
             else:
                 t_type = column.type
                 try:
+                    # Note: _get_python_type includes some extra translation of types for DBs that don't report
+                    #       good python_type in the dialect.
                     python_type = self._get_python_type(t_type)
                 except NotImplementedError:
                     raise ValueError(
                         f"Column {column} has type str={t_type} repr={repr(t_type)} type={type(t_type)} with no python_type"
-                        )
+                    )
 
                 try:
                     # noinspection bad-index
                     type_specific_make_coerce = self.TYPE_TO_MAKE_COERCE_MAP[python_type]
+                    # Call function to make the coerce method
                     type_specific_make_coerce(self, column)
                 except KeyError:
-                    warnings.warn(f'Table.build_row has no handler for {t_type} = {type(t_type)}')
+                    warnings.warn(
+                        f'Table.TYPE_TO_MAKE_COERCE_MAP has no handler for {t_type} = {type(t_type)} '
+                        f'and python_type = {python_type}.'
+                        "Using generic no conversion method."
+                    )
                     self._make_generic_coerce(column)
 
     def column_coerce_type(
@@ -1286,8 +1317,9 @@ class Table(ReadOnlyTable):
             t_type = target_column_object.type
             type_error = False
             err_msg = None
+            python_type = self._get_python_type(t_type)
             try:
-                if t_type.python_type == str:
+                if python_type == str:
                     if isinstance(target_column_value, str):
                         if self.force_ascii:
                             # Passing ascii bytes to cx_Oracle is not working.
@@ -1307,7 +1339,7 @@ class Table(ReadOnlyTable):
                     except TypeError:
                         # t_type.length is not a comparable type
                         pass
-                elif t_type.python_type == bytes:
+                elif python_type == bytes:
                     if isinstance(target_column_value, str):
                         target_column_value = target_column_value.encode('utf-8')
                     elif isinstance(target_column_value, bytes):
@@ -1323,11 +1355,11 @@ class Table(ReadOnlyTable):
                         if len(target_column_value) > t_type.length:
                             type_error = True
                             err_msg = f"{len(target_column_value)} > {t_type.length}"
-                elif t_type.python_type == int:
+                elif python_type == int:
                     if isinstance(target_column_value, str):
                         # Note: str2int takes 590 ns vs 220 ns for int() but handles commas and signs.
                         target_column_value = str2int(target_column_value)
-                elif t_type.python_type == float:
+                elif python_type == float:
                     # noinspection PyTypeChecker
                     if isinstance(target_column_value, str):
                         # Note: str2float takes 635 ns vs 231 ns for float() but handles commas and signs.
@@ -1336,7 +1368,7 @@ class Table(ReadOnlyTable):
                         target_column_value = str2float(target_column_value)
                     elif math.isnan(float(target_column_value)):
                         target_column_value = self.NAN_REPLACEMENT_VALUE
-                elif t_type.python_type == Decimal:
+                elif python_type == Decimal:
                     if isinstance(target_column_value, str):
                         # If for performance reasons you don't want this conversion...
                         #   DON'T send in a string!
@@ -1356,7 +1388,7 @@ class Table(ReadOnlyTable):
                                 f"digits > {(t_type.precision - scale)} = "
                                 f"(prec {t_type.precision} - scale {t_type.scale}) limit"
                             )
-                elif t_type.python_type == date:
+                elif python_type == date:
                     # If we already have a datetime, make it a date
                     if isinstance(target_column_value, datetime):
                         target_column_value = date(
@@ -1372,10 +1404,10 @@ class Table(ReadOnlyTable):
                             str(target_column_value),
                             dt_format=self.default_date_format
                         )
-                elif t_type.python_type == datetime:
+                elif python_type == datetime:
                     # If we already have a date or datetime value
                     if isinstance(target_column_value, datetime):
-                        if 'mssql' in self.database.dialect.dialect_description:
+                        if 'mssql' in self.get_dialect_description():
                             # fast_executemany Currently causes this error on datetime update (dimension load)
                             # [Microsoft][ODBC Driver 17 for SQL Server]Datetime field overflow.
                             # Fractional second precision exceeds the scale specified in the parameter binding. (0)
@@ -1395,7 +1427,7 @@ class Table(ReadOnlyTable):
                             str(target_column_value),
                             dt_format=self.default_date_time_format
                         )
-                elif t_type.python_type == time:
+                elif python_type == time:
                     # If we already have a datetime, make it a time
                     if isinstance(target_column_value, datetime):
                         target_column_value = time(
@@ -1413,14 +1445,14 @@ class Table(ReadOnlyTable):
                             str(target_column_value),
                             dt_format=self.default_time_format
                         )
-                elif t_type.python_type == timedelta:
+                elif python_type == timedelta:
                     # If we already have an interval value
                     if isinstance(target_column_value, timedelta):
                         pass
                     else:
                         # noinspection PyTypeChecker
                         target_column_value = timedelta(seconds=float(target_column_value))
-                elif t_type.python_type == bool:
+                elif python_type == bool:
                     if isinstance(target_column_value, bool):
                         pass
                     elif isinstance(target_column_value, str):
@@ -1433,7 +1465,10 @@ class Table(ReadOnlyTable):
                             type_error = True
                             err_msg = "unexpected value (expected true/false, yes/no, y/n)"
                 else:
-                    warnings.warn(f'Table.build_row has no handler for {t_type} = {type(t_type)}')
+                    warnings.warn(
+                        f'Table.build_row has no handler for {t_type} = {type(t_type)} '
+                        f'and python_type = {python_type}'
+                    )
             except (ValueError, InvalidOperation) as e:
                 self.log.error(repr(e))
                 err_msg = repr(e)
@@ -1465,7 +1500,7 @@ class Table(ReadOnlyTable):
     def sanity_check_source_mapping(
             self,
             source_definition: ETLComponent,
-            source_name: str = None,
+            source_name: str | None = None,
             source_excludes: Optional[frozenset] = None,
             target_excludes: Optional[frozenset] = None,
             ignore_source_not_in_target: Optional[bool] = None,
@@ -1751,6 +1786,7 @@ class Table(ReadOnlyTable):
                         table_object=self,
                         progress_frequency=None,
                     )
+                self._raise_if_bulk_iter_worker_failed()
                 stats['rows_queued'] += 1
                 self._bulk_iter_queue.put(new_row)
                 self._bulk_iter_max_q_length = max(self._bulk_iter_max_q_length, len(self._bulk_iter_queue))
@@ -2453,7 +2489,7 @@ class Table(ReadOnlyTable):
             self,
             row: Row,
             changes_list: Optional[MutableSequence[ColumnDifference]] = None,
-            additional_update_values: MutableMapping = None,
+            additional_update_values: MutableMapping | None = None,
             add_to_cache: bool = True,
             allow_insert=True,
             update_apply_entire_row: bool = False,
@@ -2571,7 +2607,7 @@ class Table(ReadOnlyTable):
     def update_where_pk(
             self,
             updates_to_make: Row,
-            key_values: Union[Row, dict, list] = None,
+            key_values: Row | dict | list | None = None,
             source_excludes: Optional[frozenset] = None,
             target_excludes: Optional[frozenset] = None,
             stat_name: str = 'update_where_pk',
@@ -2746,12 +2782,12 @@ class Table(ReadOnlyTable):
             self,
             updates_to_make,
             set_of_key_tuples: set,
-            lookup_name: str = None,
-            criteria_list: list = None,
-            criteria_dict: dict = None,
-            progress_frequency: int = None,
+            lookup_name: str | None = None,
+            criteria_list: list | None = None,
+            criteria_dict: dict | None = None,
+            progress_frequency: int | None = None,
             stat_name: str = 'update_not_in_set',
-            parent_stats: Statistics = None,
+            parent_stats: Statistics | None = None,
             **kwargs
     ):
         """
@@ -2910,6 +2946,29 @@ class Table(ReadOnlyTable):
         )
         self.source_keys_processed = set()
 
+    def _raise_if_bulk_iter_worker_failed(self):
+        """
+        Raise the exception from the bulk loader greenlet, if it has failed.
+
+        Cheap enough to call on every row. Allows a failure in
+        :meth:`bi_etl.bulk_loaders.bulk_loader.BulkLoader.load_from_iterable`
+        to surface in the calling greenlet instead of only at the end of the load.
+
+        Raises
+        ------
+        Exception
+            The exception raised by the bulk loader worker.
+        RuntimeError
+            If the bulk loader worker finished before the end of the input rows.
+        """
+        worker = self._bulk_iter_worker
+        if worker is None or not worker.ready():
+            return
+        if worker.exception is not None:
+            raise worker.exception
+        if self._bulk_iter_sentinel is not None:
+            raise RuntimeError(f"{self} bulk loader stopped before all rows were provided")
+
     def _set_upsert_mode(self):
         if self._bulk_iter_sentinel is not None:
             raise ValueError(
@@ -3010,6 +3069,7 @@ class Table(ReadOnlyTable):
 
             if isinstance(lookup_name, Lookup):
                 lookup_object = lookup_name
+                lookup_name = lookup_object.lookup_name
             else:
                 lookup_object = self.get_lookup(lookup_name)
             if not lookup_object.cache_enabled and self.maintain_cache_during_load and self.batch_size > 1:
@@ -3224,15 +3284,17 @@ class Table(ReadOnlyTable):
     def transaction(
             self,
             connection_name: Optional[str] = None
-    ) -> sqlalchemy.engine.base.Transaction:
+    ) -> sqlalchemy.engine.base.Transaction | None:
         return self.database.transaction(connection_name)
 
     def begin(
             self,
             connection_name: Optional[str] = None
-    ):
+    ) -> sqlalchemy.engine.base.Transaction | None:
         if not self.in_bulk_mode:
             return self.transaction(connection_name)
+        else:
+            return None
 
     def bulk_load_from_cache(
             self,
@@ -3278,11 +3340,10 @@ class Table(ReadOnlyTable):
                         stats['ending_insert_queue'] = len(self._bulk_iter_queue)
                         self.log.info("Waiting for bulk loader")
                         self._bulk_iter_worker.join()
-                        stats['rows_loaded'] = self._bulk_iter_worker.value
-
-                        self._bulk_iter_sentinel = None
                         if self._bulk_iter_worker.exception is not None:
                             raise self._bulk_iter_worker.exception
+                        stats['rows_loaded'] = self._bulk_iter_worker.value
+                        self._bulk_iter_sentinel = None
                     stats.timer.stop()
                     self._bulk_load_performed = True
                 else:
@@ -3462,6 +3523,7 @@ class Table(ReadOnlyTable):
             delta: timedelta,
     ) -> str:
         database_type = self.database.dialect_name
+        sql = None
         if database_type in {'oracle'}:
             if delta.seconds != 0 or delta.microseconds != 0:
                 sql = f"{column_name} + INTERVAL '{delta.total_seconds()}' SECOND"
@@ -3489,6 +3551,9 @@ class Table(ReadOnlyTable):
                 sql = f"DATEADD(second, {delta.total_seconds()}, {column_name})"
             elif delta.days != 0:
                 sql = f"DATEADD(day, {delta.days}, {column_name})"
+
+        if sql is None:
+            raise ValueError(f"_sql_add_timedelta did not handle {database_type=} and {delta=} for {column_name=}")
 
         return sql
 
@@ -3542,7 +3607,7 @@ class Table(ReadOnlyTable):
                         WHERE {Table._sql_indent_join(
             [f"e.{nk_col} = s.{nk_col}"
              for nk_col in self.natural_key], 18, prefix='AND '
-            )}
+        )}
                     )
                 """
 
@@ -3584,12 +3649,12 @@ class Table(ReadOnlyTable):
                 [f"{join_entry[1][0]}.{join_entry[1][1]}"
                  for join_entry in list_of_joins]
                 , 24, suffix=','
-                )},
+            )},
                         {Table._sql_indent_join(
                 [f"{set_entry[1]} as col_{set_num}"
                  for set_num, set_entry in enumerate(list_of_sets)]
                 , 16, suffix=','
-                )}
+            )}
                     FROM {source_sql}
                 ) src
                 ON (
@@ -3597,14 +3662,14 @@ class Table(ReadOnlyTable):
                 [f"tgt.{join_entry[0]} = src.{join_entry[1][1]}"
                  for join_entry in list_of_joins]
                 , 18, prefix='AND '
-                )}
+            )}
                 )
                 WHEN MATCHED THEN UPDATE
                 SET {Table._sql_indent_join(
                 [f"tgt.{set_entry[0]} = src.col_{set_num}"
                  for set_num, set_entry in enumerate(list_of_sets)]
                 , 16, suffix=','
-                )}
+            )}
             """
         elif database_type in {'mysql'}:
             sql = f"""
@@ -3614,12 +3679,12 @@ class Table(ReadOnlyTable):
                  f"{'.'.join(join_entry[1])}"
                  for join_entry in list_of_joins]
                 , 19, prefix='AND '
-                )}
+            )}
                 SET {Table._sql_indent_join(
                 [f"{target_alias_in_source}.{set_entry[0]} = {set_entry[1]}"
                  for set_entry in list_of_sets]
                 , 16, suffix=','
-                )}
+            )}
             """
         # SQL Server
         elif database_type in {'mssql'}:
@@ -3628,7 +3693,7 @@ class Table(ReadOnlyTable):
                 SET {Table._sql_indent_join(
                 [f"{set_entry[0]} = {set_entry[1]}"
                  for set_entry in list_of_sets], 16, suffix=','
-                )}
+            )}
                 FROM {self.qualified_table_name}
                      INNER JOIN 
                      {source_sql}
@@ -3637,7 +3702,7 @@ class Table(ReadOnlyTable):
                  f"{'.'.join(join_entry[1])}"
                  for join_entry in list_of_joins]
                 , 24, prefix='AND '
-                )}
+            )}
                 {and_extra_where}
             """
         elif database_type == 'sqlite':
@@ -3655,7 +3720,7 @@ class Table(ReadOnlyTable):
                     [f"{self.qualified_table_name}.{join_entry[0]} "
                      f"= {join_entry[1][0]}.{join_entry[1][1]}"
                      for join_entry in list_of_joins], 18, prefix='AND '
-                    )}
+                )}
                     {and_extra_where}
                 """
                 for set_entry in list_of_sets:
@@ -3680,13 +3745,13 @@ class Table(ReadOnlyTable):
                 SET {Table._sql_indent_join(
                 [f"{set_entry[0]} = {set_entry[1]}"
                  for set_entry in list_of_sets], 16, suffix=','
-                )}
+            )}
                 FROM {source_sql}
                 WHERE {Table._sql_indent_join(
                 [f"{self.qualified_table_name}.{join_entry[0]} "
                  f"= {join_entry[1][0]}.{join_entry[1][1]}"
                  for join_entry in list_of_joins], 18, prefix='AND '
-                )}
+            )}
                 {and_extra_where}
             """
         sql_timer = Timer()
