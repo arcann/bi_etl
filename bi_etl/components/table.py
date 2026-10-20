@@ -258,10 +258,13 @@ class Table(ReadOnlyTable):
 
         if batch_size is not None:
             self.__batch_size = batch_size
+            self.log.info(f"Setting batch size to init size = {self.__batch_size}")
         elif self.task is not None:
             self.__batch_size = self.task.config.bi_etl.default_batch_size
+            self.log.info(f"Setting batch size to config default size = {self.__batch_size}")
         else:
             self.__batch_size = self.DEFAULT_BATCH_SIZE
+            self.log.info(f"Setting batch size to class default size = {self.__batch_size}")
 
         self.skip_coercion_on = {}
 
@@ -357,6 +360,11 @@ class Table(ReadOnlyTable):
                     self.__batch_size = batch_size
                 else:
                     self.__batch_size = 1
+                self.log.info(f"Setting batch size to explicit setting = {self.__batch_size}")
+            else:
+                self.log.info("Bulk more. Ignoring batch_size setting.")
+        else:
+            self.log.info("Ignoring batch_size  = None")
 
     @property
     def table_key_memory(self):
