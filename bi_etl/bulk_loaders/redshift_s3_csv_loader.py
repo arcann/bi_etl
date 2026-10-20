@@ -19,12 +19,13 @@ if TYPE_CHECKING:
 
 
 class RedShiftS3CSVBulk(RedShiftS3Base):
-    def __init__(self,
-                 config: S3_Bulk_Loader_Config,
-                 has_header: bool = True,
-                 s3_file_delimiter: str = '|',
-                 null_value: str = '',
-                 ):
+    def __init__(
+            self,
+            config: S3_Bulk_Loader_Config,
+            has_header: bool = True,
+            s3_file_delimiter: str = '|',
+            null_value: str = '',
+            ):
         super().__init__(
             config=config,
         )
@@ -88,7 +89,8 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
         else:
             header_option = ''
 
-        return textwrap.dedent(f"""\
+        return textwrap.dedent(
+            f"""\
             {base_copy} --CSV specific Options:
             FORMAT CSV
             DELIMITER '{self.s3_file_delimiter}'
@@ -97,17 +99,18 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             {file_compression}
             {self._get_compression_option_str(analyze_compression)}
             {options}; commit;
-            """)
+            """
+            )
 
     def load_from_iterable_partition_fixed(
-           self,
-           iterable: Iterable,
-           table_object: Table,
-           table_to_load: str = None,
-           perform_rename: bool = False,
-           progress_frequency: int = 10,
-           analyze_compression: str = None,
-           parent_task: Optional[ETLTask] = None,
+            self,
+            iterable: Iterable,
+            table_object: Table,
+            table_to_load: str = None,
+            perform_rename: bool = False,
+            progress_frequency: int = 10,
+            analyze_compression: str = None,
+            parent_task: Optional[ETLTask] = None,
     ) -> int:
 
         row_count = 0
@@ -128,15 +131,15 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                     # noinspection PyTypeChecker
                     text_wrapper = io.TextIOWrapper(zip_file, encoding='utf-8')
                     writer = CSVWriter(
-                            parent_task,
-                            text_wrapper,
-                            delimiter=self.s3_file_delimiter,
-                            column_names=table_object.column_names,
-                            include_header=self.has_header,
-                            encoding='utf-8',
-                            escapechar='\\',
-                            quoting=QUOTE_MINIMAL,
-                            )
+                        parent_task,
+                        text_wrapper,
+                        delimiter=self.s3_file_delimiter,
+                        column_names=table_object.column_names,
+                        include_header=self.has_header,
+                        encoding='utf-8',
+                        escapechar='\\',
+                        quoting=QUOTE_MINIMAL,
+                    )
                     text_wrapper_pool.append(text_wrapper)
                     zip_pool.append(zip_file)
                     writer_pool.append(writer)
@@ -243,7 +246,9 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                     analyze_compression=analyze_compression,
                 )
                 if rows_loaded != row_number:
-                    self.log.error(f"COPY from files should have loaded {row_number:,} but it reports {rows_loaded:,} rows loaded")
+                    self.log.error(
+                        f"COPY from files should have loaded {row_number:,} but it reports {rows_loaded:,} rows loaded"
+                        )
             else:
                 self.log.info(f"{self} had nothing to do with 0 rows found")
             return row_number

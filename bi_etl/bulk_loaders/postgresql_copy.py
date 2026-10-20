@@ -80,15 +80,15 @@ class PostgreSQLCopy(BulkLoader):
             # Save to a file first, so we can call load_from_files
             with open(data_file_path, 'w+', encoding="utf-8") as file:
                 with CSVWriter(
-                    parent_task,
-                    file,
-                    delimiter=self.config.delimiter,
-                    column_names=table_object.column_names,
-                    include_header=self.config.header,
-                    encoding='utf-8',
-                    escapechar='\\',
-                    quoting=QUOTE_MINIMAL,
-                    null=self.config.null,
+                        parent_task,
+                        file,
+                        delimiter=self.config.delimiter,
+                        column_names=table_object.column_names,
+                        include_header=self.config.header,
+                        encoding='utf-8',
+                        escapechar='\\',
+                        quoting=QUOTE_MINIMAL,
+                        null=self.config.null,
                 ) as writer:
                     for row in iterable:
                         writer.insert_row(row)

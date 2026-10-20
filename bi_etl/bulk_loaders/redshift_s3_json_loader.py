@@ -7,9 +7,9 @@ import json
 import os.path
 import os.path
 import textwrap
-from typing import *
 from datetime import datetime
 from tempfile import TemporaryDirectory
+from typing import *
 
 from bi_etl.bulk_loaders.redshift_s3_base import RedShiftS3Base
 from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
@@ -21,9 +21,10 @@ if TYPE_CHECKING:
 
 
 class RedShiftS3JSONBulk(RedShiftS3Base):
-    def __init__(self,
-                 config: S3_Bulk_Loader_Config,
-                 ):
+    def __init__(
+            self,
+            config: S3_Bulk_Loader_Config,
+            ):
         super().__init__(
             config=config,
         )
@@ -45,13 +46,15 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
             table_to_load=table_to_load,
         )
 
-        return textwrap.dedent(f"""\
+        return textwrap.dedent(
+            f"""\
             {base_copy} --JSON specific Options:                      
             JSON 'auto'
             {file_compression}
             {self._get_compression_option_str(analyze_compression)}
             {options}; commit;
-            """)
+            """
+            )
 
     @staticmethod
     def json_serializer(value):

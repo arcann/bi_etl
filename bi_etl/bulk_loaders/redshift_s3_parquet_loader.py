@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 
 class RedShiftS3ParquetBulk(RedShiftS3Base):
     def __init__(
-        self,
-        config: S3_Bulk_Loader_Config,
+            self,
+            config: S3_Bulk_Loader_Config,
     ):
         super().__init__(
             config=config,
@@ -60,13 +60,15 @@ class RedShiftS3ParquetBulk(RedShiftS3Base):
             table_to_load=table_to_load,
         )
 
-        return textwrap.dedent(f"""\
+        return textwrap.dedent(
+            f"""\
             {base_copy} --PARQUET specific Options:
             FORMAT PARQUET
             {file_compression}  
             {self._get_compression_option_str(analyze_compression)}
             {options}; commit;
-            """)
+            """
+            )
 
     def _write_to_file(
             self,
@@ -88,14 +90,14 @@ class RedShiftS3ParquetBulk(RedShiftS3Base):
         self.log.debug(f"Closed bulk load chunk {file_number}: {filepath}")
 
     def load_from_iterable(
-        self,
-        iterable: Iterable,
-        table_object: Table,
-        table_to_load: str = None,
-        perform_rename: bool = False,
-        progress_frequency: int = 10,
-        analyze_compression: str = None,
-        parent_task: Optional[ETLTask] = None,
+            self,
+            iterable: Iterable,
+            table_object: Table,
+            table_to_load: str = None,
+            perform_rename: bool = False,
+            progress_frequency: int = 10,
+            analyze_compression: str = None,
+            parent_task: Optional[ETLTask] = None,
     ) -> int:
 
         table_to_load = table_to_load or table_object.qualified_table_name
@@ -184,7 +186,9 @@ class RedShiftS3ParquetBulk(RedShiftS3Base):
                 analyze_compression=analyze_compression,
             )
             if rows_loaded != data_length:
-                self.log.error(f"COPY from files should have loaded {data_length:,} but it reports {rows_loaded:,} rows loaded")
+                self.log.error(
+                    f"COPY from files should have loaded {data_length:,} but it reports {rows_loaded:,} rows loaded"
+                    )
             else:
                 self.log.info(f"{self} had nothing to do with 0 rows found")
             return data_length

@@ -2,13 +2,11 @@
 from __future__ import annotations
 
 import logging
-import os.path
 import textwrap
 import time
 from pathlib import Path
 from typing import *
 
-import boto3
 import sqlalchemy
 from sqlalchemy import text
 
@@ -72,7 +70,9 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
                     self.log.info(f'{key} is not available for loading. 3 minute wait is over. FATAL. {t_end}')
                     response = False
                 else:
-                    self.log.info(f'{key} is probably not finished syncing among AWS S3 nodes, we will retry again after 5 second. {time.time()}')
+                    self.log.info(
+                        f'{key} is probably not finished syncing among AWS S3 nodes, we will retry again after 5 second. {time.time()}'
+                        )
                     time.sleep(5)
                     response = self.bucket.Object(s3_path).get()
 
@@ -98,10 +98,11 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
 
         if pg_last_copy_id != -1:
             sql = """
-                    SELECT *
-                    FROM stl_load_errors
-                    WHERE query = pg_last_copy_id()
-                    ORDER BY starttime DESC
+                  SELECT *
+                  FROM stl_load_errors
+                  WHERE query = PG_LAST_COPY_ID()
+                  ORDER BY
+                      starttime DESC
                   """
         else:
             self.log.error(f"Unable to use pg_last_copy_id().  Seems to only work on successful COPY.")
@@ -126,7 +127,9 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
             c_type = strip(row.type)
             col_length = strip(row.col_length)
             err_reason = str(row.err_reason).strip()
-            self.log.error(f'!!!! stl_load_errors row: {rows_found} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            self.log.error(
+                f'!!!! stl_load_errors row: {rows_found} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+                )
             self.log.error(f'{filename} had an error')
             self.log.error(f'stl_load_errors.err_reason={err_reason}')
             self.log.error(f'stl_load_errors.err_code={row.err_code}')
@@ -207,9 +210,9 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
 
         if connection is not None:
             sql = f"""
-            SELECT SUM(lines_scanned) as lines_scanned, count(DISTINCT filename) as file_cnt
+            SELECT SUM(lines_scanned) AS lines_scanned, COUNT(DISTINCT filename) AS file_cnt
             FROM stl_load_commits
-            WHERE query = pg_last_copy_id()
+            WHERE query = PG_LAST_COPY_ID()
             """
             # Default to -1 rows to indicate error
             rows_loaded = -1
@@ -257,14 +260,15 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
         else:
             credentials_option = '--No credentials'
 
-        return textwrap.dedent(f"""\
+        return textwrap.dedent(
+            f"""\
             COPY {table_to_load} 
                  FROM 's3://{self.s3_bucket_name}/{s3_source_path}'
                  {credentials_option}
                  {role_option}
                  {region_option}
             """
-        )
+            )
 
     def _get_compression_option_str(
             self,

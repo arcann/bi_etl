@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 class BulkLoader(ABC):
     def __init__(
-        self,
+            self,
     ):
         self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self._redact_values = set()
@@ -148,7 +148,8 @@ class BulkLoader(ABC):
     def apply_updates(
             self,
             table_object: Table,
-            update_rows: Sequence[Row]):
+            update_rows: Sequence[Row]
+    ):
         """
         NOT TESTED !
         """
@@ -167,7 +168,8 @@ class BulkLoader(ABC):
                         # Create a new temp table
                         table_name = "tmp_" + str(datetime.now().toordinal()) + str(tmp_id)
                         try:
-                            row_columns = [table_object.get_column(col_name).copy() for col_name in row.columns_in_order]
+                            row_columns = [table_object.get_column(col_name).copy() for col_name in
+                                           row.columns_in_order]
                             sa_table = sqlalchemy.schema.Table(
                                 table_name,
                                 table_object.database,
@@ -182,7 +184,7 @@ class BulkLoader(ABC):
                         task=table_object.task,
                         table_name=table_name,
                         database=table_object.database,
-                        )
+                    )
                     update_table_object.close()
                     pending_rows = list()
                     bcp_update_table_dict[update_stmt_key] = update_table_object, pending_rows

@@ -5,7 +5,7 @@ from bi_etl.bulk_loaders.databricks_s3_base import DatabricksS3Base
 from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 
 if TYPE_CHECKING:
-    from bi_etl.components.table import Table
+    pass
 else:
     Table = None
 
@@ -46,7 +46,7 @@ class DatabricksS3AvroBulkLoader(AvroBulkLoaderMixin, DatabricksS3Base):
             "FROM read_files("
             f"  's3://{self.s3_bucket_name}/{s3_source_path}',\n"
             "  format => 'avro',\n"
-            "  schemaEvolutionMode => 'none'\n" 
+            "  schemaEvolutionMode => 'none'\n"
             ")"
         )
         # Note: EvolutionMode => 'none' prevents the extra column for recovered data which can create conflicts mapping to the table

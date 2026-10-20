@@ -10,8 +10,8 @@ from bi_etl.bulk_loaders.s3_bulk_load_config import S3_Bulk_Loader_Config
 
 class RedShiftS3AvroBulk(AvroBulkLoaderMixin, RedShiftS3Base):
     def __init__(
-        self,
-        config: S3_Bulk_Loader_Config,
+            self,
+            config: S3_Bulk_Loader_Config,
     ):
         super().__init__(
             config=config,
@@ -41,10 +41,12 @@ class RedShiftS3AvroBulk(AvroBulkLoaderMixin, RedShiftS3Base):
             table_to_load=table_to_load,
         )
 
-        return textwrap.dedent(f"""\
+        return textwrap.dedent(
+            f"""\
             {base_copy} --AVRO specific Options:
             AVRO 'auto'
             {file_compression}  
             {self._get_compression_option_str(analyze_compression)}
             {options}; commit;
-            """)
+            """
+            )

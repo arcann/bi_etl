@@ -13,7 +13,6 @@ import fastavro
 from bi_etl.timer import Timer
 from bi_etl.utility.json import json_dumps
 
-
 if TYPE_CHECKING:
     from bi_etl.components.table import Table
     from bi_etl.scheduler.etl_task import ETLTask
@@ -56,9 +55,10 @@ class AvroBulkLoaderMixin:
         self._translate_columns: dict[str, Callable] = {}
 
     # --- Schema helpers ------------------------------------------------------
-    
+
     def _get_avro_schema(self, table_object: Table, table_name: str) -> dict:
         """Build an Avro record schema from *table_object*'s columns."""
+
         @dataclass
         class TypeDefn:
             type_list: list[str | dict]
@@ -71,18 +71,22 @@ class AvroBulkLoaderMixin:
             str: TypeDefn(type_list=['string']),
             bytes: TypeDefn(type_list=['bytes']),
             date: TypeDefn(type_list=['date']),
-            datetime: TypeDefn(type_list=[
-                {
-                    "type": "long",
-                    "logicalType": "timestamp-millis"
-                }
-            ]),
-            time_type: TypeDefn(type_list=[
-                {
-                    "type": "long",
-                    "logicalType": 'time-millis',
-                }
-            ]),
+            datetime: TypeDefn(
+                type_list=[
+                    {
+                        "type": "long",
+                        "logicalType": "timestamp-millis"
+                    }
+                ]
+            ),
+            time_type: TypeDefn(
+                type_list=[
+                    {
+                        "type": "long",
+                        "logicalType": 'time-millis',
+                    }
+                ]
+            ),
             timedelta: TypeDefn(type_list=['long'], conversion_function=timedelta.total_seconds),
             bool: TypeDefn(type_list=['boolean']),
             int: TypeDefn(type_list=['long']),
@@ -100,11 +104,13 @@ class AvroBulkLoaderMixin:
             col_type_defn = type_map.get(python_type, TypeDefn(['string'], conversion_function=str))
             if col_type_defn.conversion_function is not None:
                 self._translate_columns[column.name] = col_type_defn.conversion_function
-            fields.append({
-                'name': column.name,
-                'type': ['null', *col_type_defn.type_list],
-                'default': None,
-            })
+            fields.append(
+                {
+                    'name': column.name,
+                    'type': ['null', *col_type_defn.type_list],
+                    'default': None,
+                }
+            )
         return {
             'name': table_name,
             'type': 'record',
@@ -113,7 +119,7 @@ class AvroBulkLoaderMixin:
 
     def _parse_avro_schema(self, table_object: Table, table_name: str):
         """Build and parse an Avro schema, returning the parsed form."""
-        schema = self._get_avro_schema(table_object, table_name)        
+        schema = self._get_avro_schema(table_object, table_name)
         try:
             parsed_schema = fastavro.parse_schema(schema)
             self.log.debug(f"Avro schema = {schema}")
@@ -247,4 +253,3 @@ class AvroBulkLoaderMixin:
             else:
                 self.log.info(f"{self} had nothing to do with 0 rows found")
                 return 0
-

@@ -11,9 +11,9 @@ from bi_etl.utility.bcp_helpers import create_bcp_format_file, run_bcp, BCPError
 
 class SQLServerBCP(BulkLoader):
     def __init__(
-        self,
-        bcp_config: BCP_Config,
-        bcp_encoding: str = 'utf-8',
+            self,
+            bcp_config: BCP_Config,
+            bcp_encoding: str = 'utf-8',
     ):
         super().__init__()
         self.bcp_config = bcp_config
@@ -103,20 +103,20 @@ class SQLServerBCP(BulkLoader):
                     file.write(line + '\n')
 
             # with CSVWriter(
-                # parent_task,
-                # data_file_path,
-                # delimiter=self.delimiter,
-                # column_names=table_object.column_names,
-                # include_header=False,
-                # encoding='utf-8',
-                # escapechar='\\',
-                # doublequote=False,
-                # quotechar='\000',
-                # quoting=QUOTE_NONE,
+            # parent_task,
+            # data_file_path,
+            # delimiter=self.delimiter,
+            # column_names=table_object.column_names,
+            # include_header=False,
+            # encoding='utf-8',
+            # escapechar='\\',
+            # doublequote=False,
+            # quotechar='\000',
+            # quoting=QUOTE_NONE,
             # ) as target_file:
-                # for row in iterator:
-                    # row_count += 1
-                    # target_file.insert_row(row)
+            # for row in iterator:
+            # row_count += 1
+            # target_file.insert_row(row)
 
             row_count = self.load_from_files(
                 [format_file_path, data_file_path],
