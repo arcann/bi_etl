@@ -70,7 +70,14 @@ class AvroBulkLoaderMixin:
         type_map = {
             str: TypeDefn(type_list=['string']),
             bytes: TypeDefn(type_list=['bytes']),
-            date: TypeDefn(type_list=['date']),
+            date: TypeDefn(
+                type_list=[
+                    {
+                        "type": "int",
+                        "logicalType": "date"
+                    }
+                ]
+            ),
             datetime: TypeDefn(
                 type_list=[
                     {
@@ -91,7 +98,18 @@ class AvroBulkLoaderMixin:
             bool: TypeDefn(type_list=['boolean']),
             int: TypeDefn(type_list=['long']),
             float: TypeDefn(type_list=['double']),
-            Decimal: TypeDefn(type_list=['int', 'double']),
+            # Note: Decimal has special handling below. This is placed here as a potential default
+            Decimal: TypeDefn(
+                type_list=[
+                    {
+                        "type": "bytes",
+                        "logicalType": "decimal",
+                        "precision": 38,
+                        "scale": 10
+                    }
+                ],
+                conversion_function=float,
+            ),
             object: TypeDefn(type_list=['string'], conversion_function=json_dumps),
             dict: TypeDefn(type_list=['string'], conversion_function=json_dumps),
             list: TypeDefn(type_list=['string'], conversion_function=json_dumps),
@@ -101,9 +119,21 @@ class AvroBulkLoaderMixin:
         columns = table_object.columns
         for column in columns:
             python_type = table_object._get_python_type(column.type)
-            col_type_defn = type_map.get(python_type, TypeDefn(['string'], conversion_function=str))
-            if col_type_defn.conversion_function is not None:
-                self._translate_columns[column.name] = col_type_defn.conversion_function
+            if python_type == Decimal:
+                col_type_defn = TypeDefn(
+                    type_list=[
+                        {
+                            "type": "bytes",
+                            "logicalType": "decimal",
+                            "precision": column.type.precision,
+                            "scale": column.type.scale
+                        }
+                    ],
+                )
+            else:
+                col_type_defn = type_map.get(python_type, TypeDefn(['string'], conversion_function=str))
+                if col_type_defn.conversion_function is not None:
+                    self._translate_columns[column.name] = col_type_defn.conversion_function
             fields.append(
                 {
                     'name': column.name,
