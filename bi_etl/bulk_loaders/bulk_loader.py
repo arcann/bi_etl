@@ -71,27 +71,10 @@ class BulkLoader(ABC):
             options: str = '',
             analyze_compression: str | None = None,
     ) -> int:
+        """
+        Note: This method is NOT required for all bulk loaders.
+        """
         raise NotImplementedError()
-
-    def load_from_iterator(
-            self,
-            iterator: Iterator,
-            table_object: Table,
-            table_to_load: str | None = None,
-            perform_rename: bool = False,
-            progress_frequency: int = 10,
-            analyze_compression: str | None = None,
-            parent_task: Optional[ETLTask] = None,
-    ) -> int:
-        return self.load_from_iterable(
-            iterable=iterator,
-            table_object=table_object,
-            table_to_load=table_to_load,
-            perform_rename=perform_rename,
-            progress_frequency=progress_frequency,
-            analyze_compression=analyze_compression,
-            parent_task=parent_task,
-        )
 
     @abstractmethod
     def load_from_iterable(
@@ -104,6 +87,9 @@ class BulkLoader(ABC):
             analyze_compression: str | None = None,
             parent_task: Optional[ETLTask] = None,
     ) -> int:
+        """
+        Note: This method is IS required for all bulk loaders.
+        """
         raise NotImplementedError()
 
     def load_table_from_cache(

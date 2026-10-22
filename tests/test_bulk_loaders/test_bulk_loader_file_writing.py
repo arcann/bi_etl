@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import csv
 import gzip
-import io
 import os
+import sys
 from datetime import date, datetime
 from decimal import Decimal
 from tempfile import TemporaryDirectory
+from typing import Iterable, Optional
 from unittest.mock import MagicMock
 
 import fastavro
@@ -17,7 +18,19 @@ from sqlalchemy import Boolean, Date, DateTime, Float, Integer, Numeric, String
 from bi_etl.bulk_loaders.avro_bulk_loader_mixin import AvroBulkLoaderMixin
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.bulk_loaders.csv_bulk_loader_mixin import CsvBulkLoaderMixin
+from bi_etl.components.table import Table
+from bi_etl.scheduler.etl_task import ETLTask
 
+import sys
+
+# Detect if the current run is executing via pytest
+if "PYTEST_VERSION" in os.environ or "PYTEST_CURRENT_TEST" in os.environ:
+    pass
+else:
+    raise AssertionError(
+        "CRITICAL: This test suite must be run using 'pytest'. "
+        "Running via 'unittest' or direct python execution will fail."
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Concrete test subclasses
@@ -30,11 +43,29 @@ class _TestAvroBulkLoader(AvroBulkLoaderMixin, BulkLoader):
         super().__init__()
         self._init_avro(chunk_size=chunk_size)
 
-    def load_from_iterable(self, iterable, table_object, **kwargs):
-        raise NotImplementedError
+    def load_from_iterable(
+            self,
+            iterable: Iterable,
+            table_object: Table,
+            table_to_load: str | None = None,
+            perform_rename: bool = False,
+            progress_frequency: int = 10,
+            analyze_compression: str | None = None,
+            parent_task: Optional[ETLTask] = None,
+    ) -> int:
+        raise NotImplementedError()
 
-    def load_from_files(self, local_files, table_object=None, **kwargs):
-        raise NotImplementedError
+    def load_from_files(
+            self,
+            local_files: list,
+            table_object: Table,
+            table_to_load: str | None = None,
+            perform_rename: bool = False,
+            file_compression: str = '',
+            options: str = '',
+            analyze_compression: str | None = None,
+    ) -> int:
+        raise NotImplementedError()
 
 
 class _TestCsvBulkLoader(CsvBulkLoaderMixin, BulkLoader):
@@ -55,11 +86,29 @@ class _TestCsvBulkLoader(CsvBulkLoaderMixin, BulkLoader):
             null_value=null_value,
         )
 
-    def load_from_iterable(self, iterable, table_object, **kwargs):
-        raise NotImplementedError
+    def load_from_iterable(
+            self,
+            iterable: Iterable,
+            table_object: Table,
+            table_to_load: str | None = None,
+            perform_rename: bool = False,
+            progress_frequency: int = 10,
+            analyze_compression: str | None = None,
+            parent_task: Optional[ETLTask] = None,
+    ) -> int:
+        raise NotImplementedError()
 
-    def load_from_files(self, local_files, **kwargs):
-        raise NotImplementedError
+    def load_from_files(
+            self,
+            local_files: list,
+            table_object: Table,
+            table_to_load: str | None = None,
+            perform_rename: bool = False,
+            file_compression: str = '',
+            options: str = '',
+            analyze_compression: str | None = None,
+    ) -> int:
+        raise NotImplementedError()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -86,6 +135,7 @@ class _MockTable:
     def columns(self):
         return self._columns
 
+    # noinspection method-may-be-static
     def _get_python_type(self, sa_type):
         # SQLAlchemy types expose .python_type directly
         return sa_type.python_type
@@ -96,51 +146,51 @@ class _MockTable:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _SA_COLUMNS = [
-    _MockColumn('id',          Integer()),
-    _MockColumn('name',        String()),
-    _MockColumn('score',       Float()),
-    _MockColumn('active',      Boolean()),
-    _MockColumn('birthday',    Date()),
-    _MockColumn('created_at',  DateTime()),
-    _MockColumn('amount',      Numeric(precision=10, scale=2)),
+    _MockColumn('id', Integer()),
+    _MockColumn('name', String()),
+    _MockColumn('score', Float()),
+    _MockColumn('active', Boolean()),
+    _MockColumn('birthday', Date()),
+    _MockColumn('created_at', DateTime()),
+    _MockColumn('amount', Numeric(precision=10, scale=2)),
 ]
 
 _AVRO_ROWS = [
     {
-        'id':         1,
-        'name':       'Alice',
-        'score':      9.5,
-        'active':     True,
-        'birthday':   date(1990, 1, 15),
+        'id': 1,
+        'name': 'Alice',
+        'score': 9.5,
+        'active': True,
+        'birthday': date(1990, 1, 15),
         'created_at': datetime(2024, 3, 1, 12, 0, 0),
-        'amount':     Decimal('99.99'),
+        'amount': Decimal('99.99'),
     },
     {
-        'id':         2,
-        'name':       'Bob',
-        'score':      7.0,
-        'active':     False,
-        'birthday':   date(1985, 6, 30),
+        'id': 2,
+        'name': 'Bob',
+        'score': 7.0,
+        'active': False,
+        'birthday': date(1985, 6, 30),
         'created_at': datetime(2024, 3, 2, 8, 30, 0),
-        'amount':     Decimal('1234.56'),
+        'amount': Decimal('1234.56'),
     },
     {
         # All nullable fields set to None
-        'id':         None,
-        'name':       'Carol',
-        'score':      None,
-        'active':     True,
-        'birthday':   None,
+        'id': None,
+        'name': 'Carol',
+        'score': None,
+        'active': True,
+        'birthday': None,
         'created_at': None,
-        'amount':     None,
+        'amount': None,
     },
 ]
 
 _CSV_COLUMNS = ['id', 'name', 'value', 'flag']
 _CSV_ROWS = [
-    {'id': '1', 'name': 'Alice', 'value': '10.5',  'flag': 'Y'},
-    {'id': '2', 'name': 'Bob',   'value': '20.0',  'flag': 'N'},
-    {'id': '3', 'name': 'Carol', 'value': '',      'flag': 'Y'},
+    {'id': '1', 'name': 'Alice', 'value': '10.5', 'flag': 'Y'},
+    {'id': '2', 'name': 'Bob', 'value': '20.0', 'flag': 'N'},
+    {'id': '3', 'name': 'Carol', 'value': '', 'flag': 'Y'},
 ]
 
 
@@ -190,6 +240,7 @@ def _strip_tz(dt):
 # Avro: schema generation tests
 # ─────────────────────────────────────────────────────────────────────────────
 
+# noinspection bad-argument-type
 class TestAvroSchemaGeneration:
     """Verify _get_avro_schema produces a structurally correct Avro schema."""
 
@@ -234,7 +285,8 @@ class TestAvroSchemaGeneration:
     def test_decimal_column_uses_bytes_decimal_with_column_precision_scale(
             self, avro_loader, mock_table
     ):
-        """Numeric columns use the bytes+decimal logical type.
+        """
+        Numeric columns use the bytes+decimal logical type.
         Precision and scale come from the column's own type definition.
         """
         schema = avro_loader._get_avro_schema(mock_table, 'test_schema.test_table')
@@ -257,6 +309,7 @@ class TestAvroSchemaGeneration:
 # Avro: write-and-read-back tests
 # ─────────────────────────────────────────────────────────────────────────────
 
+# noinspection bad-argument-type
 class TestAvroWriteAndRead:
     """Write Avro chunks to a temp dir and verify the files read back correctly."""
     _ROUNDTRIP_ROWS = _AVRO_ROWS
@@ -321,7 +374,8 @@ class TestAvroWriteAndRead:
         assert rows[1]['birthday'] == date(1985, 6, 30)
 
     def test_datetime_value_survives_round_trip(self, avro_loader, mock_table):
-        """datetime objects are decoded with the correct UTC-normalised value.
+        """
+        datetime objects are decoded with the correct UTC-normalised value.
         fastavro returns timezone-aware datetimes for timestamp-millis; we strip
         tzinfo before comparing.
         """
@@ -386,7 +440,8 @@ class TestAvroWriteAndRead:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestCsvWriteAndRead:
-    """Write gzip CSV chunks via _open_csv_writer and verify the files.
+    """
+    Write gzip CSV chunks via _open_csv_writer and verify the files.
 
     We write rows via the underlying csv.DictWriter (returned by
     writer.get_writer()) rather than going through CSVWriter.insert_row, which
@@ -441,7 +496,7 @@ class TestCsvWriteAndRead:
             self._write_rows_to_file(csv_loader, _CSV_COLUMNS, _CSV_ROWS, path, mock_task)
             result = self._read_rows_from_file(path, csv_loader.csv_delimiter)
         assert result[0] == {'id': '1', 'name': 'Alice', 'value': '10.5', 'flag': 'Y'}
-        assert result[1] == {'id': '2', 'name': 'Bob',   'value': '20.0', 'flag': 'N'}
+        assert result[1] == {'id': '2', 'name': 'Bob', 'value': '20.0', 'flag': 'N'}
         assert result[2]['name'] == 'Carol'
 
     def test_header_row_contains_column_names(self, csv_loader, mock_task):
