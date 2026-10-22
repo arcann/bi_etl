@@ -1018,7 +1018,10 @@ class ETLTask(object):
             elif isinstance(channel_config, notifiers_config.JiraNotifier):
                 notifier_instance = Jira(channel_config, name=config_channel_name)
             else:
-                module, class_name = channel_config.notifier_class.rsplit('.', 1)
+                try:
+                    module, class_name = channel_config.notifier_class.rsplit('.', 1)
+                except ValueError:
+                    raise ValueError(f"{channel_config.notifier_class} is not a valid notifier class path")
                 mod_object = importlib.import_module(module)
                 class_object = getattr(mod_object, class_name)
                 notifier_instance = class_object(channel_config, name=config_channel_name)
