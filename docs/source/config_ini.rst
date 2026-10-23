@@ -148,12 +148,12 @@ In this example we ignore the division and put all the settings together.
     comment_on_each_instance=False
 
     [Slack_ETL]
-    notifier_class=Slack
+    __config_class__=bi_etl.config.notifiers_config.SlackNotifier
     token=xxxxxxxxxxxxxxxxxxxxx
     channel=#etl_${bi_etl.environment_name}
 
     [Slack_ETL_failure]
-    notifier_class=Slack
+    __config_class__=bi_etl.config.notifiers_config.SlackNotifier
     token=${Slack_ETL:token}
     channel=${Slack_ETL:channel}
     mention=@channel

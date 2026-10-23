@@ -5,9 +5,11 @@ import bi_etl.config.notifiers_config as notifiers_config
 
 
 class LogNotifier(NotifierBase):
-    def __init__(self, *, name: Optional[str] = None):
+    def __init__(self, config_section: notifiers_config.LogNotifierConfig | None = None, *, name: Optional[str] = None):
         super().__init__(name=name)
-        self.config_section = notifiers_config.LogNotifierConfig()
+        if config_section is None:
+            config_section = notifiers_config.LogNotifierConfig()
+        self.config_section = config_section
 
     def send(
             self,
