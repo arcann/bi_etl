@@ -2,33 +2,60 @@ from collections.abc import MutableSet
 
 
 class CaseInsensitiveSet(MutableSet):
-    """
-    Implements a case-insensitive set while still preserving the case of the first instance of each item.
-    """
-    def __init__(self, values):
-        self._values = {}
-        for v in values:
-            self.add(v)
+    def __init__(self, iterable=None):
+        # Dictionary maps case-folded strings to their original casings
+        self._data: dict[str, str] = dict()
+        if iterable:
+            for item in iterable:
+                self._add(item)
 
-    def __repr__(self):
-        return f'<{type(self).__name__}{tuple(self._values.values())} @ {id(self):x}>'
-
-    def __contains__(self, value: str):
-        return value.casefold() in self._values
+    def __contains__(self, value):
+        if not isinstance(value, str):
+            return False
+        return value.casefold() in self._data
 
     def __iter__(self):
-        return iter(self._values.values())
+        return iter(self._data.values())
 
     def __len__(self):
-        return len(self._values)
+        return len(self._data)
 
-    def add(self, value: str):
-        value_key = value.casefold()
-        if value_key not in self._values:
-            self._values[value_key] = value
+    def _add(self, value):
+        """
+        Internal method to add a value to the set.
 
-    def discard(self, value: str):
-        try:
-            del self._values[value.casefold()]
-        except KeyError:
-            pass
+        :param value:
+        :return:
+        """
+        folded = value.casefold()
+        if folded not in self._data:
+            self._data[folded] = value
+
+    def add(self, value):
+        self._add(value)
+
+    def discard(self, value):
+        self._data.pop(value.casefold(), None)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({list(self._data.values())})"
+
+
+class CaseInsensitiveFrozenSet(CaseInsensitiveSet, frozenset):
+    def __init__(self, iterable=None):
+        super().__init__(iterable)
+        self._frozenset = frozenset(self._data.keys())
+
+    def add(self, value):
+        raise NotImplementedError
+
+    def discard(self, value):
+        raise NotImplementedError
+
+    def __eq__(self, other):
+        if isinstance(other, CaseInsensitiveFrozenSet):
+            return self._frozenset == other._frozenset
+        return False
+
+    def __hash__(self):
+        return hash(self._frozenset)

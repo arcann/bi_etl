@@ -4,14 +4,14 @@ Created on Sep 17, 2014
 
 @author: Derek Wood
 """
-from collections import namedtuple
-from typing import Union, MutableMapping
+from typing import Union, MutableMapping, NamedTuple
 
 from pydicti import dicti
 
 from bi_etl.components.row.row import Row
 from bi_etl.components.row.row_iteration_header_case_insensitive import RowIterationHeaderCaseInsensitive
 from bi_etl.components.row.row_status import RowStatus
+from bi_etl.utility.case_insensitive_set import CaseInsensitiveFrozenSet
 
 
 class RowCaseInsensitive(Row):
@@ -28,8 +28,8 @@ class RowCaseInsensitive(Row):
 
     def __init__(self,
                  iteration_header: RowIterationHeaderCaseInsensitive,
-                 data: Union[MutableMapping, list, namedtuple, None] = None,
-                 status: RowStatus = None,
+                 data: Union[MutableMapping, list, NamedTuple, None] = None,
+                 status: RowStatus | None = None,
                  allocate_space=True):
         assert isinstance(iteration_header, RowIterationHeaderCaseInsensitive)
         super().__init__(data=data,
@@ -42,3 +42,7 @@ class RowCaseInsensitive(Row):
     def as_dict(self) -> dict:
         # noinspection PyTypeChecker
         return dicti(zip(self.columns_in_order, self._data_values))
+
+    @property
+    def column_set(self) -> frozenset:
+        return CaseInsensitiveFrozenSet(self.columns_in_order)

@@ -310,7 +310,7 @@ class TestRow(unittest.TestCase):
             pandas_series = pandas.Series(data=self.values3a, index=self.columns)
             row4 = Row(iteration_header, pandas_series)
             for k in self.columns:
-                self.assertIn(k, row4.column_set)
+                self.assertIn(k, row4)
                 self.assertEqual(self.row3a[k], row4[k])
 
         except ImportError:

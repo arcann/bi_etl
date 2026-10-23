@@ -10,10 +10,8 @@ from __future__ import annotations
 import collections.abc
 import dataclasses
 import warnings
-from collections import namedtuple
 from decimal import Decimal
-from typing import *
-from typing import Union, List, Iterable
+from typing import Union, List, Iterable, MutableMapping, NamedTuple, Sequence, MutableSequence, Callable
 
 from pydantic import BaseModel
 from sqlalchemy.sql.schema import Column
@@ -44,8 +42,8 @@ class Row(MutableMapping):
 
     def __init__(self,
                  iteration_header: RowIterationHeader,
-                 data: Union[MutableMapping, list, namedtuple, None] = None,
-                 status: Optional[RowStatus] = None,
+                 data: Union[MutableMapping, list, NamedTuple, None] = None,
+                 status: RowStatus | None = None,
                  allocate_space: bool = True):
         """
         Note: If data is passed here, it uses :py:meth:`bi_etl.components.row.row.Row.update` to map the data
@@ -160,7 +158,7 @@ class Row(MutableMapping):
         # Restore column values
         self._data_values = incoming_dict['v']
 
-    def update_from_namedtuple(self, source_data: namedtuple):
+    def update_from_namedtuple(self, source_data: NamedTuple):
         """
         Update the row values from a ``namedtuple`` instance.
         Adds columns for any new names found.
@@ -334,6 +332,7 @@ class Row(MutableMapping):
 
     def __str__(self):
         if self.primary_key is not None:
+            # noinspection not-iterable
             key_values = [(col, self.get(col, '<N/A>')) for col in self.primary_key]
             return f"{self.name} key_values={key_values} status={self.status}"
         else:
@@ -396,7 +395,9 @@ class Row(MutableMapping):
         if current_length < desired_size:
             self._data_values.extend([None for _ in range(desired_size - current_length)])
 
-    def _raw_setitem(self, column_name: Union[str, Column], value):
+    def _raw_setitem(self, column_name: str | Column, value):
+        if isinstance(column_name, Column):
+            column_name = column_name.name
         self.iteration_header = self.iteration_header.row_set_item(column_name, value, self)
 
     def __setitem__(self, key, value):
@@ -552,9 +553,9 @@ class Row(MutableMapping):
 
     def subset(
             self,
-            exclude: Optional[Iterable] = None,
-            rename_map: Optional[Union[dict, List[tuple]]] = None,
-            keep_only: Optional[Iterable] = None,
+            exclude: Iterable | None = None,
+            rename_map: dict | List[tuple] | None = None,
+            keep_only: Iterable | None = None,
             ) -> 'Row':
         """
         Return a new row instance with a subset of the columns. Original row is not modified
@@ -624,7 +625,7 @@ class Row(MutableMapping):
         return self.iteration_header.column_count
 
     @property
-    def positioned_column_set(self) -> Set[tuple]:
+    def positioned_column_set(self) -> set[tuple]:
         """
         An ImmutableSet of the tuples (column, position) for this row.
         Used to store different row configurations in a dictionary or set.
@@ -675,7 +676,7 @@ class Row(MutableMapping):
                 return False
         elif val2 is None:
             return False
-        elif type(val1) == type(val2):
+        elif type(val1) is type(val2):
             return val1 == val2
         elif type(val1) in self.NUMERIC_TYPES and type(val2) in self.NUMERIC_TYPES:
             return Decimal(val1) == Decimal(val2)
@@ -686,8 +687,8 @@ class Row(MutableMapping):
 
     def compare_to(self,
                    other_row: 'Row',
-                   exclude: Iterable = None,
-                   compare_only: Iterable = None,
+                   exclude: Iterable | None = None,
+                   compare_only: Iterable | None = None,
                    coerce_types: bool = True) -> MutableSequence[ColumnDifference]:
         """
         Compare one RowCaseInsensitive to another. Returns a list of differences.
@@ -729,6 +730,8 @@ class Row(MutableMapping):
         return differences_list
 
     def __eq__(self, other):
+        if not isinstance(other, Row):
+            return False
         try:
             diffs = self.compare_to(other)
         except KeyError:
