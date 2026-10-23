@@ -98,6 +98,9 @@ class NotifierBase(object):
         self.name = name or class_name
         self.config_section = notifiers_config.NotifierConfigBase(notifier_class=class_name)
 
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}({self.config_section})"
+
     def warn_kwargs(self, **kwargs):
         if kwargs is not None:
             if len(kwargs) > 0:

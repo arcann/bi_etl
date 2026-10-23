@@ -15,7 +15,7 @@ class LogNotifier(NotifierBase):
             self,
             subject: str,
             message: str,
-            sensitive_message: str = None,
+            sensitive_message: str | None = None,
             attachment: Optional[NotifierAttachment] = None,
             throw_exception: bool = False,
             **kwargs

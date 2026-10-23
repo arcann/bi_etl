@@ -7,7 +7,7 @@ import hashlib
 import re
 from os.path import commonpath
 from pathlib import Path
-from typing import Union, Dict, Iterable
+from typing import Union, Iterable
 
 import sqlparse
 from pydicti import Dicti
@@ -22,9 +22,9 @@ class RunSQLScript(ETLTask):
     def __init__(self,
                  config: BI_ETL_Config_Base,
                  database_entry: Union[str, DatabaseMetadata],
-                 script_name: Union[str, Path],
-                 script_path: Union[str, Path] = None,
-                 sql_replacements: Dict[str, str] = None,
+                 script_name: str | Path,
+                 script_path: str | Path | None = None,
+                 sql_replacements: dict[str, str] | None = None,
                  task_id=None,
                  parent_task_id=None,
                  root_task_id=None,

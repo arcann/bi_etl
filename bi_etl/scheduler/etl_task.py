@@ -16,9 +16,6 @@ from inspect import signature
 from pathlib import Path
 from typing import *
 
-from config_wrangler.config_templates.config_hierarchy import ConfigHierarchy
-from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
-from config_wrangler.config_types.dynamically_referenced import DynamicallyReferenced
 from pydicti import dicti, Dicti
 
 import bi_etl
@@ -38,6 +35,9 @@ from bi_etl.utility.dagster_utils.dagster_types import (
     DAGSTER_ASSET_KEY, DAGSTER_INPUTS_TYPE, DAGSTER_ASSET_IN,
     DAGSTER_CONFIG, DAGSTER_AUTO_MATERIALIZE_POLICY, DAGSTER_SENSOR_TYPE, DAGSTER_ASSETS_TYPE, _DAGSTER_INPUT_TYPE,
 )
+from config_wrangler.config_templates.config_hierarchy import ConfigHierarchy
+from config_wrangler.config_templates.sqlalchemy_database import SQLAlchemyDatabase
+from config_wrangler.config_types.dynamically_referenced import DynamicallyReferenced
 
 if TYPE_CHECKING:
     from bi_etl.utility.run_sql_script import RunSQLScript
@@ -176,7 +176,7 @@ class ETLTask(object):
     @lru_cache(maxsize=None)
     def dagster_get_config(
             cls,
-            dagster_config: DAGSTER_CONFIG = None,
+            dagster_config: DAGSTER_CONFIG | None = None,
             *,
             debug: bool = False,
             **kwargs
@@ -437,7 +437,7 @@ class ETLTask(object):
         self.finish_timer = Timer(start_running=False)
         self.suppress_notifications = False
         # noinspection PyTypeChecker
-        self._notifiers: Dict[NotifierBase] = dict()
+        self._notifiers: dict[str, NotifierBase] = dict()
         self.log_notifier = LogNotifier(name='log')
         self.log_handler = None
         self.dagster_results = None
@@ -537,7 +537,7 @@ class ETLTask(object):
         """
         return list()
 
-    def dependency_full_set(self, parents: tuple = None) -> FrozenSet['ETLTask']:
+    def dependency_full_set(self, parents: tuple | None = None) -> FrozenSet['ETLTask']:
         dependency_set = self.depends_on()
         if dependency_set is None:
             dependency_set = set()
@@ -635,8 +635,8 @@ class ETLTask(object):
     def SQLDep(
             self,
             sql_path: str,
-            script_path: str = None,
-            database: DatabaseMetadata = None
+            script_path: str | None = None,
+            database: DatabaseMetadata | None = None
     ) -> 'RunSQLScript':
         if database is None:
             try:
@@ -759,7 +759,7 @@ class ETLTask(object):
 
         :return:
         """
-        return NotImplementedError()
+        raise NotImplementedError()
 
     def get_database_metadata(self, db_config: SQLAlchemyDatabase) -> DatabaseMetadata:
         if isinstance(db_config, SQLAlchemyDatabase):
@@ -780,12 +780,13 @@ class ETLTask(object):
 
     def get_sql_script_runner(
             self,
-            script_name: Union[str, Path],
-            script_path: Union[str, Path],
-            database_entry: Union[str, DatabaseMetadata, None] = None,
+            script_name: str | Path,
+            script_path: str | Path | None,
+            database_entry: str | DatabaseMetadata | None = None,
     ) -> 'bi_etl.utility.run_sql_script.RunSQLScript':
         if database_entry is None:
             database_entry = self.get_database_name()
+            assert database_entry is not None
         # Late import to avoid circular dependency
         from bi_etl.utility.run_sql_script import RunSQLScript
         return RunSQLScript(
@@ -1002,12 +1003,10 @@ class ETLTask(object):
 
     def _build_notifier(self, channel_config: ConfigHierarchy) -> NotifierBase:
         config_channel_name = channel_config.full_item_name()
-        notifier_class_str = 'unset'
+        notifier_instance = None
         try:
             if channel_config == 'LogNotifier':
-                notifier_class_str = channel_config
-            else:
-                notifier_class_str = channel_config.notifier_class
+                channel_config = notifiers_config.LogNotifierConfig()
 
             if isinstance(channel_config, notifiers_config.LogNotifierConfig):
                 notifier_instance = LogNotifier(name=config_channel_name)
@@ -1019,20 +1018,32 @@ class ETLTask(object):
                 notifier_instance = Jira(channel_config, name=config_channel_name)
             else:
                 try:
+                    # noinspection unresolved-references
                     module, class_name = channel_config.notifier_class.rsplit('.', 1)
+                except AttributeError:
+                    raise ValueError(
+                        f"{channel_config} does not specify notifier class and is not a known NotifierConfig"
+                    )
                 except ValueError:
-                    raise ValueError(f"{channel_config.notifier_class} is not a valid notifier class path")
+                    # noinspection unresolved-references
+                    raise ValueError(
+                        f"{channel_config.notifier_class} is not a valid notifier class path. "
+                        f"See {channel_config} section."
+                    )
                 mod_object = importlib.import_module(module)
                 class_object = getattr(mod_object, class_name)
                 notifier_instance = class_object(channel_config, name=config_channel_name)
 
-            if notifier_instance is not None:
+            if notifier_instance is not None and isinstance(notifier_instance, NotifierBase):
                 return notifier_instance
+            else:
+                raise ValueError(f"{channel_config} did not resolve to a valid notifier class")
+                # Note: this will be caught immediately below
         except Exception as e:
             self.log.exception(e)
             if self.config.notifiers.failed_notifications is not None:
                 try:
-                    fallback_message = f'Notification to {channel_config} {notifier_class_str} failed with error={e}'
+                    fallback_message = f'Notification to {channel_config} {notifier_instance} failed with error={e}'
                     fallback_notifiers_list = self.get_notifiers(self.config.notifiers.failed_notifications)
                     for fallback_notifier in fallback_notifiers_list:
                         fallback_notifier.send(
@@ -1076,12 +1087,12 @@ class ETLTask(object):
 
     def notify(
             self,
-            channel_list: List[DynamicallyReferenced],
+            channel_list: List[DynamicallyReferenced] | List[notifiers_config.NotifierConfigBase],
             subject,
             message=None,
-            sensitive_message: str = None,
+            sensitive_message: str | None = None,
             attachment=None,
-            skip_channels: set = None,
+            skip_channels: set | None = None,
             **kwargs
     ):
         if self.suppress_notifications:
@@ -1090,11 +1101,16 @@ class ETLTask(object):
         else:
             # Note: all exceptions are caught since we don't want notifications to kill the load
             try:
-                filtered_channels = list()
+                filtered_channels: list[notifiers_config.NotifierConfigBase] = list()
 
                 for channel in channel_list:
-                    if skip_channels is None or channel.ref not in skip_channels:
-                        filtered_channels.append(channel)
+                    if isinstance(channel, DynamicallyReferenced):
+                        if skip_channels is None or channel.ref not in skip_channels:
+                            # noinspection bad-argument-type
+                            filtered_channels.append(channel.get_referenced())
+                    else:
+                        if skip_channels is None or channel not in skip_channels:
+                            filtered_channels.append(channel)
 
                 notifiers_list = self.get_notifiers(filtered_channels)
                 fallback_notifiers_list = self.get_notifiers(self.config.notifiers.failed_notifications)
@@ -1131,7 +1147,7 @@ class ETLTask(object):
             self,
             channel_list: List[DynamicallyReferenced],
             status_message: str,
-            skip_channels: set = None,
+            skip_channels: set | None = None,
     ):
         """
         Send a temporary status messages that gets overwritten with the next status message that is sent.
