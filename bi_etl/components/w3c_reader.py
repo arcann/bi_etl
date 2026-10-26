@@ -115,26 +115,23 @@ class W3CReader(ETLComponent):
         return self._line_num
 
     def _read_line(self) -> typing.Union[str, None]:
-        if len(self._pending_lines) == 0:
-            if self.read_all:
-                self._pending_lines = self.file.readlines()
-                if self._pending_lines:
-                    line = self._pending_lines.pop(0)
-                    self._line_num += 1
-                    return line.strip()
-                else:
-                    return None
-            else:
-                line = self.file.readline()
-                if line:
-                    self._line_num += 1
-                return line.strip()
+        if self._pending_lines:
+            line = self._pending_lines.pop(0)
+        elif self.read_all:
+            self._pending_lines = self.file.readlines()
+            if not self._pending_lines:
+                return None
+            line = self._pending_lines.pop(0)
         else:
-            return self._pending_lines.pop(0).strip()
+            line = self.file.readline()
+            if not line:
+                return None
+        self._line_num += 1
+        return line.strip()
 
     def _read_line_no_comments(self) -> typing.Union[str, None]:
         line = self._read_line()
-        while line is not None and line[0] == '#':
+        while line is not None and line.startswith('#'):
             line = self._read_line()
         return line
 

@@ -4,6 +4,7 @@ Created on Mar 2, 2015
 @author: Derek Wood
 """
 import logging
+import traceback
 from datetime import datetime, date
 from typing import Dict, Any, List, Mapping, Tuple, Generator
 
@@ -14,6 +15,7 @@ class StatementQueue(object):
     """
     A queue of pending SQLAlchemy statements
     """
+    _compiled_warning_logged: set = set()
 
     def __init__(self, execute_with_binds=True):
         """
@@ -40,8 +42,38 @@ class StatementQueue(object):
     def get_statement_by_key(self, key):
         return self.statements.get(key)
 
+    def _restore_compiled_statement(self, stmt, check_name: str):
+        """
+        Convert a Databricks compiled statement back into an executable statement.
+
+        Parameters
+        ----------
+        stmt:
+            The statement to check.
+        check_name:
+            Name of the calling check. The call stack warning is logged only once per check name.
+
+        Returns
+        -------
+        The original statement, or a :func:`sqlalchemy.text` statement if ``stmt`` was a
+        ``DatabricksStatementCompiler``.
+        """
+        # Work around for DatabricksStatementCompiler not being executable
+        # noinspection string-conversion-without-dunder-method
+        if 'DatabricksStatementCompiler' not in str(type(stmt)):
+            return stmt
+        if check_name not in StatementQueue._compiled_warning_logged:
+            StatementQueue._compiled_warning_logged.add(check_name)
+            self.log.warning(
+                f"Got DatabricksStatementCompiler in {check_name}. Turning it back into a regular statement. "
+                f"This warning is only logged once. Call stack that supplied the compiled statement:\n"
+                f"{''.join(traceback.format_stack()[:-1])}"
+            )
+        # noinspection string-conversion-without-dunder-method
+        return sqlalchemy.text(str(stmt))
+
     def add_statement(self, key, stmt):
-        self.statements[key] = stmt
+        self.statements[key] = self._restore_compiled_statement(stmt, 'add_statement')
 
     @staticmethod
     def encapsulate_value(value) -> str:
@@ -53,7 +85,7 @@ class StatementQueue(object):
             if value.microsecond == 0:
                 return "'" + value.isoformat() + "'"
             else:
-                return f"'{value:%Y-%m-%d %H:%M:%S}.{int(value.microsecond / 1000)}{value:%z}'"
+                return f"'{value:%Y-%m-%d %H:%M:%S}.{int(value.microsecond / 1000):03d}{value:%z}'"
         elif isinstance(value, date):
             return "'" + value.isoformat() + "'"
         elif value is None:
@@ -114,12 +146,10 @@ class StatementQueue(object):
             for stmtKey in self.statements.keys():
                 stmt = self.statements[stmtKey]
 
-                # Work around for DatabricksStatementCompiler not being executable
-                # noinspection string-conversion-without-dunder-method
-                if 'DatabricksStatementCompiler' in str(type(stmt)):
-                    self.log.warning(f"Got DatabricksStatementCompiler. Turning it back.")
-                    # noinspection string-conversion-without-dunder-method
-                    stmt = sqlalchemy.text(str(stmt))
+                # Backup for statements that reached the queue without going through add_statement
+                restored_stmt = self._restore_compiled_statement(stmt, 'execute')
+                if restored_stmt is not stmt:
+                    stmt = restored_stmt
                     self.statements[stmtKey] = stmt
 
                 values = self.statement_values[stmtKey]

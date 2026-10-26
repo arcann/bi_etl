@@ -6,6 +6,7 @@ Created on Sep 17, 2014
 import codecs
 import contextlib
 import dataclasses
+import functools
 import math
 import sys
 import textwrap
@@ -18,8 +19,6 @@ from enum import IntEnum, unique
 from typing import Any, Iterable, Callable, List, Dict, Tuple, Union, Optional, Set, MutableMapping, MutableSequence
 
 import sqlalchemy
-from gevent import spawn, sleep
-from gevent.queue import Queue
 from sqlalchemy import CHAR, Column
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.sql import ColumnElement
@@ -28,11 +27,13 @@ from sqlalchemy.sql.expression import bindparam
 from sqlalchemy.sql.type_api import TypeEngine
 
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
+from bi_etl.bulk_loaders.bulk_worker import BulkWorker
 from bi_etl.components.etlcomponent import ETLComponent
 from bi_etl.components.get_next_key.local_table_memory import LocalTableMemory
 from bi_etl.components.readonlytable import ReadOnlyTable
 from bi_etl.components.row.column_difference import ColumnDifference
 from bi_etl.components.row.row import Row
+from bi_etl.components.row.row_iteration_header import RowIterationHeader
 from bi_etl.components.row.row_status import RowStatus
 from bi_etl.conversions import nvl, int2base
 from bi_etl.conversions import replace_tilda
@@ -91,6 +92,12 @@ class Table(ReadOnlyTable):
     batch_size: int
         How many rows should be inserted / updated / deleted in a single batch.
         Default = 5000. Assigning None will use the default.
+
+    bulk_worker_chunk_size: int
+        How many rows :meth:`insert_row` buffers before handing them to the bulk loader worker.
+        Larger values reduce per-row overhead, but delay when the bulk loader first sees rows
+        (and so when a bulk loader failure is noticed). Use 1 to hand over each row immediately.
+        Default = 128.
 
     delete_flag : str
         The name of the delete_flag column, if any.
@@ -229,9 +236,8 @@ class Table(ReadOnlyTable):
         self.bulk_loader = None
         self._bulk_rollback = False
         self._bulk_load_performed = False
-        self._bulk_iter_sentinel = None
-        self._bulk_iter_queue = None
-        self._bulk_iter_worker = None
+        self.bulk_worker_chunk_size = BulkWorker.DEFAULT_CHUNK_SIZE
+        self._bulk_worker: Optional[BulkWorker] = None
         self._bulk_iter_max_q_length = 0
         self._bulk_defaulted_columns = set()
 
@@ -311,6 +317,32 @@ class Table(ReadOnlyTable):
         # Should be the after all self attributes are created
         self.set_kwattrs(**kwargs)
 
+    @property
+    def natural_key(self) -> list:
+        """
+        Get this tables natural key
+        """
+        try:
+            return ReadOnlyTable.natural_key.fget(self)
+        except ValueError:
+            if not self.auto_generate_key:
+                return self.primary_key
+            raise
+
+    @natural_key.setter
+    def natural_key(self, value: list):
+        """
+        Set this tables natural key.
+
+        Parameters
+        ----------
+        value:
+            Column names (or columns) that make up the natural key.
+            Delegates to the :py:attr:`bi_etl.components.readonlytable.ReadOnlyTable.natural_key` setter.
+        """
+        # Properties are not inherited as attributes of super(), so call the parent setter directly.
+        ReadOnlyTable.natural_key.fset(self, value)
+
     def close(self, error: bool = False):
         if not self.is_closed:
             if self.in_bulk_mode:
@@ -320,6 +352,7 @@ class Table(ReadOnlyTable):
                     )
                 elif error:
                     self.log.info(f"{self}.close() NOT causing bulk load due to error.")
+                    self._abort_bulk_worker()
                 else:
                     self.bulk_load_from_cache()
             else:
@@ -1778,28 +1811,26 @@ class Table(ReadOnlyTable):
         if self.in_bulk_mode:
             if not self.upsert_called:
                 stats['type'] = 'inserts to bulk collector'
-                if self._bulk_iter_sentinel is None:
+                if self._bulk_worker is None:
                     self.log.info(f"Setting up {self} worker to collect insert_row rows")
                     # It does make sense to default to not caching inserted rows
                     # UNLESS this table is also used as a lookup. Lookups should have been defined.
                     if len(self.lookups) == 0:
                         self.maintain_cache_during_load = False
-                    self._bulk_iter_sentinel = StopIteration
-                    self._bulk_iter_queue = Queue()
-                    # row_iter = iter(self._bulk_iter_queue.get, self._bulk_iter_sentinel)
-                    row_iter = self._bulk_iter_queue
-                    self._bulk_iter_worker = spawn(
-                        self.bulk_loader.load_from_iterable,
-                        row_iter,
-                        table_object=self,
-                        progress_frequency=None,
+                    self._bulk_worker = BulkWorker(
+                        functools.partial(
+                            self.bulk_loader.load_from_iterable,
+                            table_object=self,
+                            progress_frequency=None,
+                        ),
+                        name=f'{self} bulk loader',
+                        chunk_size=self.bulk_worker_chunk_size,
                     )
+                    self._bulk_worker.start()
                 self._raise_if_bulk_iter_worker_failed()
                 stats['rows_queued'] += 1
-                self._bulk_iter_queue.put(new_row)
-                self._bulk_iter_max_q_length = max(self._bulk_iter_max_q_length, len(self._bulk_iter_queue))
-                # Allow worker to act if it is ready
-                sleep()
+                self._bulk_worker.put(new_row)
+                self._bulk_iter_max_q_length = max(self._bulk_iter_max_q_length, len(self._bulk_worker))
         else:
             if self.batch_size > 1:
                 new_row.status = RowStatus.insert
@@ -2720,6 +2751,10 @@ class Table(ReadOnlyTable):
         stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
         stats.timer.start()
 
+        if not isinstance(updates_to_make, Row):
+            iteration_header = RowIterationHeader()
+            updates_to_make = Row(iteration_header, data=updates_to_make)
+
         try:
             _ = updates_to_make.columns_in_order
         except AttributeError:
@@ -2956,11 +2991,11 @@ class Table(ReadOnlyTable):
 
     def _raise_if_bulk_iter_worker_failed(self):
         """
-        Raise the exception from the bulk loader greenlet, if it has failed.
+        Raise the exception from the bulk loader worker, if it has failed.
 
         Cheap enough to call on every row. Allows a failure in
         :meth:`bi_etl.bulk_loaders.bulk_loader.BulkLoader.load_from_iterable`
-        to surface in the calling greenlet instead of only at the end of the load.
+        to surface in the calling thread instead of only at the end of the load.
 
         Raises
         ------
@@ -2969,16 +3004,29 @@ class Table(ReadOnlyTable):
         RuntimeError
             If the bulk loader worker finished before the end of the input rows.
         """
-        worker = self._bulk_iter_worker
-        if worker is None or not worker.ready():
+        worker = self._bulk_worker
+        if worker is None or not worker.done:
             return
         if worker.exception is not None:
             raise worker.exception
-        if self._bulk_iter_sentinel is not None:
+        if not worker.input_closed:
             raise RuntimeError(f"{self} bulk loader stopped before all rows were provided")
 
+    def _abort_bulk_worker(self):
+        """
+        Abandon any running insert_row bulk loader worker without completing the load.
+
+        The worker's loader sees :class:`bi_etl.bulk_loaders.bulk_worker.BulkWorkerAborted`
+        instead of an apparently complete (but truncated) input.
+        """
+        worker = self._bulk_worker
+        if worker is not None:
+            self._bulk_worker = None
+            if not worker.done:
+                worker.abort()
+
     def _set_upsert_mode(self):
-        if self._bulk_iter_sentinel is not None:
+        if self._bulk_worker is not None:
             raise ValueError(
                 "Upsert called on a table that is using insert_row method.  "
                 "Please manually set upsert_called = True before load operations."
@@ -3326,12 +3374,15 @@ class Table(ReadOnlyTable):
                         self.bulk_loader, BulkLoader
                     ), f'bulk_loader property needs to be instance of bulk_loader not {type(self.bulk_loader)}'
                     self.close_connections()
-                    if self._bulk_iter_sentinel is None:
+                    if self._bulk_worker is None:
                         if self.upsert_called:
                             self.log.info(f"Bulk load from lookup cache for {self}")
                             if temp_table is None:
                                 temp_table = self.qualified_table_name
-                            row_count = self.bulk_loader.load_table_from_cache(self, temp_table)
+                            row_count = self.bulk_loader.load_table_from_cache(
+                                table_object=self,
+                                table_to_load=temp_table
+                            )
                             stats['rows_loaded'] = row_count
                         else:
                             stats['rows_loaded'] = None
@@ -3340,18 +3391,18 @@ class Table(ReadOnlyTable):
                             )
                     else:
                         self.log.info(f"Bulk load from insert_row for {self}")
+                        worker = self._bulk_worker
+                        self._bulk_iter_max_q_length = max(self._bulk_iter_max_q_length, len(worker))
                         # Finish the iterator on the queue
-                        self._bulk_iter_queue.put(self._bulk_iter_sentinel)
-                        sleep(1)
-                        self._bulk_iter_max_q_length = max(self._bulk_iter_max_q_length, len(self._bulk_iter_queue))
-                        stats['max_insert_queue'] = self._bulk_iter_max_q_length
-                        stats['ending_insert_queue'] = len(self._bulk_iter_queue)
+                        worker.close_input()
                         self.log.info("Waiting for bulk loader")
-                        self._bulk_iter_worker.join()
-                        if self._bulk_iter_worker.exception is not None:
-                            raise self._bulk_iter_worker.exception
-                        stats['rows_loaded'] = self._bulk_iter_worker.value
-                        self._bulk_iter_sentinel = None
+                        worker.join()
+                        self._bulk_worker = None
+                        stats['max_insert_queue'] = self._bulk_iter_max_q_length
+                        stats['ending_insert_queue'] = len(worker)
+                        if worker.exception is not None:
+                            raise worker.exception
+                        stats['rows_loaded'] = worker.value
                     stats.timer.stop()
                     self._bulk_load_performed = True
                 else:
@@ -3461,6 +3512,7 @@ class Table(ReadOnlyTable):
         """
         if self.in_bulk_mode:
             self._bulk_rollback = True
+            self._abort_bulk_worker()
         else:
             self.log.debug("Rolling back transaction")
             stats = self.get_unique_stats_entry(stat_name, parent_stats=parent_stats)

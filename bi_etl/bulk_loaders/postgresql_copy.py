@@ -6,6 +6,7 @@ from typing import *
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.bulk_loaders.postgresql_bulk_load_config import PostgreSQLBulkLoaderConfig
 from bi_etl.components.csv_writer import CSVWriter, QUOTE_MINIMAL
+from bi_etl.components.row.row import Row
 from bi_etl.utility.postgresql.psycopg_helpers import psycopg_import_using_cursor, set_conn_encoding
 
 if TYPE_CHECKING:
@@ -17,10 +18,23 @@ else:
 
 
 class PostgreSQLCopy(BulkLoader):
+    """
+    Bulk loader that uses the PostgreSQL ``COPY`` command (via psycopg) to load delimited files.
+    """
+
     def __init__(
             self,
             config: PostgreSQLBulkLoaderConfig,
     ):
+        """
+        Initialise the loader.
+
+        Parameters
+        ----------
+        config
+            :class:`~bi_etl.bulk_loaders.postgresql_bulk_load_config.PostgreSQLBulkLoaderConfig` with the delimiter,
+            header, null, encoding and temp file settings.
+        """
         super().__init__(
         )
         self.config = config
@@ -35,6 +49,31 @@ class PostgreSQLCopy(BulkLoader):
             options: str = '',
             analyze_compression: str = None,
     ) -> int:
+        """
+        Load each of *local_files* into the table with ``COPY`` and commit.
+
+        Parameters
+        ----------
+        local_files
+            Delimited files to load, written to match the loader config.
+        table_object
+            Table to load into.
+        table_to_load
+            Name of the table to rename to when *perform_rename* is set.
+        perform_rename
+            Call :meth:`~bi_etl.bulk_loaders.bulk_loader.BulkLoader.rename_table` after the load.
+        file_compression
+            Not used.
+        options
+            Not used.
+        analyze_compression
+            Not used.
+
+        Returns
+        -------
+        int
+            Number of rows inserted by the last file loaded.
+        """
         rows_inserted = 0
         conn = None
         try:
@@ -66,14 +105,39 @@ class PostgreSQLCopy(BulkLoader):
 
     def load_from_iterable(
             self,
-            iterable: Iterable,
+            iterable: Iterable[Row],
             table_object: Table,
-            table_to_load: str = None,
+            table_to_load: str | None = None,
             perform_rename: bool = False,
             progress_frequency: int = 10,
-            analyze_compression: str = None,
+            analyze_compression: str | None = None,
             parent_task: Optional[ETLTask] = None,
     ) -> int:
+        """
+        Write rows from *iterable* to a temporary delimited file and load it with :meth:`load_from_files`.
+
+        Parameters
+        ----------
+        iterable
+            Source of :class:`~bi_etl.components.row.row.Row` objects to load.
+        table_object
+            Table to load into.
+        table_to_load
+            Name of the table to rename to when *perform_rename* is set.
+        perform_rename
+            Passed through to :meth:`load_from_files`.
+        progress_frequency
+            Not used.
+        analyze_compression
+            Passed through to :meth:`load_from_files`.
+        parent_task
+            Optional parent task, forwarded to :class:`~bi_etl.components.csv_writer.CSVWriter`.
+
+        Returns
+        -------
+        int
+            Number of rows inserted.
+        """
         with tempfile.TemporaryDirectory(dir=self.config.temp_file_path, ignore_cleanup_errors=True) as temp_dir:
             data_file_path = os.path.join(temp_dir, f'data_{table_object.table_name}.data')
 

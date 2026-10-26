@@ -21,6 +21,14 @@ class DatabricksS3AvroBulkLoader(AvroBulkLoaderMixin, DatabricksS3Base):
             self,
             config: S3_Bulk_Loader_Config,
     ):
+        """Initialise the Avro loader.
+
+        Parameters
+        ----------
+        config
+            :class:`~bi_etl.bulk_loaders.s3_bulk_load_config.S3_Bulk_Loader_Config` with the S3 bucket, folder
+            and ``s3_file_max_rows`` settings. ``s3_file_max_rows`` defaults to 50000 when not set.
+        """
         super().__init__(config=config)
 
         if self.s3_file_max_rows is None:
@@ -30,6 +38,13 @@ class DatabricksS3AvroBulkLoader(AvroBulkLoaderMixin, DatabricksS3Base):
 
     @property
     def needs_all_columns(self):
+        """Avro files are loaded ``BY NAME``, so a subset of the table columns is allowed.
+
+        Returns
+        -------
+        bool
+            Always ``False``.
+        """
         return False
 
     # --- COPY INTO SQL -----------------------------------------------------
@@ -39,6 +54,20 @@ class DatabricksS3AvroBulkLoader(AvroBulkLoaderMixin, DatabricksS3Base):
             s3_source_path: str,
             table_to_load: str,
     ) -> str:
+        """Build the ``INSERT INTO ... FROM read_files(...)`` statement for Avro files.
+
+        Parameters
+        ----------
+        s3_source_path
+            Folder within the bucket that holds the uploaded files.
+        table_to_load
+            Qualified name of the table to insert into.
+
+        Returns
+        -------
+        str
+            SQL statement to execute, see :meth:`DatabricksS3Base._get_copy_into_sql`.
+        """
         # Credentials are optional: the Databricks cluster's instance profile
         # or Unity Catalog storage credential typically handles S3 access.
         return (

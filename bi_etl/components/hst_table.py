@@ -8,7 +8,7 @@ import warnings
 from datetime import datetime, timedelta
 from enum import Enum
 from types import EllipsisType
-from typing import Set, Optional, Iterable, MutableSequence
+from typing import Set, Optional, Iterable, MutableSequence, Literal
 from typing import Union, Callable
 
 from bi_etl.components.readonlytable import ReadOnlyTable
@@ -272,7 +272,7 @@ class HistoryTable(Table):
                 or self.get_column_name(column) == self.end_date_column
                 )
 
-    def build_nk(self):
+    def infer_natural_key(self):
         if len(list(self.primary_key)) == 1:
             #
             # TODO: For scd type2 dimension tables the primary_key will be the surrogate key.
@@ -288,9 +288,14 @@ class HistoryTable(Table):
             #
             natural_key = list()
             # noinspection PyTypeChecker
-            for col in self.primary_key:
+            for col_num, col in enumerate(self.primary_key):
                 if not self.is_date_key_column(col):
                     natural_key.append(col)
+                else:
+                    if col_num == 0 or col_num == len(self.primary_key) - 1:
+                        self.log.info(f"Skipping {col} as natural key since it's a date at start/end of PK")
+                    else:
+                        natural_key.append(col)
             return natural_key
 
     @property
@@ -407,15 +412,15 @@ class HistoryTable(Table):
             self,
             progress_frequency: float = 10,
             progress_message="{component} fill_cache current row # {row_number:,}",
-            criteria_list: list = None,
-            criteria_dict: dict = None,
-            column_list: list = None,
-            exclude_cols: frozenset = None,
-            order_by: list = None,
-            assume_lookup_complete: bool = None,
+            criteria_list: list | None = None,
+            criteria_dict: dict | None = None,
+            column_list: list | None = None,
+            exclude_cols: frozenset | None = None,
+            order_by: list | None | Literal['-PK-'] = None,
+            assume_lookup_complete: bool | None = None,
             allow_duplicates_in_src: bool = False,
-            row_limit: int = None,
-            parent_stats: Statistics = None,
+            row_limit: int | None = None,
+            parent_stats: Statistics | None = None,
     ):
         """
         Fill all lookup caches from the table.
@@ -477,11 +482,11 @@ class HistoryTable(Table):
 
     def get_by_lookup_and_effective_date(
             self,
-            lookup_name,
+            lookup_name: str | None,
             source_row,
             effective_date,
             stats_id='get_by_lookup_and_effective_date',
-            parent_stats=None,
+            parent_stats: Statistics | None = None,
             fallback_to_db: bool = False,
     ):
         """
@@ -533,7 +538,7 @@ class HistoryTable(Table):
             lookup_name: str,
             source_row: Row,
             stats_id: str = 'get_by_lookup',
-            parent_stats: Optional[Statistics] = None,
+            parent_stats: Statistics | None = None,
             fallback_to_db: bool = False,
             ) -> Row:
         """
@@ -613,11 +618,11 @@ class HistoryTable(Table):
     def insert_row(
             self,
             source_row: Row,
-            additional_insert_values: dict = None,
-            source_excludes: Optional[frozenset] = None,
-            target_excludes: Optional[frozenset] = None,
+            additional_insert_values: dict | None = None,
+            source_excludes: frozenset | None = None,
+            target_excludes: frozenset | None = None,
             stat_name: str = 'insert',
-            parent_stats: Statistics = None,
+            parent_stats: Statistics | None = None,
             **kwargs
             ) -> Row:
         """
@@ -934,10 +939,12 @@ class HistoryTable(Table):
             self.source_keys_processed.add(self.get_natural_key_tuple(source_mapped_as_target_row))
 
         # Don't check in begin or end dates for differences
-        if skip_update_check_on is None:
-            skip_update_check_on = frozenset()
+        # (skip_update_check_on can't be None here, _target_excludes_for_updates returned a set)
+        skip_update_check_on = frozenset(skip_update_check_on)
         if do_not_update is None:
             do_not_update = frozenset()
+        else:
+            do_not_update = frozenset(do_not_update)
 
         if self.begin_date_column not in skip_update_check_on:
             skip_update_check_on = skip_update_check_on | {self.begin_date_column}
@@ -1086,7 +1093,7 @@ class HistoryTable(Table):
 
     def delete(self, **kwargs):
         """
-        Not implemented for history table. Instead use `physically_delete_version`.
+        Not implemented for history table. Instead, use `physically_delete_version`.
         """
         raise NotImplementedError("Use physically_delete_version instead")
 
@@ -1149,7 +1156,7 @@ class HistoryTable(Table):
         if prior_row is ...:
             try:
                 prior_row = self.get_by_lookup_and_effective_date(
-                    self._get_pk_lookup_name(),
+                    self.get_nk_lookup_name(),
                     row_to_be_deleted,
                     prior_effective_date,
                     parent_stats=stats,
@@ -1168,6 +1175,7 @@ class HistoryTable(Table):
             # If inserts_use_default_begin_date then we need to update the following row
             if self.inserts_use_default_begin_date:
                 if first_existing_row is not None:
+                    assert isinstance(first_existing_row, Row)
                     first_existing_row.set_keeping_parent(
                         self.begin_date_column,
                         row_to_be_deleted[self.begin_date_column]
@@ -1329,9 +1337,11 @@ class HistoryTable(Table):
         if criteria_list is None:
             criteria_list = []
 
+        if self.delete_flag is not None:
+            criteria_list.append(self.get_column(self.delete_flag) == self.delete_flag_no)
+
         criteria_list.extend(
             [
-                self.get_column(self.delete_flag) == self.delete_flag_no,
                 self.get_column(self.begin_date_column) <= effective_date,
                 self.get_column(self.end_date_column) >= effective_date,
             ]
@@ -1560,6 +1570,7 @@ class HistoryTable(Table):
                 # grouped together (but not necessarily ordered) and in begin_date order.
                 for row in iterator:
                     rows_read += 1
+                    row_pending_delete = False
                     if 0 < saved_read_progress <= progress_timer.seconds_elapsed:
                         progress_timer.reset()
                         self.log.info(
@@ -1672,39 +1683,44 @@ class HistoryTable(Table):
                                 stats.add_to_stat('rows with bad date sequence', 1)
 
                             # Delete the previous row if it's a delete, and this following one is not
-                            if (
-                                    remove_spurious_deletes
-                                    and prior_row[self.delete_flag] == self.delete_flag_yes
-                                    and row[self.delete_flag] == self.delete_flag_no
-                            ):
-                                if trace_delete_data:
-                                    self.log.debug(f"deleting spurious logical delete row {prior_row}")
-                                # We can't risk a change to cache as we iterate, so we keep a list of
-                                # deletes to make in the cache
-                                pending_cache_deletes.append((prior_row, second_prior_row))
-                                clean_pass = False
-                                prior_row = second_prior_row
-                                prior_row_pk_values = second_prior_row_pk_values
-                                second_prior_row = None
-                                second_prior_row_pk_values = None
-                            # Compare this row to last row, and delete
-                            # this if all values are the same (and this is not a delete)
-                            elif (remove_redundant_versions
-                                  and prior_row is not None
-                                  and prior_row.status != RowStatus.deleted):
-                                differences = row.compare_to(
-                                    prior_row,
-                                    exclude=exclude_from_compare,
-                                    coerce_types=False
-                                    )
-                                if len(differences) == 0:
+                            if self.delete_flag is not None:
+                                if (
+                                        remove_spurious_deletes
+                                        and prior_row[self.delete_flag] == self.delete_flag_yes
+                                        and row[self.delete_flag] == self.delete_flag_no
+                                ):
                                     if trace_delete_data:
-                                        self.log.debug(f"deleting spurious unchanged row {row}")
-                                    # Note: We can't remove from the cache in case we are iterating on that
-                                    pending_cache_deletes.append((row, prior_row))
-                                    stats['rows sent for delete'] += 1
+                                        self.log.debug(f"deleting spurious logical delete row {prior_row}")
+                                    # We can't risk a change to cache as we iterate, so we keep a list of
+                                    # deletes to make in the cache
+                                    pending_cache_deletes.append((prior_row, second_prior_row))
                                     clean_pass = False
-                    if row.status != RowStatus.deleted:
+                                    prior_row = second_prior_row
+                                    prior_row_pk_values = second_prior_row_pk_values
+                                    second_prior_row = None
+                                    second_prior_row_pk_values = None
+                                # Compare this row to last row, and delete
+                                # this if all values are the same (and this is not a delete)
+                                elif (remove_redundant_versions
+                                      and prior_row is not None
+                                      and prior_row.status != RowStatus.deleted):
+                                    differences = row.compare_to(
+                                        prior_row,
+                                        exclude=exclude_from_compare,
+                                        coerce_types=False
+                                        )
+                                    if len(differences) == 0:
+                                        if trace_delete_data:
+                                            self.log.debug(f"deleting spurious unchanged row {row}")
+                                        # Note: We can't remove from the cache in case we are iterating on that
+                                        pending_cache_deletes.append((row, prior_row))
+                                        stats['rows sent for delete'] += 1
+                                        clean_pass = False
+                                        row_pending_delete = True
+                    if row.status != RowStatus.deleted and not row_pending_delete:
+                        # Rows pending delete are not made the prior row.
+                        # That way a run of redundant versions all get deleted against the one version being kept,
+                        # instead of against a prior row that will already have been deleted.
                         second_prior_row = prior_row
                         prior_row = row
                         prior_row_pk_values = lookup_object.get_hashable_combined_key(row)
@@ -1792,7 +1808,7 @@ class HistoryTable(Table):
             effective_date_column: str | None = None,
             connection_name: str = 'sql_upsert',
     ):
-        now_str = self._sql_date_literal(self.get_current_time())
+        now_as_date_literal = self._sql_date_literal(self.get_current_time())
         if self.inserts_use_default_begin_date or effective_date_column is None:
             new_row_begin_date = self._sql_date_literal(self.default_begin_date)
         else:
@@ -1802,13 +1818,19 @@ class HistoryTable(Table):
         last_update_date_select_str = '-- No last update date'
         if self.last_update_date is not None:
             last_update_date_into_str = f"{self.last_update_date}"
-            last_update_date_select_str = f"'{now_str}' as {self.last_update_date}"
+            last_update_date_select_str = f"{now_as_date_literal} as {self.last_update_date}"
+
+        if self.delete_flag:
+            delete_flag_name = self.delete_flag
+            select_delete_flag_no = f"'{self.delete_flag_no}' as {self.delete_flag}"
+        else:
+            delete_flag_name = '--No delete flag'
+            select_delete_flag_no = '--No delete flag'
 
         if self.auto_generate_key:
             type2_srgt_sql = 'max_srgt.max_srgt + ROW_NUMBER() OVER (order by 1)'
 
             # Type 1 srgt
-
             if self.type_1_surrogate is None:
                 insert_list_type_1 = '--No type 1 srgt present'
                 select_list_type_1 = '--No type 1 srgt present'
@@ -1820,7 +1842,7 @@ class HistoryTable(Table):
                         INSERT INTO {self.qualified_table_name} (
                             {self._sql_primary_key_name()},
                             {insert_list_type_1},
-                            {self.delete_flag},
+                            {delete_flag_name},
                             {self.begin_date_column},
                             {self.end_date_column},
                             {last_update_date_into_str},
@@ -1832,7 +1854,7 @@ class HistoryTable(Table):
                         SELECT 
                             {type2_srgt_sql} as {self._sql_primary_key_name()},
                             {select_list_type_1},
-                            '{self.delete_flag_no}' as {self.delete_flag},
+                            {select_delete_flag_no},
                             {new_row_begin_date} as {self.begin_date_column},
                             {self._sql_date_literal(self.default_end_date)} as {self.end_date_column},
                             {last_update_date_select_str},
@@ -1853,7 +1875,7 @@ class HistoryTable(Table):
             insert_new_sql = f"""
                 INSERT INTO {self.qualified_table_name} (
                     {Table._sql_indent_join(self.primary_key, 20, suffix=',')},
-                    {self.delete_flag},
+                    {delete_flag_name},
                     {self.begin_date_column},
                     {self.end_date_column},
                     {last_update_date_into_str}
@@ -1861,7 +1883,7 @@ class HistoryTable(Table):
                 )  
                 SELECT 
                     {Table._sql_indent_join(self.primary_key, 20, suffix=',')},
-                    '{self.delete_flag_no}' as {self.delete_flag},
+                    {select_delete_flag_no},
                     {new_row_begin_date} as {self.begin_date_column},
                     {self._sql_date_literal(self.default_end_date)} as {self.end_date_column},
                     {last_update_date_select_str}
@@ -1889,15 +1911,21 @@ class HistoryTable(Table):
 
     def _sql_find_updates(
             self,
+            *,
             source_table: ReadOnlyTable,
             source_effective_date_column: str,
             key_columns_set: Iterable,
-            non_nk_matching_columns: Iterable,
-            target_only_columns: set,
+            compare_columns: set[str],
+            target_only_columns: set[str],
             updated_row_nk_table: str,
             connection_name: str = 'sql_upsert',
     ):
         self.database.drop_table_if_exists(updated_row_nk_table, connection_name=connection_name, auto_close=False, transaction=False)
+
+        if self.delete_flag:
+            delete_flag_where = f"OR e.{self.delete_flag} != '{self.delete_flag_no}'"
+        else:
+            delete_flag_where = '--No delete flag'
 
         find_updates_sql = f"""
             CREATE TABLE {updated_row_nk_table} AS
@@ -1906,7 +1934,7 @@ class HistoryTable(Table):
                 s.{source_effective_date_column} as source_effective_date,
                 e.{self.begin_date_column} as target_begin_date,
                 e.{self.end_date_column} as target_end_date,
-                {Table._sql_indent_join([f"CASE WHEN {Table._sql_column_not_equals(m_col, 'e', 's')} THEN 1 ELSE 0 END as chg_in_{m_col}" for m_col in non_nk_matching_columns], 16, suffix=',')}
+                {Table._sql_indent_join([f"CASE WHEN {Table._sql_column_not_equals(m_col, 'e', 's')} THEN 1 ELSE 0 END as chg_in_{m_col}" for m_col in compare_columns], 16, suffix=',')}
                 {Table._sql_indent_join([f'e.{col}' for col in target_only_columns], 16, suffix=',', prefix_if_not_empty=',')}
             FROM {self.qualified_table_name} e 
                  INNER JOIN
@@ -1914,8 +1942,8 @@ class HistoryTable(Table):
                     ON {Table._sql_indent_join([f"e.{nk_col} = s.{nk_col}" for nk_col in key_columns_set], 19, prefix='AND ')}
                    AND s.{source_effective_date_column} BETWEEN e.{self.begin_date_column} AND e.{self.end_date_column} 
             WHERE ( 
-                    {Table._sql_indent_join([Table._sql_column_not_equals(m_col, 'e', 's') for m_col in non_nk_matching_columns], 20, prefix='OR ')}
-                    OR e.{self.delete_flag} != '{self.delete_flag_no}'
+                    {Table._sql_indent_join([Table._sql_column_not_equals(m_col, 'e', 's') for m_col in compare_columns], 20, prefix='OR ')}
+                    {delete_flag_where}
                   )
         """
         self.log.debug('-' * 80)
@@ -1923,44 +1951,55 @@ class HistoryTable(Table):
         self.log.debug('-' * 80)
         sql_timer = Timer()
         self.log.debug(find_updates_sql)
-        self.execute(find_updates_sql, connection_name=connection_name)
+        results = self.execute(find_updates_sql, connection_name=connection_name)
+        self.log.debug(f"Impacted rows = {results.rowcount:,} (meaningful count? {results.supports_sane_rowcount()})")
         self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
 
     def _sql_insert_updates(
             self,
+            *,
             source_table: ReadOnlyTable,
             source_effective_date_column: str,
-            matching_columns: Iterable,
-            non_nk_matching_columns: Iterable,
+            matching_columns: Iterable[str],
+            compare_columns: Iterable[str],
+            non_nk_matching_columns: Iterable[str],
             target_only_columns: set,
             updated_row_nk_table: str,
             connection_name: str = 'sql_upsert',
     ):
-        now_str = self._sql_date_literal(self.get_current_time())
+        now_as_date_literal = self._sql_date_literal(self.get_current_time())
         last_update_date_into_str = '/* No last update date */'
         last_update_date_select_str = '/* No last update date */'
         if self.last_update_date is not None:
             last_update_date_into_str = f"{self.last_update_date},"
-            last_update_date_select_str = f"'{now_str}' as {self.last_update_date},"
+            last_update_date_select_str = f"{now_as_date_literal} as {self.last_update_date},"
+
+        if self.delete_flag:
+            delete_flag_name = self.delete_flag
+            select_delete_flag_no = f"'{self.delete_flag_no}' as {self.delete_flag}"
+        else:
+            delete_flag_name = '--No delete flag'
+            select_delete_flag_no = '--No delete flag'
 
         if self.auto_generate_key:
             primary_key_name = self.primary_key[0]
             insert_updates_sql = f"""
                 INSERT INTO {self.qualified_table_name} (
                     {primary_key_name},
-                    {self.delete_flag},
+                    {delete_flag_name},
                     {self.begin_date_column},
                     {self.end_date_column},
                     {last_update_date_into_str}
                     {Table._sql_indent_join(matching_columns, 16, suffix=',')}   
                     {Table._sql_indent_join(target_only_columns, 16, suffix=',', prefix_if_not_empty=',')}             
                 )  
-                WITH max_srgt AS (SELECT coalesce(max({primary_key_name}),0)  as max_srgt 
-                                  FROM {self.qualified_table_name}
-                                  )
+                WITH max_srgt AS (
+                    SELECT coalesce(max({primary_key_name}),0)  as max_srgt 
+                    FROM {self.qualified_table_name}
+                    )
                 SELECT 
                     max_srgt.max_srgt + ROW_NUMBER() OVER (order by 1) as {primary_key_name},
-                    '{self.delete_flag_no}' as {self.delete_flag},
+                    {select_delete_flag_no},
                     u.source_effective_date as {self.begin_date_column},
                     u.target_end_date as {self.end_date_column},
                     {last_update_date_select_str}
@@ -1978,7 +2017,7 @@ class HistoryTable(Table):
             insert_updates_sql = f"""
                 INSERT INTO {self.qualified_table_name} (
                     {Table._sql_indent_join([key_col for key_col in self.primary_key], 16, suffix=',')},
-                    {self.delete_flag},
+                    {delete_flag_name},
                     {self.begin_date_column},
                     {self.end_date_column},
                     {last_update_date_into_str}
@@ -1987,7 +2026,7 @@ class HistoryTable(Table):
                 )  
                 SELECT                     
                     {Table._sql_indent_join([f"u.{key_col}" for key_col in self.primary_key], 16, suffix=',')},
-                    '{self.delete_flag_no}' as {self.delete_flag},
+                    {select_delete_flag_no},
                     u.source_effective_date as {self.begin_date_column},
                     u.target_end_date as {self.end_date_column},
                     {last_update_date_select_str}
@@ -2018,7 +2057,7 @@ class HistoryTable(Table):
     ):
         # self.execute(f"DROP TABLE IF EXISTS {updated_row_nk_table}")
 
-        now_str = self._sql_date_literal(self.get_current_time())
+        now_as_date_literal = self._sql_date_literal(self.get_current_time())
 
         self.database.drop_table_if_exists(deleted_row_nk_table, connection_name=connection_name, auto_close=False, transaction=False)
 
@@ -2026,11 +2065,11 @@ class HistoryTable(Table):
             CREATE TABLE {deleted_row_nk_table} AS
             SELECT 
                 {Table._sql_indent_join([f"e.{nk_col}" for nk_col in key_columns_set], 16, suffix=',')},
-                {now_str} as source_effective_date,
+                {now_as_date_literal} as source_effective_date,
                 e.{self.begin_date_column} as target_begin_date,
                 e.{self.end_date_column} as target_end_date
             FROM {self.qualified_table_name} e 
-            WHERE {now_str} BETWEEN e.{self.begin_date_column} AND e.{self.end_date_column} 
+            WHERE {now_as_date_literal} BETWEEN e.{self.begin_date_column} AND e.{self.end_date_column} 
               AND NOT EXISTS (
                     SELECT 1 
                     FROM {source_table.qualified_table_name} s
@@ -2042,7 +2081,8 @@ class HistoryTable(Table):
         self.log.debug('-' * 80)
         sql_timer = Timer()
         self.log.debug(find_deletes_sql)
-        self.execute(find_deletes_sql, connection_name=connection_name)
+        results = self.execute(find_deletes_sql, connection_name=connection_name)
+        self.log.debug(f"Impacted rows = {results.rowcount:,} (meaningful count? {results.supports_sane_rowcount()})")
         self.log.debug(f"Execution time ={sql_timer.seconds_elapsed_formatted}")
 
     def _sql_insert_deletes(
@@ -2054,19 +2094,26 @@ class HistoryTable(Table):
     ):
         target_non_metadata_column_set = set(target_column_set) - set(metadata_column_set)
 
-        now_str = self._sql_date_literal(self.get_current_time())
+        now_as_date_literal = self._sql_date_literal(self.get_current_time())
         last_update_date_into_str = '/* No last update date */'
         last_update_date_select_str = '/* No last update date */'
         if self.last_update_date is not None:
             last_update_date_into_str = f"{self.last_update_date},"
-            last_update_date_select_str = f"'{now_str}' as {self.last_update_date},"
+            last_update_date_select_str = f"{now_as_date_literal} as {self.last_update_date},"
+
+        if self.delete_flag:
+            delete_flag_name = self.delete_flag
+            select_delete_flag_yes = f"'{self.delete_flag_yes}' as {self.delete_flag}"
+        else:
+            delete_flag_name = '--No delete flag'
+            select_delete_flag_yes = '--No delete flag'
 
         if self.auto_generate_key:
             primary_key_name = self.primary_key[0]
             insert_delete_versions_sql = f"""
                 INSERT INTO {self.qualified_table_name} (
                     {primary_key_name},
-                    {self.delete_flag},
+                    {delete_flag_name},
                     {self.begin_date_column},
                     {self.end_date_column},
                     {last_update_date_into_str}
@@ -2077,7 +2124,7 @@ class HistoryTable(Table):
                                   )
                 SELECT 
                     max_srgt.max_srgt + ROW_NUMBER() OVER (order by 1) as {primary_key_name},
-                    '{self.delete_flag_yes}' as {self.delete_flag},
+                    {select_delete_flag_yes},
                     u.source_effective_date as {self.begin_date_column},
                     u.target_end_date as {self.end_date_column},
                     {last_update_date_select_str}
@@ -2094,7 +2141,7 @@ class HistoryTable(Table):
             insert_delete_versions_sql = f"""
                 INSERT INTO {self.qualified_table_name} (
                     {Table._sql_indent_join([key_col for key_col in self.primary_key], 16, suffix=',')},
-                    {self.delete_flag},
+                    {delete_flag_name},
                     {self.begin_date_column},
                     {self.end_date_column},
                     {last_update_date_into_str}
@@ -2102,7 +2149,7 @@ class HistoryTable(Table):
                 )  
                 SELECT                     
                     {Table._sql_indent_join([f"u.{key_col}" for key_col in self.primary_key], 20, suffix=',')},
-                    '{self.delete_flag_yes}' as {self.delete_flag},
+                    {select_delete_flag_yes},
                     u.source_effective_date as {self.begin_date_column},
                     u.target_end_date as {self.end_date_column},
                     {last_update_date_select_str}
@@ -2127,7 +2174,7 @@ class HistoryTable(Table):
             self,
             source_table: ReadOnlyTable,
             source_effective_date_column: str,
-            source_excludes: Optional[frozenset] = None,
+            source_excludes: frozenset | None = None,
             target_excludes: Optional[frozenset] = None,
             skip_update_check_on: Optional[frozenset] = None,
             check_for_deletes: bool | None = None,
@@ -2166,14 +2213,23 @@ class HistoryTable(Table):
         target_only_columns = {column_name for column_name in target_column_set if
                                column_name not in (source_row_columns_set | metadata_column_set)}
 
-        compare_columns = matching_columns
+        if skip_update_check_on is not None:
+            skip_update_check_on = frozenset(skip_update_check_on)
+        else:
+            skip_update_check_on = frozenset([])
+        compare_columns = matching_columns - skip_update_check_on
+        self.log.debug(f"Will compare values of these columns: {compare_columns}")
 
         if self.natural_key is not None:
             if len(self.natural_key) == 0:
                 raise ValueError(f"Empty natural key for {self}")
             if not self.auto_generate_key:
-                raise ValueError(
-                    f"Natural key for {self} when autogenerate_key = False and primary key is {self.primary_key}"
+                if set(self.natural_key) == set(self.primary_key):
+                    pass
+                else:
+                    raise ValueError(
+                        f"Natural key for {self} is {self.natural_key} when autogenerate_key = False "
+                        f"and primary key is {self.primary_key}. They need to match."
                     )
             key_columns_set = set(self.natural_key)
         elif self.primary_key is not None and len(self.primary_key) > 0:
@@ -2182,6 +2238,7 @@ class HistoryTable(Table):
             raise ValueError(f"No primary key or natural key for {self}")
 
         non_nk_matching_columns = matching_columns - key_columns_set
+        compare_columns = compare_columns - key_columns_set
 
         if self.delete_flag is not None:
             if check_for_deletes is None:
@@ -2191,6 +2248,8 @@ class HistoryTable(Table):
                 non_nk_matching_columns.remove(self.delete_flag)
             if self.delete_flag in target_only_columns:
                 target_only_columns.remove(self.delete_flag)
+            if self.delete_flag in compare_columns:
+                compare_columns.remove(self.delete_flag)
         else:
             if check_for_deletes is None:
                 check_for_deletes = False
@@ -2202,9 +2261,18 @@ class HistoryTable(Table):
                 non_nk_matching_columns.remove(self.last_update_date)
             if self.last_update_date in target_only_columns:
                 target_only_columns.remove(self.last_update_date)
+            if self.last_update_date in compare_columns:
+                compare_columns.remove(self.last_update_date)
 
         if len(self.primary_key) != 1:
             raise ValueError(f"{self}.upsert_db_exclusive requires single primary_key column. Got {self.primary_key}")
+
+        if len(compare_columns) == 0:
+            raise ValueError(
+                f"No columns to compare for updates when upserting {source_table} into {self}. "
+                f"Matching columns (excluding keys and metadata) = {sorted(matching_columns - key_columns_set)}, "
+                f"skip_update_check_on = {sorted(skip_update_check_on)}"
+            )
 
         # Insert rows for new Natural Keys
         self._sql_insert_new(
@@ -2224,7 +2292,7 @@ class HistoryTable(Table):
             source_table=source_table,
             source_effective_date_column=source_effective_date_column,
             key_columns_set=key_columns_set,
-            non_nk_matching_columns=non_nk_matching_columns,
+            compare_columns=compare_columns,
             target_only_columns=target_only_columns,
             updated_row_nk_table=updated_row_nk_table,
             connection_name=connection_name,
@@ -2238,6 +2306,7 @@ class HistoryTable(Table):
             source_table=source_table,
             source_effective_date_column=source_effective_date_column,
             matching_columns=matching_columns,
+            compare_columns=compare_columns,
             non_nk_matching_columns=non_nk_matching_columns,
             target_only_columns=target_only_columns,
             updated_row_nk_table=updated_row_nk_table,

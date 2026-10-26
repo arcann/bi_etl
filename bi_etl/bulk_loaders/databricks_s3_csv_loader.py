@@ -27,6 +27,20 @@ class DatabricksS3CsvBulkLoader(CsvBulkLoaderMixin, DatabricksS3Base):
             delimiter: str = '|',
             null_value: str = '',
     ):
+        """Initialise the CSV loader.
+
+        Parameters
+        ----------
+        config
+            :class:`~bi_etl.bulk_loaders.s3_bulk_load_config.S3_Bulk_Loader_Config` with the S3 bucket, folder
+            and ``s3_file_max_rows`` settings. ``s3_file_max_rows`` defaults to 25000 when not set.
+        has_header
+            Whether to write (and read) a header line in each file.
+        delimiter
+            Field delimiter used in the files.
+        null_value
+            Text that represents a null value in the files.
+        """
         super().__init__(config=config)
 
         chunk_size = self.s3_file_max_rows if self.s3_file_max_rows is not None else 25000
@@ -41,6 +55,13 @@ class DatabricksS3CsvBulkLoader(CsvBulkLoaderMixin, DatabricksS3Base):
 
     @property
     def needs_all_columns(self):
+        """Whether rows must contain every table column.
+
+        Returns
+        -------
+        bool
+            ``True`` when there is no header (columns are matched by position), otherwise ``False``.
+        """
         # With headers, BY NAME mapping allows a subset of columns.
         # Without headers, all columns must be present in table order.
         return not self.has_header
@@ -52,6 +73,20 @@ class DatabricksS3CsvBulkLoader(CsvBulkLoaderMixin, DatabricksS3Base):
             s3_source_path: str,
             table_to_load: str,
     ) -> str:
+        """Build the ``INSERT INTO ... FROM read_files(...)`` statement for CSV files.
+
+        Parameters
+        ----------
+        s3_source_path
+            Folder within the bucket that holds the uploaded files.
+        table_to_load
+            Qualified name of the table to insert into.
+
+        Returns
+        -------
+        str
+            SQL statement to execute, see :meth:`DatabricksS3Base._get_copy_into_sql`.
+        """
         header_opt = 'true' if self.has_header else 'false'
         by_name = ' BY NAME' if self.has_header else ''
         return (

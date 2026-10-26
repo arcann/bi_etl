@@ -2,16 +2,14 @@
 from __future__ import annotations
 
 import os.path
-from dataclasses import dataclass
-from datetime import date, datetime, time as time_type, timedelta
-from decimal import Decimal
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Callable, Iterable, Optional
 
 import fastavro
 
+from bi_etl.components.avro_writer import AvroWriter, build_avro_schema, default_avro_codec
+from bi_etl.components.row.row import Row
 from bi_etl.timer import Timer
-from bi_etl.utility.json import json_dumps
 
 if TYPE_CHECKING:
     from bi_etl.components.table import Table
@@ -19,7 +17,8 @@ if TYPE_CHECKING:
 
 
 class AvroBulkLoaderMixin:
-    """Mixin providing Avro schema generation, chunk writing, codec setup, and loading.
+    """
+    Mixin providing Avro schema generation, chunk writing, codec setup, and loading.
 
     Subclasses must call :meth:`_init_avro` from their ``__init__`` to
     configure the compression codec and set the chunk size.
@@ -46,106 +45,18 @@ class AvroBulkLoaderMixin:
         """
         Initialise Avro. Call from subclass ``__init__``.
         """
+        self.rows_seen = 0
         self.chunk_size = chunk_size
-        try:
-            import snappy
-            self.codec = 'snappy'
-        except ImportError:
-            self.codec = 'deflate'
+        self.codec = default_avro_codec()
         self._translate_columns: dict[str, Callable] = {}
 
     # --- Schema helpers ------------------------------------------------------
 
     def _get_avro_schema(self, table_object: Table, table_name: str) -> dict:
         """Build an Avro record schema from *table_object*'s columns."""
-
-        @dataclass
-        class TypeDefn:
-            type_list: list[str | dict]
-            conversion_function: Callable | None = None
-
-        map_type = {"type": "map", "values": "string"}
-        array_type = {"type": "array", "items": "string"}
-
-        type_map = {
-            str: TypeDefn(type_list=['string']),
-            bytes: TypeDefn(type_list=['bytes']),
-            date: TypeDefn(
-                type_list=[
-                    {
-                        "type": "int",
-                        "logicalType": "date"
-                    }
-                ]
-            ),
-            datetime: TypeDefn(
-                type_list=[
-                    {
-                        "type": "long",
-                        "logicalType": "timestamp-millis"
-                    }
-                ]
-            ),
-            time_type: TypeDefn(
-                type_list=[
-                    {
-                        "type": "long",
-                        "logicalType": 'time-millis',
-                    }
-                ]
-            ),
-            timedelta: TypeDefn(type_list=['long'], conversion_function=timedelta.total_seconds),
-            bool: TypeDefn(type_list=['boolean']),
-            int: TypeDefn(type_list=['long']),
-            float: TypeDefn(type_list=['double']),
-            # Note: Decimal has special handling below. This is placed here as a potential default
-            Decimal: TypeDefn(
-                type_list=[
-                    {
-                        "type": "bytes",
-                        "logicalType": "decimal",
-                        "precision": 38,
-                        "scale": 10
-                    }
-                ],
-                conversion_function=float,
-            ),
-            object: TypeDefn(type_list=['string'], conversion_function=json_dumps),
-            dict: TypeDefn(type_list=['string'], conversion_function=json_dumps),
-            list: TypeDefn(type_list=['string'], conversion_function=json_dumps),
-            set: TypeDefn(type_list=['string'], conversion_function=json_dumps),
-        }
-        fields = []
-        columns = table_object.columns
-        for column in columns:
-            python_type = table_object._get_python_type(column.type)
-            if python_type == Decimal:
-                col_type_defn = TypeDefn(
-                    type_list=[
-                        {
-                            "type": "bytes",
-                            "logicalType": "decimal",
-                            "precision": column.type.precision,
-                            "scale": column.type.scale
-                        }
-                    ],
-                )
-            else:
-                col_type_defn = type_map.get(python_type, TypeDefn(['string'], conversion_function=str))
-                if col_type_defn.conversion_function is not None:
-                    self._translate_columns[column.name] = col_type_defn.conversion_function
-            fields.append(
-                {
-                    'name': column.name,
-                    'type': ['null', *col_type_defn.type_list],
-                    'default': None,
-                }
-            )
-        return {
-            'name': table_name,
-            'type': 'record',
-            'fields': fields,
-        }
+        # Entries are specific to the table being loaded, so don't keep any from a previous load
+        schema, self._translate_columns = build_avro_schema(table_object, table_name)
+        return schema
 
     def _parse_avro_schema(self, table_object: Table, table_name: str):
         """Build and parse an Avro schema, returning the parsed form."""
@@ -161,27 +72,37 @@ class AvroBulkLoaderMixin:
 
     # --- Chunk writing -------------------------------------------------------
 
-    def _write_avro_chunk(
+    def _start_avro_chunk(
             self,
             temp_dir: str,
             file_number: int,
             parsed_schema,
-            data_chunk: list,
             local_files_list: list,
-    ):
-        """Write *data_chunk* rows to a numbered Avro file in *temp_dir*."""
+    ) -> AvroWriter:
+        """Open a writer for the numbered Avro file in *temp_dir* and add the file to *local_files_list*."""
         self.log.debug(f"Starting bulk load chunk {file_number}")
         filepath = os.path.join(temp_dir, f'data_{file_number}.avro')
         local_files_list.append(filepath)
-        with open(filepath, 'wb') as avro_file:
-            fastavro.writer(avro_file, parsed_schema, data_chunk, codec=self.codec)
-        self.log.debug(f"Closed bulk load chunk {file_number}: {filepath}")
+        return AvroWriter(
+            task=None,
+            file_data=filepath,
+            schema=parsed_schema,
+            codec=self.codec,
+            translate_columns=self._translate_columns,
+        )
+
+    def _finish_avro_chunk(self, writer: AvroWriter, file_number: int) -> int:
+        """Close *writer*, then queue its file for upload. Returns the number of rows in the file."""
+        writer.close()
+        self.log.debug(f"Closed bulk load chunk {file_number}: {writer.file_path}")
+        self._queue_file_for_upload(writer.file_path)
+        return writer.rows_written
 
     # --- Load from iterable ---------------------------------------------------
 
     def load_from_iterable(
             self,
-            iterable: Iterable,
+            iterable: Iterable[Row],
             table_object: Table,
             table_to_load: str | None = None,
             perform_rename: bool = False,
@@ -190,6 +111,9 @@ class AvroBulkLoaderMixin:
             parent_task: Optional[ETLTask] = None,
     ) -> int:
         """Write rows from *iterable* to local Avro files and load them via :meth:`load_from_files`.
+
+        Each file is queued for upload (see :meth:`~bi_etl.bulk_loaders.bulk_loader.BulkLoader._queue_file_for_upload`)
+        as soon as it is written, so :meth:`load_from_files` only has to wait for the uploads still in progress.
 
         Parameters
         ----------
@@ -219,51 +143,40 @@ class AvroBulkLoaderMixin:
         with TemporaryDirectory(
                 dir=self.config.temp_file_path,
                 ignore_cleanup_errors=True,
-        ) as temp_dir:
+        ) as temp_dir, self._file_upload_session(table_object):
             parsed_schema = self._parse_avro_schema(table_object, table_to_load)
 
             file_number = 0
             data_length = 0
             local_files_list = []
-            data_chunk = []
+            writer: AvroWriter | None = None
 
             progress_timer = Timer()
-            for row_number, row in enumerate(iterable):
-                data_dict = row.as_dict
-                # Translate column values
-                for column_name, translate_function in self._translate_columns.items():
-                    if column_name in data_dict:
-                        data_dict[column_name] = translate_function(data_dict[column_name])
-                data_chunk.append(data_dict)
+            row_number = -1
+            try:
+                for row_number, row in enumerate(iterable):
+                    if writer is None:
+                        file_number += 1
+                        writer = self._start_avro_chunk(temp_dir, file_number, parsed_schema, local_files_list)
+                    writer.insert_row(row)
 
-                if len(data_chunk) >= self.chunk_size:
-                    data_length += len(data_chunk)
-                    file_number += 1
-                    self._write_avro_chunk(
-                        temp_dir=temp_dir,
-                        file_number=file_number,
-                        parsed_schema=parsed_schema,
-                        data_chunk=data_chunk,
-                        local_files_list=local_files_list,
-                    )
-                    data_chunk = []
+                    if writer.rows_written >= self.chunk_size:
+                        data_length += self._finish_avro_chunk(writer, file_number)
+                        writer = None
 
-                if progress_frequency is not None:
-                    if 0 < progress_frequency < progress_timer.seconds_elapsed:
-                        self.log.info(f"Wrote row {row_number:,}")
-                        progress_timer.reset()
+                    if progress_frequency is not None:
+                        if 0 < progress_frequency < progress_timer.seconds_elapsed:
+                            self.log.info(f"Wrote row {row_number:,}")
+                            progress_timer.reset()
 
-            # Write final chunk
-            if data_chunk:
-                data_length += len(data_chunk)
-                file_number += 1
-                self._write_avro_chunk(
-                    temp_dir=temp_dir,
-                    file_number=file_number,
-                    parsed_schema=parsed_schema,
-                    data_chunk=data_chunk,
-                    local_files_list=local_files_list,
-                )
+                # Write final chunk
+                if writer is not None:
+                    data_length += self._finish_avro_chunk(writer, file_number)
+                    writer = None
+            finally:
+                if writer is not None:
+                    writer.close(error=True)
+            self.rows_seen = row_number + 1  # enumerate has 1st row as 0
 
             if data_length > 0:
                 self.log.debug(f"Loading from files {local_files_list}")

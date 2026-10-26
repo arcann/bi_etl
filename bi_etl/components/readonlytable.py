@@ -302,6 +302,7 @@ class ReadOnlyTable(ETLComponent):
     def table(self, new_table_object):
         self._table = new_table_object
         self._columns = list(self._table.columns)
+        assert self._columns is not None
         self.column_names = list(map(attrgetter('name'), self._columns))
         self._column_name_index = dict()
         for column in self._columns:
@@ -421,7 +422,7 @@ class ReadOnlyTable(ETLComponent):
             open_if_closed=open_if_closed,
         )
 
-    def close_connection(self, connection_name: str = None):
+    def close_connection(self, connection_name: str | None = None):
         connection_name = self.database.resolve_connection_name(connection_name)
         if connection_name in self._connections_used:
             self._connections_used.remove(connection_name)
@@ -456,7 +457,7 @@ class ReadOnlyTable(ETLComponent):
             self,
             statement,
             *list_params,
-            connection_name: str = None,
+            connection_name: str | None = None,
             **params
     ) -> sqlalchemy.engine.ResultProxy:
         """
@@ -496,6 +497,23 @@ class ReadOnlyTable(ETLComponent):
             auto_close=False,
             **params
         )
+
+    def execute_get_rows(
+            self,
+            statement,
+            *list_params,
+            connection_name: str | None = None,
+            **params
+    ) -> list[Row]:
+        results = self.execute(
+            statement,
+            *list_params,
+            connection_name=connection_name,
+            **params
+        )
+        iteration_header = RowIterationHeader()
+        rows = [Row(iteration_header=iteration_header, data=row) for row in results]
+        return rows
 
     def get_one(self, statement=None):
         """
@@ -639,15 +657,15 @@ class ReadOnlyTable(ETLComponent):
     #   use_cache_as_source: to we can use the cache instead of the database
     #   stats_id, parent_stats: So we can capture SQL execution time in the right place.
     def _raw_rows(self,
-                  criteria_list: list = None,
-                  criteria_dict: dict = None,
-                  order_by: list = None,
-                  column_list: list = None,
-                  exclude_cols: frozenset = None,
-                  use_cache_as_source: bool = None,
-                  connection_name: str = None,
-                  stats_id: str = None,
-                  parent_stats: Statistics = None):
+                  criteria_list: list | None = None,
+                  criteria_dict: dict | None = None,
+                  order_by: list | None = None,
+                  column_list: list | None = None,
+                  exclude_cols: frozenset | None = None,
+                  use_cache_as_source: bool | None = None,
+                  connection_name: str | None = None,
+                  stats_id: str | None = None,
+                  parent_stats: Statistics | None = None):
         """
         Iterate over rows matching ``criteria``
         
@@ -1261,7 +1279,10 @@ class ReadOnlyTable(ETLComponent):
         """
         Get this tables natural key
         """
-        return self.__natural_key
+        if self.__natural_key:
+            return self.__natural_key
+        else:
+            raise ValueError(f"{self} natural key not set")
 
     @natural_key.setter
     def natural_key(self, value: list):
@@ -1329,9 +1350,9 @@ class ReadOnlyTable(ETLComponent):
             # return tuple([Lookup.rstrip_key_value(row[k]) for k in self.natural_key])
 
     def get_by_key(self,
-                   source_row: Row,
+                   source_row: Row | list[Any] | dict[str, Any],
                    stats_id: str = 'get_by_key',
-                   parent_stats: Statistics = None, ) -> Row:
+                   parent_stats: Statistics | None = None, ) -> Row:
         """
         Get by the primary key.
         """

@@ -3,6 +3,9 @@ Created on Apr 3, 2015
 
 @author: Derek Wood
 """
+from datetime import datetime
+
+from bi_etl.components.row.row import Row
 
 
 class NoResultFound(Exception):
@@ -14,7 +17,7 @@ class MultipleResultsFound(Exception):
 
 
 class BeforeAllExisting(Exception):    
-    def __init__(self, first_existing_row, effective_date):
+    def __init__(self, first_existing_row: Row, effective_date: datetime):
         self.first_existing_row = first_existing_row
         self.effective_date = effective_date
     
@@ -23,7 +26,7 @@ class BeforeAllExisting(Exception):
 
 
 class AfterExisting(Exception):    
-    def __init__(self, prior_row, effective_date):
+    def __init__(self, prior_row: Row, effective_date: datetime):
         self.prior_row = prior_row
         self.effective_date = effective_date
         

@@ -124,6 +124,19 @@ Usable as Source: Yes
 Usable as Target: Yes
 
 
+ParquetReader
+--------------------------------------------------------------------------
+
+Documentation Link: :class:`~bi_etl.components.parquet_reader.ParquetReader`
+
+Inherits from **PyArrowDatasetReader**. Reads Parquet files (single file, list of files,
+or a directory) with column projection, row filter pushdown, and hive partition support.
+
+Usable as Source: Yes
+
+Usable as Target: No
+
+
 PyArrowDatasetReader
 --------------------------------------------------------------------------
 

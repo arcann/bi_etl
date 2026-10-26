@@ -398,7 +398,7 @@ def str2bytes_size(str_size: str) -> Optional[int]:
             result = int(str_size[:-1]) * pow(2, 30)
         # Check for TB
         elif str_size[-1] == 'T':
-            result = int(str_size[:-1]) * pow(2, 30)
+            result = int(str_size[:-1]) * pow(2, 40)
         else:
             result = int(str_size)
     elif str_size is None:

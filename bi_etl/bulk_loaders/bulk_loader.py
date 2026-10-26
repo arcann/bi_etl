@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 
 import logging
 import uuid
+from contextlib import contextmanager
+from pathlib import Path
 from typing import *
 from datetime import datetime
 
@@ -19,17 +21,35 @@ if TYPE_CHECKING:
 
 
 class BulkLoader(ABC):
+    """
+    Base class for loaders that load rows into a database table using the database's bulk load facility.
+
+    Subclasses must implement :meth:`load_from_iterable`. Loaders that work from files
+    can also implement :meth:`load_from_files`.
+    """
+
     def __init__(
             self,
     ):
-        self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+        """Create the logger and the empty set of values to redact from logged messages."""
+        self.log =logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self._redact_values = set()
 
     def __str__(self) -> str:
+        """Return the class name followed by empty parentheses."""
         return f"{self.__class__.__name__}()"
 
     def add_redact_value(self, redact_value: str):
-        self._redact_values.add(redact_value)
+        """
+        Register a value (such as a password) that :meth:`log_with_redactions` must hide.
+
+        Parameters
+        ----------
+        redact_value:
+            Text to replace with asterisks in logged messages. None is ignored.
+        """
+        if redact_value is not None:
+            self._redact_values.add(redact_value)
 
     def log_with_redactions(
             self,
@@ -37,6 +57,16 @@ class BulkLoader(ABC):
             log_level: int,
             message: str
     ):
+        """
+        Log *message* after replacing every registered redaction value with asterisks.
+
+        Parameters
+        ----------
+        log_level:
+            Logging level, such as :data:`logging.INFO`.
+        message:
+            Text to log.
+        """
         for redaction in self._redact_values:
             message = message.replace(redaction, '*' * 6)
         self.log.log(
@@ -46,6 +76,14 @@ class BulkLoader(ABC):
 
     @property
     def needs_all_columns(self):
+        """
+        True if the rows passed to the loader must contain every column of the target table, in table order.
+
+        Returns
+        -------
+        bool
+            True by default. Loaders that can map columns by name override this to return False.
+        """
         return True
 
     @staticmethod
@@ -53,13 +91,91 @@ class BulkLoader(ABC):
             base_folder: str,
             table_object: Table,
     ):
+        """
+        Build a folder path unique to this table and this load.
 
+        Parameters
+        ----------
+        base_folder:
+            Folder that the table specific folder is created under.
+        table_object:
+            The table being loaded.
+
+        Returns
+        -------
+        str
+            ``base_folder`` followed by the qualified table name (with ``.`` replaced by ``_``) and a random UUID.
+        """
         table_name_for_folder = table_object.qualified_table_name.replace('.', '_')
         # Add a random UID that is filename safe to the path.
         # That will prevent two envts that accidentally share a bucket & folder
         # from clobbering each other's files
         uid = uuid.uuid4()
         return f'{base_folder}/{table_name_for_folder}_{uid.hex}'
+
+    # --- Background file upload hooks ----------------------------------------
+    # Loaders that stage their files somewhere remote (e.g. S3) override these so that
+    # finished files are uploaded while the next ones are still being written.
+    # The defaults do nothing, so a loader that loads local files needs no changes.
+
+    def _begin_file_uploads(self, table_object: Table) -> None:
+        """
+        Called by ``load_from_iterable`` implementations before the first file is written.
+
+        Parameters
+        ----------
+        table_object:
+            The table being loaded.
+        """
+
+    def _queue_file_for_upload(self, local_file: str | Path) -> None:
+        """
+        Called by ``load_from_iterable`` implementations each time a file is completely written and closed.
+
+        Parameters
+        ----------
+        local_file:
+            Path of the finished file.
+        """
+
+    def _abort_file_uploads(self) -> None:
+        """
+        Stop any uploads that were not collected by :meth:`load_from_files`.
+
+        Must be safe to call when no uploads are active.
+        """
+
+    def _handle_load_failure(self) -> None:
+        """
+        Called when a load fails, after :meth:`_abort_file_uploads` has stopped any uploads.
+
+        Must be safe to call more than once and must not raise, so that the original error is the one reported.
+        """
+
+    @contextmanager
+    def _file_upload_session(self, table_object: Table) -> Iterator[None]:
+        """
+        Context manager that calls :meth:`_begin_file_uploads` on entry and :meth:`_abort_file_uploads` on exit.
+        If the body raises, :meth:`_handle_load_failure` is also called.
+
+        Use it in the same ``with`` statement as the temporary directory holding the files, listed after the
+        directory, so that uploads are stopped before the directory is removed.
+
+        Parameters
+        ----------
+        table_object:
+            The table being loaded.
+        """
+        self._begin_file_uploads(table_object)
+        try:
+            yield
+        except BaseException:
+            # Uploads are stopped first. The upload thread is the only user of the S3 bucket until it is joined.
+            self._abort_file_uploads()
+            self._handle_load_failure()
+            raise
+        finally:
+            self._abort_file_uploads()
 
     def load_from_files(
             self,
@@ -79,7 +195,7 @@ class BulkLoader(ABC):
     @abstractmethod
     def load_from_iterable(
             self,
-            iterable: Iterable,
+            iterable: Iterable[Row],
             table_object: Table,
             table_to_load: str | None = None,
             perform_rename: bool = False,
@@ -100,6 +216,27 @@ class BulkLoader(ABC):
             progress_frequency: int = 10,
             analyze_compression: str | None = None,
     ) -> int:
+        """
+        Bulk load the rows cached by *table_object* using :meth:`load_from_iterable`.
+
+        Parameters
+        ----------
+        table_object:
+            Table whose cache is loaded.
+        table_to_load:
+            Name of the table (or temp table) that was loaded, used for the rename.
+        perform_rename:
+            If True, call :meth:`rename_table` after the load.
+        progress_frequency:
+            Seconds between progress log messages.
+        analyze_compression:
+            Passed through to :meth:`load_from_iterable`.
+
+        Returns
+        -------
+        int
+            Number of rows loaded.
+        """
         row_count = self.load_from_iterable(
             iterable=table_object.cache_iterable(),
             table_object=table_object,
@@ -115,6 +252,19 @@ class BulkLoader(ABC):
             temp_table_name: str | None,
             table_object: Table,
     ):
+        """
+        Swap a freshly loaded temp table in place of *table_object*.
+
+        The existing table is renamed with an ``_old`` suffix (dropping any earlier ``_old`` table first),
+        and *temp_table_name* is renamed to the name of *table_object*.
+
+        Parameters
+        ----------
+        temp_table_name:
+            Name of the table that was loaded. If None, a warning is logged and nothing is renamed.
+        table_object:
+            The table to replace.
+        """
         if temp_table_name is not None:
             old_name = table_object.qualified_table_name + '_old'
 

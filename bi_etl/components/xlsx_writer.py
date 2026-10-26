@@ -197,7 +197,13 @@ class XLSXWriter(XLSXReader):
         """
         if self.column_names is None:
             raise ValueError("insert called before column_names set (or possibly column_names needs to be set after set_active_worksheet_by_name call.")
-        self.active_worksheet.append(self.column_names)
+        worksheet = self.active_worksheet
+        # openpyxl only appends after the last written row (also in write only mode),
+        # so blank rows are the only way to position the header at header_row.
+        # _current_row is the only way to know the last written row in both modes.
+        for _ in range(self.header_row - 1 - worksheet._current_row):
+            worksheet.append([])
+        worksheet.append([None] * (self.start_col - 1) + list(self.column_names))
         self.headers_written = True
 
     def insert_row(
@@ -285,9 +291,11 @@ class XLSXWriter(XLSXReader):
         """
         if self._insert_cnt_this_sheet == 0:
             return
+        first_col_letter = get_column_letter(self.start_col)
         last_col_letter = get_column_letter(self.start_col - 1 + len(self.column_names))
+        last_row = self.header_row + self._insert_cnt_this_sheet
 
-        table_ref = f"A{self.start_col}:{last_col_letter}{self._insert_cnt_this_sheet + self.start_row}"
+        table_ref = f"{first_col_letter}{self.header_row}:{last_col_letter}{last_row}"
         self.log.debug(f"Adding table to worksheet {self.active_worksheet_name} for range {table_ref}")
 
         table = WorksheetTable(

@@ -238,7 +238,7 @@ class RangeLookup(Lookup):
         Only works if parent_component is based on bi_etl.components.readonlytable
         """
 
-        effective_date = kwargs.get('effective_date')
+        effective_date: datetime = ensure_datetime(kwargs.get('effective_date'))
 
         from bi_etl.components.readonlytable import ReadOnlyTable
         if not isinstance(self.parent_component, ReadOnlyTable):
@@ -262,17 +262,16 @@ class RangeLookup(Lookup):
             stmt_no_date = super(RangeLookup, self)._add_remote_stmt_where_clause(stmt_no_date)
             # order by the begin date
             stmt_no_date = stmt_no_date.order_by(parent_table.get_column(self.begin_date))
-            self._remote_lookup_stmt_no_date = stmt_no_date.compile(bind=self.parent_component.database.bind)
+            self._remote_lookup_stmt_no_date = stmt_no_date
 
         values_dict = self._get_remote_stmt_where_values(row, effective_date)
 
-        rows = list(parent_table.execute(self._remote_lookup_stmt, values_dict))
+        rows = parent_table.execute_get_rows(self._remote_lookup_stmt, values_dict)
         if len(rows) == 0:
             # Use the second statement that does the lookup without dates
             # Which is what our parent Lookup does, so we call that to set values
             values_dict = super(RangeLookup, self)._get_remote_stmt_where_values(row)
-            results = parent_table.execute(self._remote_lookup_stmt_no_date, values_dict)
-            all_key_rows = results.fetchall()
+            all_key_rows = parent_table.execute_get_rows(self._remote_lookup_stmt_no_date, values_dict)
             if len(all_key_rows) == 0:
                 raise NoResultFound()
             else:
@@ -280,13 +279,14 @@ class RangeLookup(Lookup):
                 for row in all_key_rows:
                     row_counter += 1
                     if row_counter == 1 and effective_date < row[self.begin_date]:
-                        raise BeforeAllExisting(self.parent_component.Row(row), effective_date=row[self.begin_date])
+                        raise BeforeAllExisting(row, effective_date=row[self.begin_date])
                     elif (ensure_datetime(row[self.begin_date])
-                          >= ensure_datetime(effective_date)
-                          >= ensure_datetime(row[self.end_date])
+                          <= effective_date
+                          <= ensure_datetime(row[self.end_date])
                     ):
                         return row
                 # If we reach this point return the last row in an AfterExisting exception
+                assert isinstance(row, Row)
                 raise AfterExisting(prior_row=row, effective_date=effective_date)
 
         elif len(rows) == 1:

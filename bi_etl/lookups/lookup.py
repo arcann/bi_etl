@@ -648,13 +648,14 @@ class Lookup(Iterable):
              stats: Statistics | None = None,
              **kwargs
              ) -> Row:
+        found_row = None
         if self.cache_enabled:
             try:
-                row = self.find_in_cache(row, **kwargs)
+                found_row = self.find_in_cache(row, **kwargs)
                 if stats is not None:
                     stats['Found in cache'] += 1
                     stats.timer.stop()
-                return row
+                return found_row
             except NoResultFound as e:
                 if stats is not None:
                     stats['Not in cache'] += 1
@@ -698,16 +699,18 @@ class Lookup(Iterable):
         try:
             if stats is not None:
                 stats['DB lookup performed'] += 1
-            row = self.find_in_remote_table(row, **kwargs)
-            row.status = RowStatus.existing
+            found_row = self.find_in_remote_table(row, **kwargs)
+            found_row.status = RowStatus.existing
             if maintain_cache and self.cache_enabled:
-                self.cache_row(row, allow_update=False)
+                self.cache_row(found_row, allow_update=False)
             if stats is not None:
                 stats['DB lookup found row'] += 1
         finally:
             if stats is not None:
                 stats.timer.stop()
-        return row
+        if found_row is None:
+            raise NoResultFound()
+        return found_row
 
     def _update_with_value_cache(self, row: Row):
         """

@@ -20,17 +20,35 @@ if TYPE_CHECKING:
     from bi_etl.components.table import Table
 
 
-class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
+class RedShiftS3Base(S3BulkLoaderMixin, BulkLoader):
+    """
+    Common base for Redshift bulk loaders that stage files on S3 and load them with ``COPY``.
+
+    Subclasses must implement :meth:`get_copy_sql` to supply the format specific ``COPY`` options and
+    :meth:`~bi_etl.bulk_loaders.bulk_loader.BulkLoader.load_from_iterable` (typically by mixing in a format mixin).
+
+    .. note::
+
+       :class:`~bi_etl.bulk_loaders.s3_bulk_loader_mixin.S3BulkLoaderMixin` is listed before
+       :class:`~bi_etl.bulk_loaders.bulk_loader.BulkLoader` so that its file upload hooks replace the no-op versions.
+    """
+
     def __init__(
             self,
             config: S3_Bulk_Loader_Config,
     ):
+        """
+        Parameters
+        ----------
+        config:
+            :class:`~bi_etl.bulk_loaders.s3_bulk_load_config.S3_Bulk_Loader_Config`
+            with the S3 and Redshift settings.
+        """
         super().__init__()
         self.config = config
         self._init_s3(config)
         self.s3_user_id = self.config.user_id
         self.s3_region = self.config.region_name
-        self.s3_files_to_generate = self.config.s3_files_to_generate
         self.s3_file_max_rows = self.config.s3_file_max_rows
         self.analyze_compression = self.config.analyze_compression
         self.redshift_copy_iam_role = self.config.redshift_copy_iam_role
@@ -51,6 +69,9 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
 
     @property
     def s3_password(self):
+        """
+        The S3 password from the config. It is registered for redaction in log messages.
+        """
         password = self.config.get_password()
         self.add_redact_value(password)
         return password
@@ -67,8 +88,7 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
                 response = True
             else:
                 if time.time() > t_end:
-                    self.log.info(f'{key} is not available for loading. 3 minute wait is over. FATAL. {t_end}')
-                    response = False
+                    raise RuntimeError(f'{key} is not available for loading. 3 minute wait is over. FATAL. {t_end}')
                 else:
                     self.log.info(
                         f'{key} is probably not finished syncing among AWS S3 nodes, we will retry again after 5 second. {time.time()}'
@@ -82,6 +102,23 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
             exception: sqlalchemy.exc.SQLAlchemyError,
             s3_source_path: str,
     ) -> BulkLoaderException:
+        """
+        Collect the details of a failed ``COPY`` from Redshift's ``stl_load_errors`` table and log them.
+
+        Parameters
+        ----------
+        connection:
+            Connection that ran the ``COPY``. ``None`` if the failure happened while connecting.
+        exception:
+            The error raised by the ``COPY``.
+        s3_source_path:
+            S3 path used by the ``COPY``. Used to find the error rows when ``pg_last_copy_id()`` is not available.
+
+        Returns
+        -------
+        :class:`~bi_etl.bulk_loaders.bulk_loader_exception.BulkLoaderException`
+            Exception holding the original error and any ``stl_load_errors`` details found.
+        """
         bulk_loader_exception = BulkLoaderException(exception, password=self.s3_password)
 
         # early exit for cases where we failed while making a connection
@@ -152,8 +189,29 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
             table_object: Table,
             s3_source_path: str,
     ) -> int:
+        """
+        Execute a ``COPY`` statement, retrying for up to 15 seconds on recoverable S3 errors.
+
+        Parameters
+        ----------
+        copy_sql:
+            The ``COPY`` statement to run.
+        table_object:
+            Table being loaded. Provides the database connection.
+        s3_source_path:
+            S3 path being loaded. Used when reporting errors.
+
+        Returns
+        -------
+        int
+            Number of rows loaded according to ``stl_load_commits``, or -1 if the count could not be determined.
+
+        Raises
+        ------
+        :class:`~bi_etl.bulk_loaders.bulk_loader_exception.BulkLoaderException`
+            If the ``COPY`` fails and cannot be retried.
+        """
         copy_sql = textwrap.dedent(copy_sql)
-        sql_safe_pw = copy_sql.replace(self.s3_password, '*' * 8)
 
         keep_trying = True
         wait_seconds = 15
@@ -170,7 +228,16 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
                 keep_trying = False
                 connection.execute(text("COMMIT;"))
             except sqlalchemy.exc.SQLAlchemyError as e:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except Exception as e:
+                        pass
                 # Check if the error is non-recoverable
+                self.log_with_redactions(
+                    log_level=logging.INFO,
+                    message=copy_sql,
+                )
                 self.log.error('!' * 80)
                 self.log_with_redactions(
                     log_level=logging.ERROR,
@@ -226,9 +293,10 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
                     else:
                         rows_loaded = lines_scanned + (self.lines_scanned_modifier * file_cnt)
             except Exception as e:
-                e = str(e).replace(self.s3_password, '*' * 8)
-                self.log.warning(f"Error getting row count: {e}")
-
+                self.log_with_redactions(
+                    log_level=logging.WARNING,
+                    message=f"Error getting row count: {e}"
+                )
             connection.close()
 
         return rows_loaded
@@ -248,6 +316,23 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
             s3_source_path: str,
             table_to_load: str,
     ):
+        """
+        Build the format independent start of the ``COPY`` statement.
+
+        Includes the source, credentials, IAM role and region clauses.
+
+        Parameters
+        ----------
+        s3_source_path:
+            Path of the S3 folder (within the bucket) to load from.
+        table_to_load:
+            Qualified name of the table to load.
+
+        Returns
+        -------
+        str
+            The first part of the ``COPY`` statement.
+        """
         region_option = self._get_region_specifier()
 
         if self.redshift_copy_iam_role is not None:
@@ -272,11 +357,24 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
 
     def _get_compression_option_str(
             self,
-            analyze_compression: str = None,
+            analyze_compression: str | None = None,
     ) -> str:
+        """
+        Build the ``COMPUPDATE`` clause of the ``COPY`` statement.
+
+        Parameters
+        ----------
+        analyze_compression:
+            ``COMPUPDATE`` setting. Defaults to the configured ``analyze_compression``.
+
+        Returns
+        -------
+        str
+            The clause, or a SQL comment if compression analysis is not requested.
+        """
         analyze_compression = analyze_compression or self.analyze_compression
         if analyze_compression:
-            return f"COMPUPDATE {self.analyze_compression}"
+            return f"COMPUPDATE {analyze_compression}"
         else:
             return '--No COMPUPDATE'
 
@@ -288,6 +386,27 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
             analyze_compression: str = None,
             options: str = '',
     ):
+        """
+        Build the format specific ``COPY`` statement. Must be implemented by each subclass.
+
+        Parameters
+        ----------
+        s3_source_path:
+            Path of the S3 folder (within the bucket) containing the files to load.
+        table_to_load:
+            Qualified name of the table to load.
+        file_compression:
+            Compression option text to add to the statement (e.g. ``GZIP``).
+        analyze_compression:
+            ``COMPUPDATE`` setting. Defaults to the configured ``analyze_compression``.
+        options:
+            Additional ``COPY`` options to append.
+
+        Returns
+        -------
+        str
+            The SQL text.
+        """
         raise NotImplementedError()
 
     def load_from_s3_path(
@@ -302,6 +421,35 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
             analyze_compression: str = None,
             perform_rename: bool = False,
     ) -> int:
+        """
+        Load files that are already in S3 into the table with ``COPY``.
+
+        Parameters
+        ----------
+        s3_source_path:
+            S3 folder (or file prefix) to load from.
+        table_object:
+            Table being loaded.
+        table_to_load:
+            Name of the table (or temp table) to load into. Defaults to ``table_object.qualified_table_name``.
+        s3_source_path_is_absolute:
+            If ``False``, ``s3_source_path`` is relative to the configured S3 folder.
+        file_list:
+            Names of the files being loaded. Not used by the ``COPY`` itself.
+        file_compression:
+            Compression option text to add to the statement (e.g. ``GZIP``).
+        options:
+            Additional ``COPY`` options to append.
+        analyze_compression:
+            ``COMPUPDATE`` setting. Defaults to the configured ``analyze_compression``.
+        perform_rename:
+            If ``True``, rename ``table_to_load`` over the original table after the load.
+
+        Returns
+        -------
+        int
+            Number of rows loaded.
+        """
         if not s3_source_path_is_absolute:
             s3_source_path = f'{self.s3_folder}/{s3_source_path}'
 
@@ -333,19 +481,50 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
             options: str = '',
             analyze_compression: str = None,
     ) -> int:
-        s3_full_folder = self._get_table_specific_folder_name(self.s3_folder, table_object)
-        file_list = self._upload_files_to_s3(local_files, s3_full_folder)
+        """
+        Wait for the uploads of *local_files* to S3 (uploading any that were not queued) and ``COPY`` them
+        into the table.
 
-        rows_loaded = self.load_from_s3_path(
-            s3_source_path=s3_full_folder,
-            file_list=file_list,
-            table_object=table_object,
-            table_to_load=table_to_load,
-            perform_rename=perform_rename,
-            file_compression=file_compression,
-            options=options,
-            analyze_compression=analyze_compression,
-        )
+        See :meth:`~bi_etl.bulk_loaders.s3_bulk_loader_mixin.S3BulkLoaderMixin._upload_files_to_s3`.
+
+        Parameters
+        ----------
+        local_files:
+            Local files to load.
+        table_object:
+            Table being loaded.
+        table_to_load:
+            Name of the table (or temp table) to load into. Defaults to ``table_object.qualified_table_name``.
+        perform_rename:
+            If ``True``, rename ``table_to_load`` over the original table after the load.
+        file_compression:
+            Compression option text to add to the statement (e.g. ``GZIP``).
+        options:
+            Additional ``COPY`` options to append.
+        analyze_compression:
+            ``COMPUPDATE`` setting. Defaults to the configured ``analyze_compression``.
+
+        Returns
+        -------
+        int
+            Number of rows loaded.
+        """
+        try:
+            s3_full_folder, file_list = self._upload_files_to_s3(local_files, table_object)
+
+            rows_loaded = self.load_from_s3_path(
+                s3_source_path=s3_full_folder,
+                file_list=file_list,
+                table_object=table_object,
+                table_to_load=table_to_load,
+                perform_rename=perform_rename,
+                file_compression=file_compression,
+                options=options,
+                analyze_compression=analyze_compression,
+            )
+        except BaseException:
+            self._handle_load_failure()
+            raise
         if self.s3_clear_when_done:
             self.clean_s3_folder(s3_full_folder)
 
@@ -354,14 +533,36 @@ class RedShiftS3Base(BulkLoader, S3BulkLoaderMixin):
     def load_table_from_cache(
             self,
             table_object: Table,
-            table_to_load: str = None,
+            table_to_load: str | None = None,
             perform_rename: bool = False,
             progress_frequency: int = 10,
-            analyze_compression: str = None,
+            analyze_compression: str | None = None,
     ) -> int:
+        """
+        Load the rows in the cache of *table_object* with :meth:`load_from_iterable`.
+
+        Parameters
+        ----------
+        table_object:
+            Table whose cache is loaded.
+        table_to_load:
+            Name of the table (or temp table) used when renaming.
+        perform_rename:
+            If ``True``, rename ``table_to_load`` over the original table (keeping the original as ``_old``).
+        progress_frequency:
+            Seconds between progress log messages.
+        analyze_compression:
+            ``COMPUPDATE`` setting. Defaults to the configured ``analyze_compression``.
+
+        Returns
+        -------
+        int
+            Number of rows loaded.
+        """
         row_count = self.load_from_iterable(
             iterable=table_object.cache_iterable(),
             table_object=table_object,
+            table_to_load=table_to_load,
             analyze_compression=analyze_compression,
         )
         if perform_rename:

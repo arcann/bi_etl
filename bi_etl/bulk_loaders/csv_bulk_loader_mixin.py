@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Iterable, Optional
 
 from bi_etl.components.csv_writer import CSVWriter, QUOTE_MINIMAL
+from bi_etl.components.row.row import Row
 from bi_etl.timer import Timer
 
 if TYPE_CHECKING:
@@ -80,7 +81,7 @@ class CsvBulkLoaderMixin:
 
     def load_from_iterable(
             self,
-            iterable: Iterable,
+            iterable: Iterable[Row],
             table_object: Table,
             table_to_load: str | None = None,
             perform_rename: bool = False,
@@ -90,6 +91,9 @@ class CsvBulkLoaderMixin:
     ) -> int:
         """Write rows from *iterable* to local gzipped CSV files and load them
         via :meth:`load_from_files`.
+
+        Each file is queued for upload (see :meth:`~bi_etl.bulk_loaders.bulk_loader.BulkLoader._queue_file_for_upload`)
+        as soon as it is closed, so :meth:`load_from_files` only has to wait for the uploads still in progress.
 
         Parameters
         ----------
@@ -121,7 +125,7 @@ class CsvBulkLoaderMixin:
         with TemporaryDirectory(
                 dir=self.config.temp_file_path,
                 ignore_cleanup_errors=True,
-        ) as temp_dir:
+        ) as temp_dir, self._file_upload_session(table_object):
             local_files_list: list[str] = []
             file_number = 0
             row_count = 0
@@ -141,6 +145,7 @@ class CsvBulkLoaderMixin:
                                 f"Closed CSV bulk load chunk {file_number}: "
                                 f"{local_files_list[-1]}"
                             )
+                            self._queue_file_for_upload(local_files_list[-1])
                             file_number += 1
 
                         # Open a new chunk file
@@ -169,6 +174,10 @@ class CsvBulkLoaderMixin:
             finally:
                 if writer is not None:
                     self._close_csv_writer(writer, text_wrapper, zip_file)
+
+            if writer is not None:
+                # Only reached when the loop completed, so the last file is complete
+                self._queue_file_for_upload(local_files_list[-1])
 
             if row_count > 0:
                 self.log.debug(f"Loading from files {local_files_list}")

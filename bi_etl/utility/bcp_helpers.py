@@ -168,7 +168,10 @@ def run_bcp(
             cmd.extend(['-c'])
         cmd.extend(['-t', delimiter])
 
-    log.debug(" ".join(cmd).replace(database_bind.url.password, '****'))
+    password: str = database_bind.url.password
+    if password is None:
+        password = 'password'
+    log.debug(" ".join(cmd).replace(password, '****'))
     messages = list()
 
     try:

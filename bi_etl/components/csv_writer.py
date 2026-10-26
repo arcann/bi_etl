@@ -411,7 +411,7 @@ class CSVWriter(ETLComponent):
                     parent_stats=parent_stats,
                     **kwargs
                     )
-                return None
+            return None
         else:
             return self.insert_row(
                 source,

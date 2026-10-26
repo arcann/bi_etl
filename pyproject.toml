@@ -19,7 +19,6 @@ dependencies = [
     "psutil>=5.7.2",
     "openpyxl>=3.0.5",
     "btrees>=4.7.2",
-    "gevent>=21.8.0",
     "sqlparse>=0.4.2",
     "pydicti>=1.1.6",
     "more-itertools>=9.0.0",

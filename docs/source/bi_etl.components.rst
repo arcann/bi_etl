@@ -16,12 +16,16 @@ Submodules
 .. toctree::
    :maxdepth: 1
 
+   bi_etl.components.avro_reader
+   bi_etl.components.avro_writer
    bi_etl.components.csv_writer
    bi_etl.components.csvreader
    bi_etl.components.data_analyzer
    bi_etl.components.etlcomponent
    bi_etl.components.hst_table
    bi_etl.components.hst_table_source_based
+   bi_etl.components.parquet_reader
+   bi_etl.components.parquet_writer
    bi_etl.components.pyarrow_dataset_reader
    bi_etl.components.readonlytable
    bi_etl.components.sqlquery

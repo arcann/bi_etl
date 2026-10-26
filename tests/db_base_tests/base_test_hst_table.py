@@ -1,9 +1,7 @@
 """
 Created on Jan 27, 2016
 """
-import logging
 import typing
-import unittest
 from datetime import timedelta, datetime
 from enum import Enum
 
@@ -45,22 +43,24 @@ class BaseTestHstTable(BaseTestDatabase):
             self,
             expected_row_generator: typing.Iterator[Row],
             target_table: HistoryTable,
-            special_check_values: typing.Dict[str, typing.Dict] = None,
-            key_list: list = None,
-            log_rows_found: bool = True,
-            msg: str = None,
+            special_check_values: typing.Dict[str, typing.Dict] | None = None,
+            key_list: list | None = None,
+            log_rows_found: bool | None = True,
+            msg: str | None = None,
     ):
         if msg is None:
             msg = ''
 
         if key_list is None:
-            key_list = target_table.natural_key
-            if key_list is None:
+            try:
+                key_list = target_table.natural_key
+            except ValueError:
                 key_list = target_table.primary_key.copy()
                 if target_table.begin_date_column in key_list:
                     key_list.remove(target_table.begin_date_column)
                 if target_table.end_date_column in key_list:
                     key_list.remove(target_table.end_date_column)
+                target_table.natural_key = key_list
             self.assertIsNotNone(
                 key_list,
                 f"Test definition error. key_list not provided and table {target_table} has no natural_key key"
@@ -270,6 +270,7 @@ class BaseTestHstTable(BaseTestDatabase):
                 self.task,
                 self.mock_database,
                 table_name=tbl_name) as tbl:
+            assert isinstance(tbl, HistoryTable)
             tbl.begin_date_column = 'begin_date'
             tbl.end_date_column = 'end_date'
             for row in self._gen_src_rows_1(rows_to_insert):
@@ -277,6 +278,7 @@ class BaseTestHstTable(BaseTestDatabase):
             tbl.commit()
 
             def gen_expected_rows() -> typing.Iterator[Row]:
+                assert isinstance(tbl, HistoryTable)
                 for new_row in self._gen_src_rows_1(rows_to_insert):
                     new_row['begin_date'] = tbl.default_begin_date
                     new_row['end_date'] = tbl.default_end_date
@@ -352,7 +354,7 @@ class BaseTestHstTable(BaseTestDatabase):
             use_type1: bool,
             use_type2: bool,
             check_for_deletes: bool,
-            begin_date_source: BeginDateSource = None,
+            begin_date_source: BeginDateSource | None = None,
     ):
         if begin_date_source is None:
             begin_date_source = self.default_begin_date_source
@@ -366,6 +368,7 @@ class BaseTestHstTable(BaseTestDatabase):
                 self.task,
                 self.mock_database,
                 table_name=tbl_name) as tbl:
+            assert isinstance(tbl, HistoryTable)
             tbl.begin_date_column = 'begin_date'
             tbl.end_date_column = 'end_date'
             tbl.delete_flag = 'delete_flag'
@@ -440,7 +443,7 @@ class BaseTestHstTable(BaseTestDatabase):
                         source_row[tbl.begin_date_column] = update_time
                     elif source_row[tbl.begin_date_column] is None:
                         source_row[tbl.begin_date_column] = update_time
-                    # else use the begin date provided by the source file
+                    # else use the begin_date provided by the source file
 
                 if begin_date_source in {BeginDateSource.IN_ROW, BeginDateSource.SYSTEM_TIME}:
                     tbl.upsert(source_row)
@@ -619,6 +622,7 @@ class BaseTestHstTable(BaseTestDatabase):
             end_date_column='end_date',
             delete_flag='delete_flag',
         ) as tbl:
+            assert isinstance(tbl, HistoryTable)
             for row in self._gen_src_rows_1(rows_to_insert):
                 tbl.upsert(row)
             tbl.commit()
@@ -642,6 +646,7 @@ class BaseTestHstTable(BaseTestDatabase):
                 self.task,
                 self.mock_database,
                 table_name=tbl_name) as tbl:
+            assert isinstance(tbl, HistoryTable)
             tbl.begin_date_column = 'begin_date'
             tbl.end_date_column = 'end_date'
             tbl.delete_flag = 'delete_flag'
@@ -668,6 +673,7 @@ class BaseTestHstTable(BaseTestDatabase):
             for source_row in self._gen_rows_from_csv('test1_upsert.csv', transform=False):
                 source_columns_set = source_row.column_set
                 break
+            assert source_columns_set is not None
             src_table_name = self._get_table_name(f"src_{tbl_name}")
             self.mock_database.drop_table_if_exists(src_table_name)
             src_columns = [col for col in
@@ -692,6 +698,7 @@ class BaseTestHstTable(BaseTestDatabase):
                 self.mock_database,
                 table_name=src_table_name,
             ) as src_tbl:
+                assert isinstance(src_tbl, Table)
                 src_excludes = None
 
                 update_time = datetime(2001, 5, 23, 7, 59, 21)
@@ -700,7 +707,7 @@ class BaseTestHstTable(BaseTestDatabase):
                     self._transform_csv_row(source_row)
                     source_row['begin_date'] = update_time
                     if src_excludes is None:
-                        src_excludes = src_tbl.column_names_set - source_row.column_set
+                        src_excludes = frozenset(src_tbl.column_names_set - source_row.column_set)
                     src_tbl.insert_row(source_row)
                 src_tbl.commit()
 
@@ -824,6 +831,7 @@ class BaseTestHstTable(BaseTestDatabase):
                 self.mock_database,
                 table_name=tbl_name
         ) as tbl:
+            assert isinstance(tbl, HistoryTable)
             tbl.begin_date_column = 'dt_src_beg'
             tbl.end_date_column = 'dt_src_end'
             tbl.delete_flag = 'flag_delete'
@@ -866,13 +874,13 @@ class BaseTestHstTable(BaseTestDatabase):
                 else:
                     csv_expected.append('cleanup_before_spur_ver.csv')
 
-                for csv_file in csv_expected:
+                for csv_file_v in csv_expected:
                     with CSVReader(
                             self.task,
-                            self.get_test_file_path(csv_file),
+                            self.get_test_file_path(csv_file_v),
                             encoding='utf-8',
-                    ) as csv_src:
-                        for expected_row in csv_src:
+                    ) as csv_src_v:
+                        for expected_row in csv_src_v:
                             expected_row.transform('dt_src_beg', str2datetime, '%Y-%m-%d %H:%M:%S')
                             expected_row.transform('dt_src_end', str2datetime, '%Y-%m-%d %H:%M:%S')
                             expected_row.transform('col2', str2int)
@@ -886,7 +894,6 @@ class BaseTestHstTable(BaseTestDatabase):
 
         self.mock_database.drop_table_if_exists(tbl_name)
 
-    @unittest.skip
     def test_cleanup_spur_del_ver(self):
         tbl_name = self._get_table_name('test_cleanup_del_ver')
         self._test_cleanup_versions(
@@ -895,7 +902,6 @@ class BaseTestHstTable(BaseTestDatabase):
             remove_redundant_versions=True,
         )
 
-    @unittest.skip
     def test_cleanup_spur_nodel_ver(self):
         tbl_name = self._get_table_name('test_cleanup_nodel_ver')
         self._test_cleanup_versions(
@@ -904,7 +910,6 @@ class BaseTestHstTable(BaseTestDatabase):
             remove_redundant_versions=True,
         )
 
-    @unittest.skip
     def test_cleanup_spur_del_nover(self):
         tbl_name = self._get_table_name('test_cleanup_del_nover')
         self._test_cleanup_versions(
@@ -913,7 +918,6 @@ class BaseTestHstTable(BaseTestDatabase):
             remove_redundant_versions=False,
         )
 
-    @unittest.skip
     def test_cleanup_spur_nodel_nover(self):
         tbl_name = self._get_table_name('test_cleanup_nodel_nover')
         self._test_cleanup_versions(
