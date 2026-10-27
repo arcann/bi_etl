@@ -5,6 +5,7 @@ Created on Nov 4, 2014
 """
 import traceback
 import warnings
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from types import EllipsisType
@@ -20,6 +21,7 @@ from bi_etl.conversions import ensure_datetime
 from bi_etl.database.database_metadata import DatabaseMetadata
 from bi_etl.exceptions import AfterExisting, NoResultFound, BeforeAllExisting
 from bi_etl.lookups.autodisk_range_lookup import AutoDiskRangeLookup
+from bi_etl.lookups.lookup import Lookup
 from bi_etl.scheduler.etl_task import ETLTask
 from bi_etl.statistics import Statistics
 from bi_etl.timer import Timer
@@ -27,6 +29,25 @@ from bi_etl.timer import Timer
 __all__ = ['HistoryTable']
 
 from sqlalchemy import Column
+
+
+@dataclass
+class _CleanupPassResult:
+    """
+    Results of a single :meth:`HistoryTable._cleanup_pass`.
+
+    Attributes
+    ----------
+    clean_pass:
+        True if the pass found nothing that needed fixing.
+    begin_date_issues:
+        Cumulative number of begin date issues found, including prior passes.
+    end_date_issues:
+        Cumulative number of end date issues found, including prior passes.
+    """
+    clean_pass: bool
+    begin_date_issues: int
+    end_date_issues: int
 
 
 # noinspection PyAbstractClass,SqlDialectInspection
@@ -200,7 +221,7 @@ class HistoryTable(Table):
             table_name_case_sensitive=table_name_case_sensitive,
             schema=schema,
             exclude_columns=exclude_columns,
-            )
+        )
         self.__default_effective_date = None
         if default_effective_date is not None:
             self.default_effective_date = default_effective_date
@@ -406,7 +427,7 @@ class HistoryTable(Table):
             lookup_keys=non_date_lookup_columns,
             lookup_class=lookup_class,
             lookup_class_kwargs=lookup_class_kwargs,
-            )
+        )
 
     def fill_cache(
             self,
@@ -478,7 +499,7 @@ class HistoryTable(Table):
             allow_duplicates_in_src=allow_duplicates_in_src,
             row_limit=row_limit,
             parent_stats=parent_stats,
-            )
+        )
 
     def get_by_lookup_and_effective_date(
             self,
@@ -540,7 +561,7 @@ class HistoryTable(Table):
             stats_id: str = 'get_by_lookup',
             parent_stats: Statistics | None = None,
             fallback_to_db: bool = False,
-            ) -> Row:
+    ) -> Row:
         """
         Get by an alternate key. Returns a row.
 
@@ -577,7 +598,7 @@ class HistoryTable(Table):
             stats_id=stats_id,
             parent_stats=parent_stats,
             fallback_to_db=fallback_to_db,
-            )
+        )
 
     def sanity_check_source_mapping(
             self,
@@ -589,7 +610,7 @@ class HistoryTable(Table):
             ignore_target_not_in_source=None,
             raise_on_source_not_in_target=None,
             raise_on_target_not_in_source=None,
-            ):
+    ):
         if target_excludes is None:
             target_excludes = set()
         else:
@@ -624,7 +645,7 @@ class HistoryTable(Table):
             stat_name: str = 'insert',
             parent_stats: Statistics | None = None,
             **kwargs
-            ) -> Row:
+    ) -> Row:
         """
         Inserts a row into the database (batching rows as batch_size)
 
@@ -663,7 +684,7 @@ class HistoryTable(Table):
             source_excludes=source_excludes,
             target_excludes=target_excludes,
             parent_stats=stats,
-            )
+        )
 
         if new_row[self.begin_date_column] > new_row[self.end_date_column]:
             raise ValueError(
@@ -786,7 +807,7 @@ class HistoryTable(Table):
                         f"The table had an existing key sequence that did not cover all dates.\n"
                         f" End = {new_row[self.end_date_column]} is less than eff date {effective_date}\n"
                         f" Natural Keys = {self.get_nk_lookup().get_list_of_lookup_column_values(row)}."
-                        )
+                    )
                     for row in self.get_nk_lookup().get_versions_collection(row).values():
                         self.log.info(f" begin= {row[self.begin_date_column]}\tend= {row[self.end_date_column]}")
                 new_row.set_keeping_parent(self.end_date_column, self.default_end_date)
@@ -832,7 +853,7 @@ class HistoryTable(Table):
             target_excludes: Optional[frozenset] = None,
             stat_name: str = 'build rows',
             parent_stats: Statistics | None = None,
-            ) -> Row:
+    ) -> Row:
 
         source_mapped_as_target_row = super().build_row(
             source_row=source_row,
@@ -863,7 +884,7 @@ class HistoryTable(Table):
             stat_name: str = 'upsert',
             parent_stats: Statistics | None = None,
             **kwargs
-            ):
+    ):
         """
         Update (if changed) or Insert a row in the table.
         Returns the row found/inserted, with the auto-generated key (if that feature is enabled)
@@ -927,7 +948,7 @@ class HistoryTable(Table):
             source_excludes=source_excludes,
             target_excludes=target_excludes,
             parent_stats=stats,
-            )
+        )
 
         if self.delete_flag is not None and (
                 self.delete_flag not in source_mapped_as_target_row
@@ -977,13 +998,13 @@ class HistoryTable(Table):
                 source_row=source_mapped_as_target_row,
                 effective_date=effective_date,
                 parent_stats=stats
-                )
+            )
 
             changes_list = existing_row.compare_to(
                 source_mapped_as_target_row,
                 exclude=do_not_update | skip_update_check_on,
                 coerce_types=False,
-                )
+            )
             delayed_changes = existing_row.compare_to(source_mapped_as_target_row, compare_only=skip_update_check_on)
             if self.track_update_columns:
                 col_stats = self.get_stats_entry('updated columns', parent_stats=stats)
@@ -1010,7 +1031,7 @@ class HistoryTable(Table):
                     changes_list=list(changes_list) + list(delayed_changes),
                     additional_update_values=additional_update_values,
                     parent_stats=stats
-                    )
+                )
                 # For testing commit each update
                 # self.commit(parent_stats= stats);
 
@@ -1104,7 +1125,7 @@ class HistoryTable(Table):
             prior_row: Row | EllipsisType = ...,
             stat_name='delete_version',
             parent_stats=None
-            ):
+    ):
         """
         **Physically** delete a given version row. Corrects the preceding end date value.
 
@@ -1251,7 +1272,7 @@ class HistoryTable(Table):
             stat_name=stat_name,
             parent_stats=parent_stats,
             **kwargs
-            )
+        )
 
     def delete_not_processed(
             self,
@@ -1261,7 +1282,7 @@ class HistoryTable(Table):
             stat_name: str = 'delete_not_processed',
             parent_stats: Statistics | None = None,
             **kwargs
-            ):
+    ):
         """
         Overridden to call logical delete.
 
@@ -1376,7 +1397,7 @@ class HistoryTable(Table):
                 # We can't use cache since we have a list of in-equality filters
                 use_cache_as_source=False,
                 parent_stats=stats
-                ):
+        ):
             if row.status == RowStatus.unknown:
                 pass
             stats['rows read'] += 1
@@ -1411,6 +1432,286 @@ class HistoryTable(Table):
 
         # Restore saved progress_frequency
         self.progress_frequency = saved_progress_frequency
+
+    def _cleanup_pass(
+            self,
+            pass_number: int,
+            lookup_object: Lookup,
+            use_cache_as_source: bool,
+            criteria_list: list | None,
+            criteria_dict: dict | None,
+            remove_spurious_deletes: bool,
+            remove_redundant_versions: bool,
+            exclude_from_compare: frozenset,
+            max_begin_date_warnings: int,
+            max_end_date_warnings: int,
+            progress_message: str,
+            read_progress_frequency: float,
+            trace_delete_data: bool,
+            begin_date_issues: int,
+            end_date_issues: int,
+            stats: Statistics,
+    ) -> _CleanupPassResult:
+        """
+        Make a single pass over the existing rows for :meth:`cleanup_versions`.
+
+        Fixes bad begin and end dates, and deletes spurious delete versions and redundant versions.
+
+        Parameters
+        ----------
+        pass_number:
+            Which pass of :meth:`cleanup_versions` this is (starting at 1).
+        lookup_object:
+            The lookup that defines the key grouping (and ordering) of the rows.
+        use_cache_as_source:
+            Read the existing rows from the cache instead of the database?
+        criteria_list:
+            See :meth:`cleanup_versions`.
+        criteria_dict:
+            See :meth:`cleanup_versions`.
+        remove_spurious_deletes:
+            See :meth:`cleanup_versions`.
+        remove_redundant_versions:
+            See :meth:`cleanup_versions`.
+        exclude_from_compare:
+            Columns to exclude when comparing a row to the prior version.
+        max_begin_date_warnings:
+            See :meth:`cleanup_versions`.
+        max_end_date_warnings:
+            See :meth:`cleanup_versions`.
+        progress_message:
+            See :meth:`cleanup_versions`.
+        read_progress_frequency:
+            Seconds between progress messages. Zero to not log progress.
+        trace_delete_data:
+            Log the rows that are deleted?
+        begin_date_issues:
+            Number of begin date issues found by prior passes.
+        end_date_issues:
+            Number of end date issues found by prior passes.
+        stats:
+            Statistics to nest this pass's statistics in.
+
+        Returns
+        -------
+        _CleanupPassResult
+            Whether the pass was clean, and the updated cumulative counts of begin and end date issues.
+        """
+        clean_pass = True
+        prior_row = None
+        prior_row_pk_values = None
+        last_non_deleted_row = None
+        last_non_deleted_pk_values = None
+        pending_deletes = list()
+        iterator, row_stat_name = self._cleanup_iterator(
+            pass_number=pass_number,
+            lookup_object=lookup_object,
+            use_cache_as_source=use_cache_as_source,
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            stats=stats,
+        )
+
+        progress_timer = Timer()
+        rows_read = 0
+        # Note iterator needs to return the rows with the natural key
+        # grouped together (but not necessarily ordered) and in begin_date order.
+        for row in iterator:
+            if row.status == RowStatus.deleted:
+                raise RuntimeError(f"iterator returned deleted row!\n  row={repr(row)}")
+
+            rows_read += 1
+            if 0 < read_progress_frequency <= progress_timer.seconds_elapsed:
+                progress_timer.reset()
+                self.log.info(
+                    progress_message.format(
+                        pass_number=pass_number,
+                        row_number=rows_read,
+                        table=self,
+                    )
+                )
+            stats[row_stat_name] += 1
+
+            # ===========================================================
+            # Debugging
+            # if row['person_srgt_key'] in (4550, 986):
+            #     print repr(row)
+            # ===========================================================
+
+            if prior_row is not None:
+                assert isinstance(prior_row, Row)
+                row_pk_values = lookup_object.get_hashable_combined_key(row)
+                if row_pk_values != prior_row_pk_values:
+                    # Change in PK.
+
+                    # Reset second_prior_row
+                    last_non_deleted_row = None
+                    last_non_deleted_pk_values = None
+
+                    # Check first begin date
+                    if self.default_begin_date is not None:
+                        if row[self.begin_date_column] > self.default_begin_date:
+                            clean_pass = False
+                            begin_date_issues += 1
+                            if begin_date_issues < max_begin_date_warnings:
+                                self.log.warning(
+                                    f"Correcting first version begin date for {row_pk_values} "
+                                    f"from {row[self.begin_date_column]} to {self.default_begin_date}"
+                                )
+                            elif begin_date_issues == max_begin_date_warnings:
+                                self.log.warning("Limit reached for 'Correcting begin date' messages.")
+                            # If not correct update the prior row end date
+                            super().apply_updates(
+                                row,
+                                additional_update_values={
+                                    self.begin_date_column: self.default_begin_date
+                                },
+                                parent_stats=stats,
+                                allow_insert=False,
+                            )
+
+                            stats.add_to_stat('rows with bad date sequence', 1)
+
+                    # Check final end date on prior row (last in series)
+                    if prior_row[self.end_date_column] != self.default_end_date:
+                        end_date_issues += 1
+                        if end_date_issues < max_end_date_warnings:
+                            self.log.warning(
+                                f"Correcting final version end date for {prior_row_pk_values} "
+                                f"from {prior_row[self.end_date_column]} to {self.default_end_date}"
+                            )
+                        elif end_date_issues == max_end_date_warnings:
+                            self.log.warning("Limit reached for 'Correcting end date' messages.")
+                        # If not correct update the prior row end date
+                        super().apply_updates(
+                            prior_row,
+                            additional_update_values={
+                                self.end_date_column: self.default_end_date
+                            },
+                            parent_stats=stats,
+                            allow_insert=False,
+                        )
+
+                        stats.add_to_stat('rows with bad date sequence', 1)
+
+                ###########################################################################################
+                # Checks for subsequent versions after the first.
+                # (if the last row and this have the same natural key)
+                else:
+                    # Check that rows are coming in order
+                    if row[self.begin_date_column] < prior_row[self.begin_date_column]:
+                        raise RuntimeError(
+                            f"rows not in begin date order!\nrow={repr(row)}\nprior_row={repr(prior_row)}"
+                        )
+
+                    # Check that end dates are correct
+                    correct_prior_end_date = row[self.begin_date_column] + self._end_date_timedelta
+                    if prior_row[self.end_date_column] != correct_prior_end_date:
+                        clean_pass = False
+                        # If not correct update the prior row end date
+                        end_date_issues += 1
+                        if end_date_issues < max_end_date_warnings:
+                            self.log.warning(
+                                f"Correcting end date for {prior_row_pk_values} "
+                                f"from {prior_row[self.end_date_column]} to {correct_prior_end_date}"
+                            )
+                        elif end_date_issues == max_end_date_warnings:
+                            self.log.warning(
+                                f"Limit ({max_end_date_warnings}) reached "
+                                f"for 'Correcting end date' messages."
+                            )
+                        super().apply_updates(
+                            prior_row,
+                            additional_update_values={
+                                self.end_date_column: correct_prior_end_date
+                            },
+                            parent_stats=stats,
+                            allow_insert=False,
+                        )
+                        stats.add_to_stat('rows with bad date sequence', 1)
+
+                    ########################################
+                    # Remove spurious deletes (soft-deletes)
+                    ########################################
+                    # Delete the previous row if it's a soft-delete, and this following one is not
+                    # Note: This is not applicable if there is no delete flag. Deletes are then all physical
+                    if self.delete_flag is not None:
+                        if (
+                                remove_spurious_deletes
+                                and prior_row[self.delete_flag] == self.delete_flag_yes
+                                and row[self.delete_flag] == self.delete_flag_no
+                        ):
+                            # This row is not soft-deleted, but the previous version was
+                            if trace_delete_data:
+                                self.log.debug(f"deleting spurious logical delete row {prior_row}")
+                            # We can't risk a change to cache as we iterate, so we keep a list of
+                            # deletes to make in the cache
+                            prior_row.status = RowStatus.deleted
+                            pending_deletes.append((prior_row, last_non_deleted_row))
+                            clean_pass = False
+                            prior_row = last_non_deleted_row
+                            prior_row_pk_values = last_non_deleted_pk_values
+
+                    #################################################
+                    # Remove redundant versions (same non key values)
+                    #################################################
+                    # Compare this row to last row, and delete
+                    # this if all values are the same (and this is not a delete)
+                    if (remove_redundant_versions
+                            and prior_row is not None
+                            and prior_row.status != RowStatus.deleted
+                    ):
+                        differences = row.compare_to(
+                            prior_row,
+                            exclude=exclude_from_compare,
+                            coerce_types=False
+                        )
+                        if len(differences) == 0:
+                            if trace_delete_data:
+                                self.log.debug(f"deleting spurious unchanged row {row}")
+                            # Note: We can't remove from the cache in case we are iterating on that
+                            pending_deletes.append((row, prior_row))
+                            clean_pass = False
+                            row.status = RowStatus.deleted
+            if row.status != RowStatus.deleted:
+                # Rows pending delete are not made the prior row.
+                # That way a run of redundant versions all get deleted against the one version being kept,
+                # instead of against a prior row that will already have been deleted.
+                if prior_row is not None and prior_row.status != RowStatus.deleted:
+                    last_non_deleted_row = prior_row
+                prior_row = row
+                prior_row_pk_values = lookup_object.get_hashable_combined_key(row)
+
+        # end of loop through iterator
+        ######################################
+
+        # ensure we don't accidentally refer to prior_row or second_prior_row anymore
+        del prior_row
+        del last_non_deleted_row
+
+        # If using cache as source we didn't call physically_delete_version
+        # to delete from the db or cache, we need to do it now
+        for row, prior_row in pending_deletes:
+            stats['rows sent for delete'] += 1
+            # TODO: Need to store & get second_prior_row in the pending del list
+            self.physically_delete_version(
+                row,
+                prior_row=prior_row,
+                remove_from_cache=True,
+                parent_stats=stats,
+            )
+            if row.status != RowStatus.deleted:
+                raise RuntimeError(
+                    f"row not actually tagged as deleted row!\nrow={repr(row)}"
+                )
+
+        self.commit()
+
+        return _CleanupPassResult(
+            clean_pass=clean_pass,
+            begin_date_issues=begin_date_issues,
+            end_date_issues=end_date_issues,
+        )
 
     def cleanup_versions(
             self,
@@ -1488,11 +1789,8 @@ class HistoryTable(Table):
             exclude_from_compare = frozenset()
 
         if lookup_name is None:
-            if self.natural_key is not None:
-                lookup_object = self.get_nk_lookup()
-                exclude_from_compare = exclude_from_compare | frozenset(self.primary_key)
-            else:
-                lookup_object = self.get_pk_lookup()
+            lookup_object = self.get_nk_lookup()
+            exclude_from_compare = exclude_from_compare | frozenset(self.primary_key)
         else:
             lookup_object = self.get_lookup(lookup_name)
 
@@ -1521,232 +1819,44 @@ class HistoryTable(Table):
             self.trace_data = False
             pass_number = 0
 
+            if use_cache_as_source:
+                if criteria_list is not None:
+                    self.log.warning("cleanup_versions had to use DB source to honor criteria_list")
+                    use_cache_as_source = False
+                if not self.cache_filled:
+                    self.log.warning(
+                        f"cleanup_versions had to use DB source since cache_filled = {self.cache_filled}"
+                    )
+                    use_cache_as_source = False
+
             # Repeat until... see below
             while True:
                 pass_number += 1
                 if pass_number > max_passes:
                     raise ValueError(f"cleanup_versions failed to get to clean state after {max_passes} passes.")
-                clean_pass = True
-                prior_row = None
-                prior_row_pk_values = None
-                second_prior_row = None
-                second_prior_row_pk_values = None
-                pending_cache_deletes = list()
-                if use_cache_as_source:
-                    if criteria_list is not None:
-                        self.log.warning("cleanup_versions had to use DB source to honor criteria_list")
-                        use_cache_as_source = False
-                    if not self.cache_filled:
-                        self.log.warning(
-                            f"cleanup_versions had to use DB source since cache_filled = {self.cache_filled}"
-                        )
-                        use_cache_as_source = False
-                if use_cache_as_source:
-                    iterator = iter(lookup_object)
-                    row_stat_name = 'rows read from cache'
-                else:
-                    if not self.in_bulk_mode and pass_number == 1:
-                        # Apply any pending updates and deletes
-                        self.commit()
-                    order_by = list(lookup_object.lookup_keys)
-                    # Make sure begin date is not already in the order_by
-                    if self.begin_date_column in order_by:
-                        order_by.remove(self.begin_date_column)
-                    # Add begin date as the last part of the order by
-                    order_by.append(self.begin_date_column)
+                pass_result = self._cleanup_pass(
+                    pass_number=pass_number,
+                    lookup_object=lookup_object,
+                    use_cache_as_source=use_cache_as_source,
+                    criteria_list=criteria_list,
+                    criteria_dict=criteria_dict,
+                    remove_spurious_deletes=remove_spurious_deletes,
+                    remove_redundant_versions=remove_redundant_versions,
+                    exclude_from_compare=exclude_from_compare,
+                    max_begin_date_warnings=max_begin_date_warnings,
+                    max_end_date_warnings=max_end_date_warnings,
+                    progress_message=progress_message,
+                    read_progress_frequency=saved_read_progress,
+                    trace_delete_data=trace_delete_data,
+                    begin_date_issues=begin_date_issues,
+                    end_date_issues=end_date_issues,
+                    stats=stats,
+                )
+                begin_date_issues = pass_result.begin_date_issues
+                end_date_issues = pass_result.end_date_issues
 
-                    self.log.debug(f"ordering by {order_by}")
-                    iterator = self.where(
-                        criteria_list=criteria_list,
-                        criteria_dict=criteria_dict,
-                        order_by=order_by,
-                        parent_stats=stats,
-                    )
-                    row_stat_name = 'rows read from table'
-
-                progress_timer = Timer()
-                rows_read = 0
-                # Note iterator needs to return the rows with the natural key
-                # grouped together (but not necessarily ordered) and in begin_date order.
-                for row in iterator:
-                    rows_read += 1
-                    row_pending_delete = False
-                    if 0 < saved_read_progress <= progress_timer.seconds_elapsed:
-                        progress_timer.reset()
-                        self.log.info(
-                            progress_message.format(
-                                pass_number=pass_number,
-                                row_number=rows_read,
-                                table=self,
-                                )
-                            )
-                    stats[row_stat_name] += 1
-                    if row.status == RowStatus.deleted:
-                        raise RuntimeError(f"iterator returned deleted row!\n  row={repr(row)}")
-
-                    # ===========================================================
-                    # Debugging
-                    # if row['person_srgt_key'] in (4550, 986):
-                    #     print repr(row)
-                    # ===========================================================
-
-                    if prior_row is not None:
-                        assert isinstance(prior_row, Row)
-                        row_pk_values = lookup_object.get_hashable_combined_key(row)
-                        if row_pk_values != prior_row_pk_values:
-                            # Change in PK.
-
-                            # Reset second_prior_row
-                            second_prior_row = None
-                            second_prior_row_pk_values = None
-
-                            # Check first begin date
-                            if self.default_begin_date is not None:
-                                if row[self.begin_date_column] > self.default_begin_date:
-                                    clean_pass = False
-                                    begin_date_issues += 1
-                                    if begin_date_issues < max_begin_date_warnings:
-                                        self.log.warning(
-                                            f"Correcting first version begin date for {row_pk_values} "
-                                            f"from {row[self.begin_date_column]} to {self.default_begin_date}"
-                                        )
-                                    elif begin_date_issues == max_begin_date_warnings:
-                                        self.log.warning("Limit reached for 'Correcting begin date' messages.")
-                                    # If not correct update the prior row end date
-                                    super().apply_updates(
-                                        row,
-                                        additional_update_values={
-                                            self.begin_date_column: self.default_begin_date
-                                        },
-                                        parent_stats=stats,
-                                        allow_insert=False,
-                                    )
-
-                                    stats.add_to_stat('rows with bad date sequence', 1)
-
-                            # Check final end date on prior row (last in series)
-                            if prior_row[self.end_date_column] != self.default_end_date:
-                                end_date_issues += 1
-                                if end_date_issues < max_end_date_warnings:
-                                    self.log.warning(
-                                        f"Correcting final version end date for {prior_row_pk_values} "
-                                        f"from {prior_row[self.end_date_column]} to {self.default_end_date}"
-                                    )
-                                elif end_date_issues == max_end_date_warnings:
-                                    self.log.warning("Limit reached for 'Correcting end date' messages.")
-                                # If not correct update the prior row end date
-                                super().apply_updates(
-                                    prior_row,
-                                    additional_update_values={
-                                        self.end_date_column: self.default_end_date
-                                    },
-                                    parent_stats=stats,
-                                    allow_insert=False,
-                                )
-
-                                stats.add_to_stat('rows with bad date sequence', 1)
-
-                        ###########################################################################################
-                        # Checks for subsequent versions after the first.
-                        # (if the last row and this have the same natural key)
-                        else:
-                            # Check that rows are coming in order
-                            if row[self.begin_date_column] < prior_row[self.begin_date_column]:
-                                raise RuntimeError(
-                                    f"rows not in begin date order!\nrow={repr(row)}\nprior_row={repr(prior_row)}"
-                                )
-
-                            # Check that end dates are correct
-                            correct_prior_end_date = row[self.begin_date_column] + self._end_date_timedelta
-                            if prior_row[self.end_date_column] != correct_prior_end_date:
-                                clean_pass = False
-                                # If not correct update the prior row end date
-                                end_date_issues += 1
-                                if end_date_issues < max_end_date_warnings:
-                                    self.log.warning(
-                                        f"Correcting end date for {prior_row_pk_values} "
-                                        f"from {prior_row[self.end_date_column]} to {correct_prior_end_date}"
-                                    )
-                                elif end_date_issues == max_end_date_warnings:
-                                    self.log.warning(
-                                        f"Limit ({max_end_date_warnings}) reached "
-                                        f"for 'Correcting end date' messages."
-                                    )
-                                super().apply_updates(
-                                    prior_row,
-                                    additional_update_values={
-                                        self.end_date_column: correct_prior_end_date
-                                    },
-                                    parent_stats=stats,
-                                    allow_insert=False,
-                                )
-                                stats.add_to_stat('rows with bad date sequence', 1)
-
-                            # Delete the previous row if it's a delete, and this following one is not
-                            if self.delete_flag is not None:
-                                if (
-                                        remove_spurious_deletes
-                                        and prior_row[self.delete_flag] == self.delete_flag_yes
-                                        and row[self.delete_flag] == self.delete_flag_no
-                                ):
-                                    if trace_delete_data:
-                                        self.log.debug(f"deleting spurious logical delete row {prior_row}")
-                                    # We can't risk a change to cache as we iterate, so we keep a list of
-                                    # deletes to make in the cache
-                                    pending_cache_deletes.append((prior_row, second_prior_row))
-                                    clean_pass = False
-                                    prior_row = second_prior_row
-                                    prior_row_pk_values = second_prior_row_pk_values
-                                    second_prior_row = None
-                                    second_prior_row_pk_values = None
-                                # Compare this row to last row, and delete
-                                # this if all values are the same (and this is not a delete)
-                                elif (remove_redundant_versions
-                                      and prior_row is not None
-                                      and prior_row.status != RowStatus.deleted):
-                                    differences = row.compare_to(
-                                        prior_row,
-                                        exclude=exclude_from_compare,
-                                        coerce_types=False
-                                        )
-                                    if len(differences) == 0:
-                                        if trace_delete_data:
-                                            self.log.debug(f"deleting spurious unchanged row {row}")
-                                        # Note: We can't remove from the cache in case we are iterating on that
-                                        pending_cache_deletes.append((row, prior_row))
-                                        stats['rows sent for delete'] += 1
-                                        clean_pass = False
-                                        row_pending_delete = True
-                    if row.status != RowStatus.deleted and not row_pending_delete:
-                        # Rows pending delete are not made the prior row.
-                        # That way a run of redundant versions all get deleted against the one version being kept,
-                        # instead of against a prior row that will already have been deleted.
-                        second_prior_row = prior_row
-                        prior_row = row
-                        prior_row_pk_values = lookup_object.get_hashable_combined_key(row)
-
-                # ensure we don't accidentally refer to prior_row or second_prior_row anymore
-                del prior_row
-                del second_prior_row
-
-                # If using cache as source we didn't call physically_delete_version
-                # to delete from the db or cache, we need to do it now
-                for row, prior_row in pending_cache_deletes:
-                    # TODO: Need to store & get second_prior_row in the pending del list
-                    self.physically_delete_version(
-                        row,
-                        prior_row=prior_row,
-                        remove_from_cache=True,
-                        parent_stats=stats,
-                    )
-                    if row.status != RowStatus.deleted:
-                        raise RuntimeError(
-                            f"row not actually tagged as deleted row!\nrow={repr(row)}"
-                        )
-
-                self.commit()
                 # Break out of the repeat loop if the pass was clean, or we aren't supposed to loop
-                if not clean_pass and repeat_until_clean:
+                if not pass_result.clean_pass and repeat_until_clean:
                     self.log.debug(
                         f"Repeating cleanup_versions check. Completed pass {pass_number}."
                     )
@@ -1764,6 +1874,62 @@ class HistoryTable(Table):
             # Restore read progress messages
             self.progress_frequency = saved_read_progress
         stats.timer.stop()
+
+    def _cleanup_iterator(
+            self,
+            pass_number: int,
+            lookup_object: Lookup,
+            use_cache_as_source: bool,
+            criteria_list: list | None,
+            criteria_dict: dict | None,
+            stats: Statistics,
+    ) -> tuple[Iterable[Row], str]:
+        """
+        Build the iterator over the existing rows for a single :meth:`cleanup_versions` pass.
+
+        Parameters
+        ----------
+        pass_number:
+            Which pass of :meth:`cleanup_versions` this is (starting at 1).
+        lookup_object:
+            The lookup that defines the key grouping (and ordering) of the rows.
+        use_cache_as_source:
+            Read the existing rows from the cache instead of the database?
+        criteria_list:
+            Passed to :meth:`where` when reading from the database.
+        criteria_dict:
+            Passed to :meth:`where` when reading from the database.
+        stats:
+            Statistics to nest the database read statistics in.
+
+        Returns
+        -------
+        iterator, row_stat_name:
+            An iterator that returns the rows with the natural key grouped together
+            (but not necessarily ordered) and in begin_date order,
+            and the name of the statistic to count the rows read with.
+        """
+        if use_cache_as_source:
+            return iter(lookup_object), 'rows read from cache'
+
+        if not self.in_bulk_mode and pass_number == 1:
+            # Apply any pending updates and deletes
+            self.commit()
+        order_by = list(lookup_object.lookup_keys)
+        # Make sure begin date is not already in the order_by
+        if self.begin_date_column in order_by:
+            order_by.remove(self.begin_date_column)
+        # Add begin date as the last part of the order by
+        order_by.append(self.begin_date_column)
+
+        self.log.debug(f"ordering by {order_by}")
+        iterator = self.where(
+            criteria_list=criteria_list,
+            criteria_dict=criteria_dict,
+            order_by=order_by,
+            parent_stats=stats,
+        )
+        return iterator, 'rows read from table'
 
     def upsert_special_values_rows(
             self,
@@ -1868,7 +2034,7 @@ class HistoryTable(Table):
                             WHERE {Table._sql_indent_join(
                 [f"e.{nk_col} = s.{nk_col}"
                  for nk_col in self.natural_key], 18, prefix='AND '
-                )}
+            )}
                         )
                     """
         else:
@@ -1895,7 +2061,7 @@ class HistoryTable(Table):
                     WHERE {Table._sql_indent_join(
                 [f"e.{key_col} = s.{key_col}"
                  for key_col in self.primary_key], 18, prefix='AND '
-                )}
+            )}
                 )
             """
 
@@ -1920,7 +2086,9 @@ class HistoryTable(Table):
             updated_row_nk_table: str,
             connection_name: str = 'sql_upsert',
     ):
-        self.database.drop_table_if_exists(updated_row_nk_table, connection_name=connection_name, auto_close=False, transaction=False)
+        self.database.drop_table_if_exists(
+            updated_row_nk_table, connection_name=connection_name, auto_close=False, transaction=False
+            )
 
         if self.delete_flag:
             delete_flag_where = f"OR e.{self.delete_flag} != '{self.delete_flag_no}'"
@@ -2059,7 +2227,9 @@ class HistoryTable(Table):
 
         now_as_date_literal = self._sql_date_literal(self.get_current_time())
 
-        self.database.drop_table_if_exists(deleted_row_nk_table, connection_name=connection_name, auto_close=False, transaction=False)
+        self.database.drop_table_if_exists(
+            deleted_row_nk_table, connection_name=connection_name, auto_close=False, transaction=False
+            )
 
         find_deletes_sql = f"""
             CREATE TABLE {deleted_row_nk_table} AS

@@ -867,11 +867,13 @@ class BaseTestHstTable(BaseTestDatabase):
                 if remove_spurious_deletes:
                     csv_expected.append('cleanup_after_spur_del.csv')
                 else:
+                    # Not cleaned so we expect the before rows to still be there
                     csv_expected.append('cleanup_before_spur_del.csv')
 
                 if remove_redundant_versions:
                     csv_expected.append('cleanup_after_spur_ver.csv')
                 else:
+                    # Not cleaned so we expect the before rows to still be there
                     csv_expected.append('cleanup_before_spur_ver.csv')
 
                 for csv_file_v in csv_expected:
