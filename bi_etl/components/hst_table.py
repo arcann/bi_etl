@@ -295,11 +295,6 @@ class HistoryTable(Table):
 
     def infer_natural_key(self):
         if len(list(self.primary_key)) == 1:
-            #
-            # TODO: For scd type2 dimension tables the primary_key will be the surrogate key.
-            # So this won't generate the actual natural key.
-            # Need to fix that.  We could scan for other unique indexes / constraints.
-            #
             self.log.error("Cannot determine natural key. Please set it explicitly using the natural_key attribute")
             return None
         else:
@@ -1693,7 +1688,6 @@ class HistoryTable(Table):
         # to delete from the db or cache, we need to do it now
         for row, prior_row in pending_deletes:
             stats['rows sent for delete'] += 1
-            # TODO: Need to store & get second_prior_row in the pending del list
             self.physically_delete_version(
                 row,
                 prior_row=prior_row,
