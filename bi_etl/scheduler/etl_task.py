@@ -176,7 +176,7 @@ class ETLTask(object):
     @lru_cache(maxsize=None)
     def dagster_get_config(
             cls,
-            dagster_config: DAGSTER_CONFIG | None = None,
+            dagster_config: Optional[DAGSTER_CONFIG] = None,
             *,
             debug: bool = False,
             **kwargs

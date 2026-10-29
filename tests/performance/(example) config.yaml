@@ -1,0 +1,20 @@
+# S3 staging bucket used by all Databricks bulk loaders.
+# password_source: DATABRICKS_SERVICE_CREDENTIALS uses the Databricks service
+# credential named by databricks_service_credential to authenticate with S3.
+s3:
+  bucket_name: "example-temp-bucket"
+  folder: "dbx_bench"
+  user_id: "N/A"
+  password_source: "DATABRICKS_SERVICE_CREDENTIALS"
+
+# Databricks SQL warehouse connection.
+# Set the DATABRICKS_TOKEN environment variable (or change access_token_env_var
+# to point to a different variable) before running the benchmark.
+databricks:
+  warehouse_name:  "sql-wh-serverless"
+  catalog_name: "sandbox"
+  schema_name: "default"
+
+# Table name without the catalog.schema prefix.
+# The benchmark creates catalog.schema.target_table, loads into it, then drops it.
+target_table: "bench_bulk_loader"
