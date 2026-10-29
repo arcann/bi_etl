@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path, PurePath
@@ -14,6 +14,8 @@ def json_default(obj: Any) -> str | int:
     if isinstance(obj, Path):
         return str(obj)
     if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, date):
         return obj.isoformat()
     if isinstance(obj, type):
         return str(obj)

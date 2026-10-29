@@ -1,0 +1,273 @@
+"""
+Benchmark to find the best Avro bulk loader ``rows_per_file`` (rows per Avro file).
+
+NOT part of the regular pytest suite (the file name does not match ``test*.py``).
+Run from ``packages/bi_etl``::
+
+    uv run python -m tests.performance.bench_avro_rows_per_file
+    uv run python -m tests.performance.bench_avro_rows_per_file --rows 2000000 --repeats 5
+    uv run python -m tests.performance.bench_avro_rows_per_file --rows_per_file 25000 50000 100000
+    uv run python -m tests.performance.bench_avro_rows_per_file --upload-latency 0.1
+
+This is the Avro version of :mod:`tests.performance.bench_parquet_rows_per_file`, which describes the simulation.
+The real :class:`~bi_etl.bulk_loaders.avro_bulk_loader_mixin.AvroBulkLoaderMixin` writes real Avro files
+(with the codec that :class:`~bi_etl.bulk_loaders.redshift_s3_avro_loader.RedShiftS3AvroBulk` uses), fed through a real
+:class:`~bi_etl.bulk_loaders.bulk_worker.BulkWorker` the same way :class:`~bi_etl.components.table.Table` feeds it.
+Only the S3 upload is simulated: a real :class:`~bi_etl.bulk_loaders.file_uploader.FileUploader` thread uploads each
+finished file one at a time, and each upload takes ``file size / --upload-mbps`` (plus ``--upload-latency``).
+
+The time measured is from the first row being sent to the loader until the last file has arrived in S3, which is
+
+    time to write all files + time to upload the last file (the "tail") + any upload backlog.
+
+Smaller files shrink the tail but add per-file overhead (open / close / schema header) and more upload latency.
+Larger files do the opposite.
+
+The table and rows come from :mod:`tests.performance.bench_data`. Avro needs
+:class:`~bi_etl.components.row.row.Row` objects, which take more memory than plain dicts. Lower ``--rows`` on a
+small machine.
+"""
+import argparse
+import functools
+import gc
+import logging
+import statistics
+import tempfile
+import time
+
+from bi_etl.bulk_loaders.avro_bulk_loader_mixin import AvroBulkLoaderMixin
+from bi_etl.bulk_loaders.bulk_loader import BulkLoader
+from bi_etl.bulk_loaders.bulk_worker import BulkWorker
+from bi_etl.bulk_loaders.file_uploader import FileUploader
+from bi_etl.bulk_loaders.redshift_s3_avro_loader import RedShiftS3AvroBulk
+from bi_etl.components.row.row import Row
+from tests.performance.bench_data import BenchTable, build_table, make_rows
+from tests.performance.bench_parquet_rows_per_file import (
+    MB,
+    Result,
+    SimulatedS3Link,
+    print_table,
+)
+
+
+class SimulatedS3AvroLoader(AvroBulkLoaderMixin, BulkLoader):
+    """
+    The real Avro file writing of :class:`~bi_etl.bulk_loaders.avro_bulk_loader_mixin.AvroBulkLoaderMixin`
+    with the S3 upload (and the database ``COPY``) replaced by a :class:`SimulatedS3Link`.
+
+    Parameters
+    ----------
+    rows_per_file
+        Rows per Avro file.
+    link
+        The simulated S3 connection the files are uploaded over.
+    temp_file_path
+        Directory the Avro files are written under.
+    """
+
+    def __init__(self, rows_per_file: int, link: SimulatedS3Link, temp_file_path: str):
+        super().__init__()
+
+        class MockConfig:
+            pass
+
+        self.config = MockConfig()
+        self.config.temp_file_path = temp_file_path
+        self._init_avro(rows_per_file=rows_per_file)
+        self._link = link
+        self._file_uploader: FileUploader | None = None
+        self.writing_done_at: float | None = None
+
+    def _begin_file_uploads(self, table_object) -> None:
+        """Start the upload thread."""
+        self._abort_file_uploads()
+        self._file_uploader = FileUploader(self._link.upload, name='bench upload')
+
+    def _queue_file_for_upload(self, local_file) -> None:
+        """Queue a finished file for the upload thread."""
+        if self._file_uploader is not None:
+            self._file_uploader.submit(local_file)
+
+    def _abort_file_uploads(self) -> None:
+        """Stop the upload thread if it is still running."""
+        uploader = self._file_uploader
+        self._file_uploader = None
+        if uploader is not None:
+            uploader.abort()
+
+    def load_from_files(self, local_files: list, table_object, *args, **kwargs) -> int:
+        """
+        Wait for the queued uploads and return the number of rows written.
+
+        Parameters
+        ----------
+        local_files
+            Every file that was written.
+        table_object
+            Not used.
+
+        Returns
+        -------
+        int
+            ``rows_seen`` of the loader, the number of rows it was given.
+
+        Raises
+        ------
+        AssertionError
+            If the files were not all uploaded, in order.
+        """
+        self.writing_done_at = time.perf_counter()
+        uploader, self._file_uploader = self._file_uploader, None
+        uploaded = uploader.finish()
+        if uploaded != [str(f) for f in local_files]:
+            raise AssertionError('Not every file was uploaded, in order')
+        return self.rows_seen
+
+
+def run_once(
+        rows: list[Row],
+        table: BenchTable,
+        rows_per_file: int,
+        temp_dir: str,
+        upload_mbps: float = 300.0,
+        upload_latency: float = 0.0,
+        worker_chunk_size: int = BulkWorker.DEFAULT_CHUNK_SIZE,
+) -> Result:
+    """
+    Load *rows* once with the given ``rows_per_file`` and time it from the first row sent to the last file in S3.
+
+    Parameters
+    ----------
+    rows
+        Rows to load.
+    table
+        Table the rows belong to, see :func:`~tests.performance.bench_data.build_table`.
+    rows_per_file
+        Rows per Avro file.
+    temp_dir
+        Directory to write the Avro files under.
+    upload_mbps
+        Simulated upload speed in MB (10**6 bytes) per second.
+    upload_latency
+        Simulated fixed time per file upload, in seconds.
+    worker_chunk_size
+        Rows per hand-off to the loader thread, as in ``Table.bulk_worker_chunk_size``.
+
+    Returns
+    -------
+    Result
+
+    Raises
+    ------
+    AssertionError
+        If the loader did not write every row.
+    """
+    print(f"Starting run with rows_per_file {rows_per_file:,}")
+    link = SimulatedS3Link(upload_mbps, upload_latency)
+    loader = SimulatedS3AvroLoader(rows_per_file, link, temp_dir)
+    worker = BulkWorker(
+        functools.partial(loader.load_from_iterable, table_object=table),
+        chunk_size=worker_chunk_size,
+    )
+    gc.collect()
+    worker.start()
+    start = time.perf_counter()
+    for row in rows:
+        worker.put(row)
+    worker.close_input()
+    worker.join()
+    if worker.exception is not None:
+        raise worker.exception
+    if worker.value != len(rows):
+        raise AssertionError(f'loader wrote {worker.value} rows, sent {len(rows)}')
+    return Result(
+        rows_per_file=rows_per_file,
+        rows=len(rows),
+        files=link.files,
+        total_bytes=link.bytes,
+        elapsed=link.busy_until - start,
+        writing=loader.writing_done_at - start,
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        '--rows', type=int, default=1_000_000,
+        help='Rows to load per run (default 1,000,000)'
+    )
+    parser.add_argument(
+        '--rows_per_file', nargs='+', type=int,
+        default=[10_000, 25_000, 50_000, 100_000, 250_000, 500_000],
+        help=f'Rows per Avro file to try (default 10k to 500k). The loader default is {AvroBulkLoaderMixin.DEFAULT_ROWS_PER_FILE:,}',
+    )
+    parser.add_argument(
+        '--repeats', type=int, default=5,
+        help='Runs per setting; the median run is reported'
+    )
+    parser.add_argument(
+        '--upload-mbps', type=float, default=300.0,
+        help='Simulated S3 upload speed in MB/s (default 300)'
+    )
+    parser.add_argument(
+        '--upload-latency', type=float, default=0.05,
+        help='Simulated fixed seconds per file upload (default 0.05). Real S3 PUTs are about 0.02 to 0.1',
+    )
+    parser.add_argument(
+        '--worker-chunk-size', type=int, default=BulkWorker.DEFAULT_CHUNK_SIZE,
+        help='Rows per hand-off from the producer to the loader thread',
+    )
+    parser.add_argument(
+        '--column-multiplier', type=int, default=1,
+        help='Number of times the columns (other than the key) are repeated, to make the table wider (default 1)',
+    )
+    args = parser.parse_args()
+
+    logging.disable(logging.CRITICAL)
+    table = build_table(column_multiplier=args.column_multiplier)
+    print(f'Generating {args.rows:,} rows...')
+    rows = make_rows(args.rows, column_multiplier=args.column_multiplier)
+    print(
+        f'{args.rows:,} rows of {len(table.columns)} columns, {args.repeats} run(s) per rows_per_file, '
+        f'upload {args.upload_mbps:g} MB/s + {args.upload_latency:g}s per file\n'
+    )
+
+    medians = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for rows_per_file in args.rows_per_file:
+            print(f"Testing rows_per_file {rows_per_file:>9,} with {args.repeats} repeats...")
+            runs = [
+                run_once(
+                    rows, table, rows_per_file, tmp,
+                    upload_mbps=args.upload_mbps,
+                    upload_latency=args.upload_latency,
+                    worker_chunk_size=args.worker_chunk_size,
+                )
+                for _ in range(args.repeats)
+            ]
+            median = sorted(runs, key=lambda r: r.elapsed)[len(runs) // 2]
+            stdev = statistics.stdev([r.elapsed for r in runs]) if len(runs) > 1 else 0.0
+            medians.append((median, stdev))
+            print(f'  rows_per_file {rows_per_file:>9,}: {median.elapsed:.2f}s', flush=True)
+
+    best = min(medians, key=lambda m: m[0].elapsed)[0]
+    print()
+    print_table(
+        ['rows_per_file', 'files', 'MB/file', 'total MB', 'elapsed s', 'stdev s', 'writing s', 'tail s', 'rows/s',
+         'vs best'],
+        [
+            [
+                f'{r.rows_per_file:,}' + (' *' if r.rows_per_file == AvroBulkLoaderMixin.DEFAULT_ROWS_PER_FILE else ''),
+                f'{r.files:,}', f'{r.mb_per_file:.1f}', f'{r.total_bytes / MB:.1f}',
+                f'{r.elapsed:.2f}', f'{stdev:.2f}', f'{r.writing:.2f}', f'{r.tail:.2f}',
+                f'{r.rows_per_second:,.0f}', f'{r.elapsed / best.elapsed - 1:+.1%}',
+            ]
+            for r, stdev in medians
+        ],
+    )
+    print(f'\n* = default of {RedShiftS3AvroBulk.__name__}')
+    print(f'Best rows_per_file: {best.rows_per_file:,} rows ({best.mb_per_file:.1f} MB per file, {best.elapsed:.2f}s)')
+
+
+if __name__ == '__main__':
+    main()

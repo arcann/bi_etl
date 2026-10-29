@@ -49,7 +49,8 @@ class RedShiftS3Base(S3BulkLoaderMixin, BulkLoader):
         self._init_s3(config)
         self.s3_user_id = self.config.user_id
         self.s3_region = self.config.region_name
-        self.s3_file_max_rows = self.config.s3_file_max_rows
+        if self.config.s3_file_max_rows is not None:
+            self.rows_per_file = self.config.s3_file_max_rows
         self.analyze_compression = self.config.analyze_compression
         self.redshift_copy_iam_role = self.config.redshift_copy_iam_role
         try:

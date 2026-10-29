@@ -24,9 +24,10 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
     """
     Bulk loader for Redshift using gzipped JSON files staged to S3 and ``COPY ... JSON 'auto'``.
 
-    Note: ``s3_file_max_rows`` is used as the number of rows per JSON file (default 25,000).
+    Note: ``s3_file_max_rows`` is used as the number of rows per JSON file
     Each file is queued for upload as soon as it is complete.
     """
+    DEFAULT_ROWS_PER_FILE = 25_000
 
     def __init__(
             self,
@@ -42,8 +43,6 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
         super().__init__(
             config=config,
         )
-        if self.s3_file_max_rows is None:
-            self.s3_file_max_rows = 25000
 
     @property
     def needs_all_columns(self):
@@ -107,7 +106,7 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
             parent_task: Optional[ETLTask] = None,
     ) -> int:
         """
-        Write rows from *iterable* to local gzipped JSON files of at most ``s3_file_max_rows`` rows each,
+        Write rows from *iterable* to local gzipped JSON files of at most ``rows_per_file`` rows each,
         and load them with :meth:`load_from_files`.
 
         Each file is queued for upload (see :meth:`~bi_etl.bulk_loaders.bulk_loader.BulkLoader._queue_file_for_upload`)
@@ -149,7 +148,7 @@ class RedShiftS3JSONBulk(RedShiftS3Base):
                 progress_timer = Timer()
                 for row in iterable:
                     row_count += 1
-                    if text_wrapper is None or current_row_number >= self.s3_file_max_rows:
+                    if text_wrapper is None or current_row_number >= self.rows_per_file:
                         if text_wrapper is not None:
                             file_number += 1
                             text_wrapper.close()

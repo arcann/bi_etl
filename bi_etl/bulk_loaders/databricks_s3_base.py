@@ -38,7 +38,8 @@ class DatabricksS3Base(S3BulkLoaderMixin, BulkLoader):
         super().__init__()
         self.config = config
         self._init_s3(config)
-        self.s3_file_max_rows = self.config.s3_file_max_rows
+        if self.config.s3_file_max_rows is not None:
+            self.rows_per_file = self.config.s3_file_max_rows
 
     # --- SQL generation (format-specific) ------------------------------------
 

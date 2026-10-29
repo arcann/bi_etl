@@ -1,15 +1,15 @@
 """
-Benchmark to find the best Parquet bulk loader ``chunk_size`` (rows per Parquet file).
+Benchmark to find the best Parquet bulk loader ``rows_per_file`` (rows per Parquet file).
 
 NOT part of the regular pytest suite (the file name does not match ``test*.py``).
 Run from ``packages/bi_etl``::
 
-    uv run python -m tests.performance.bench_parquet_chunk_size
-    uv run python -m tests.performance.bench_parquet_chunk_size --rows 2000000 --repeats 5
-    uv run python -m tests.performance.bench_parquet_chunk_size --chunk-sizes 25000 100000 500000
-    uv run python -m tests.performance.bench_parquet_chunk_size --upload-latency 0.05
+    uv run python -m tests.performance.bench_parquet_rows_per_file
+    uv run python -m tests.performance.bench_parquet_rows_per_file --rows 2000000 --repeats 5
+    uv run python -m tests.performance.bench_parquet_rows_per_filee --rows_per_file 25000 100000 500000
+    uv run python -m tests.performance.bench_parquet_rows_per_filee --upload-latency 0.05
 
-The table has one integer column and nine string columns of 3 to 15 random characters each.
+The table and rows come from :mod:`tests.performance.bench_data`.
 The real :class:`~bi_etl.bulk_loaders.parquet_bulk_loader_mixin.ParquetBulkLoaderMixin` writes real
 snappy compressed Parquet files, fed through a real :class:`~bi_etl.bulk_loaders.bulk_worker.BulkWorker`
 the same way :class:`~bi_etl.components.table.Table` feeds it. Only the S3 upload is simulated: a real
@@ -26,85 +26,43 @@ Smaller files shrink the tail but add per-file overhead (open / close / footer, 
 Larger files do the opposite. This benchmark finds where those cross over for the writer on this machine.
 
 The rows are generated before the clock starts and are shared by all runs.
-They are plain dicts rather than :class:`~bi_etl.components.row.row.Row` objects to keep memory use down
-(about 1 KB per row), so lower ``--rows`` on a small machine.
+They are :class:`~bi_etl.components.row.row.Row` objects, as :class:`~bi_etl.components.table.Table` gives them to
+the loader, so lower ``--rows`` on a small machine.
+
+
+Example output:
+
+rows_per_file files  MB/file  total MB  elapsed s  stdev s  writing s  tail s   rows/s  vs best
+----------    -----  -------  --------  ---------  -------  ---------  ------  -------  -------
+10,000         500      1.3     640.4      31.27     0.23      24.66    6.61  159,889   +34.4%
+25,000         200      3.2     645.8      23.26     0.96      23.20    0.06  214,961    +0.0%
+50,000         100      6.5     649.2      25.39     0.75      25.32    0.07  196,947    +9.1%
+100,000         50     12.7     634.7      25.65     1.36      25.56    0.09  194,919   +10.3%
+250,000         20     31.9     637.6      25.48     1.22      25.33    0.16  196,211    +9.6%
+500,000         10     63.5     634.6      25.85     1.34      25.58    0.26  193,455   +11.1%
+
+Best rows_per_file: 25,000 rows (3.2 MB per file, 23.26s)
 """
 import argparse
 import functools
 import gc
 import logging
 import os
-import random
 import statistics
-import string
 import tempfile
 import time
 from dataclasses import dataclass
-from pathlib import Path
 
 import pyarrow.parquet as pq
-from sqlalchemy import Integer, String
-from sqlalchemy.types import TypeEngine
 
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
 from bi_etl.bulk_loaders.bulk_worker import BulkWorker
 from bi_etl.bulk_loaders.file_uploader import FileUploader
 from bi_etl.bulk_loaders.parquet_bulk_loader_mixin import ParquetBulkLoaderMixin
+from bi_etl.components.row.row import Row
+from tests.performance.bench_data import BenchTable, build_table, make_rows
 
-STRING_COLUMN_COUNT = 9
-MIN_STRING_LENGTH = 3
-MAX_STRING_LENGTH = 15
 MB = 1_000_000
-
-
-@dataclass
-class BenchColumn:
-    """The parts of a column that :func:`~bi_etl.components.parquet_writer.build_parquet_schema` reads."""
-    name: str
-    type: TypeEngine
-
-
-@dataclass
-class BenchTable:
-    """The parts of a table that :class:`SimulatedS3ParquetLoader` reads."""
-    qualified_table_name: str
-    columns: list[BenchColumn]
-
-
-def build_table() -> BenchTable:
-    """Return a table-like object with one integer column followed by nine string columns."""
-    columns = [BenchColumn('id', Integer())]
-    columns.extend(BenchColumn(f'str_{i}', String()) for i in range(1, STRING_COLUMN_COUNT + 1))
-    return BenchTable('bench_schema.parquet_chunk_size', columns)
-
-
-def make_rows(count: int, seed: int = 1234) -> list[dict]:
-    """
-    Generate rows for :func:`build_table`.
-
-    Parameters
-    ----------
-    count
-        Number of rows.
-    seed
-        Seed for the random generator, so that every run sees the same data.
-
-    Returns
-    -------
-    list of dict
-        Each row has an ``id`` and ``str_1`` to ``str_9``. The strings are random ASCII letters and digits
-        with a random length of 3 to 15 characters.
-    """
-    rng = random.Random(seed)
-    alphabet = string.ascii_letters + string.digits
-    string_columns = [f'str_{i}' for i in range(1, STRING_COLUMN_COUNT + 1)]
-    rows = []
-    for i in range(count):
-        row = {'id': i}
-        for column in string_columns:
-            row[column] = ''.join(rng.choices(alphabet, k=rng.randint(MIN_STRING_LENGTH, MAX_STRING_LENGTH)))
-        rows.append(row)
-    return rows
 
 
 class SimulatedS3Link:
@@ -161,7 +119,7 @@ class SimulatedS3ParquetLoader(ParquetBulkLoaderMixin, BulkLoader):
 
     Parameters
     ----------
-    chunk_size
+    rows_per_file
         Rows per Parquet file.
     link
         The simulated S3 connection the files are uploaded over.
@@ -169,7 +127,7 @@ class SimulatedS3ParquetLoader(ParquetBulkLoaderMixin, BulkLoader):
         Directory the Parquet files are written under.
     """
 
-    def __init__(self, chunk_size: int, link: SimulatedS3Link, temp_file_path: str):
+    def __init__(self, rows_per_file: int, link: SimulatedS3Link, temp_file_path: str):
         super().__init__()
 
         class MockConfig:
@@ -177,7 +135,7 @@ class SimulatedS3ParquetLoader(ParquetBulkLoaderMixin, BulkLoader):
 
         self.config = MockConfig()
         self.config.temp_file_path = temp_file_path
-        self._init_parquet(chunk_size=chunk_size)
+        self._init_parquet(rows_per_file=rows_per_file)
         self._link = link
         self._file_uploader: FileUploader | None = None
         self.writing_done_at: float | None = None
@@ -225,8 +183,8 @@ class SimulatedS3ParquetLoader(ParquetBulkLoaderMixin, BulkLoader):
 
 @dataclass
 class Result:
-    """Timings of one run for one ``chunk_size``. All times are in seconds."""
-    chunk_size: int
+    """Timings of one run for one ``rows_per_file``. All times are in seconds."""
+    rows_per_file: int
     rows: int
     files: int
     total_bytes: int
@@ -250,9 +208,9 @@ class Result:
 
 
 def run_once(
-        rows: list[dict],
+        rows: list[Row],
         table: BenchTable,
-        chunk_size: int,
+        rows_per_file: int,
         temp_dir: str,
         upload_mbps: float = 300.0,
         upload_latency: float = 0.0,
@@ -267,7 +225,7 @@ def run_once(
         Rows to load.
     table
         Table the rows belong to, see :func:`build_table`.
-    chunk_size
+    rows_per_file
         Rows per Parquet file.
     temp_dir
         Directory to write the Parquet files under.
@@ -287,9 +245,9 @@ def run_once(
     AssertionError
         If the loader did not write every row.
     """
-    print(f"Starting run with chunk size {chunk_size}")
+    print(f"Starting run with rows_per_file {rows_per_file:,}")
     link = SimulatedS3Link(upload_mbps, upload_latency)
-    loader = SimulatedS3ParquetLoader(chunk_size, link, temp_dir)
+    loader = SimulatedS3ParquetLoader(rows_per_file, link, temp_dir)
     worker = BulkWorker(
         functools.partial(loader.load_from_iterable, table_object=table),
         chunk_size=worker_chunk_size,
@@ -304,9 +262,9 @@ def run_once(
     if worker.exception is not None:
         raise worker.exception
     if worker.value != len(rows):
-        raise AssertionError(f'loader wrote {worker.value} rows, sent {len(rows)}')
+        raise AssertionError(f'loader wrote {worker.value:,} rows, sent {len(rows):,}')
     return Result(
-        chunk_size=chunk_size,
+        rows_per_file=rows_per_file,
         rows=len(rows),
         files=link.files,
         total_bytes=link.bytes,
@@ -331,13 +289,13 @@ def main():
         help='Rows to load per run (default 1,000,000)'
     )
     parser.add_argument(
-        '--chunk-sizes', nargs='+', type=int,
+        '--rows_per_file', nargs='+', type=int,
         default=[10_000, 25_000, 50_000, 100_000, 250_000, 500_000],
         help='Rows per Parquet file to try (default 10k to 500k)',
     )
     parser.add_argument(
-        '--repeats', type=int, default=3,
-        help='Runs per chunk size; the median run is reported'
+        '--repeats', type=int, default=5,
+        help='Runs per setting; the median run is reported'
     )
     parser.add_argument(
         '--upload-mbps', type=float, default=300.0,
@@ -351,24 +309,28 @@ def main():
         '--worker-chunk-size', type=int, default=BulkWorker.DEFAULT_CHUNK_SIZE,
         help='Rows per hand-off from the producer to the loader thread',
     )
+    parser.add_argument(
+        '--column-multiplier', type=int, default=1,
+        help='Number of times the columns (other than the key) are repeated, to make the table wider (default 1)',
+    )
     args = parser.parse_args()
 
     logging.disable(logging.CRITICAL)
     print(f'Generating {args.rows:,} rows...')
-    rows = make_rows(args.rows)
-    table = build_table()
+    rows = make_rows(args.rows, column_multiplier=args.column_multiplier)
+    table = build_table(column_multiplier=args.column_multiplier)
     print(
-        f'{args.rows:,} rows, {args.repeats} run(s) per chunk size, '
+        f'{args.rows:,} rows of {len(table.columns)} columns, {args.repeats} run(s) per setting, '
         f'upload {args.upload_mbps:g} MB/s + {args.upload_latency:g}s per file\n'
     )
 
     medians = []
     with tempfile.TemporaryDirectory() as tmp:
-        for chunk_size in args.chunk_sizes:
-            print(f"Testing chunk size {chunk_size:>9,} with {args.repeats} repeats...")
+        for rows_per_file in args.rows_per_file:
+            print(f"Testing rows_per_file {rows_per_file:>9,} with {args.repeats} repeats...")
             runs = [
                 run_once(
-                    rows, table, chunk_size, tmp,
+                    rows, table, rows_per_file, tmp,
                     upload_mbps=args.upload_mbps,
                     upload_latency=args.upload_latency,
                     worker_chunk_size=args.worker_chunk_size,
@@ -378,23 +340,23 @@ def main():
             median = sorted(runs, key=lambda r: r.elapsed)[len(runs) // 2]
             stdev = statistics.stdev([r.elapsed for r in runs]) if len(runs) > 1 else 0.0
             medians.append((median, stdev))
-            print(f'  chunk_size {chunk_size:>9,}: {median.elapsed:.2f}s', flush=True)
+            print(f'  rows_per_file {rows_per_file:>9,}: {median.elapsed:.2f}s', flush=True)
 
     best = min(medians, key=lambda m: m[0].elapsed)[0]
     print()
     print_table(
-        ['chunk_size', 'files', 'MB/file', 'total MB', 'elapsed s', 'stdev s', 'writing s', 'tail s', 'rows/s',
+        ['rows_per_file', 'files', 'MB/file', 'total MB', 'elapsed s', 'stdev s', 'writing s', 'tail s', 'rows/s',
          'vs best'],
         [
             [
-                f'{r.chunk_size:,}', f'{r.files:,}', f'{r.mb_per_file:.1f}', f'{r.total_bytes / MB:.1f}',
+                f'{r.rows_per_file:,}', f'{r.files:,}', f'{r.mb_per_file:.1f}', f'{r.total_bytes / MB:.1f}',
                 f'{r.elapsed:.2f}', f'{stdev:.2f}', f'{r.writing:.2f}', f'{r.tail:.2f}',
                 f'{r.rows_per_second:,.0f}', f'{r.elapsed / best.elapsed - 1:+.1%}',
             ]
             for r, stdev in medians
         ],
     )
-    print(f'\nBest chunk_size: {best.chunk_size:,} rows ({best.mb_per_file:.1f} MB per file, {best.elapsed:.2f}s)')
+    print(f'\nBest rows_per_file: {best.rows_per_file:,} rows ({best.mb_per_file:.1f} MB per file, {best.elapsed:.2f}s)')
 
 
 if __name__ == '__main__':

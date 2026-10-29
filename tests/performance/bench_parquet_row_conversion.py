@@ -24,9 +24,8 @@ Note that the tuple strategies do not carry the column names with each row, whil
 A consumer that needs a ``dict`` or :class:`~bi_etl.components.row.row.Row` has to add the names back
 (``zip(columns, row)``), which is not measured here.
 
-The table has an integer id, a float, a date and nine string columns of 3 to 15 random characters,
-some of the strings are null. The data is written to a real Parquet file and read back with
-:meth:`pyarrow.dataset.Dataset.scanner`. By default the record batches are read before the clock starts so that
+The table and rows come from :mod:`tests.performance.bench_data`, including its nulls, decimals and dates.
+The data is written to a real Parquet file and read back with :meth:`pyarrow.dataset.Dataset.scanner`. By default the record batches are read before the clock starts so that
 only the conversion and iteration is timed. Use ``--include-read`` to time the file read as well.
 
 Validation
@@ -37,13 +36,11 @@ Any mismatch raises :class:`AssertionError`. Values are normalized before compar
 integer, float and null values into numpy scalars and ``NaN``: see :func:`normalize`.
 """
 import argparse
-import datetime
 import gc
 import logging
 import math
 import random
 import statistics
-import string
 import tempfile
 import time
 from dataclasses import dataclass
@@ -54,53 +51,14 @@ import pyarrow as pa
 import pyarrow.dataset
 import pyarrow.parquet as pq
 
-STRING_COLUMN_COUNT = 9
-MIN_STRING_LENGTH = 3
-MAX_STRING_LENGTH = 15
-NULL_EVERY = 7
-BASE_DATE = datetime.date(2020, 1, 1)
+from tests.performance.bench_data import make_columns
+
 DEFAULT_PYARROW_BATCH_SIZE = 131_072
 SAMPLE_COUNT = 20
-
-COLUMN_NAMES = ['id', 'amount', 'day'] + [f'str_{i}' for i in range(1, STRING_COLUMN_COUNT + 1)]
 
 RowTuple = tuple
 RowSource = Callable[[], Iterable[pa.RecordBatch]]
 Strategy = Callable[[pa.RecordBatch], Iterator]
-
-
-def make_columns(count: int, seed: int = 1234) -> dict[str, list]:
-    """
-    Generate the column data for the benchmark table.
-
-    Parameters
-    ----------
-    count
-        Number of rows.
-    seed
-        Seed for the random generator, so that every run sees the same data.
-
-    Returns
-    -------
-    dict
-        Column name to list of values, in :data:`COLUMN_NAMES` order. ``id`` is the row number,
-        ``amount`` is ``id * 0.25``, ``day`` cycles through 365 days, and every :data:`NULL_EVERY` th value
-        of ``str_1`` is None.
-    """
-    rng = random.Random(seed)
-    alphabet = string.ascii_letters + string.digits
-    columns: dict[str, list] = {
-        'id': list(range(count)),
-        'amount': [i * 0.25 for i in range(count)],
-        'day': [BASE_DATE + datetime.timedelta(days=i % 365) for i in range(count)],
-    }
-    for n in range(1, STRING_COLUMN_COUNT + 1):
-        columns[f'str_{n}'] = [
-            ''.join(rng.choices(alphabet, k=rng.randint(MIN_STRING_LENGTH, MAX_STRING_LENGTH)))
-            for _ in range(count)
-        ]
-    columns['str_1'] = [None if i % NULL_EVERY == 0 else v for i, v in enumerate(columns['str_1'])]
-    return columns
 
 
 def write_parquet(columns: dict[str, list], path: Path, row_group_size: int = 100_000) -> None:
@@ -110,18 +68,13 @@ def write_parquet(columns: dict[str, list], path: Path, row_group_size: int = 10
     Parameters
     ----------
     columns
-        See :func:`make_columns`.
+        See :func:`~tests.performance.bench_data.make_columns`.
     path
         File to create.
     row_group_size
         Rows per row group.
     """
-    table = pa.table(
-        {
-            name: pa.array(values, type=pa.date32()) if name == 'day' else pa.array(values)
-            for name, values in columns.items()
-        }
-    )
+    table = pa.table({name: pa.array(values) for name, values in columns.items()})
     pq.write_table(table, path, row_group_size=row_group_size)
 
 
@@ -129,7 +82,7 @@ def normalize(value):
     """
     Convert a value from any strategy to the plain Python value that ``to_pylist`` produces.
 
-    pandas returns numpy scalars, ``pandas.Timestamp`` for dates and ``NaN`` or ``None`` for nulls.
+    pandas returns numpy scalars, ``pandas.Timestamp`` for datetimes and ``NaN`` or ``None`` for nulls.
 
     Parameters
     ----------
@@ -139,20 +92,20 @@ def normalize(value):
     Returns
     -------
     object
-        None for any null, otherwise a plain Python ``int``, ``float``, ``str`` or :class:`datetime.date`.
+        None for any null, otherwise a plain Python ``int``, ``float``, ``str`` or :class:`datetime.datetime`.
     """
     if value is None:
         return None
     if isinstance(value, float) and math.isnan(value):
         return None
     if hasattr(value, 'to_pydatetime'):  # pandas.Timestamp (and NaT, which is falsy for isnull)
-        return None if value != value else value.date()
+        return None if value != value else value.to_pydatetime()
     if hasattr(value, 'item'):  # numpy scalar
         return normalize(value.item())
     return value
 
 
-def to_tuple(row, columns: Sequence[str] = COLUMN_NAMES) -> RowTuple:
+def to_tuple(row, columns: Sequence[str]) -> RowTuple:
     """
     Convert a row from any strategy (``dict`` or ``tuple``) to a tuple of normalized values.
 
@@ -247,8 +200,8 @@ def pick_sample_indexes(count: int, seed: int = 99) -> list[int]:
 
 
 def expected_row(columns: dict[str, list], index: int) -> RowTuple:
-    """Return row *index* of the generated data as a tuple in :data:`COLUMN_NAMES` order."""
-    return tuple(columns[c][index] for c in COLUMN_NAMES)
+    """Return row *index* of the generated data as a tuple in column order."""
+    return tuple(values[index] for values in columns.values())
 
 
 def consume(
@@ -304,7 +257,7 @@ def check_samples(
     samples
         Sampled row position to row, from :func:`consume`.
     columns
-        The generated data, see :func:`make_columns`.
+        The generated data, see :func:`~tests.performance.bench_data.make_columns`.
     expected_count
         Number of rows that should have been returned.
     sample_indexes
@@ -320,7 +273,7 @@ def check_samples(
     for index in sample_indexes:
         if index not in samples:
             raise AssertionError(f'{name}: sample row {index:,} was not returned')
-        actual = to_tuple(samples[index])
+        actual = to_tuple(samples[index], list(columns))
         expected = expected_row(columns, index)
         if actual != expected:
             raise AssertionError(f'{name}: row {index:,} is {actual!r}, expected {expected!r}')
@@ -344,21 +297,21 @@ def validate_all_rows(
     get_batches
         Supplies the record batches.
     columns
-        The generated data, see :func:`make_columns`.
+        The generated data, see :func:`~tests.performance.bench_data.make_columns`.
 
     Raises
     ------
     AssertionError
         On the first row that differs, or if the row count differs.
     """
-    expected_rows = zip(*(columns[c] for c in COLUMN_NAMES))
+    expected_rows = zip(*columns.values())
     count = 0
     for batch in get_batches():
         for row in strategy(batch):
             expected = next(expected_rows, None)
             if expected is None:
                 raise AssertionError(f'{name}: returned more than the {len(columns["id"]):,} rows expected')
-            actual = to_tuple(row)
+            actual = to_tuple(row, list(columns))
             if actual != expected:
                 raise AssertionError(f'{name}: row {count:,} is {actual!r}, expected {expected!r}')
             count += 1
@@ -411,7 +364,7 @@ def run_strategy(
     get_batches
         Supplies the record batches.
     columns
-        The generated data, see :func:`make_columns`.
+        The generated data, see :func:`~tests.performance.bench_data.make_columns`.
     sample_indexes
         Row positions to validate.
     batch_size
@@ -462,10 +415,17 @@ def main():
         '--batch-sizes', nargs='+', type=int, default=[10_000, DEFAULT_PYARROW_BATCH_SIZE],
         help='Maximum rows per record batch to try (default 10,000 and the pyarrow default 131,072)',
     )
-    parser.add_argument('--repeats', type=int, default=5, help='Timed runs per strategy; the median is reported')
+    parser.add_argument(
+        '--repeats', type=int, default=5,
+        help='Timed runs per strategy; the median is reported'
+        )
     parser.add_argument(
         '--include-read', action='store_true',
         help='Read the Parquet file inside the timing (default reads the batches before the clock starts)',
+    )
+    parser.add_argument(
+        '--column-multiplier', type=int, default=1,
+        help='Number of times the columns (other than the key) are repeated, to make the table wider (default 1)',
     )
     args = parser.parse_args()
     if args.rows < 1:
@@ -477,7 +437,7 @@ def main():
 
     logging.disable(logging.CRITICAL)
     print(f'Generating {args.rows:,} rows...')
-    columns = make_columns(args.rows)
+    columns = make_columns(args.rows, column_multiplier=args.column_multiplier)
     sample_indexes = pick_sample_indexes(args.rows)
 
     results: list[Result] = []

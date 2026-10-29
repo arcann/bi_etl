@@ -102,7 +102,7 @@ class TestParquetWriteAndRead:
     @staticmethod
     def _write(loader, table, directory, rows, file_number=1):
         files = []
-        writer = loader._start_parquet_chunk(
+        writer = loader._start_parquet_file(
             temp_dir=str(directory),
             file_number=file_number,
             schema=ParquetBulkLoaderMixin._get_parquet_schema(table),
@@ -110,7 +110,7 @@ class TestParquetWriteAndRead:
         )
         for row in rows:
             writer.insert_row(row)
-        loader._finish_parquet_chunk(writer, file_number)
+        loader._finish_parquet_file(writer, file_number)
         return files
 
     def test_chunk_produces_readable_parquet_file(self, parquet_loader, mock_table, tmp_path):

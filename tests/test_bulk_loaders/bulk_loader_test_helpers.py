@@ -290,7 +290,7 @@ class AvroLoaderForTests(AvroBulkLoaderMixin, BulkLoader):
 
     def __init__(self, chunk_size: int = 50_000):
         super().__init__()
-        self._init_avro(chunk_size=chunk_size)
+        self._init_avro(rows_per_file=chunk_size)
 
     load_from_iterable = _NoLoadMixin.load_from_iterable
     load_from_files = _NoLoadMixin.load_from_files
@@ -308,7 +308,7 @@ class CsvLoaderForTests(CsvBulkLoaderMixin, BulkLoader):
     ):
         super().__init__()
         self._init_csv(
-            chunk_size=chunk_size,
+            rows_per_file=chunk_size,
             has_header=has_header,
             delimiter=delimiter,
             null_value=null_value,
@@ -366,7 +366,7 @@ class S3AvroLoader(AvroBulkLoaderMixin, RecordingS3LoaderMixin, S3BulkLoaderMixi
         super().__init__()
         self.config = s3_config(**config_overrides)
         self._init_s3(self.config)
-        self._init_avro(chunk_size=CHUNK_SIZE)
+        self._init_avro(rows_per_file=CHUNK_SIZE)
         self._init_recording(bucket)
 
 
@@ -375,7 +375,7 @@ class S3CsvLoader(CsvBulkLoaderMixin, RecordingS3LoaderMixin, S3BulkLoaderMixin,
         super().__init__()
         self.config = s3_config(**config_overrides)
         self._init_s3(self.config)
-        self._init_csv(chunk_size=CHUNK_SIZE)
+        self._init_csv(rows_per_file=CHUNK_SIZE)
         self._init_recording(bucket)
 
 

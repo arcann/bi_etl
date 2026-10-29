@@ -17,7 +17,7 @@ class DatabricksS3CsvBulkLoader(CsvBulkLoaderMixin, DatabricksS3Base):
     ``False``, columns must appear in table order and :attr:`needs_all_columns`
     returns ``True``.
 
-    Note: ``s3_file_max_rows`` from the config is used as the CSV chunk size.
+    Note: ``s3_file_max_rows`` from the config is used as the CSV file_max_rows, if provided.
     """
 
     def __init__(
@@ -33,7 +33,7 @@ class DatabricksS3CsvBulkLoader(CsvBulkLoaderMixin, DatabricksS3Base):
         ----------
         config
             :class:`~bi_etl.bulk_loaders.s3_bulk_load_config.S3_Bulk_Loader_Config` with the S3 bucket, folder
-            and ``s3_file_max_rows`` settings. ``s3_file_max_rows`` defaults to 25000 when not set.
+            and ``s3_file_max_rows`` settings.
         has_header
             Whether to write (and read) a header line in each file.
         delimiter
@@ -43,11 +43,7 @@ class DatabricksS3CsvBulkLoader(CsvBulkLoaderMixin, DatabricksS3Base):
         """
         super().__init__(config=config)
 
-        chunk_size = self.s3_file_max_rows if self.s3_file_max_rows is not None else 25000
-        self.s3_file_max_rows = chunk_size  # normalise for consistency
-
         self._init_csv(
-            chunk_size=chunk_size,
             has_header=has_header,
             delimiter=delimiter,
             null_value=null_value,

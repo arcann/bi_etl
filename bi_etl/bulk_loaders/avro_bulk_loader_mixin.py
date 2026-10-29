@@ -41,12 +41,22 @@ class AvroBulkLoaderMixin:
                return False
     """
 
-    def _init_avro(self, chunk_size: int = 50000):
+    # Benchmark shows that 250,000 is slightly faster but only for 1M+ row tables.
+    # Smaller tables would then not benefit from any cross file parallel processing
+    DEFAULT_ROWS_PER_FILE = 25_000
+
+    def _init_avro(
+            self,
+            rows_per_file: int | None = None
+    ):
         """
         Initialise Avro. Call from subclass ``__init__``.
         """
         self.rows_seen = 0
-        self.chunk_size = chunk_size
+        if rows_per_file is not None:
+            self.rows_per_file = rows_per_file
+        else:
+            self.rows_per_file = self.DEFAULT_ROWS_PER_FILE
         self.codec = default_avro_codec()
         self._translate_columns: dict[str, Callable] = {}
 
@@ -160,7 +170,7 @@ class AvroBulkLoaderMixin:
                         writer = self._start_avro_chunk(temp_dir, file_number, parsed_schema, local_files_list)
                     writer.insert_row(row)
 
-                    if writer.rows_written >= self.chunk_size:
+                    if writer.rows_written >= self.rows_per_file:
                         data_length += self._finish_avro_chunk(writer, file_number)
                         writer = None
 

@@ -9,7 +9,8 @@ Run from ``packages/bi_etl``::
     uv run python -m tests.performance.bench_bulk_worker --repeats 3
     uv run python -m tests.performance.bench_bulk_worker --chunk-sizes 1 16 128 512
 
-A real ``Table`` (on a throw-away sqlite file) is fed rows through ``insert_row`` for
+A real ``Table`` (on a throw-away sqlite file) with the columns of :mod:`tests.performance.bench_data` is fed rows
+through ``insert_row`` for
 ``--duration`` seconds. The bulk loader is a mock that counts rows and discards them, so the measured
 time is Table + worker overhead only. Three things are reported:
 
@@ -32,7 +33,6 @@ from pathlib import Path
 from typing import Iterable
 
 import sqlalchemy
-from sqlalchemy import Column, Integer, TEXT
 
 from bi_etl.bulk_loaders.avro_bulk_loader_mixin import AvroBulkLoaderMixin
 from bi_etl.bulk_loaders.bulk_loader import BulkLoader
@@ -42,9 +42,13 @@ from bi_etl.components.table import Table
 from bi_etl.database import DatabaseMetadata
 from bi_etl.scheduler.etl_task import ETLTask
 from tests.config_for_tests import build_config
+from tests.performance.bench_data import build_table, make_value_lists, sqlalchemy_columns
 
 TABLE_NAME = 'bulk_worker_perf'
 CLOCK_CHECK_INTERVAL = 256
+# Generating the random values of a row would dominate the time per row, so the values of this many rows
+# (see tests.performance.bench_data) are reused in turn. Only the unique key is set for every row.
+VALUE_POOL_SIZE = 1000
 
 
 class AvroWriteOnlyBulkLoader(AvroBulkLoaderMixin, BulkLoader):
@@ -58,7 +62,7 @@ class AvroWriteOnlyBulkLoader(AvroBulkLoaderMixin, BulkLoader):
             temp_file_path = None
 
         self.config = MockConfig()
-        self._init_avro(chunk_size=50000)
+        self._init_avro(rows_per_file=50000)
         self._avro_file_count = 0
         self._avro_total_bytes = 0
 
@@ -114,17 +118,36 @@ class Result:
         return self.rows / (self.produce_seconds + self.drain_seconds)
 
 
-def _make_row(tbl: Table, i: int, iteration_header: RowIterationHeader):
-    row = tbl.Row(iteration_header=iteration_header)
-    row['col1'] = i
-    row['col2'] = 'some text value'
-    return row
+class RowMaker:
+    """
+    Creates the rows of the :mod:`tests.performance.bench_data` table.
+
+    Parameters
+    ----------
+    column_multiplier
+        Number of times the columns (other than the key) are repeated, see
+        :func:`tests.performance.bench_data.column_specs`.
+    """
+
+    def __init__(self, column_multiplier: int = 1):
+        self.column_multiplier = column_multiplier
+        self._column_names = build_table(column_multiplier=column_multiplier).column_names
+        self._value_pool = make_value_lists(VALUE_POOL_SIZE, column_multiplier=column_multiplier)
+
+    def make_row(self, tbl: Table, i: int, iteration_header: RowIterationHeader):
+        """Return row number *i*, with *i* as the unique key and values from the pool for the other columns."""
+        row = tbl.Row(iteration_header=iteration_header)
+        values = self._value_pool[i % VALUE_POOL_SIZE]
+        row[self._column_names[0]] = i
+        for name, value in zip(self._column_names[1:], values[1:]):
+            row[name] = value
+        return row
 
 
 class TableFixture:
     """A real Table on a fresh sqlite file, configured with the mock loader."""
 
-    def __init__(self, tmp_dir: Path, chunk_size: int = BulkWorker.DEFAULT_CHUNK_SIZE):
+    def __init__(self, tmp_dir: Path, chunk_size: int = BulkWorker.DEFAULT_CHUNK_SIZE, column_multiplier: int = 1):
         self.engine = sqlalchemy.create_engine(f"sqlite:///{tmp_dir / 'perf.db'}")
         self.database = DatabaseMetadata(bind=self.engine, quote_schema=False, database_name=__name__)
         inventory = self.database.table_inventory()
@@ -132,8 +155,7 @@ class TableFixture:
             sqlalchemy.schema.Table(
                 TABLE_NAME,
                 self.database,
-                Column('col1', Integer, primary_key=True),
-                Column('col2', TEXT),
+                *sqlalchemy_columns(column_multiplier),
             ).create(bind=self.engine)
         task = ETLTask(config=build_config(tmp=str(tmp_dir)))
         self.loader = AvroWriteOnlyBulkLoader()
@@ -151,9 +173,9 @@ class TableFixture:
         self.engine.dispose()
 
 
-def measure_baseline(tmp_dir: Path, duration: float) -> float:
+def measure_baseline(tmp_dir: Path, duration: float, row_maker: RowMaker) -> float:
     """Microseconds per row to build a Row without inserting it (the floor for the worker)."""
-    fixture = TableFixture(tmp_dir)
+    fixture = TableFixture(tmp_dir, column_multiplier=row_maker.column_multiplier)
     try:
         header = RowIterationHeader()
         tbl = fixture.table
@@ -162,7 +184,7 @@ def measure_baseline(tmp_dir: Path, duration: float) -> float:
         deadline = start + duration
         while True:
             for _ in range(CLOCK_CHECK_INTERVAL):
-                _make_row(tbl, count, header)
+                row_maker.make_row(tbl, count, header)
                 count += 1
             now = time.perf_counter()
             if now >= deadline:
@@ -172,8 +194,10 @@ def measure_baseline(tmp_dir: Path, duration: float) -> float:
         fixture.dispose()
 
 
-def measure_table(tmp_dir: Path, chunk_size: int, duration: float, baseline_us: float) -> Result:
-    fixture = TableFixture(tmp_dir, chunk_size)
+def measure_table(
+        tmp_dir: Path, chunk_size: int, duration: float, baseline_us: float, row_maker: RowMaker
+) -> Result:
+    fixture = TableFixture(tmp_dir, chunk_size, row_maker.column_multiplier)
     try:
         tbl = fixture.table
         header = RowIterationHeader()
@@ -183,7 +207,7 @@ def measure_table(tmp_dir: Path, chunk_size: int, duration: float, baseline_us: 
         deadline = start + duration
         while True:
             for _ in range(CLOCK_CHECK_INTERVAL):
-                tbl.insert_row(_make_row(tbl, count, header))
+                tbl.insert_row(row_maker.make_row(tbl, count, header))
                 count += 1
             produce_end = time.perf_counter()
             if produce_end >= deadline:
@@ -273,22 +297,27 @@ def main():
         '--skip-worker-only', action='store_true',
         help='Skip the Table-less worker measurement'
     )
+    parser.add_argument(
+        '--column-multiplier', type=int, default=1,
+        help='Number of times the columns (other than the key) are repeated, to make the table wider (default 1)',
+    )
     args = parser.parse_args()
 
     logging.disable(logging.CRITICAL)
+    row_maker = RowMaker(args.column_multiplier)
     print(f'Measuring {args.duration:g}s per run, {args.repeats} run(s) per measurement\n')
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
         baseline_us = statistics.median(
-            measure_baseline(tmp_dir, min(args.duration, 2.0)) for _ in range(max(args.repeats, 1))
+            measure_baseline(tmp_dir, min(args.duration, 2.0), row_maker) for _ in range(max(args.repeats, 1))
         )
         print(f'Baseline (create Row only, no insert): {baseline_us:.2f} us/row\n')
 
         table_rows = []
         for chunk_size in args.chunk_sizes:
             runs = [
-                measure_table(tmp_dir, chunk_size, args.duration, baseline_us)
+                measure_table(tmp_dir, chunk_size, args.duration, baseline_us, row_maker)
                 for _ in range(args.repeats)
             ]
             r = _median_result(runs)

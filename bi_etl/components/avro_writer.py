@@ -1,3 +1,5 @@
+import functools
+import io
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, time as time_type, timedelta
@@ -20,20 +22,65 @@ if TYPE_CHECKING:
 __all__ = ['AvroWriter', 'build_avro_schema', 'default_avro_codec']
 
 
+@functools.cache
 def default_avro_codec() -> str:
     """
     Get the best compression codec available.
 
+    The installed :mod:`fastavro` is asked to write a block with the ``snappy`` codec, rather than checking for a
+    specific snappy library, because the library that fastavro uses has changed between versions
+    (``python-snappy``, then ``cramjam``).
+
     Returns
     -------
     str
-        ``'snappy'`` if :mod:`snappy` is installed, otherwise ``'deflate'``.
+        ``'snappy'`` if :mod:`fastavro` can use it, otherwise ``'deflate'``.
     """
+    probe_schema = fastavro.parse_schema(
+        {'type': 'record', 'name': 'codec_probe', 'fields': [{'name': 'probe', 'type': 'long'}]}
+    )
     try:
-        import snappy  # noqa: F401
+        probe_writer = fastavro.write.Writer(io.BytesIO(), probe_schema, codec='snappy')
+        probe_writer.write({'probe': 1})
+        probe_writer.flush()
         return 'snappy'
-    except ImportError:
+    except (ValueError, ImportError):
         return 'deflate'
+
+
+# Avro types whose union branch name is the type name itself, see _find_tagged_branches
+_PRIMITIVE_TYPES = frozenset({'boolean', 'int', 'long', 'float', 'double', 'bytes', 'string'})
+
+
+def _find_tagged_branches(parsed_schema: dict) -> List[Tuple[str, str]]:
+    """
+    Find the fields that are a nullable union of a single primitive type, as built by :func:`build_avro_schema`.
+
+    :mod:`fastavro` has to work out which branch of a union each value belongs to, by validating the value against
+    each branch. That is much slower than telling it the branch, which it accepts as a ``(branch name, value)`` tuple.
+
+    Parameters
+    ----------
+    parsed_schema:
+        An Avro record schema parsed by :func:`fastavro.parse_schema`.
+
+    Returns
+    -------
+    list of tuple
+        ``(field name, branch name)`` for each field of the form ``['null', type]`` or
+        ``['null', {'type': type, 'logicalType': ...}]`` where ``type`` is a primitive type.
+        Other fields, including unions of named types and unions of more than one non-null type, are left out.
+    """
+    tagged = []
+    for field in parsed_schema['fields']:
+        field_type = field['type']
+        if isinstance(field_type, list) and len(field_type) == 2 and field_type[0] == 'null':
+            branch = field_type[1]
+            if isinstance(branch, dict):
+                branch = branch.get('type')
+            if branch in _PRIMITIVE_TYPES:
+                tagged.append((field['name'], branch))
+    return tagged
 
 
 @dataclass
@@ -201,10 +248,16 @@ class AvroWriter(ETLComponent):
         self.translate_columns: Dict[str, Callable] = translate_columns or {}
         self.rows_written = 0
         self.trace_data = False
+        self._tagged_branches: List[Tuple[str, str]] = []
+        # Statistics entry of the last insert_row call. Looking it up for each row is a measurable cost.
+        self._insert_stats: Optional[Statistics] = None
+        self._insert_stats_name: Optional[str] = None
+        self._insert_stats_parent: Optional[Statistics] = None
 
         try:
             self.parsed_schema = fastavro.parse_schema(schema)
             self.column_names = [field['name'] for field in self.parsed_schema['fields']]
+            self._tagged_branches = _find_tagged_branches(self.parsed_schema)
             self._writer = fastavro.write.Writer(self.file, self.parsed_schema, codec=self.codec)
         except Exception:
             self.log.error(f"Avro schema that errored = {schema}")
@@ -295,7 +348,15 @@ class AvroWriter(ETLComponent):
         -------
         source_row
         """
-        stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
+        if (
+            self._insert_stats is None
+            or self._insert_stats_name != stat_name
+            or self._insert_stats_parent is not parent_stats
+        ):
+            self._insert_stats = self.get_stats_entry(stat_name, parent_stats=parent_stats)
+            self._insert_stats_name = stat_name
+            self._insert_stats_parent = parent_stats
+        stats = self._insert_stats
 
         record = source_row.as_dict
         if additional_insert_values:
@@ -309,7 +370,14 @@ class AvroWriter(ETLComponent):
         if self.trace_data:
             self.log.debug(f"{self} Raw row being inserted:\n{source_row.str_formatted()}")
 
-        self.write_record(record)
+        # Telling fastavro the union branch (after any translation) is much faster than having it find the branch
+        for column_name, branch in self._tagged_branches:
+            value = record.get(column_name)
+            if value is not None:
+                record[column_name] = (branch, value)
+
+        self._writer.write(record)
+        self.rows_written += 1
         stats.add_to_stat('inserts', 1)
         return source_row
 

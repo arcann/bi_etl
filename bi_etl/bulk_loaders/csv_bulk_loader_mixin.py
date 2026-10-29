@@ -30,10 +30,11 @@ class CsvBulkLoaderMixin:
        must list ``CsvBulkLoaderMixin`` *before* :class:`BulkLoader` (or
        any base deriving from it) in their own bases.
     """
+    DEFAULT_ROWS_PER_FILE = 25_000
 
     def _init_csv(
             self,
-            chunk_size: int = 25000,
+            rows_per_file: int | None = None,
             has_header: bool = True,
             delimiter: str = '|',
             null_value: str = '',
@@ -41,7 +42,10 @@ class CsvBulkLoaderMixin:
         """
         Initialise CSV settings.  Call from subclass ``__init__``.
         """
-        self.chunk_size = chunk_size
+        if rows_per_file is not None:
+            self.rows_per_file = rows_per_file
+        else:
+            self.rows_per_file = self.DEFAULT_ROWS_PER_FILE
         self.has_header = has_header
         self.csv_delimiter = delimiter
         self.null_value = null_value
@@ -129,7 +133,7 @@ class CsvBulkLoaderMixin:
             local_files_list: list[str] = []
             file_number = 0
             row_count = 0
-            current_chunk_rows = 0
+            current_file_rows = 0
             writer = None
             text_wrapper = None
             zip_file = None
@@ -137,7 +141,7 @@ class CsvBulkLoaderMixin:
             try:
                 progress_timer = Timer()
                 for row_number, row in enumerate(iterable):
-                    if writer is None or current_chunk_rows >= self.chunk_size:
+                    if writer is None or current_file_rows >= self.rows_per_file:
                         # Close the current file if one is open
                         if writer is not None:
                             self._close_csv_writer(writer, text_wrapper, zip_file)
@@ -149,7 +153,7 @@ class CsvBulkLoaderMixin:
                             file_number += 1
 
                         # Open a new chunk file
-                        current_chunk_rows = 0
+                        current_file_rows = 0
                         filepath = os.path.join(temp_dir, f'data_{file_number}.csv.gz')
                         local_files_list.append(filepath)
                         self.log.debug(f"Starting CSV bulk load chunk {file_number}")
@@ -160,7 +164,7 @@ class CsvBulkLoaderMixin:
                         )
 
                     row_count += 1
-                    current_chunk_rows += 1
+                    current_file_rows += 1
                     writer.insert_row(row)
 
                     if progress_frequency is not None:

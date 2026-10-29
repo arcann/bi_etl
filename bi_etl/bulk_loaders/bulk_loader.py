@@ -27,13 +27,20 @@ class BulkLoader(ABC):
     Subclasses must implement :meth:`load_from_iterable`. Loaders that work from files
     can also implement :meth:`load_from_files`.
     """
+    DEFAULT_ROWS_PER_FILE = 25_000
 
     def __init__(
             self,
+            rows_per_file: int | None = None
     ):
         """Create the logger and the empty set of values to redact from logged messages."""
-        self.log =logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+        self.log = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
         self._redact_values = set()
+        if rows_per_file is not None:
+            self.rows_per_file = rows_per_file
+        else:
+            self.rows_per_file = self.DEFAULT_ROWS_PER_FILE
+        assert self.rows_per_file is not None
 
     def __str__(self) -> str:
         """Return the class name followed by empty parentheses."""

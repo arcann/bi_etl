@@ -23,9 +23,10 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
     """
     Bulk loader for Redshift using gzipped CSV files staged to S3 and ``COPY ... FORMAT CSV``.
 
-    Note: ``s3_file_max_rows`` is used as the number of rows per CSV file (default 25,000).
+    Note: ``s3_file_max_rows`` is used as the number of rows per CSV file.
     Each file is queued for upload as soon as it is complete.
     """
+    DEFAULT_ROWS_PER_FILE = 25_000
 
     def __init__(
             self,
@@ -51,8 +52,8 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             config=config,
         )
         self.s3_file_delimiter = s3_file_delimiter
-        if self.s3_file_max_rows is None:
-            self.s3_file_max_rows = 25000
+        if self.rows_per_file is None:
+            self.rows_per_file = self.DEFAULT_ROWS_PER_FILE
         self.null_value = null_value
         self.has_header = has_header
         if self.has_header:
@@ -122,7 +123,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
             parent_task: Optional[ETLTask] = None,
     ) -> int:
         """
-        Write rows from *iterable* to local gzipped CSV files of at most ``s3_file_max_rows`` rows each,
+        Write rows from *iterable* to local gzipped CSV files of at most ``rows_per_file`` rows each,
         and load them with :meth:`load_from_files`.
 
         Each file is queued for upload (see :meth:`~bi_etl.bulk_loaders.bulk_loader.BulkLoader._queue_file_for_upload`)
@@ -165,7 +166,7 @@ class RedShiftS3CSVBulk(RedShiftS3Base):
                 progress_timer = Timer()
                 for row in iterable:
                     row_number += 1
-                    if current_file is None or current_row_number >= self.s3_file_max_rows:
+                    if current_file is None or current_row_number >= self.rows_per_file:
                         if current_file is not None:
                             file_number += 1
                             current_file.close()

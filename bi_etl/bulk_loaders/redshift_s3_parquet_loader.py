@@ -12,7 +12,7 @@ class RedShiftS3ParquetBulk(ParquetBulkLoaderMixin, RedShiftS3Base):
     """
     Bulk loader for Redshift using Parquet files staged to S3 and ``COPY ... FORMAT PARQUET``.
 
-    Note: ``s3_file_max_rows`` is used as the number of rows per Parquet file (default 500,000).
+    Note: ``s3_file_max_rows`` is used as the number of rows per Parquet file.
     """
 
     def __init__(
@@ -30,10 +30,7 @@ class RedShiftS3ParquetBulk(ParquetBulkLoaderMixin, RedShiftS3Base):
             config=config,
         )
 
-        if self.s3_file_max_rows is None:
-            self.s3_file_max_rows = 500_000
-
-        self._init_parquet(chunk_size=self.s3_file_max_rows)
+        self._init_parquet()
         self.lines_scanned_modifier = 0
 
     @property

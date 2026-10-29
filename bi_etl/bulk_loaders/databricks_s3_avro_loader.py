@@ -14,7 +14,7 @@ class DatabricksS3AvroBulkLoader(AvroBulkLoaderMixin, DatabricksS3Base):
     """
     Bulk loader for Databricks using Avro files staged to S3 and COPY INTO.
 
-    Note: s3_file_max_rows is used as the Avro chunk size
+    Note: s3_file_max_rows is used as the Avro rows_per_file, if provided.
     """
 
     def __init__(
@@ -26,15 +26,12 @@ class DatabricksS3AvroBulkLoader(AvroBulkLoaderMixin, DatabricksS3Base):
         Parameters
         ----------
         config
-            :class:`~bi_etl.bulk_loaders.s3_bulk_load_config.S3_Bulk_Loader_Config` with the S3 bucket, folder
-            and ``s3_file_max_rows`` settings. ``s3_file_max_rows`` defaults to 50000 when not set.
+            :class:`~bi_etl.bulk_loaders.s3_bulk_load_config.S3_Bulk_Loader_Config`
+            with the S3 bucket, folder and ``s3_file_max_rows`` settings.
         """
         super().__init__(config=config)
 
-        if self.s3_file_max_rows is None:
-            self.s3_file_max_rows = 50000
-
-        self._init_avro(chunk_size=self.s3_file_max_rows)
+        self._init_avro()
 
     @property
     def needs_all_columns(self):

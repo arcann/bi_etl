@@ -237,7 +237,7 @@ class StubAvroLoader(AvroBulkLoaderMixin, BulkLoader):
     def __init__(self):
         super().__init__()
         self.config = SimpleNamespace(temp_file_path=None)
-        self._init_avro(chunk_size=10)
+        self._init_avro(rows_per_file=10)
         self.loaded_rows: list[dict] = []
 
     def load_from_files(self, local_files, table_object, **kwargs) -> int:

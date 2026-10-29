@@ -26,14 +26,11 @@ class DatabricksS3ParquetBulkLoader(ParquetBulkLoaderMixin, DatabricksS3Base):
         ----------
         config
             :class:`~bi_etl.bulk_loaders.s3_bulk_load_config.S3_Bulk_Loader_Config` with the S3 bucket, folder
-            and ``s3_file_max_rows`` settings. ``s3_file_max_rows`` defaults to 500,000 when not set.
+            and ``s3_file_max_rows`` settings.
         """
         super().__init__(config=config)
 
-        if self.s3_file_max_rows is None:
-            self.s3_file_max_rows = 500_000
-
-        self._init_parquet(chunk_size=self.s3_file_max_rows)
+        self._init_parquet()
 
     @property
     def needs_all_columns(self):

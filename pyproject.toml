@@ -35,7 +35,13 @@ redshift = [
     "pyarrow>=10.0.1",
     "psycopg2-binary",
 ]
-avro = ["fastavro>=1.0.0"]
+parquet = [
+    "pyarrow>=10.0.1",
+]
+avro = [
+    "fastavro>=1.11.1",
+    "cramjam>=2.0",
+]
 all = [
     "keyring",
     "pykeepass",
@@ -53,6 +59,7 @@ test = [
 [dependency-groups]
 dev = [
     "boto3>=1.40",
+    "cramjam>=2.0",
     "boto3-stubs>=1.42.78",
     "dagster>=1.5.7",
     "dagster-webserver>=1.6.3",

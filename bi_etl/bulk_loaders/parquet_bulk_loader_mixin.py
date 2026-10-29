@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 class ParquetBulkLoaderMixin:
-    """Mixin providing Parquet schema generation, chunk writing, and loading.
+    """Mixin providing Parquet schema generation, file writing, and loading.
 
     Subclasses must call :meth:`_init_parquet` from their ``__init__`` to set
     the number of rows per file.
@@ -40,16 +40,24 @@ class ParquetBulkLoaderMixin:
 
     PARQUET_COMPRESSION = 'SNAPPY'
 
-    def _init_parquet(self, chunk_size: int = 25_000):
+    DEFAULT_ROWS_PER_FILE = 25_000
+
+    def _init_parquet(
+            self,
+            rows_per_file: int | None = None,
+    ):
         """
         Initialise Parquet settings.  Call from subclass ``__init__``.
 
         Parameters
         ----------
-        chunk_size
+        rows_per_file
             Maximum number of rows in each Parquet file.
         """
-        self.chunk_size = chunk_size
+        if rows_per_file is not None:
+            self.rows_per_file = rows_per_file
+        else:
+            self.rows_per_file = self.DEFAULT_ROWS_PER_FILE
 
     # --- Schema helpers ------------------------------------------------------
 
@@ -69,9 +77,9 @@ class ParquetBulkLoaderMixin:
         """
         return build_parquet_schema(table_object)
 
-    # --- Chunk writing -------------------------------------------------------
+    # --- File writing -------------------------------------------------------
 
-    def _start_parquet_chunk(
+    def _start_parquet_file(
             self,
             temp_dir: str,
             file_number: int,
@@ -91,7 +99,7 @@ class ParquetBulkLoaderMixin:
         local_files_list
             List that the path of the new file is appended to.
         """
-        self.log.debug(f"Starting bulk load chunk {file_number}")
+        self.log.debug(f"Starting bulk load file {file_number}")
         # TODO: Redshift will recognize and uncompress these file types
         #   .gz
         #   .snappy
@@ -105,7 +113,7 @@ class ParquetBulkLoaderMixin:
             compression=self.PARQUET_COMPRESSION,
         )
 
-    def _finish_parquet_chunk(self, writer: ParquetWriter, file_number: int) -> int:
+    def _finish_parquet_file(self, writer: ParquetWriter, file_number: int) -> int:
         """Close *writer*, then queue its file for upload.
 
         Returns
@@ -114,7 +122,7 @@ class ParquetBulkLoaderMixin:
             Number of rows in the file.
         """
         writer.close()
-        self.log.debug(f"Closed bulk load chunk {file_number}: {writer.file_path}")
+        self.log.debug(f"Closed bulk load file {file_number}: {writer.file_path}")
         self._queue_file_for_upload(writer.file_path)
         return writer.rows_written
 
@@ -173,16 +181,16 @@ class ParquetBulkLoaderMixin:
                 for row in iterable:
                     if writer is None:
                         file_number += 1
-                        writer = self._start_parquet_chunk(temp_dir, file_number, schema, local_files_list)
+                        writer = self._start_parquet_file(temp_dir, file_number, schema, local_files_list)
                     writer.insert_row(row)
 
-                    if writer.rows_written >= self.chunk_size:
-                        data_length += self._finish_parquet_chunk(writer, file_number)
+                    if writer.rows_written >= self.rows_per_file:
+                        data_length += self._finish_parquet_file(writer, file_number)
                         writer = None
 
-                # Write final chunk
+                # Write final file
                 if writer is not None:
-                    data_length += self._finish_parquet_chunk(writer, file_number)
+                    data_length += self._finish_parquet_file(writer, file_number)
                     writer = None
             finally:
                 if writer is not None:

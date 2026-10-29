@@ -12,8 +12,10 @@ class RedShiftS3AvroBulk(AvroBulkLoaderMixin, RedShiftS3Base):
     """
     Bulk loader for Redshift using Avro files staged to S3 and ``COPY ... AVRO 'auto'``.
 
-    Note: ``s3_file_max_rows`` is used as the Avro chunk size (default 50,000 rows per file).
+    Note: ``s3_file_max_rows`` is used as the Avro rows per file.
     """
+
+    DEFAULT_ROWS_PER_FILE = 25_000
 
     def __init__(
             self,
@@ -29,13 +31,10 @@ class RedShiftS3AvroBulk(AvroBulkLoaderMixin, RedShiftS3Base):
         super().__init__(
             config=config,
         )
-        if self.s3_file_max_rows is None:
-            self.s3_file_max_rows = 50000
-
         # Redshift appears to count the schema as a line read
         self.lines_scanned_modifier = -1
 
-        self._init_avro(chunk_size=self.s3_file_max_rows)
+        self._init_avro()
 
     @property
     def needs_all_columns(self):

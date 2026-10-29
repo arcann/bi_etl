@@ -1,13 +1,14 @@
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
 import fastavro
 import pytest
-from sqlalchemy import Integer, Interval, JSON, Numeric, String
+from sqlalchemy import Boolean, Date, DateTime, Float, Integer, Interval, JSON, Numeric, String
 
 from bi_etl.components.avro_reader import AvroReader
-from bi_etl.components.avro_writer import AvroWriter, build_avro_schema, default_avro_codec
+from bi_etl.components.avro_writer import AvroWriter, _find_tagged_branches, build_avro_schema, default_avro_codec
 from bi_etl.scheduler.etl_task import ETLTask
 from tests.config_for_tests import build_config
 from tests.test_bulk_loaders.bulk_loader_test_helpers import KwRow, KwTable
@@ -183,3 +184,103 @@ def test_round_trip_with_avro_reader(task, avro_path):
     with AvroReader(task, avro_path) as src:
         assert src.column_names == ['id', 'name']
         assert [(r['id'], r['name']) for r in src] == [(1, 'a'), (2, 'b')]
+
+
+def test_default_codec_can_write_a_file(task, avro_path):
+    with AvroWriter(task, avro_path, SCHEMA) as dst:
+        dst.write_record({'id': 1, 'name': 'a'})
+
+    with open(avro_path, 'rb') as f:
+        assert fastavro.reader(f).codec == default_avro_codec()
+    assert len(read_back(avro_path)) == 1
+
+
+def test_default_codec_falls_back_to_deflate_without_snappy_library():
+    default_avro_codec.cache_clear()
+    try:
+        with mock.patch('fastavro.write.Writer', side_effect=ValueError('snappy codec is supported but ...')):
+            assert default_avro_codec() == 'deflate'
+    finally:
+        default_avro_codec.cache_clear()
+
+
+def test_tagged_branches_found_for_nullable_primitives_only():
+    schema = fastavro.parse_schema(
+        {
+            'type': 'record',
+            'name': 'tagging',
+            'fields': [
+                {'name': 'plain', 'type': 'long'},
+                {'name': 'nullable_long', 'type': ['null', 'long'], 'default': None},
+                {'name': 'nullable_decimal', 'type': ['null', {'type': 'bytes', 'logicalType': 'decimal', 'precision': 10, 'scale': 2}]},
+                {'name': 'nullable_date', 'type': ['null', {'type': 'int', 'logicalType': 'date'}]},
+                {'name': 'two_types', 'type': ['null', 'long', 'string']},
+                {'name': 'enum', 'type': ['null', {'type': 'enum', 'name': 'colors', 'symbols': ['RED', 'BLUE']}]},
+            ],
+        }
+    )
+    assert _find_tagged_branches(schema) == [
+        ('nullable_long', 'long'),
+        ('nullable_decimal', 'bytes'),
+        ('nullable_date', 'int'),
+    ]
+
+
+def test_all_types_with_nulls_round_trip(task, avro_path):
+    table = KwTable(
+        'tbl',
+        id=Integer(),
+        name=String(),
+        score=Float(),
+        amount=Numeric(12, 2),
+        created=DateTime(),
+        day=Date(),
+        flag=Boolean(),
+        duration=Interval(),
+    )
+    created = datetime(2020, 1, 2, 3, 4, 5)
+    with AvroWriter.from_table(task, avro_path, table) as dst:
+        dst.insert_row(
+            KwRow(id=1, name='a,"b"', score=1.5, amount=Decimal('-12.34'), created=created, day=date(2020, 1, 2),
+                  flag=True, duration=timedelta(seconds=90))
+        )
+        dst.insert_row(
+            KwRow(id=2, name=None, score=None, amount=None, created=None, day=None, flag=None, duration=None)
+        )
+
+    rows = read_back(avro_path)
+    assert rows[0]['name'] == 'a,"b"'
+    assert rows[0]['score'] == 1.5
+    assert rows[0]['amount'] == Decimal('-12.34')
+    assert rows[0]['day'] == date(2020, 1, 2)
+    assert rows[0]['flag'] is True
+    assert rows[0]['duration'] == 90
+    # Naive datetimes are read as local time by fastavro on some platforms, so only the type is checked
+    assert isinstance(rows[0]['created'], datetime)
+    assert all(rows[1][name] is None for name in ('name', 'score', 'amount', 'created', 'day', 'flag', 'duration'))
+    assert rows[1]['id'] == 2
+
+
+def test_insert_row_file_is_same_as_write_record(task, tmp_path):
+    table = KwTable('tbl', id=Integer(), name=String(), amount=Numeric(10, 2))
+    schema, _ = build_avro_schema(table, 'tbl')
+    values = [(1, 'a', Decimal('1.10')), (2, None, None), (3, 'c', Decimal('3.30'))]
+    with AvroWriter(task, tmp_path / 'record.avro', schema, codec='null') as dst:
+        for i, name, amount in values:
+            dst.write_record({'id': i, 'name': name, 'amount': amount})
+    with AvroWriter(task, tmp_path / 'row.avro', schema, codec='null') as dst:
+        for i, name, amount in values:
+            dst.insert_row(KwRow(id=i, name=name, amount=amount))
+
+    assert read_back(tmp_path / 'row.avro') == read_back(tmp_path / 'record.avro')
+
+
+def test_insert_row_stats_counted_per_stat_name_and_parent(task, avro_path):
+    table = KwTable('tbl', id=Integer())
+    with AvroWriter.from_table(task, avro_path, table) as dst:
+        dst.insert_row(KwRow(id=1))
+        dst.insert_row(KwRow(id=2))
+        dst.insert_row(KwRow(id=3), stat_name='other')
+        dst.insert_row(KwRow(id=4))
+        assert dst.statistics['insert']['inserts'] == 3
+        assert dst.statistics['other']['inserts'] == 1
