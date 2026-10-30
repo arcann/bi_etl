@@ -12,6 +12,7 @@ so buffering ``chunk_size`` rows per queue operation removes most of the per-row
 """
 import queue
 import threading
+import time
 from typing import Any, Callable, Iterable, Iterator, List, Optional
 
 
@@ -43,6 +44,7 @@ class BulkWorker:
         Use 1 to hand over every item immediately.
     """
     DEFAULT_CHUNK_SIZE = 128
+    GIL_SLEEP_TIME = 0
 
     def __init__(
             self,
@@ -96,6 +98,8 @@ class BulkWorker:
             chunk = self._buffer
             self._buffer = []
             self._queue.put(chunk)
+            # Release GIL for long enough for queue get to proceed and start the IO
+            time.sleep(self.GIL_SLEEP_TIME)
 
     def close_input(self) -> None:
         """Signal that no more items will be added. The target's iterator ends after the queued items."""
